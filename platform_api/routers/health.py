@@ -159,6 +159,15 @@ async def health_check(
     else:
         status = "healthy"
 
+    # A schema the code depends on but the database does not have is degradation,
+    # not health: production reported "healthy" for days while an admin column
+    # was still the wrong type.
+    from platform_api.services import schema_status
+
+    schema = schema_status.snapshot()
+    if status == "healthy" and not schema["ok"]:
+        status = "degraded"
+
     uptime_seconds = int(time.time() - _START_TIME)
 
     return {
@@ -166,6 +175,7 @@ async def health_check(
         "environment": (settings.environment or "").strip().lower() or "unknown",
         "environment_label": environment_display_label(settings),
         "database": db_result,
+        "schema": schema,
         "services": {
             "suno": suno_ok,
             "fal": fal_ok,

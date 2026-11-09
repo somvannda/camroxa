@@ -40,21 +40,26 @@ function LoginForm() {
     setError(null);
     try {
       await login(email.trim(), password, turnstileToken);
-      const me = await fetchMusicUser();
-      if (me && me.email_confirmed === false) {
-        router.replace(
-          `/verify-email?email=${encodeURIComponent(me.email)}&next=${encodeURIComponent(next)}`,
-        );
-        return;
-      }
-      router.replace(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed');
       setTurnstileToken('');
       setTurnstileKey((value) => value + 1);
-    } finally {
       setBusy(false);
+      return;
     }
+
+    // The session cookie is already set, so the sign-in itself succeeded.
+    // The profile read is only needed for the verify-email redirect: a
+    // transient 5xx from /users/me must not turn a good login into an error.
+    const me = await fetchMusicUser().catch(() => null);
+    if (me && me.email_confirmed === false) {
+      router.replace(
+        `/verify-email?email=${encodeURIComponent(me.email)}&next=${encodeURIComponent(next)}`,
+      );
+      return;
+    }
+    router.replace(next);
+    setBusy(false);
   }
 
   return (

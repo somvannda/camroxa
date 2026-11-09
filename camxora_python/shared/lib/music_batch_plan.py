@@ -72,12 +72,37 @@ def is_retryable_create_error(exc: BaseException) -> bool:
     return True
 
 
+# Longest wait we will block the create worker for. A closed window normally
+# clears inside a minute; a longer Retry-After is reported to the user instead
+# of leaving Generate looking frozen.
+MAX_RETRY_WAIT_SEC = 30.0
+
+# Used when a 429 arrives without a usable Retry-After header.
+DEFAULT_RATE_LIMIT_WAIT_SEC = 15.0
+
+
+def retry_after_seconds(exc: BaseException) -> float | None:
+    """Server-requested cooldown for a 429, in seconds (None when unknown)."""
+    raw = getattr(exc, "retry_after", None)
+    if raw is None:
+        return None
+    try:
+        wait = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return wait if wait > 0 else None
+
+
 @dataclass
 class CreateBatchesResult:
     planned: int = 0
     created: list[BatchCreateResponse] = field(default_factory=list)
     skipped: int = 0
     failed: list[tuple[BatchCreateRequest, str]] = field(default_factory=list)
+    # Failed slots whose last error was a 429 (rate limit), plus the cooldown the
+    # server asked for, so the UI can show one actionable line instead of a wall.
+    rate_limited: int = 0
+    retry_after: float | None = None
     # Requests skipped because their day/pair slot already existed (skip_existing on).
     skipped_requests: list[BatchCreateRequest] = field(default_factory=list)
 
@@ -130,28 +155,50 @@ def create_planned_batches(
 
     sleeper = sleep if sleep is not None else __import__("time").sleep
     last_errors: dict[int, str] = {}
+    rate_limited_ids: set[int] = set()
+    observed_wait: float | None = None
 
     for attempt in range(max(1, int(attempts))):
         still_pending: list[BatchCreateRequest] = []
-        for request in pending:
+        wait_hint: float | None = None
+        for index, request in enumerate(pending):
             try:
                 created = create_fn(request)
                 result.created.append(created)
                 last_errors.pop(id(request), None)
             except Exception as exc:
                 last_errors[id(request)] = str(exc) or "Failed to create batch."
-                if is_retryable_create_error(exc):
-                    still_pending.append(request)
-                else:
+                if not is_retryable_create_error(exc):
                     result.failed.append((request, last_errors[id(request)]))
+                    continue
+                if getattr(exc, "status", None) == 429:
+                    # The window is closed, so every remaining request in this
+                    # sweep would 429 too. Keep them pending and wait once
+                    # instead of spending the whole plan against a closed window.
+                    blocked = [request, *pending[index + 1 :]]
+                    for blocked_request in blocked:
+                        last_errors[id(blocked_request)] = last_errors[id(request)]
+                        rate_limited_ids.add(id(blocked_request))
+                    observed_wait = retry_after_seconds(exc)
+                    wait_hint = observed_wait or DEFAULT_RATE_LIMIT_WAIT_SEC
+                    still_pending.extend(blocked)
+                    break
+                still_pending.append(request)
         pending = still_pending
         if not pending:
             break
         if attempt + 1 < max(1, int(attempts)):
-            sleeper(max(0.0, float(retry_delay_sec)) * (attempt + 1))
+            backoff = max(0.0, float(retry_delay_sec)) * (attempt + 1)
+            wait = wait_hint if wait_hint is not None else backoff
+            if wait > MAX_RETRY_WAIT_SEC:
+                # Waiting minutes would look like a frozen Generate button; report instead.
+                break
+            sleeper(wait)
 
     for request in pending:
         result.failed.append((request, last_errors.get(id(request), "Failed to create batch.")))
+    result.rate_limited = sum(1 for request, _ in result.failed if id(request) in rate_limited_ids)
+    result.retry_after = observed_wait
     return result
 
 
@@ -176,3 +223,21 @@ def format_failed_create_slots(failed: list[tuple[BatchCreateRequest, str]]) -> 
         day = _ymd(request.from_date) or "unknown date"
         labels.append(f"{day} ({error})")
     return "; ".join(labels)
+
+
+def format_failed_create_message(result: CreateBatchesResult) -> str:
+    """User-facing line for a Generate that could not create every slot.
+
+    When the failures are all rate limits, one short sentence with the cooldown
+    beats repeating the same error once per planned day.
+    """
+    total = result.failed_count
+    suffix = "s" if total != 1 else ""
+    if total and result.rate_limited == total:
+        wait = int(round(result.retry_after or 0))
+        hint = f" Try again in {wait}s." if wait > 0 else ""
+        return (
+            f"Rate limit exceeded. {total} of {result.planned} batch run{suffix} "
+            f"not created.{hint}"
+        )
+    return f"Could not create {total} batch run{suffix}: {format_failed_create_slots(result.failed)}"

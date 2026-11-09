@@ -88,6 +88,9 @@ class FakeStore:
         self.conversion_runs: list[dict] = []
         self._pool = _EmptyPool()
 
+    async def music_credits_spent_today(self, user_id: UUID) -> int:
+        return 0
+
     async def list_plans(self) -> list[dict]:
         return list(self.plans.values())
 
@@ -121,6 +124,9 @@ class FakeStore:
         if web_plan is not None and int(web_plan.get("price_cents") or 0) > 0:
             return web_plan
         return await self.get_active_free_plan()
+
+    async def live_pack_expiry(self, user_id: UUID):
+        return None
 
     async def patch_plan(self, plan_id: UUID, fields: dict) -> dict | None:
         plan = self.plans.get(str(plan_id))
@@ -452,6 +458,180 @@ async def test_quote_scans_credit_pricing_when_named_fallback_misses() -> None:
     quote = await billing.quote(op="lyric", user_id=USER_ID)
     assert quote.source == "credit_pricing"
     assert quote.amount_credits == 0.252
+
+
+class _ImageRoutingResult:
+    def __init__(self, provider: str | None, sub_model: str | None = None) -> None:
+        self.provider = provider
+        self.sub_model = sub_model
+
+
+class FakeImageRouting:
+    """Per-operation routing stand-in for the image assignments."""
+
+    def __init__(self, assignments: dict[str, tuple[str, str | None]]) -> None:
+        self._assignments = assignments
+
+    async def resolve(self, operation: str) -> _ImageRoutingResult:
+        try:
+            provider, sub_model = self._assignments[operation]
+        except KeyError as exc:
+            raise RuntimeError(f"no routing for {operation}") from exc
+        return _ImageRoutingResult(provider, sub_model)
+
+
+class SubModelPricing:
+    """Pricing double that honours (service, operation, sub_model) rows."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
+    async def get_all_pricing(self) -> list[dict]:
+        return list(self.rows)
+
+    async def get_price(
+        self, ai_service: str, operation_type: str, sub_model: str | None = None
+    ) -> int:
+        for row in self.rows:
+            if row["ai_service"] != ai_service:
+                continue
+            if row["operation_type"] != operation_type:
+                continue
+            if (row.get("sub_model") or None) != (sub_model or None):
+                continue
+            return int(row["credits_per_operation"])
+        raise RuntimeError(f"missing {ai_service}/{operation_type}/{sub_model}")
+
+
+def _image_rows() -> list[dict]:
+    return [
+        # Stale FAL row: the static chain used to charge this 60-credit price
+        # even though AI Routing runs SLAI.
+        {
+            "ai_service": "fal",
+            "operation_type": "background_image",
+            "sub_model": "flux-pro",
+            "credits_per_operation": credits_to_units(60),
+        },
+        {
+            "ai_service": "slai",
+            "operation_type": "background_image",
+            "sub_model": "cx/gpt-image-2.5",
+            "credits_per_operation": credits_to_units(6),
+        },
+        {
+            "ai_service": "slai",
+            "operation_type": "thumbnail_image",
+            "sub_model": "cx/gpt-image-2.5",
+            "credits_per_operation": credits_to_units(8),
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_image_quote_uses_routed_provider_and_model_price(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """AI Routing picks the price: SLAI background image is 6, not FAL's 60."""
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=SubModelPricing(_image_rows()),
+        ai_routing_service=FakeImageRouting(
+            {"background_image": ("slai", "cx/gpt-image-2.5")}
+        ),
+    )
+    quote = await billing.quote(op="image", user_id=USER_ID)
+    assert quote.amount_credits == 6
+    assert quote.amount_units == credits_to_units(6)
+
+
+@pytest.mark.asyncio
+async def test_image_quote_prices_the_thumbnail_assignment(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """A thumbnail job bills the thumbnail_image assignment, not background."""
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=SubModelPricing(_image_rows()),
+        ai_routing_service=FakeImageRouting(
+            {
+                "background_image": ("slai", "cx/gpt-image-2.5"),
+                "thumbnail_image": ("slai", "cx/gpt-image-2.5"),
+            }
+        ),
+    )
+    background = await billing.quote(
+        op="image", user_id=USER_ID, operation="background_image"
+    )
+    thumbnail = await billing.quote(
+        op="image", user_id=USER_ID, operation="thumbnail_image"
+    )
+    assert background.amount_credits == 6
+    assert thumbnail.amount_credits == 8
+
+
+@pytest.mark.asyncio
+async def test_image_charge_debits_the_routed_price(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=SubModelPricing(_image_rows()),
+        ai_routing_service=FakeImageRouting(
+            {"background_image": ("slai", "cx/gpt-image-2.5")}
+        ),
+    )
+    before = wallet.balance
+    charged = await billing.charge(
+        user_id=USER_ID, op="image", operation="background_image", product="desktop"
+    )
+    assert charged["charged"] is True
+    assert charged["amount_credits"] == 6
+    assert wallet.balance == before - credits_to_units(6)
+    assert wallet.txs[-1]["reason"] == "v3_image"
+
+
+@pytest.mark.asyncio
+async def test_image_scan_prefers_the_routed_provider(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """When no exact row matches, the scan must not take another provider's row."""
+
+    class ScanOnlyPricing:
+        async def get_price(self, *_args, **_kwargs) -> int:
+            raise RuntimeError("no exact row")
+
+        async def get_all_pricing(self) -> list[dict]:
+            return _image_rows()
+
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=ScanOnlyPricing(),
+        ai_routing_service=FakeImageRouting(
+            {"background_image": ("slai", "cx/gpt-image-2.5")}
+        ),
+    )
+    quote = await billing.quote(op="image", user_id=USER_ID)
+    assert quote.amount_credits == 6
+
+
+@pytest.mark.asyncio
+async def test_image_quote_keeps_static_chain_without_routing(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """A routing miss still resolves a price instead of hard-failing."""
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=SubModelPricing(_image_rows()),
+        ai_routing_service=FakeImageRouting({}),
+    )
+    quote = await billing.quote(op="image", user_id=USER_ID)
+    assert quote.amount_credits == 60
 
 
 @pytest.mark.asyncio

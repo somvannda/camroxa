@@ -26,6 +26,7 @@ import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, v
 const SESSION_COOKIE_ADMIN_CSRF = "sunosession_admin_csrf";
 import { OAuth2Client } from "google-auth-library";
 import { config, isProduction } from "./config.js";
+import { callbackSignatureHeaders } from "./callbackSignature.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { trustProxyOption } from "./trustProxy.js";
@@ -718,7 +719,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const url = req.raw.url ?? "";
     if (url.startsWith("/api/v1/")) {
       if (reply.statusCode === 202) reply.code(200);
-      else if (reply.statusCode === 402) reply.code(429);
+      else if (reply.statusCode === 402) {
+        // Keep sunoapi.org's 429, but tag it so callers never mistake a
+        // billing stop for throttling (that misread parked the platform key
+        // pool for an hour on 2026-11-01).
+        reply.code(429);
+        reply.header("x-credit-exhausted", "1");
+      }
     }
     return payload;
   });
@@ -2073,6 +2080,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // Re-check at the sink as well: a public hostname accepted earlier can be
       // re-pointed at an internal address before the job finishes (DNS rebinding).
       await assertCallbackUrlAllowed(job.callbackUrl);
+      // Sign every callback body with the platform's shared secret. The
+      // platform rejects unsigned callbacks from non-allowlisted IPs, which is
+      // why these posts used to 403 and status fell back to polling.
+      const send = async (payload: unknown): Promise<void> => {
+        const bodyText = JSON.stringify(payload);
+        await fetch(job.callbackUrl as string, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...callbackSignatureHeaders(config.callbackHmacSecret, bodyText),
+          },
+          // Do not follow redirects — a 3xx to an internal address would
+          // otherwise bypass the check above.
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+          body: bodyText,
+        });
+      };
       // WAV conversion uses sunoapi.org's own callback envelope:
       // {code,msg,data:{audioWavUrl,task_id}}, not the track-list envelope below.
       if (job.type === "wav" || job.endpoint === "wav") {
@@ -2081,16 +2106,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const wavUrl = ok
           ? ((res.download_url as string) ?? (res.wav_url as string) ?? null)
           : null;
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            code: ok ? 200 : 400,
-            msg: ok ? "success" : (job.error || "WAV format conversion failed"),
-            data: { audioWavUrl: wavUrl, task_id: job.id },
-          }),
+        await send({
+          code: ok ? 200 : 400,
+          msg: ok ? "success" : (job.error || "WAV format conversion failed"),
+          data: { audioWavUrl: wavUrl, task_id: job.id },
         });
         return;
       }
@@ -2099,16 +2118,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const ok = job.status === "complete";
         const res = (job.result ?? {}) as Record<string, unknown>;
         const videoUrl = ok ? ((res.video_url as string) ?? null) : null;
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            code: ok ? 200 : 400,
-            msg: ok ? "MP4 generated successfully." : (job.error || "MP4 generation failed"),
-            data: { task_id: job.id, video_url: videoUrl },
-          }),
+        await send({
+          code: ok ? 200 : 400,
+          msg: ok ? "MP4 generated successfully." : (job.error || "MP4 generation failed"),
+          data: { task_id: job.id, video_url: videoUrl },
         });
         return;
       }
@@ -2116,17 +2129,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (job.type === "midi_generate" || job.endpoint === "midi_generate") {
         const ok = job.status === "complete";
         const res = (job.result ?? {}) as Record<string, unknown>;
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            task_id: job.id,
-            code: ok ? 200 : 500,
-            msg: ok ? "success" : (job.error || "MIDI generation failed"),
-            data: ok ? (res.midi_data ?? null) : null,
-          }),
+        await send({
+          task_id: job.id,
+          code: ok ? 200 : 500,
+          msg: ok ? "success" : (job.error || "MIDI generation failed"),
+          data: ok ? (res.midi_data ?? null) : null,
         });
         return;
       }
@@ -2135,17 +2142,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const res = (job.result ?? {}) as Record<string, unknown>;
         const tracks = Array.isArray(res.tracks) ? res.tracks : null;
         const ok = job.status === "complete";
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            code: ok ? 200 : 500,
-            msg: ok ? "success" : (job.error || "Recovery failed"),
-            task_id: job.id,
-            data: tracks,
-          }),
+        await send({
+          code: ok ? 200 : 500,
+          msg: ok ? "success" : (job.error || "Recovery failed"),
+          task_id: job.id,
+          data: tracks,
         });
         return;
       }
@@ -2155,7 +2156,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const tracks: Array<Record<string, unknown>> = [];
       collectClipObjects(job.result, tracks);
       const ok = job.status === "complete";
-      const payload = {
+      await send({
         code: ok ? 200 : 400,
         msg: ok ? "All generated successfully." : (job.error || "Music generation failed"),
         data: {
@@ -2163,15 +2164,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           task_id: job.id,
           data: ok ? tracks.map(sunoTrack) : null,
         },
-      };
-      await fetch(job.callbackUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        // Do not follow redirects — a 3xx to an internal address would otherwise
-        // bypass the check above.
-        redirect: "manual",
-        signal: AbortSignal.timeout(10_000),
-        body: JSON.stringify(payload),
       });
     } catch {
       // callback failures are non-fatal
@@ -5958,16 +5950,44 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // 1. Suno accounts whose live credit balance is at or below the threshold.
     const health = await pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>);
     const low = health.filter((h) => h.credits <= thresholds.low_credits_threshold);
-    summary.low_credits = low.length;
-    if (low.length > 0) {
+
+    // 1b. Admin-owned API-key pools. These fund whole downstream surfaces: when
+    // the reseller pool reached 0 on 2026-11-01, every platform_api generation
+    // failed for an hour. Warn while there is still headroom to top up.
+    const dryPools = await query<{ email: string; credits: string }>(
+      `SELECT u.email AS email, COALESCE(sum(k.credits), 0)::text AS credits
+         FROM api_keys k
+         JOIN users u ON u.id = k.user_id
+        WHERE k.is_active = true AND u.role = 'admin'
+        GROUP BY u.email
+       HAVING COALESCE(sum(k.credits), 0) <= $1`,
+      [thresholds.low_credits_threshold],
+    ).catch(() => [] as Array<{ email: string; credits: string }>);
+
+    summary.low_credits = low.length + dryPools.length;
+    if (low.length > 0 || dryPools.length > 0) {
+      const parts: string[] = [];
+      if (low.length > 0) {
+        parts.push(
+          `${low.length} Suno account(s) at or below ${thresholds.low_credits_threshold} credits: ${low
+            .map((h) => `${h.id} (${h.credits})`)
+            .join(", ")}.`,
+        );
+      }
+      for (const row of dryPools) {
+        parts.push(`API key pool ${row.email} is at ${row.credits} credits; downstream generation stops at 0.`);
+      }
+      const critical =
+        low.some((h) => h.credits <= 0) || dryPools.some((row) => Number(row.credits) <= 0);
       alerts.push({
         id: "low_credits",
         type: "low_credits",
-        severity: low.some((h) => h.credits <= 0) ? "critical" : "warning",
-        message: `${low.length} Suno account(s) at or below ${thresholds.low_credits_threshold} credits: ${low
-          .map((h) => `${h.id} (${h.credits})`)
-          .join(", ")}.`,
-        details: { accounts: low.map((h) => ({ id: h.id, credits: h.credits })) },
+        severity: critical ? "critical" : "warning",
+        message: parts.join(" "),
+        details: {
+          accounts: low.map((h) => ({ id: h.id, credits: h.credits })),
+          api_key_pools: dryPools.map((row) => ({ email: row.email, credits: Number(row.credits) })),
+        },
       });
     }
 

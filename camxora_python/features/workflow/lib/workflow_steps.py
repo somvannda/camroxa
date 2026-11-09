@@ -159,6 +159,41 @@ def format_upload_status(row: ProgressRow) -> str:
     return "Not started"
 
 
+def format_delivery_summary(row: ProgressRow) -> str | None:
+    """Delivery state layered on top of a completed media pipeline.
+
+    Media completion stays at the merge (the file exists); publishing is a
+    separate third-party step, so a finished run reports
+    ``Completed · uploading 1/2`` / ``upload failed · retry`` instead of a bare
+    ``Completed`` that hides a pending or failed upload. Returns None when no
+    uploads were tracked for this row.
+    """
+    meta = getattr(row, "meta", None)
+    if meta is None:
+        return None
+    pending = int(getattr(meta, "youtube_pending", 0) or 0)
+    success = int(getattr(meta, "youtube_success", 0) or 0)
+    failed = int(getattr(meta, "youtube_failed", 0) or 0)
+    has_url = bool(getattr(meta, "youtube_url", None))
+    status = normalize_key(getattr(meta, "youtube_status", ""))
+    tracked = pending + success + failed
+    if tracked == 0 and not has_url and not status:
+        return None
+    total = max(tracked, success + pending)
+    if total == 0 and has_url:
+        total = 1
+    if failed > 0 or status == "failed":
+        return f"upload failed · retry ({failed or 1})"
+    if status == "blocked":
+        return "upload blocked"
+    if pending > 0 or status in {"uploading", "queued", "processing"}:
+        total = total or pending
+        return f"uploading {success}/{total}"
+    if has_url or success > 0 or status in {"uploaded", "done", "completed"}:
+        return f"uploaded {success or total}/{total or success}"
+    return "upload ready"
+
+
 def resolve_run_status_label(
     stage: str,
     status: str,

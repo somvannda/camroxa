@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Signed-out polls no longer hammer `/auth/refresh`.** The create page keeps polling license/credit endpoints, and every `401` used to trigger a refresh (which also `401`s with no session) — 1 909 browser refresh `401`s in a single day. A rejected refresh is now remembered for 60 seconds; a network failure is not cached, and a real sign-in is still picked up immediately. See `docs/changelog/2026-11-08-music-web-refresh-backoff.md`.
+
 ### Removed
 
 - **Subscriptions are retired.** Pricing/upgrade entry points, the `/pricing` plan grid, and the profile plan manager (browse / subscribe / renew) are gone; the profile section is credits-only and `Upgrade to Pro` became **Buy credits**. Grandfathered subscribers keep a read-only plan and can still cancel. See `docs/changelog/2026-10-15-packs-only-billing.md`.

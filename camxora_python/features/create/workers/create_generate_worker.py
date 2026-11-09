@@ -43,6 +43,19 @@ _SUBMIT_RETRIES = 6
 _DOWNLOAD_RETRIES = 8
 _TRANSIENT_STATUSES = {429, 502, 503}
 
+# A 429 is only worth retrying when it is a short-window rate limit. Quota
+# errors (daily music cap, no credits) will not clear by waiting, so retrying
+# them just hides the real message behind up to three "Waiting for Suno" sleeps.
+_QUOTA_HINTS = ("daily music limit", "quota", "insufficient credits", "out of credits")
+
+
+def _is_transient(exc: "PlatformApiError") -> bool:
+    """True when retrying this API error could actually succeed."""
+    if exc.status not in _TRANSIENT_STATUSES:
+        return False
+    text = str(exc).lower()
+    return not any(hint in text for hint in _QUOTA_HINTS)
+
 
 @dataclass(frozen=True, slots=True)
 class CreateGenerateResult:
@@ -267,7 +280,7 @@ class CreateGenerateWorker(QThread):
                 return self._api.generate_web_music(payload)
             except PlatformApiError as exc:
                 last_error = str(exc) or last_error
-                if exc.status in _TRANSIENT_STATUSES and attempt + 1 < _SUBMIT_RETRIES:
+                if _is_transient(exc) and attempt + 1 < _SUBMIT_RETRIES:
                     time.sleep(_POLL_SECONDS * (attempt + 1))
                     continue
                 raise
@@ -282,7 +295,7 @@ class CreateGenerateWorker(QThread):
             try:
                 last = self._api.get_web_music_generation(task_id)
             except PlatformApiError as exc:
-                if exc.status in _TRANSIENT_STATUSES:
+                if _is_transient(exc):
                     self.progressed.emit(
                         f"Waiting for Suno (API {exc.status}, retrying)…"
                     )

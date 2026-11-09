@@ -108,6 +108,24 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_SLIDER_VALUE = 0.5
 
+# Read-path provider polls are only a fallback for a missing callback. Every
+# `GET /web-music/generations/{id}` used to poll Suno inline across *all* pool
+# keys (up to PLATFORM_SUNO_TIMEOUT_SECONDS each), and the browser polls that
+# route every few seconds. Under load those requests piled up for minutes and
+# starved the API: production auth refresh took 13-90s and returned 499/502.
+# Coalesce them process-wide: at most one bounded poll per task per window.
+_PENDING_POLL_TTL_SECONDS = 5.0
+_PENDING_POLL_TIMEOUT_SECONDS = 12.0
+_PENDING_POLL_CACHE_MAX = 5000
+_pending_poll_results: dict[str, tuple[float, Any]] = {}
+_pending_poll_inflight: set[str] = set()
+
+
+def reset_pending_poll_cache() -> None:
+    """Test hook: clear the read-path poll coalescer."""
+    _pending_poll_results.clear()
+    _pending_poll_inflight.clear()
+
 
 def _b2_key_is_task_scoped(storage_key: str | None, task_id: UUID) -> bool:
     """True when the object path contains this task id (not a shared untitled-ok.mp3)."""
@@ -717,7 +735,7 @@ class WebMusicService:
         import math
 
         from platform_api.services.credit_units import units_to_credits
-        from platform_api.services.v2.credit_service import InsufficientCreditsError
+        from platform_api.exceptions import InsufficientCreditsError
 
         if self._ai_routing is None or self._pricing is None:
             raise ValidationError(
@@ -905,7 +923,7 @@ class WebMusicService:
     
     async def _reserve_via_credits(self, user_id: UUID, *, reservation_id: str) -> dict[str, Any]:
         """Reserve a song slot by consuming credits (subscription or daily free pool)."""
-        from platform_api.services.v2.credit_service import InsufficientCreditsError
+        from platform_api.exceptions import InsufficientCreditsError
 
         if self._credit_service is None:
             logger.error("Credit service not available for user %s", user_id)
@@ -1278,6 +1296,46 @@ class WebMusicService:
                 is_preview = True
                 preview_seconds = PREVIEW_SECONDS
 
+        async def release_reservation(task_id: str | None = None) -> None:
+            """Refund the reservation without ever raising.
+
+            The debit is written before the task row exists, so any failure
+            between the charge and the enqueue must reverse it. ``except
+            Exception`` is not enough here: a client that double-clicks moves
+            on and Starlette cancels the request, and ``asyncio.CancelledError``
+            derives from ``BaseException``. ``asyncio.shield`` lets the refund
+            finish after the outer task is cancelled, so a cancelled request
+            cannot keep the credits.
+            """
+            try:
+                await asyncio.shield(
+                    self._release_daily_slot(
+                        user_id,
+                        reference_id=reservation_id,
+                        task_id=task_id,
+                    )
+                )
+            except BaseException:
+                logger.exception(
+                    "release_reservation failed user=%s reservation=%s task=%s",
+                    user_id,
+                    reservation_id,
+                    task_id,
+                )
+            # Before the task row exists there is nothing for
+            # _release_preview_for_task to find, so release it directly.
+            if is_preview and preview_period is not None and not task_id:
+                try:
+                    await asyncio.shield(
+                        self._release_preview(user_id, preview_period, normalized_model)
+                    )
+                except BaseException:
+                    logger.exception(
+                        "release_preview failed user=%s reservation=%s",
+                        user_id,
+                        reservation_id,
+                    )
+
         # Charge only after title/blocklist checks so 422s do not burn credits.
         try:
             quota = await self._reserve_daily_slot(
@@ -1286,22 +1344,12 @@ class WebMusicService:
                 model=normalized_model,
                 allow_free_preview=is_preview,
             )
-        except Exception:
-            if is_preview and preview_period is not None:
-                await self._release_preview(user_id, preview_period, normalized_model)
+        except BaseException:
+            # A cancellation can land after the debit but before the charge is
+            # tracked in _open_charges, so attempt the refund on every failure.
+            await release_reservation()
             raise
         logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
-
-        async def release_reservation(task_id: str | None = None) -> None:
-            await self._release_daily_slot(
-                user_id,
-                reference_id=reservation_id,
-                task_id=task_id,
-            )
-            # Before the task row exists there is nothing for
-            # _release_preview_for_task to find, so release it directly.
-            if is_preview and preview_period is not None and not task_id:
-                await self._release_preview(user_id, preview_period, normalized_model)
 
         if mode_key == "simple":
             try:
@@ -1309,7 +1357,7 @@ class WebMusicService:
                 generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
                     safe_prompt
                 )
-            except Exception:
+            except BaseException:
                 await release_reservation()
                 raise
             safe_lyrics = str(generated_lyrics or "").strip() or safe_prompt
@@ -1330,7 +1378,7 @@ class WebMusicService:
                     style=safe_style,
                     negative_tags=safe_negative,
                 )
-            except Exception:
+            except BaseException:
                 await release_reservation()
                 raise
 
@@ -1369,7 +1417,7 @@ class WebMusicService:
                 preview_seconds=preview_seconds,
             )
             logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
-        except Exception:
+        except BaseException:
             await release_reservation(task_id=str(task_id) if task_id else None)
             raise
 
@@ -1601,9 +1649,17 @@ class WebMusicService:
             return UUID(str(row["id"]))
         row = await self._pool.fetchrow(
             """
-            INSERT INTO web_music_workspaces (user_id, name, is_default)
-            VALUES ($1, 'My Workspace', true)
-            RETURNING id
+            WITH inserted AS (
+                INSERT INTO web_music_workspaces (user_id, name, is_default)
+                VALUES ($1, 'My Workspace', true)
+                ON CONFLICT (user_id) WHERE is_default DO NOTHING
+                RETURNING id
+            )
+            SELECT id FROM inserted
+            UNION ALL
+            SELECT id FROM web_music_workspaces
+            WHERE user_id = $1 AND is_default = true
+            LIMIT 1
             """,
             user_id,
         )
@@ -5585,6 +5641,49 @@ class WebMusicService:
         )
         return len(rows)
 
+    async def _poll_pending_coalesced(self, external_task_id: str):
+        """Poll the provider at most once per task per window, process-wide.
+
+        Returns the poll result, or ``None`` when this request should serve the
+        cached row (another request is polling, or the provider is slow). The
+        read path must never block a browser poll for the full multi-key scan.
+        """
+        key = str(external_task_id or "").strip()
+        if not key:
+            return None
+        now = time.monotonic()
+        cached = _pending_poll_results.get(key)
+        if cached is not None and now - cached[0] < _PENDING_POLL_TTL_SECONDS:
+            return cached[1]
+        if key in _pending_poll_inflight:
+            return None
+        _pending_poll_inflight.add(key)
+        try:
+            result = await asyncio.wait_for(
+                self._poll_suno_task_status(key),
+                timeout=_PENDING_POLL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "Web music Suno poll timed out for %s; serving cached row.", key
+            )
+            return None
+        except Exception as exc:
+            logger.warning("Web music Suno poll failed for %s: %s", key, exc)
+            return None
+        finally:
+            _pending_poll_inflight.discard(key)
+        _pending_poll_results[key] = (time.monotonic(), result)
+        if len(_pending_poll_results) > _PENDING_POLL_CACHE_MAX:
+            cutoff = time.monotonic() - 3600.0
+            for stale_key in [
+                cached_key
+                for cached_key, (at, _value) in _pending_poll_results.items()
+                if at < cutoff
+            ]:
+                _pending_poll_results.pop(stale_key, None)
+        return result
+
     async def _poll_suno_task_status(self, external_task_id: str):
         """Poll record-info across the pool's keys.
 
@@ -5605,10 +5704,8 @@ class WebMusicService:
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:
             return row
-        try:
-            polled = await self._poll_suno_task_status(external_id)
-        except Exception as exc:
-            logger.warning("Web music Suno poll failed for %s: %s", row["id"], exc)
+        polled = await self._poll_pending_coalesced(external_id)
+        if polled is None:
             return row
         if polled.state == "success":
             urls = urls_from_generate_poll(polled)
@@ -5703,10 +5800,8 @@ class WebMusicService:
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:
             return row
-        try:
-            polled = await self._poll_suno_task_status(external_id)
-        except Exception as exc:
-            logger.warning("Web music Suno cover poll failed for %s: %s", row["id"], exc)
+        polled = await self._poll_pending_coalesced(external_id)
+        if polled is None:
             return row
         if polled.state != "success":
             return row
@@ -5760,10 +5855,8 @@ class WebMusicService:
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:
             return row
-        try:
-            polled = await self._poll_suno_task_status(external_id)
-        except Exception as exc:
-            logger.warning("Web music duration poll failed for %s: %s", row["id"], exc)
+        polled = await self._poll_pending_coalesced(external_id)
+        if polled is None:
             return row
         if polled.state != "success":
             return row

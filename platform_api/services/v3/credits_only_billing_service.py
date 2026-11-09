@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from platform_api.exceptions import InsufficientCreditsError, NotFoundError, ValidationError
+from platform_api.config import get_settings
+from platform_api.exceptions import (
+    InsufficientCreditsError,
+    NotFoundError,
+    QuotaExceededError,
+    ValidationError,
+)
 from platform_api.services.credit_units import CREDIT_SCALE, credits_to_units, units_to_credits
 from platform_api.services.pricing_display import credit_reset_label
 from platform_api.services.v3.list_prices import (
@@ -20,6 +26,9 @@ from platform_api.services.v3.ops import SUPPORTED_OPS
 from platform_api.services.v3.store import V3BillingStore
 
 logger = logging.getLogger(__name__)
+
+
+MUSIC_DAILY_CAP_SETTING_KEY = "music_daily_credit_cap"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +87,36 @@ class CreditsOnlyBillingService:
         provider = str(getattr(routing, "provider", "") or "").strip().lower()
         return provider or None
 
+    async def _image_pricing_routing(
+        self, operation: str | None
+    ) -> tuple[str | None, str | None]:
+        """Routed ``(provider, sub_model)`` for the ``image`` op.
+
+        ``background_image`` and ``thumbnail_image`` are separate routing
+        assignments but both bill the single ``image`` op, so the caller's v1
+        operation decides which assignment is priced. Without it we price the
+        background image assignment, matching the desktop's default image.
+        """
+        if self._ai_routing is None:
+            return None, None
+        assignment = (
+            "thumbnail_image"
+            if str(operation or "").strip().lower() == "thumbnail_image"
+            else "background_image"
+        )
+        try:
+            routing = await self._ai_routing.resolve(assignment)
+        except Exception:
+            logger.debug(
+                "image routing lookup failed for %s; using default price chain",
+                assignment,
+                exc_info=True,
+            )
+            return None, None
+        provider = str(getattr(routing, "provider", "") or "").strip().lower() or None
+        sub_model = str(getattr(routing, "sub_model", "") or "").strip() or None
+        return provider, sub_model
+
     async def list_pricing(self) -> list[dict[str, Any]]:
         return await self._pricing.get_all_pricing()
 
@@ -125,11 +164,12 @@ class CreditsOnlyBillingService:
         user_id: UUID | None = None,
         plan_id: UUID | None = None,
         waive: bool = False,
+        operation: str | None = None,
     ) -> QuoteResult:
-        operation = self._normalize_op(op)
+        operation_name = self._normalize_op(op)
         if waive:
             return QuoteResult(
-                op=operation,
+                op=operation_name,
                 amount_credits=0,
                 amount_units=0,
                 source="waive",
@@ -142,13 +182,24 @@ class CreditsOnlyBillingService:
         plan = None
 
         music_provider = (
-            await self._music_pricing_provider() if operation == "music" else None
+            await self._music_pricing_provider() if operation_name == "music" else None
         )
+        image_provider: str | None = None
+        image_sub_model: str | None = None
+        if operation_name == "image":
+            image_provider, image_sub_model = await self._image_pricing_routing(
+                operation
+            )
         units = await resolve_op_list_units(
-            self._pricing, operation, music_provider=music_provider
+            self._pricing,
+            operation_name,
+            music_provider=music_provider,
+            image_provider=image_provider,
+            image_sub_model=image_sub_model,
+            image_operation=operation,
         )
         return QuoteResult(
-            op=operation,
+            op=operation_name,
             amount_credits=units_to_credits(units),
             amount_units=units,
             source="credit_pricing",
@@ -158,8 +209,12 @@ class CreditsOnlyBillingService:
 
     async def op_list_credits(self) -> dict[str, float]:
         music_provider = await self._music_pricing_provider()
+        image_provider, image_sub_model = await self._image_pricing_routing(None)
         return await resolve_all_op_list_credits(
-            self._pricing, music_provider=music_provider
+            self._pricing,
+            music_provider=music_provider,
+            image_provider=image_provider,
+            image_sub_model=image_sub_model,
         )
 
     async def music_credits_per_generate(self) -> int | float:
@@ -174,6 +229,72 @@ class CreditsOnlyBillingService:
     ) -> dict[str, Any]:
         return overlay_plan_list_prices(plan, op_credits, overlay_ops=overlay_ops)
 
+    async def _resolve_music_daily_cap(self) -> int:
+        """Per-user daily music cap in credits: admin setting over env default."""
+        raw = None
+        getter = getattr(self._store, "system_setting", None)
+        if getter is not None:
+            try:
+                raw = await getter(MUSIC_DAILY_CAP_SETTING_KEY)
+            except Exception:  # noqa: BLE001 - fall back to the env default
+                logger.debug("music daily cap setting lookup failed", exc_info=True)
+        text = str(raw).strip() if raw is not None else ""
+        if text:
+            try:
+                return max(0, int(text))
+            except ValueError:
+                logger.warning(
+                    "Ignoring invalid %s setting: %r", MUSIC_DAILY_CAP_SETTING_KEY, raw
+                )
+        return max(0, int(get_settings().music_daily_credit_cap or 0))
+
+    async def _assert_daily_music_cap(self, user_id: UUID, quote: QuoteResult) -> None:
+        """Refuse a music charge that would exceed the per-user daily cap.
+
+        Paid Suno accounts are a shared pool, so one user generating hundreds of
+        songs in a day drains capacity for everyone else. The cap counts credits
+        per calendar day across web and desktop; ``0`` disables it. Admins set it
+        in the console (``system_settings.music_daily_credit_cap``), which wins
+        over ``MUSIC_DAILY_CREDIT_CAP``.
+        """
+        if quote.op != "music":
+            return
+        cap = await self._resolve_music_daily_cap()
+        if cap <= 0:
+            return
+        spent = await self._store.music_credits_spent_today(user_id)
+        if spent + int(quote.amount_units) <= cap * CREDIT_SCALE:
+            return
+        # Record the rejection: without this there is no evidence of who was
+        # blocked or how often, because the charge never reaches the ledger.
+        logger.warning(
+            "music daily cap blocked user=%s spent_credits=%s requested_credits=%s cap_credits=%s",
+            user_id,
+            units_to_credits(spent),
+            quote.amount_credits,
+            cap,
+        )
+        raise QuotaExceededError(
+            f"Daily music limit reached ({cap} credits). It resets at midnight.",
+            details={
+                "code": "music_daily_cap",
+                "cap_credits": cap,
+                "spent_credits": units_to_credits(spent),
+                "requires_upgrade": False,
+            },
+        )
+
+    async def assert_daily_music_cap(self, user_id: UUID, quote: QuoteResult) -> None:
+        """Public preflight wrapper for the per-user daily music cap.
+
+        ``charge()`` already enforces the cap, but callers that only *queue*
+        work (Suno retry, batch preflight) used to accept the job and let the
+        worker fail later. Exposing the check lets those callers reject the
+        request up front with the same ``music_daily_cap`` error, instead of
+        burning a retry attempt and marking the song ``suno_failed``.
+        """
+        await self._assert_daily_music_cap(user_id, quote)
+
     async def charge(
         self,
         *,
@@ -184,8 +305,15 @@ class CreditsOnlyBillingService:
         plan_id: UUID | None = None,
         product: str | None = None,
         model: str | None = None,
+        operation: str | None = None,
     ) -> dict[str, Any]:
-        quote = await self.quote(op=op, user_id=user_id, plan_id=plan_id, waive=waive)
+        quote = await self.quote(
+            op=op,
+            user_id=user_id,
+            plan_id=plan_id,
+            waive=waive,
+            operation=operation,
+        )
         if self._enforcement is not None and not waive:
             await self._enforcement.enforce_fail_absorb_budget(user_id)
 
@@ -208,6 +336,8 @@ class CreditsOnlyBillingService:
                     "idempotent": True,
                     "balance_units": int(await self._credit_repo.get_balance(user_id)),
                 }
+
+        await self._assert_daily_music_cap(user_id, quote)
 
         metadata = {
             "billing": "wallet",
@@ -258,10 +388,13 @@ class CreditsOnlyBillingService:
         ref_id: str | None = None,
         absorb: bool = False,
         product: str | None = None,
+        operation: str | None = None,
     ) -> dict[str, Any]:
-        operation = self._normalize_op(op)
+        operation_name = self._normalize_op(op)
         if amount_credits is None:
-            quote = await self.quote(op=operation, user_id=user_id)
+            quote = await self.quote(
+                op=operation_name, user_id=user_id, operation=operation
+            )
             units = quote.amount_units
             credits = quote.amount_credits
         else:
@@ -271,11 +404,11 @@ class CreditsOnlyBillingService:
             credits = float(amount_credits)
 
         if units > 0:
-            reason = f"v3_refund_{operation}"
+            reason = f"v3_refund_{operation_name}"
             metadata = {
                 "billing": "platform_absorb" if absorb else "wallet_refund",
                 "source": "v3",
-                "op": operation,
+                "op": operation_name,
             }
             if product:
                 metadata["product"] = str(product)[:32]
@@ -303,7 +436,7 @@ class CreditsOnlyBillingService:
             used = await self._enforcement.record_fail_absorb(user_id)
         return {
             "user_id": str(user_id),
-            "op": operation,
+            "op": operation_name,
             "amount_credits": credits,
             "amount_units": units,
             "absorb": absorb,

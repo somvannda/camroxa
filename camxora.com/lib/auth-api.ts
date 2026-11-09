@@ -108,6 +108,9 @@ export async function fetchCreditSummary(): Promise<CreditSummary | null> {
     balance_credits?: number;
     total_credits?: number;
     reset_label?: string | null;
+    is_pro?: boolean;
+    tier?: 'pro' | 'free';
+    pack_expires_at?: string | null;
     plan?: {
       name?: string;
       price_cents?: number;
@@ -123,15 +126,15 @@ export async function fetchCreditSummary(): Promise<CreditSummary | null> {
     .filter((lot) => Number(lot.remaining_credits ?? 0) > 0 && lot.expires_at)
     .map((lot) => String(lot.expires_at))
     .sort();
-  const planName = data.plan?.name ?? null;
-  const priceCents = Number(data.plan?.price_cents ?? 0);
+  const isPro = Boolean(data.is_pro);
+  const planName = data.plan?.name ?? (isPro ? 'Pro' : 'Free');
   const monthlyCredits = Number(data.plan?.monthly_credits ?? 0);
   return {
     total: Number.isFinite(total) ? total : 0,
     planName,
     monthlyCredits: Number.isFinite(monthlyCredits) && monthlyCredits > 0 ? monthlyCredits : null,
-    isFree: priceCents <= 0 || (planName ?? "").toLowerCase() === "free",
-    expiresAt: expiries[0] ?? null,
+    isFree: !isPro,
+    expiresAt: data.pack_expires_at ?? expiries[0] ?? null,
     resetLabel: data.reset_label ?? null,
   };
 }

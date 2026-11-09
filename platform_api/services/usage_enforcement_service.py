@@ -362,7 +362,9 @@ class UsageEnforcementService:
                 f"Operation '{operation_type}' is not mapped to credits-only billing.",
                 details={"operation_type": operation_type},
             )
-        return await self._v3_billing_service().quote(op=op, user_id=user_id)
+        return await self._v3_billing_service().quote(
+            op=op, user_id=user_id, operation=operation_type
+        )
 
     async def _charge_via_v3(
         self,
@@ -394,6 +396,7 @@ class UsageEnforcementService:
             ref_id=ref_id,
             product=product,
             model=model,
+            operation=operation_type,
         )
         return int(result.get("amount_units") or 0)
 
@@ -614,6 +617,14 @@ class UsageEnforcementService:
             required = int(getattr(quote, "amount_units", 0) or 0)
             if required <= 0:
                 return
+            # The daily music cap is enforced inside charge(); preflighting it
+            # here makes retry/batch callers fail now instead of queueing a job
+            # the worker is guaranteed to reject (and mark suno_failed).
+            assert_cap = getattr(
+                self._v3_billing_service(), "assert_daily_music_cap", None
+            )
+            if assert_cap is not None:
+                await assert_cap(user_id, quote)
             current_balance = await self._credit_repo.get_balance(user_id)
             if current_balance < required:
                 raise InsufficientCreditsError(
@@ -809,26 +820,31 @@ class UsageEnforcementService:
                 additional_count=merge_ops,
             )
 
-        extras = await self.period_quota_topup_extras(user_id, period_start)
-        if plan is not None and await subscription_covers_batch(
-            plan=plan,
-            user_id=user_id,
-            song_count=song_count,
-            usage_repo=self._usage_repo,
-            period_start=period_start,
-            image_jobs=image_jobs,
-            draft_ops=estimated_drafts,
-            video_ops=video_ops,
-            merge_ops=merge_ops,
-            addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
-            topup_extras=extras,
-        ):
-            credit_log.log_subscription_quota(
+        # Plan-era quota top-ups were dropped by the credits-only migration (174).
+        # There is no subscription context anymore, so extras only apply when a
+        # plan is actually present — and fetching them unconditionally 500s on
+        # the missing user_period_quota_topups table.
+        if plan is not None:
+            extras = await self.period_quota_topup_extras(user_id, period_start)
+            if await subscription_covers_batch(
+                plan=plan,
                 user_id=user_id,
-                operation_type="batch_generation",
-                ai_service="batch",
-            )
-            return
+                song_count=song_count,
+                usage_repo=self._usage_repo,
+                period_start=period_start,
+                image_jobs=image_jobs,
+                draft_ops=estimated_drafts,
+                video_ops=video_ops,
+                merge_ops=merge_ops,
+                addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
+                topup_extras=extras,
+            ):
+                credit_log.log_subscription_quota(
+                    user_id=user_id,
+                    operation_type="batch_generation",
+                    ai_service="batch",
+                )
+                return
 
         current_balance = await self._credit_repo.get_balance(user_id)
         if current_balance < total_wallet_cost:
@@ -1554,12 +1570,13 @@ class UsageEnforcementService:
         ai_service: str,
         *,
         sub_model: str | None = None,
+        ref_id: str | None = None,
     ) -> int:
         """Deduct credits and increment usage for the provider that actually served the request."""
         if await self._v3_op_if_enabled(operation_type) is not None:
             await self.enforce_fail_absorb_budget(user_id)
             return await self._charge_via_v3(
-                user_id, operation_type, model=sub_model
+                user_id, operation_type, ref_id=ref_id, model=sub_model
             )
 
         pricing_entry = await lookup_pricing_entry(

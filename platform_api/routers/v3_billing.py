@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import (
+    get_db_pool,
     get_v3_billing_service,
     get_v3_conversion_service,
     get_v3_grant_service,
@@ -37,6 +38,10 @@ StoreDep = Annotated[Any, Depends(get_v3_store)]
 
 class QuoteRequest(BaseModel):
     op: str
+    # Concrete v1 operation (e.g. ``thumbnail_image``) when ``op`` collapses
+    # several operations into one (``image``). Optional; defaults to the
+    # background image assignment for ``image``.
+    operation: str | None = None
     user_id: UUID | None = None
     plan_id: UUID | None = None
     waive: bool = False
@@ -44,6 +49,7 @@ class QuoteRequest(BaseModel):
 
 class ChargeRequest(BaseModel):
     op: str
+    operation: str | None = None
     user_id: UUID | None = None
     plan_id: UUID | None = None
     ref_id: str | None = None
@@ -52,6 +58,7 @@ class ChargeRequest(BaseModel):
 
 class RefundRequest(BaseModel):
     op: str
+    operation: str | None = None
     user_id: UUID | None = None
     amount_credits: float | None = None
     ref_id: str | None = None
@@ -108,6 +115,61 @@ async def me_credits(ctx: UserDep, billing: BillingDep) -> dict[str, Any]:
     return await billing.wallet_view(user_id)
 
 
+@router.get("/credits/history", summary="Current user credit ledger")
+async def credits_history(
+    ctx: UserDep,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Paginated wallet ledger, replacing the retired v2 credits endpoint.
+
+    Reads ``credit_transactions`` (the same table the v3 wallet writes) and
+    keeps the old response shape so the web client needs no changes.
+    """
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
+    pool = get_db_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, amount, direction, reason, ref_id, created_at
+        FROM credit_transactions
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+        """,
+        UUID(ctx.user_id),
+        limit,
+        offset,
+    )
+    total = await pool.fetchval(
+        "SELECT COUNT(*) FROM credit_transactions WHERE user_id = $1",
+        UUID(ctx.user_id),
+    )
+    return {
+        "transactions": [
+            {
+                "id": str(row["id"]),
+                "wallet_id": str(ctx.user_id),
+                "amount": abs(int(row["amount"] or 0)),
+                "transaction_type": (
+                    "consume"
+                    if str(row["direction"]).lower() == "debit"
+                    else str(row["reason"] or "grant")
+                ),
+                "description": str(row["reason"] or ""),
+                "reference_id": str(row["ref_id"]) if row["ref_id"] else None,
+                "balance_after": 0,
+                "created_at": row["created_at"].isoformat(),
+            }
+            for row in rows
+        ],
+        "total": int(total or 0),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+
 @router.get("/users/{user_id}/credits", summary="Admin view of a user wallet")
 async def user_credits(user_id: UUID, ctx: AdminDep, billing: BillingDep, grants: GrantDep) -> dict[str, Any]:
     await grants.expire_lapsed_lots(user_id)
@@ -124,6 +186,7 @@ async def quote(body: QuoteRequest, ctx: UserDep, billing: BillingDep) -> dict[s
         user_id=target,
         plan_id=body.plan_id,
         waive=body.waive,
+        operation=body.operation,
     )
     return result.to_dict()
 
@@ -139,6 +202,7 @@ async def charge(body: ChargeRequest, ctx: UserDep, billing: BillingDep) -> dict
         ref_id=body.ref_id,
         waive=body.waive,
         plan_id=body.plan_id,
+        operation=body.operation,
     )
 
 
@@ -154,6 +218,7 @@ async def refund(body: RefundRequest, ctx: AdminDep, billing: BillingDep) -> dic
         amount_credits=body.amount_credits,
         ref_id=body.ref_id,
         absorb=body.absorb,
+        operation=body.operation,
     )
 
 

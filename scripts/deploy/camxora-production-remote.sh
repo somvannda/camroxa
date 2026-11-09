@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # CamXora production full-stack install (Ubuntu 22/24). Idempotent where practical.
 set -euo pipefail
 
@@ -141,7 +141,7 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   # The musicapi core shares this checkout directory but is deployed by its own
   # script (scripts/deploy/camxora-musicapi-remote.sh); the platform tarball does
   # NOT contain it. Restore it from the backup so this deploy never removes it
-  # out from under the running camxora-musicapi service — that breaks its
+  # out from under the running camxora-musicapi service â€” that breaks its
   # absolute node_modules paths (e.g. ffmpeg-static) and every generation fails
   # with audio_ingest_failed.
   if [[ -n "${REPO_BACKUP}" && -e "${REPO_BACKUP}/musicapi" && ! -e "${REPO_DIR}/musicapi" ]]; then
@@ -150,11 +150,46 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   fi
   chown -R camxora:camxora "${REPO_DIR}"
 
+  # A deploy must land exactly the commit it was built from. The archive ships
+  # .deploy-manifest.json (sha256 per file); verify it before any build or
+  # restart, then delete files the previous deploy shipped that this one does
+  # not, so a retired module cannot linger and shadow the new code.
+  if [[ ! -f "${REPO_DIR}/.deploy-manifest.json" ]]; then
+    log "ERROR: source archive has no .deploy-manifest.json; refusing to deploy unverifiable code"
+    exit 1
+  fi
+  if [[ ! -f /tmp/camxora-verify-manifest.py ]]; then
+    log "ERROR: verifier missing on the server (/tmp/camxora-verify-manifest.py)"
+    exit 1
+  fi
+  log "Verifying deployed source against .deploy-manifest.json..."
+  VERIFY_ARGS=(--repo "${REPO_DIR}" --manifest "${REPO_DIR}/.deploy-manifest.json")
+  if [[ -n "${REPO_BACKUP}" && -f "${REPO_BACKUP}/.deploy-manifest.json" ]]; then
+    VERIFY_ARGS+=(--prev-manifest "${REPO_BACKUP}/.deploy-manifest.json")
+  fi
+  python3 /tmp/camxora-verify-manifest.py "${VERIFY_ARGS[@]}" || {
+    log "ERROR: deployed source failed manifest verification; aborting before builds and restarts"
+    exit 1
+  }
+  chown camxora:camxora "${REPO_DIR}/.deploy-manifest.json" 2>/dev/null || true
+
   # The checkout was just swapped, so every frontend build artefact is gone.
-  # If anything below fails — npm ci, a Next build, a service reload — the site
+  # If anything below fails â€” npm ci, a Next build, a service reload â€” the site
   # is left with no .next/dist and nginx returns 502 (this happened twice on
   # 2026-10-21). The previous checkout is intact in REPO_BACKUP, so put its
   # artefacts back rather than leaving production broken.
+  # A build is "complete" only when its entry point exists. An interrupted
+  # `next build` / `vite build` leaves a partial directory (e.g. `.next` with
+  # only cache/ and server/ but no BUILD_ID) that `next start` then crash-loops
+  # on, so restore in that case too â€” not only when the directory is absent.
+  frontend_build_complete() {
+    case "$2" in
+      .next) [[ -f "$1/.next/BUILD_ID" ]] ;;
+      dist)  [[ -f "$1/dist/index.html" ]] ;;
+      *)     return 1 ;;
+    esac
+  }
+
   restore_frontends_on_failure() {
     local rc=$?
     [[ ${rc} -eq 0 ]] && return 0
@@ -163,15 +198,29 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     local app artefact
     for app in admin_portal website music_web; do
       for artefact in .next dist; do
-        if [[ -d "${REPO_BACKUP}/${app}/${artefact}" && ! -d "${REPO_DIR}/${app}/${artefact}" ]]; then
+        if [[ -d "${REPO_BACKUP}/${app}/${artefact}" ]] && ! frontend_build_complete "${REPO_DIR}/${app}" "${artefact}"; then
+          rm -rf "${REPO_DIR}/${app}/${artefact}"
           if cp -a "${REPO_BACKUP}/${app}/${artefact}" "${REPO_DIR}/${app}/${artefact}"; then
             chown -R camxora:camxora "${REPO_DIR}/${app}/${artefact}" || true
             log "Restored ${app}/${artefact}"
           fi
         fi
       done
+      # `npm ci` removes node_modules before reinstalling, so an interrupted run
+      # leaves the `next` binary gone and the service crash-loops with
+      # "next: not found". Restore the last-good node_modules for the Next.js
+      # apps served via `npm run start` (admin_portal is static `dist/`).
+      if [[ "${app}" == "website" || "${app}" == "music_web" ]]; then
+        if [[ -x "${REPO_BACKUP}/${app}/node_modules/.bin/next" && ! -x "${REPO_DIR}/${app}/node_modules/.bin/next" ]]; then
+          rm -rf "${REPO_DIR}/${app}/node_modules"
+          if cp -a "${REPO_BACKUP}/${app}/node_modules" "${REPO_DIR}/${app}/node_modules"; then
+            chown -R camxora:camxora "${REPO_DIR}/${app}/node_modules" || true
+            log "Restored ${app}/node_modules"
+          fi
+        fi
+      fi
     done
-    systemctl restart camxora-music camxora-api 2>/dev/null || true
+    systemctl restart camxora-website camxora-music camxora-api 2>/dev/null || true
   }
   trap restore_frontends_on_failure EXIT
 elif [[ ! -d "${REPO_DIR}/.git" ]]; then
@@ -218,6 +267,11 @@ PLATFORM_CHMABA_API_KEY=${PLATFORM_CHMABA_API_KEY:-}
 PLATFORM_CHMABA_STORE_ID=${PLATFORM_CHMABA_STORE_ID:-}
 PLATFORM_CHMABA_WEBHOOK_SECRET=${PLATFORM_CHMABA_WEBHOOK_SECRET:-}
 PLATFORM_ENCRYPTION_MASTER_KEY=${PLATFORM_ENCRYPTION_MASTER_KEY}
+# Post for Me social publishing (YouTube uploads).
+PLATFORM_POSTFORME_API_KEY=${PLATFORM_POSTFORME_API_KEY:-}
+PLATFORM_POSTFORME_API_BASE_URL=${PLATFORM_POSTFORME_API_BASE_URL:-https://api.postforme.dev/v1}
+PLATFORM_POSTFORME_WEBHOOK_SECRET=${PLATFORM_POSTFORME_WEBHOOK_SECRET:-}
+PLATFORM_POSTFORME_ENABLED=${PLATFORM_POSTFORME_ENABLED:-false}
 PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop
 PLATFORM_TELEGRAM_BOT_TOKEN=${PLATFORM_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}
 PLATFORM_TELEGRAM_CHAT_ID=${PLATFORM_TELEGRAM_CHAT_ID:-${TELEGRAM_CHAT_ID:-}}
@@ -239,7 +293,7 @@ PLATFORM_GOOGLE_REDIRECT_URIS=${PLATFORM_GOOGLE_REDIRECT_URIS:-https://music.cam
 # Music web: Google is the signup path; existing password users still sign in.
 PLATFORM_MUSIC_WEB_EMAIL_SIGNUP_ENABLED=${PLATFORM_MUSIC_WEB_EMAIL_SIGNUP_ENABLED:-false}
 PLATFORM_MUSIC_WEB_GEO_ENFORCE=${PLATFORM_MUSIC_WEB_GEO_ENFORCE:-false}
-# Cloudflare Turnstile — verifies the music_web login/sign-up tokens server-side.
+# Cloudflare Turnstile â€” verifies the music_web login/sign-up tokens server-side.
 CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
 CLOUDFLARE_TURNSTILE_SECRET_KEY=${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
 CLOUDFLARE_TURNSTILE_HOSTNAMES=${CLOUDFLARE_TURNSTILE_HOSTNAMES:-music.camxora.com,app.camxora.com,camxora.com,www.camxora.com}
@@ -250,10 +304,12 @@ chown camxora:camxora "${REPO_DIR}/platform_api/.env"
 log "Running migrations..."
 sudo -u postgres psql camxora_platform -c \
   "ALTER TABLE IF EXISTS alembic_version ALTER COLUMN version_num TYPE VARCHAR(128);"
+# Go through the locked entrypoint, not the raw Alembic CLI: the deploy used to
+# upgrade outside the advisory lock the API startup runner holds, so both paths
+# could migrate concurrently.
 sudo -u camxora -H bash -lc "
-  cd '${REPO_DIR}/platform_api'
-  source .venv/bin/activate
-  alembic upgrade head
+  cd '${REPO_DIR}'
+  platform_api/.venv/bin/python -m platform_api.migrations.upgrade
 "
 
 log "Building admin portal..."
@@ -466,6 +522,8 @@ systemctl enable camxora-api \
 systemctl disable camxora-worker 2>/dev/null || true
 systemctl disable --now camxora-portal 2>/dev/null || true
 systemctl restart camxora-api camxora-website camxora-music
+# Restart stage workers so new job types (sync_publish_results) load.
+systemctl restart camxora-worker-draft@{1..4} camxora-worker-suno@{1..2} camxora-worker-images@{1..2} 2>/dev/null || true
 
 log "Configuring nginx HTTP bootstrap..."
 # The uploaded production config is HTTPS-only. Bootstrap HTTP before Certbot.
@@ -554,15 +612,43 @@ else
 fi
 # After adding music.camxora.com DNS A record, run:
 # certbot --nginx -d music.camxora.com --non-interactive --agree-tos -m "${CERTBOT_EMAIL}" --redirect
-if [[ -f /tmp/nginx-camxora-production.conf && -f /etc/letsencrypt/live/api.camxora.com/fullchain.pem ]]; then
-  log "Applying uploaded HTTPS nginx configuration..."
-  cp /tmp/nginx-camxora-production.conf /etc/nginx/sites-available/camxora-production
-  nginx -t
-  systemctl reload nginx
+if [[ ! -f /etc/letsencrypt/live/api.camxora.com/fullchain.pem ]]; then
+  log "FATAL: no TLS certificate for api.camxora.com â€” refusing to finish an HTTP-only deploy"
+  exit 1
+fi
+if [[ ! -f /tmp/nginx-camxora-production.conf ]]; then
+  log "FATAL: uploaded HTTPS nginx config missing from /tmp â€” refusing to finish an HTTP-only deploy"
+  exit 1
+fi
+log "Applying uploaded HTTPS nginx configuration..."
+cp /tmp/nginx-camxora-production.conf /etc/nginx/sites-available/camxora-production
+nginx -t
+systemctl reload nginx
+if ! grep -q 'ssl_certificate' /etc/nginx/sites-available/camxora-production; then
+  log "FATAL: nginx site has no ssl_certificate after apply â€” production would serve the wrong certificate"
+  exit 1
 fi
 log "Health checks..."
-sleep 3
-curl -sf "http://127.0.0.1:${API_PORT}/health" | head -c 200 || log "WARN: API health check failed"
+# The API restarts with 4 uvicorn workers; on a loaded box it can take tens of
+# seconds before /health answers. A single curl after `sleep 3` used to log
+# "WARN: API health check failed" on deploys that were actually fine, which
+# trains everyone to ignore the one warning that matters.
+api_health_ok=0
+for _ in $(seq 1 30); do
+  if curl -sf -o /dev/null "http://127.0.0.1:${API_PORT}/health"; then
+    api_health_ok=1
+    break
+  fi
+  sleep 2
+done
+if [[ "${api_health_ok}" == "1" ]]; then
+  log "API health OK (http://127.0.0.1:${API_PORT}/health)"
+  curl -sf "http://127.0.0.1:${API_PORT}/health" | head -c 200 || true
+  echo
+else
+  log "WARN: API health check failed after 60s (http://127.0.0.1:${API_PORT}/health)"
+fi
+curl -sf "https://api.camxora.com/health" | head -c 200 || log "WARN: API health check failed (HTTPS)"
 systemctl is-active camxora-api camxora-website camxora-music nginx postgresql redis-server || true
 
 log "Done."

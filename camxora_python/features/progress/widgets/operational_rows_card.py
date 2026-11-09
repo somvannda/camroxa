@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 
 from PySide6.QtCore import Qt, Signal
@@ -36,6 +36,12 @@ from shared.lib.progress_presentation import (
     format_run_date_label,
     format_stage_label,
 )
+from features.workflow.lib.workflow_steps import format_upload_status
+from shared.lib.publish_activity import (
+    describe as describe_upload,
+    slot_key as upload_slot_key,
+    snapshot as upload_snapshot,
+)
 from shared.models.platform import ProgressRow, ProgressRowMeta
 from shared.widgets.data_table import create_data_table
 
@@ -49,6 +55,7 @@ TABLE_HEADERS = [
     "Images",
     "Export",
     "Merge",
+    "YouTube",
     "Updated",
 ]
 
@@ -61,6 +68,36 @@ SUBTITLE = (
     "Select a row for full export, merge, and error details on the right."
 )
 
+
+def _elapsed_label(value: object) -> str:
+    """'<1m' / '12m' / '2h 5m' since a timestamp; '' when unknown.
+
+    The publishing provider does not report a percentage, so elapsed time is the
+    only honest progress signal once the file is out of our storage.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        text = str(value).strip().replace("Z", "+00:00")
+        if not text:
+            return ""
+        try:
+            moment = datetime.fromisoformat(text)
+        except ValueError:
+            return ""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    seconds = (datetime.now(timezone.utc) - moment).total_seconds()
+    if seconds < 60:
+        return "<1m"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours}h {rest}m" if rest else f"{hours}h"
+
 _COL_RUN = 0
 _COL_CHANNEL = 1
 _COL_ALBUM = 2
@@ -70,7 +107,8 @@ _COL_MUSIC = 5
 _COL_IMAGES = 6
 _COL_EXPORT = 7
 _COL_MERGE = 8
-_COL_UPDATED = 9
+_COL_YOUTUBE = 9
+_COL_UPDATED = 10
 
 _CENTER_ALIGNED_COLUMNS = {
     _COL_STAGE,
@@ -79,6 +117,7 @@ _CENTER_ALIGNED_COLUMNS = {
     _COL_IMAGES,
     _COL_EXPORT,
     _COL_MERGE,
+    _COL_YOUTUBE,
     _COL_UPDATED,
 }
 
@@ -161,6 +200,8 @@ class OperationalRowsCard(StudioPanel):
     regenerate_track_requested = Signal(object, str)
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
+    upload_youtube_requested = Signal(object, str)
+    cancel_publish_upload_requested = Signal(str)
     change_run_folder_requested = Signal(object)
     download_missing_mp3s_requested = Signal(object)
     cancel_job_requested = Signal(object)
@@ -298,11 +339,13 @@ class OperationalRowsCard(StudioPanel):
                 format_images_compact(row.meta),
                 format_export_compact(export_full),
                 format_merge_compact(merge_full),
+                self._format_youtube_cell(row),
                 self._format_updated_cell(entry),
             ]
             tooltips = list(values)
             tooltips[_COL_EXPORT] = export_full
             tooltips[_COL_MERGE] = merge_full
+            tooltips[_COL_YOUTUBE] = self._youtube_tooltip(row)
             if row.album:
                 tooltips[_COL_ALBUM] = str(row.album).strip()
             show_start_export = self._can_show_start_export(entry)
@@ -312,7 +355,7 @@ class OperationalRowsCard(StudioPanel):
                 self._table.removeCellWidget(row_index, col_index)
                 item = self._make_cell_item(value, center=col_index in _CENTER_ALIGNED_COLUMNS)
                 item.setToolTip(tooltips[col_index].replace("\n", " · "))
-                if col_index in (_COL_EXPORT, _COL_MERGE):
+                if col_index in (_COL_EXPORT, _COL_MERGE, _COL_YOUTUBE):
                     color = _STATUS_COLORS.get(str(value).strip().lower(), "#E5EDF7")
                     item.setForeground(QColor(color))
                 self._table.setItem(row_index, col_index, item)
@@ -362,6 +405,62 @@ class OperationalRowsCard(StudioPanel):
         self._selected_row_index = row_index
         entry = self._row_at(row_index)
         self.row_selected.emit(entry)
+
+    @staticmethod
+    def _format_youtube_cell(row: ProgressRow) -> str:
+        """Plain-language delivery state for one row."""
+        live = describe_upload(
+            upload_slot_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
+        )
+        if live:
+            return live
+
+        status = str(getattr(row.meta, "youtube_status", "") or "").strip().lower()
+        elapsed = _elapsed_label(getattr(row.meta, "youtube_created_at", None))
+        if status == "pending_upload":
+            # Still leaving this machine; there is no YouTube-side work yet.
+            return f"Sending {elapsed}" if elapsed else "Sending"
+        if status in {"queued", "processing", "pending", "running", "uploading"}:
+            return f"Publishing {elapsed}" if elapsed else "Publishing"
+
+        label = format_upload_status(row)
+        if label == "Uploaded":
+            return "Published"
+        if label == "Failed":
+            return "Failed"
+        if label == "Uploading":
+            return f"Publishing {elapsed}" if elapsed else "Publishing"
+        return label
+
+    @staticmethod
+    def _youtube_tooltip(row: ProgressRow) -> str:
+        activity = upload_snapshot(
+            upload_slot_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
+        )
+        if activity is not None:
+            stage = "from this computer" if activity.stage == "storage" else "on YouTube"
+            label = activity.label or "This video"
+            return (
+                f"{label} — {activity.describe()} {stage}. "
+                "Right-click → Cancel YouTube upload stops this row's transfer."
+            )
+        label = OperationalRowsCard._format_youtube_cell(row)
+        if label.startswith("Sending"):
+            return (
+                "Still sending this video from this computer. "
+                "Right-click → Cancel YouTube upload to stop it."
+            )
+        if label.startswith("Publishing"):
+            return (
+                "The file has reached YouTube and is being processed. YouTube does "
+                "not report a percentage, so this count is time based."
+            )
+        if label == "Published":
+            url = str(getattr(row.meta, "youtube_url", "") or "").strip()
+            return f"Published to YouTube. {url}" if url else "Published to YouTube."
+        if label == "Failed":
+            return "The YouTube upload failed. Right-click → Upload to YouTube to retry."
+        return "Right-click → Upload to YouTube. The original file is sent as-is (no re-encode)."
 
     def _format_updated_cell(self, entry: EffectiveProgressRow | ProgressRow) -> str:
         if isinstance(entry, EffectiveProgressRow):
@@ -566,6 +665,65 @@ class OperationalRowsCard(StudioPanel):
         copy_action.setEnabled(bool(str(meta.batch_id or "").strip()))
         copy_action.triggered.connect(partial(self._copy_batch_id, meta.batch_id))
         menu.addSeparator()
+
+        # Manual publishing: only when this row already has a merged MP4 on disk
+        # and a channel profile. The upload itself runs off the UI thread in the
+        # Progress view (PublishUploadWorker), which quotes credits first.
+        # Manual publishing: available for any row with a channel profile. The
+        # menu is critical, so an unexpected error here must never remove the
+        # other actions.
+        try:
+            from shared.lib.manual_asset_paths import manual_inspection_key as _inspection_key
+            from shared.lib.publish_auto import discover_merged_path
+
+            inspection = getattr(self, "_inspections", {}).get(
+                _inspection_key(meta.batch_id, meta.profile_id, meta.role)
+            )
+            merged_paths = list(getattr(inspection, "merged_long_paths", ()) or [])
+            merged_path = (
+                str(merged_paths[0])
+                if merged_paths
+                else discover_merged_path(getattr(meta, "run_dir", ""))
+            )
+            if str(getattr(meta, "profile_id", "") or "").strip():
+                slot = upload_slot_key(meta.batch_id, meta.profile_id, meta.role)
+                activity = upload_snapshot(slot)
+                state = format_upload_status(entry.row)
+                if activity is not None:
+                    busy = menu.addAction(f"YouTube upload in progress — {activity.describe()}")
+                    busy.setEnabled(False)
+                    busy.setToolTip(
+                        f"{activity.label or 'This video'} is uploading to CAMXORA storage. "
+                        "Cancel it below to stop this row."
+                    )
+                elif state == "Uploading":
+                    busy = menu.addAction("YouTube upload in progress…")
+                    busy.setEnabled(False)
+                    busy.setToolTip(
+                        "YouTube is processing this video "
+                        "(no percentage from them). Cancel it first to start over."
+                    )
+                elif state == "Uploaded":
+                    done = menu.addAction("Already on YouTube")
+                    done.setEnabled(False)
+                    done.setToolTip("This merge is already published to YouTube.")
+                else:
+                    action = menu.addAction("Upload to YouTube")
+                    action.setToolTip(
+                        "Publish this run's merged video to YouTube "
+                        "(per-upload credits, original file, no re-encode)."
+                    )
+                    action.triggered.connect(
+                        partial(self.upload_youtube_requested.emit, entry.row, merged_path)
+                    )
+                cancel_upload = menu.addAction("Cancel YouTube upload")
+                cancel_upload.setToolTip("Stop this row's upload.")
+                cancel_upload.triggered.connect(partial(self.cancel_publish_upload_requested.emit, slot))
+                menu.addSeparator()
+        except Exception as exc:  # pragma: no cover - defensive
+            from shared.services.app_logger import log_warn
+
+            log_warn(f"Publish menu action unavailable: {exc}", category="progress")
 
         if not finished:
             draft_ids = list(meta.draft_failed_song_ids or [])

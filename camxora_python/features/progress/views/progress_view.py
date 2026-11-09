@@ -46,12 +46,14 @@ from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import (
+    YouTubeDirectUploadWorker,
     BatchRetryDraftsWorker,
     BatchRetrySunoWorker,
     ImageRetryJobsWorker,
     ManualInspectionWorker,
     MissingMp3DownloadResult,
     MissingMp3DownloadWorker,
+    PublishUploadWorker,
     RunFolderRecoveryResult,
     RunFolderRecoveryWorker,
     SettingsWorker,
@@ -182,6 +184,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         QScrollArea.__init__(self, parent)
         self._init_pollable()
         self._api = api
+        self._publish_upload_worker: PublishUploadWorker | None = None
         self._cache = cache or WorkspaceCache()
         self._worker: WorkflowLoadWorker | None = None
         self._settings_worker: SettingsWorker | None = None
@@ -203,6 +206,12 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._auto_missing_mp3_timer.setInterval(self._auto_missing_mp3_interval_ms)
         self._auto_missing_mp3_timer.timeout.connect(self._maybe_auto_download_missing_mp3s)
         self._auto_missing_mp3_timer.start()
+        # Uploads started by the pipeline have no server row until the file has
+        # landed, so repaint while any slot reports live activity.
+        self._upload_activity_timer = QTimer(self)
+        self._upload_activity_timer.setInterval(1_000)
+        self._upload_activity_timer.timeout.connect(self._tick_upload_activity)
+        self._upload_activity_timer.start()
         self._pending_auto_continue_key: tuple[str, str, str] | None = None
         self._rows: list[ProgressRow] = []
         self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
@@ -308,6 +317,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.enqueue_images_requested.connect(self._enqueue_images)
         self._rows_card.retry_drafts_requested.connect(self._retry_failed_drafts)
         self._rows_card.retry_suno_requested.connect(self._retry_failed_suno)
+        self._rows_card.upload_youtube_requested.connect(self._upload_row_to_youtube)
+        self._rows_card.cancel_publish_upload_requested.connect(self._cancel_publish_upload)
         self._rows_card.force_export_regenerate_requested.connect(
             lambda row: self._run_video_pipeline_action(row, "force_export")
         )
@@ -539,6 +550,25 @@ class ProgressView(PollablePageMixin, QScrollArea):
             self._selected_entry = None
             self._detail_card.set_entry(None)
         self._update_export_validation()
+        self._announce_selected_row_progress()
+
+    def _announce_selected_row_progress(self) -> None:
+        """Mirror the selected row's delivery state in the footer."""
+        entry = self._selected_entry
+        if entry is None:
+            return
+        from shared.services.shell_status import emit_shell_status
+
+        row = entry.row
+        channel = str(getattr(row, "channel", "") or "").strip()
+        album = str(getattr(row, "album", "") or "").strip()
+        who = " · ".join(part for part in (channel, album) if part) or str(row.batch)
+        delivery = self._rows_card._format_youtube_cell(row)
+        if delivery and delivery != "Not started":
+            text = f"{who} — YouTube: {delivery}"
+        else:
+            text = f"{who} — Stage: {str(entry.effective_stage or row.stage or '').strip()}"
+        emit_shell_status(text, tone="neutral")
 
     def _enter_loading_state(self) -> None:
         self._loading = True
@@ -553,7 +583,12 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._loading = False
         self._is_error = True
         self._progress_load_error = str(message or "").strip()
-        self._error_banner.show()
+        from shared.services.action_feedback import notify_action
+
+        self._error_banner.hide()
+        notify_action(
+            self._progress_load_error or "Could not load progress rows.", tone="error"
+        )
         if self._rows:
             self._render()
             return
@@ -1146,13 +1181,17 @@ class ProgressView(PollablePageMixin, QScrollArea):
         )
 
     def _show_retry_notice(self, message: str, *, tone: str = "warning") -> None:
+        """Report an action without moving the page layout.
+
+        The inline banner used to push the table down on every progress update;
+        feedback now goes to the floating footer badge only.
+        """
         from shared.services.action_feedback import notify_action
 
         text = str(message or "").strip()
         if not text:
             return
-        self._error_banner.set_message(text)
-        self._error_banner.show()
+        self._error_banner.hide()
         notify_action(text, tone=tone)
 
     def _retry_failed_drafts(self, batch_id: str, song_ids: list[str]) -> None:
@@ -1171,6 +1210,138 @@ class ProgressView(PollablePageMixin, QScrollArea):
         worker.finished.connect(lambda: setattr(self, "_draft_retry_worker", None))
         self._draft_retry_worker = worker
         worker.start()
+
+    def _tick_upload_activity(self) -> None:
+        """Repaint rows while any upload is moving (storage or provider)."""
+        from shared.lib.publish_activity import active
+
+        if not active():
+            return
+        self._render_table()
+        self._announce_selected_row_progress()
+
+    def _profile_uses_native_youtube(self, profile_id: str) -> bool:
+        """True when this profile is connected through CAMXORA's own Google client."""
+        if not profile_id:
+            return False
+        try:
+            for item in self._api.list_youtube_connections():
+                if str(getattr(item, "profile_id", "")) != profile_id:
+                    continue
+                if str(getattr(item, "status", "")).lower() in {"connected", "active"}:
+                    return True
+        except Exception:
+            # A transient auth/network error must not silently route the upload
+            # through the legacy provider (which charges credits and cannot
+            # publish). The native worker reports a clear error instead.
+            return True
+        return False
+
+    def _on_native_upload_progress(self, row: object, sent: object, total: object) -> None:
+        try:
+            total_bytes = float(total or 0)
+            sent_bytes = float(sent or 0)
+        except (TypeError, ValueError):
+            return
+        if total_bytes <= 0:
+            return
+        percent = int(sent_bytes * 100 / total_bytes)
+        meta = getattr(row, "meta", None)
+        try:
+            if meta is not None:
+                percent = max(0, min(100, percent))
+                meta.youtube_status = f"uploading {percent}%"
+                meta.youtube_pending = 1
+                self._render_table()
+        except Exception:
+            pass
+
+    def _cancel_publish_upload(self, key: str = "") -> None:
+        """Stop the upload that owns this row (pipeline or manual)."""
+        from shared.lib.publish_activity import cancel as cancel_slot, snapshot
+
+        if key and snapshot(key) is not None:
+            if cancel_slot(key):
+                self._show_retry_notice("Cancelling the YouTube upload…", tone="neutral")
+            else:
+                self._show_retry_notice(
+                    "That upload has already stopped or finished.", tone="warning"
+                )
+            return
+        worker = self._publish_upload_worker
+        if worker is None or not worker.isRunning():
+            self._show_retry_notice("No YouTube upload is running.", tone="warning")
+            return
+        worker.requestInterruption()
+        self._show_retry_notice("Cancelling the YouTube upload…", tone="neutral")
+
+    def _upload_row_to_youtube(self, row: object, merged_path: str) -> None:
+        """Manual publish for one finished merge (Progress row action)."""
+        from features.workflow.lib.workflow_steps import format_upload_status
+        from shared.lib.publish_auto import discover_merged_path, manual_publish_context
+
+        state = format_upload_status(row)
+        if state == "Uploading":
+            self._show_retry_notice(
+                "This video is already uploading to YouTube. Cancel it first to start over.",
+                tone="warning",
+            )
+            return
+        if state == "Uploaded":
+            self._show_retry_notice("This video is already on YouTube.", tone="neutral")
+            return
+
+        if not str(merged_path or "").strip():
+            meta = getattr(row, "meta", None)
+            merged_path = discover_merged_path(getattr(meta, "run_dir", ""))
+        context = manual_publish_context(row, merged_path)
+        if context is None:
+            self._show_retry_notice(
+                "No merged video found for this run yet. Merge it first, then upload.",
+                tone="warning",
+            )
+            return
+        if self._publish_upload_worker is not None and self._publish_upload_worker.isRunning():
+            self._show_retry_notice("A YouTube upload is already in progress.", tone="warning")
+            return
+        native_profile_id = str(context.get("profile_id") or "")
+        if self._profile_uses_native_youtube(native_profile_id):
+            self._show_retry_notice("Uploading straight to YouTube…", tone="neutral")
+            worker = YouTubeDirectUploadWorker(
+                self._api,
+                profile_id=native_profile_id,
+                batch_id=str(context.get("batch_id") or ""),
+                role=str(context.get("role") or "OK"),
+                merged_path=str(context.get("merged_path") or ""),
+                parent=self,
+            )
+            worker.status_changed.connect(
+                lambda message: self._show_retry_notice(message, tone="neutral")
+            )
+            worker.progress.connect(
+                lambda sent, total: self._on_native_upload_progress(row, sent, total)
+            )
+            worker.succeeded.connect(
+                lambda result: self._show_retry_notice(
+                    f"Published to YouTube: {getattr(result, 'get', lambda *_: '')('url') or ''}".strip(),
+                    tone="success",
+                )
+            )
+            worker.failed.connect(
+                lambda message: self._show_retry_notice(str(message), tone="error")
+            )
+            worker.finished.connect(lambda: setattr(self, "_publish_upload_worker", None))
+            worker.finished.connect(self.refresh_data)
+            self._publish_upload_worker = worker
+            worker.start()
+            return
+
+        self._show_retry_notice(
+            "YouTube is not connected for this channel. Open Settings -> Profiles, "
+            "select the channel and click Connect YouTube, then upload again.",
+            tone="warning",
+        )
+        return
 
     def _retry_failed_suno(self, batch_id: str, song_ids: list[str]) -> None:
         if not batch_id or not song_ids:

@@ -32,6 +32,33 @@ jobs:
           python -m py_compile "${FILES[@]}"
           echo "OK"
 
+  deploy-hygiene:
+    name: Deploy scripts use verified source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # A deploy script that writes source straight into /opt/camxora/repo can
+      # silently revert newer code (and every worktree is one copy-paste away).
+      # New or edited deploy scripts must go through build_source_bundle() and
+      # enforce_deploy_gate(). Pre-existing one-shot hotfix scripts are reported
+      # by --strict but do not block this PR.
+      - name: Check changed deploy scripts
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          python scripts/deploy/check_deploy_hygiene.py --changed-only "$BASE"
+
+      - name: Report repo-wide deploy debt
+        shell: bash
+        run: python scripts/deploy/check_deploy_hygiene.py || true
+
   no-secrets-in-diff:
     name: Block secret-looking paths
     runs-on: ubuntu-latest

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Annotated, Any
@@ -29,6 +30,36 @@ from platform_api.services.video_run_inspection import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["progress"])
+
+# A row only refreshes its upload state when Progress is polled, so the
+# expiry sweep has to run here too — otherwise a job whose upload link died
+# keeps the row at "Uploading" indefinitely (12 such rows were live in
+# production). At most once a minute per process.
+_PUBLISH_EXPIRY_SWEEP_SECONDS = 60
+_publish_expiry_sweep_at = 0.0
+
+
+async def _sweep_expired_publish_uploads() -> None:
+    global _publish_expiry_sweep_at
+    now = time.time()
+    if now - _publish_expiry_sweep_at < _PUBLISH_EXPIRY_SWEEP_SECONDS:
+        return
+    _publish_expiry_sweep_at = now
+    try:
+        from platform_api.dependencies import get_publish_repo
+
+        expired = await get_publish_repo().expire_pending_uploads()
+        if expired:
+            logger.info("Marked %s publish job(s) failed after upload-URL expiry.", expired)
+        try:
+            from platform_api.dependencies import get_publish_service
+
+            await get_publish_service().reconcile_refunds()
+        except Exception:
+            logger.warning("Publish refund reconciliation failed.", exc_info=True)
+    except Exception:
+        logger.warning("Progress publish expiry sweep failed.", exc_info=True)
+
 
 
 async def _get_batch_service() -> BatchService:
@@ -283,9 +314,15 @@ def _build_row(
     elif pipeline_complete:
         stage = "Completed"
         status = "Completed"
-        notes = (
-            "Desktop pipeline completed. Local run-folder files may have been moved or archived."
-        )
+        if youtube_failed > 0 or youtube_status == "FAILED":
+            notes = (
+                "Media pipeline completed. The YouTube upload failed — "
+                "right-click → Upload to YouTube to retry (the hosted copy is reused)."
+            )
+        else:
+            notes = (
+                "Desktop pipeline completed. Local run-folder files may have been moved or archived."
+            )
     elif youtube_pending > 0 or youtube_status in {"PENDING", "RUNNING", "PROCESSING"}:
         stage = "YouTube"
         if youtube_status == "PENDING":
@@ -447,6 +484,11 @@ def _build_row(
             long_ready=long_ready,
             reel_ready=reel_ready,
             pipeline_complete=pipeline_complete,
+            auto_upload_youtube=(
+                None
+                if batch.get("auto_upload_youtube") is None
+                else bool(batch.get("auto_upload_youtube"))
+            ),
             expected=expected,
             saved=saved,
             download_ready=download_ready,
@@ -487,6 +529,7 @@ async def list_progress_rows(
     """Return aggregated progress rows for the authenticated user."""
     user_id = UUID(ctx.user_id)
     pool = get_db_pool()
+    await _sweep_expired_publish_uploads()
 
     if from_date and to_date and from_date > to_date:
         from_date, to_date = to_date, from_date
@@ -531,6 +574,7 @@ async def list_progress_rows(
             b.alt_run_dir,
             b.ok_album,
             b.alt_album,
+            b.auto_upload_youtube,
             b.ok_profile_id,
             b.alt_profile_id,
             okp.name AS ok_profile_name,
@@ -839,6 +883,7 @@ async def list_progress_rows(
             LEFT JOIN songs s ON s.id = y.song_id
             WHERE y.user_id = $1
               AND COALESCE(y.batch_id, s.batch_id) = ANY($2::uuid[])
+            ORDER BY y.created_at ASC
             """,
             user_id,
             batch_ids,
@@ -904,8 +949,20 @@ async def list_progress_rows(
             target_groups = [group] if group is batch_group else [group, batch_group]
             for target_group in target_groups:
                 if status == "success":
+                    # The newest job wins: a video that eventually published
+                    # must not keep showing an earlier failed attempt.
                     target_group["success"] += 1
-                elif status in {"pending", "running", "processing"}:
+                    target_group["failed"] = 0
+                    target_group["pending"] = 0
+                elif status in {
+                    "pending",
+                    "pending_upload",
+                    "pending_payment",
+                    "uploading",
+                    "running",
+                    "queued",
+                    "processing",
+                }:
                     target_group["pending"] += 1
                 else:
                     target_group["failed"] += 1
@@ -913,7 +970,7 @@ async def list_progress_rows(
                     target_group["youtube_url"] = f"https://www.youtube.com/watch?v={row['youtube_video_id']}"
                 elif row["youtube_url"]:
                     target_group["youtube_url"] = str(row["youtube_url"])
-                if target_group["created_at"] is None or row["created_at"] < target_group["created_at"]:
+                if target_group["created_at"] is None or row["created_at"] > target_group["created_at"]:
                     target_group["created_at"] = row["created_at"]
                 if target_group["updated_at"] is None or row["updated_at"] >= target_group["updated_at"]:
                     target_group["updated_at"] = row["updated_at"]

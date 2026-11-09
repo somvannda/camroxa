@@ -31,6 +31,7 @@ class AutoVideoCandidate:
     template_id: str
     output_resolution: str | None
     profile_id: str | None = None
+    auto_upload_youtube: bool | None = None
 
 
 def _is_terminal_stage(stage: str) -> bool:
@@ -178,6 +179,7 @@ def select_next_auto_video_candidate(
                 template_id=str(long_inputs.recommended_template_id or ""),
                 output_resolution=profile.output_resolution,
                 profile_id=str(row.meta.profile_id or "") or None,
+            auto_upload_youtube=getattr(row.meta, "auto_upload_youtube", None),
             )
 
         if (
@@ -196,6 +198,7 @@ def select_next_auto_video_candidate(
                 template_id=str(reel_inputs.recommended_template_id or ""),
                 output_resolution=None,
                 profile_id=str(row.meta.profile_id or "") or None,
+            auto_upload_youtube=getattr(row.meta, "auto_upload_youtube", None),
             )
 
     return None
@@ -251,6 +254,7 @@ def build_auto_video_candidate_from_row_with_reason(
             template_id=template_id,
             output_resolution=profile.output_resolution if branch == "long" else None,
             profile_id=str(row.meta.profile_id or "") or None,
+            auto_upload_youtube=getattr(row.meta, "auto_upload_youtube", None),
         ),
         None,
     )
@@ -289,6 +293,7 @@ def build_merge_candidate_from_row(
             template_id=template_id,
             output_resolution=profile.output_resolution if branch == "long" else None,
             profile_id=str(row.meta.profile_id or "") or None,
+            auto_upload_youtube=getattr(row.meta, "auto_upload_youtube", None),
         ),
         None,
     )

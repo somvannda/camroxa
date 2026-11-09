@@ -63,6 +63,114 @@ class StorageService:
         await asyncio.to_thread(_put)
         return normalized_key
 
+    async def create_multipart(self, *, key: str, content_type: str) -> str:
+        """Open an S3 multipart upload and return its upload id."""
+
+        def _create() -> str:
+            client = self._client()
+            result = client.create_multipart_upload(
+                Bucket=self._config.bucket,
+                Key=key.lstrip("/"),
+                ContentType=content_type or "video/mp4",
+            )
+            return str(result.get("UploadId") or "")
+
+        upload_id = await asyncio.to_thread(_create)
+        if not upload_id:
+            raise StorageServiceError("Storage did not return a multipart upload id.")
+        return upload_id
+
+    async def sign_parts(
+        self,
+        *,
+        key: str,
+        upload_id: str,
+        part_numbers: list[int],
+        expires_seconds: int = 6 * 60 * 60,
+    ) -> list[dict[str, object]]:
+        """Presigned PUT URLs for individual parts (client uploads directly)."""
+
+        def _sign() -> list[dict[str, object]]:
+            client = self._client()
+            signed: list[dict[str, object]] = []
+            for number in part_numbers:
+                url = client.generate_presigned_url(
+                    "upload_part",
+                    Params={
+                        "Bucket": self._config.bucket,
+                        "Key": key.lstrip("/"),
+                        "UploadId": upload_id,
+                        "PartNumber": int(number),
+                    },
+                    ExpiresIn=int(expires_seconds),
+                )
+                signed.append({"part_number": int(number), "url": url})
+            return signed
+
+        return await asyncio.to_thread(_sign)
+
+    async def complete_multipart(
+        self,
+        *,
+        key: str,
+        upload_id: str,
+        parts: list[dict[str, object]],
+    ) -> None:
+        payload = [
+            {"ETag": str(part["etag"]), "PartNumber": int(part["part_number"])}
+            for part in parts
+        ]
+        payload.sort(key=lambda item: item["PartNumber"])
+
+        def _complete() -> None:
+            client = self._client()
+            client.complete_multipart_upload(
+                Bucket=self._config.bucket,
+                Key=key.lstrip("/"),
+                UploadId=upload_id,
+                MultipartUpload={"Parts": payload},
+            )
+
+        await asyncio.to_thread(_complete)
+
+    async def abort_multipart(self, *, key: str, upload_id: str) -> None:
+        def _abort() -> None:
+            client = self._client()
+            client.abort_multipart_upload(
+                Bucket=self._config.bucket,
+                Key=key.lstrip("/"),
+                UploadId=upload_id,
+            )
+
+        await asyncio.to_thread(_abort)
+
+    async def delete_object(self, key: str) -> None:
+        def _delete() -> None:
+            client = self._client()
+            client.delete_object(Bucket=self._config.bucket, Key=key.lstrip("/"))
+
+        await asyncio.to_thread(_delete)
+
+    async def list_objects(self, prefix: str) -> list[dict[str, Any]]:
+        """Every object under ``prefix`` with its size and last-modified time."""
+
+        def _list() -> list[dict[str, Any]]:
+            client = self._client()
+            paginator = client.get_paginator("list_objects_v2")
+            found: list[dict[str, Any]] = []
+            for page in paginator.paginate(Bucket=self._config.bucket, Prefix=prefix):
+                for item in page.get("Contents") or []:
+                    found.append(
+                        {
+                            "key": str(item.get("Key") or ""),
+                            "size": int(item.get("Size") or 0),
+                            "last_modified": item.get("LastModified"),
+                        }
+                    )
+            return found
+
+        return await asyncio.to_thread(_list)
+
     async def probe(self) -> None:
         """Verify the stored credential can actually reach the bucket.
 

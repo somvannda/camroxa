@@ -82,6 +82,46 @@ class V3BillingStore:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
 
+    async def system_setting(self, key: str) -> str | None:
+        """Raw ``system_settings`` value for ``key``, or None when unset.
+
+        Admin-editable settings live here so an operator can change them without
+        a deploy; callers fall back to their env default when this returns None.
+        """
+        try:
+            value = await self._pool.fetchval(
+                "SELECT value FROM system_settings WHERE key = $1", key
+            )
+        except Exception:  # noqa: BLE001 - a missing table must not block billing
+            return None
+        return None if value is None else str(value)
+
+    async def music_credits_spent_today(self, user_id: UUID) -> int:
+        """Units of ``v3_music`` debit this user has accrued since midnight.
+
+        Backs the per-user daily music cap. The boundary is Cambodia local
+        midnight (``Asia/Phnom_Penh``), not the database/session timezone: the
+        VPS runs CET, so ``date_trunc('day', now())`` reset the cap at 06:00 ICT
+        while the UI said "midnight". Refunds are credits, so they are not
+        subtracted here: the cap guards gross drain on the shared Suno pool, and
+        a failed song is refunded to the wallet without reopening the cap.
+        """
+        value = await self._pool.fetchval(
+            """
+            SELECT coalesce(sum(amount), 0)
+            FROM credit_transactions
+            WHERE user_id = $1
+              AND reason = 'v3_music'
+              AND direction = 'debit'
+              AND created_at >= (
+                    date_trunc('day', now() AT TIME ZONE 'Asia/Phnom_Penh')
+                    AT TIME ZONE 'Asia/Phnom_Penh'
+                  )
+            """,
+            user_id,
+        )
+        return int(value or 0)
+
     async def list_plans(self) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             f"""
@@ -169,13 +209,13 @@ class V3BillingStore:
         return row_to_plan_dict(row) if row is not None else None
 
     async def resolve_charge_plan(self, user_id: UUID) -> dict[str, Any] | None:
-        plan = await self.get_plan_for_user(user_id)
-        if plan is not None:
-            return plan
-        web_plan = await self.get_plan_for_web_subscription(user_id)
-        if web_plan is not None and int(web_plan.get("price_cents") or 0) > 0:
-            return web_plan
-        return await self.get_active_free_plan()
+        """Plans are retired (credits-only billing).
+
+        Charging is priced from the ``pricing`` table only, so there is never a
+        plan to resolve. Kept for call-site compatibility.
+        """
+        del user_id
+        return None
 
     async def patch_plan(self, plan_id: UUID, fields: dict[str, Any]) -> dict[str, Any] | None:
         if not fields:
@@ -244,10 +284,15 @@ class V3BillingStore:
         return int(value or 0)
 
     async def has_completed_topup_this_month(self, user_id: UUID) -> bool:
-        """True when the user bought a credit pack in the current billing month.
+        """True when the user gained paid credit in the current billing month.
 
         Drives the Free-plan rule: the monthly 50 is V6-Mini-only until a pack
-        purchase in the same month unlocks it for V6 / V6-Wild.
+        purchase -- or an admin top-up, which now mints the same 30-day ``pack``
+        lot -- in the same month unlocks V6 / V6-Wild for the rest of it.
+
+        A refunded purchase stops counting (``payment_status`` flips), but the
+        admin clause is deliberately additive rather than lot-based: a comp is
+        paid-tier credit and must not vanish from the month when it is spent.
         """
         value = await self._pool.fetchval(
             """
@@ -256,6 +301,17 @@ class V3BillingStore:
             WHERE user_id = $1
               AND payment_status = 'completed'
               AND COALESCE(completed_at, created_at) >= date_trunc('month', NOW())
+            UNION ALL
+            -- Admin top-ups are comped, so they never write a topup_purchases
+            -- row, but they grant paid-tier credit: count the positive ledger
+            -- entry so the month unlocks exactly like a purchase.
+            SELECT 1
+            FROM credit_transactions
+            WHERE user_id = $1
+              AND direction = 'credit'
+              AND amount > 0
+              AND reason LIKE 'admin_adjustment:%'
+              AND created_at >= date_trunc('month', NOW())
             LIMIT 1
             """,
             user_id,
@@ -445,13 +501,18 @@ class V3BillingStore:
         Covers period/daily grants **and** pack lots. Packs used to be minted with
         ``expires_at = NULL`` (never expire); now that a pack is valid for 30 days
         from purchase, a lapsed pack must be clawed back exactly like a grant.
+
+        ``admin`` lots belong here too: ``CreditService.admin_adjust`` already
+        stamps a comp with a 30-day expiry, but this sweep was the one place that
+        ignored the tag, so admin credit was the only wallet credit that never
+        burned.
         """
         if user_id is None:
             rows = await self._pool.fetch(
                 """
                 SELECT id, user_id, remaining_units, tag, ref_id
                 FROM credit_wallet_lots
-                WHERE tag IN ('grant', 'daily_grant', 'pack', 'referral')
+                WHERE tag IN ('grant', 'daily_grant', 'pack', 'admin', 'referral')
                   AND remaining_units > 0
                   AND expires_at IS NOT NULL
                   AND expires_at <= NOW()
@@ -463,7 +524,7 @@ class V3BillingStore:
                 SELECT id, user_id, remaining_units, tag, ref_id
                 FROM credit_wallet_lots
                 WHERE user_id = $1
-                  AND tag IN ('grant', 'daily_grant', 'pack', 'referral')
+                  AND tag IN ('grant', 'daily_grant', 'pack', 'admin', 'referral')
                   AND remaining_units > 0
                   AND expires_at IS NOT NULL
                   AND expires_at <= NOW()

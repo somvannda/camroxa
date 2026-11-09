@@ -88,20 +88,18 @@ async def test_pack_buyer_can_batch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_usage_today_ignores_the_legacy_ledger_even_with_the_flag_off() -> None:
-    """Plans and the v2 ledger are retired: usage always comes from the wallet bridge.
-
-    The old expectation — a legacy top-up unlocking premium models — cannot hold any
-    more, because `usage_today` no longer reads the legacy balance at all.
-    """
-    service = _service(flag_on=False, spendable=0, premium_unlocked=False)
-    balance = AsyncMock(return_value=_legacy_balance(topup=8_681))
-    service._credit_service = SimpleNamespace(get_detailed_balance=balance)
+async def test_usage_today_is_v3_only_even_when_flag_off() -> None:
+    # Credits-only: the legacy v2 ledger must be ignored entirely, even if the
+    # old feature flag is off. Quota always comes from the v3 wallet.
+    service = _service(flag_on=False, spendable=50, premium_unlocked=False)
+    service._credit_service = SimpleNamespace(
+        get_detailed_balance=AsyncMock(return_value=_legacy_balance(topup=8_681))
+    )
 
     payload = await service.usage_today(USER_ID)
 
+    assert payload["credits_remaining"] == 50
     assert payload["premium_unlocked"] is False
-    balance.assert_not_awaited()
 
 
 def test_legacy_pack_unlocked_reads_topup_and_grandfathered_plan() -> None:

@@ -125,6 +125,7 @@ class BatchCreateRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
     song_count: int = Field(ge=1, le=50)
     language: str = Field(default="en")
     secondary_language: str | None = Field(default=None, max_length=20)
@@ -171,6 +172,7 @@ class MusicPlanPreflightRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
 
     @field_validator("to_date")
     @classmethod
@@ -349,6 +351,7 @@ class MusicHistoryBatchResponse(BaseModel):
     alt_profile_name: str | None = None
     ok_album: str | None = None
     alt_album: str | None = None
+    auto_upload_youtube: bool | None = None
     created_at: datetime
     updated_at: datetime
     songs: list[MusicHistorySongResponse] = Field(default_factory=list)
@@ -575,6 +578,9 @@ class ProgressRowMeta(BaseModel):
     long_ready: bool = False
     reel_ready: bool = False
     pipeline_complete: bool = False
+    # The batch's stored YouTube choice, so the desktop pipeline does not fall
+    # back to whatever the app setting says at merge time.
+    auto_upload_youtube: bool | None = None
     expected: int = 0
     saved: int = 0
     download_ready: int = 0

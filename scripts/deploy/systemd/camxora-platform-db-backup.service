@@ -1,0 +1,16 @@
+[Unit]
+Description=CamXora platform database backup (pg_dump)
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=camxora
+Group=camxora
+WorkingDirectory=/opt/camxora/repo/platform_api
+# The script reads PLATFORM_DATABASE_URL from platform_api/.env itself; no
+# EnvironmentFile here because that file also holds JSON-ish values that
+# systemd's parser would reject.
+ExecStart=/usr/bin/env bash /opt/camxora/repo/scripts/deploy/platform-db-backup.sh
+Nice=10
+TimeoutStartSec=1800

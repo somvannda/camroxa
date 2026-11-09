@@ -1,30 +1,43 @@
-﻿Camxora 1.4.4
-Build info + export duration fixes
-September 25, 2026
+﻿Camxora 1.6.1
+YouTube upload credits + Progress publishing
+November 4, 2026
 
 What's new
 ----------
-- The app now reports its real version in diagnostics and logs. Previously it
-  sent a placeholder, so support could not confirm which build a user was on.
-- Video export duration fix (from 1.4.2): exported MP4s now match the MP3
-  length. Some 48 kHz VBR MP3s were decoded short; the export now decodes them
-  fully, and existing audio-analysis caches are cleared on upgrade.
-- Downloaded MP3s now carry a correct duration header, so the MP3 and the
-  exported video report the same length.
-- Video/merge credit preflight (from 1.4.3): a music plan can no longer start
-  and then stall at the export stage for lack of credits.
+- Credits now show exactly what a plan costs, including YouTube uploads. The
+  automation panel prices every step live (draft, Suno, image, video export,
+  merge, upload) and adds a YouTube column to the plan total.
+- Publish finished videos without leaving the app: right-click a completed row
+  in Progress and choose "Upload to YouTube". With the YouTube Upload toggle on,
+  merges publish automatically.
+- Completed rows tell you where delivery stands: uploading, uploaded (with the
+  video link), upload failed with a retry hint, or upload blocked.
 
-Still included from 1.4.1
--------------------------
-- Suno V6 model series (V6, V6 Mini, V6 Wild) plus V5.5 / V5 options.
-- V6 available on the CAMXORA music web Create page:
-  https://music.camxora.com/create
+Changed
+-------
+- The automation toggle is now labelled "YouTube Upload" and explains that
+  uploads are billed per video.
+- The credit check before generating counts upload credits too, so the button
+  total and the server's required total match.
+
+Fixed
+-----
+- Connecting a YouTube channel updates immediately: the Settings panel now waits
+  for the browser sign-in instead of needing a manual Refresh.
+- Turning the upload toggle off no longer forgets your saved preference.
+- A merged file can no longer be published twice (and charged twice).
 
 Requirements
 ------------
-- Installer: CamxoraSetup-1.4.4.exe
+- Installer: CamxoraSetup-1.6.1.exe
 - Production API: https://api.camxora.com/api/v3
 
-Not in this build
------------------
-- DistroKid / WAV add-on
+Still included
+--------------
+- Credits-only desktop studio access: a live credit pack unlocks the studio for
+  30 days; buying again resets the clock.
+- Buy Credits dialog with the four web-music packs.
+- Create channel profiles directly in Settings -> Profiles.
+- Continue with Google on the sign-in card.
+- Suno V6 model series (V6, V6 Mini, V6 Wild) plus V5.5 / V5 options.
+- YouTube upload automation for connected channel profiles.

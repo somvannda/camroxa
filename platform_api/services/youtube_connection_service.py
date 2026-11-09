@@ -34,6 +34,12 @@ from platform_api.services.youtube_upload_runtime import (
     upload_video,
 )
 
+# Google can return scopes the account already granted (openid, userinfo.email)
+# next to the ones we request, and oauthlib raises "Scope has changed" unless it
+# is told to tolerate that. Connecting failed on exactly this for accounts that
+# had previously signed in with Google.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
 YOUTUBE_UPLOAD_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
@@ -94,12 +100,15 @@ def _oauth_transport_context(callback_url: str):
     try:
         yield
     finally:
-        if not enable_insecure_transport:
-            return
-        if previous is None:
-            os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
-        else:
-            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = previous
+        # Never return early here: a bare return inside a contextmanager's
+        # finally swallows whatever exception the body raised, which turned
+        # every failed Google callback into "cannot access local variable
+        # credentials" instead of the real reason.
+        if enable_insecure_transport:
+            if previous is None:
+                os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
+            else:
+                os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = previous
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,9 +201,13 @@ class YouTubeConnectionService:
         callback_url: str,
     ) -> YouTubeConnectionStartResult:
         await self._ensure_profile_owned(user_id, profile_id)
-        oauth_app = await self._oauth_app_repo.get_default()
+        # A user-supplied Google client (bring your own OAuth) wins over the
+        # platform app, so their own quota and consent screen are used.
+        oauth_app = await self._oauth_app_repo.get_for_user(str(user_id))
         if oauth_app is None:
-            raise ValidationError("No default YouTube OAuth app is configured yet.")
+            oauth_app = await self._oauth_app_repo.get_default()
+        if oauth_app is None:
+            raise ValidationError("No YouTube OAuth app is configured yet.")
 
         await self._connection_repo.mark_profile_sessions_expired(str(user_id), str(profile_id))
 
@@ -507,6 +520,120 @@ class YouTubeConnectionService:
         if account is None or not bytes(account.encrypted_refresh_token or b""):
             raise ValidationError("YouTube is not connected for this profile yet.")
         return await self._build_refreshed_credentials(account)
+
+    async def quota_status(self, user_id: UUID) -> dict[str, Any]:
+        """Uploads used and remaining for Google's quota day (midnight Pacific).
+
+        YouTube charges videos.insert 1,600 of the project's 10,000 daily units,
+        so the practical ceiling is six uploads. Counting here means a customer
+        sees "resumes tomorrow" instead of a provider rejection mid-transfer.
+        """
+        from datetime import datetime, time as dtime, timezone as _tz
+        from zoneinfo import ZoneInfo
+
+        from platform_api.config import get_settings
+
+        limit = max(1, int(getattr(get_settings(), "youtube_daily_upload_limit", 6) or 6))
+        pacific = ZoneInfo("America/Los_Angeles")
+        now_local = datetime.now(_tz.utc).astimezone(pacific)
+        day_start_local = datetime.combine(now_local.date(), dtime.min, tzinfo=pacific)
+        day_end_local = day_start_local + (datetime.combine(now_local.date(), dtime.max, tzinfo=pacific) - day_start_local) + (
+            dtime.resolution
+        )
+        start_utc = day_start_local.astimezone(_tz.utc)
+        end_utc = day_end_local.astimezone(_tz.utc)
+        used = await self._db.fetchval(
+            """
+            SELECT count(*) FROM youtube_upload_jobs
+            WHERE user_id = $1::uuid
+              AND created_at >= $2
+              AND created_at < $3
+              AND status <> 'cancelled'
+            """,
+            str(user_id),
+            start_utc,
+            end_utc,
+        )
+        used_int = int(used or 0)
+        return {
+            "limit": limit,
+            "used": used_int,
+            "remaining": max(0, limit - used_int),
+            "resets_at": end_utc.isoformat(),
+        }
+
+    async def issue_access_token(self, *, user_id: UUID, profile_id: UUID) -> dict[str, Any]:
+        """Mint a short-lived access token so the desktop uploads YouTube directly.
+
+        The refresh token never leaves the server; the client receives a 1-hour
+        token scoped to the already-consented channel, which is what the
+        resumable upload needs and nothing more.
+        """
+        quota = await self.quota_status(user_id)
+        if quota["remaining"] <= 0:
+            raise ValidationError(
+                "Daily YouTube quota reached — uploads resume tomorrow.",
+                details={
+                    "error_code": "YOUTUBE_QUOTA_REACHED",
+                    "limit": quota["limit"],
+                    "resets_at": quota["resets_at"],
+                },
+            )
+
+        credentials = await self.build_refreshed_credentials_for_profile(
+            user_id=user_id, profile_id=profile_id
+        )
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+
+        if not getattr(credentials, "valid", False) or not getattr(credentials, "token", None):
+            await asyncio.to_thread(credentials.refresh, GoogleAuthRequest())
+        token = str(getattr(credentials, "token", "") or "").strip()
+        if not token:
+            raise ValidationError("Could not obtain a Google access token for this channel.")
+
+        account = await self._connection_repo.get_account_for_user_profile(
+            str(user_id), str(profile_id)
+        )
+        expires_in = 3600
+        expiry = getattr(credentials, "expiry", None)
+        if expiry is not None:
+            moment = expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)
+            expires_in = max(60, int((moment - datetime.now(timezone.utc)).total_seconds()))
+        return {
+            "access_token": token,
+            "expires_in": expires_in,
+            "channel_id": getattr(account, "channel_id", None),
+            "channel_title": getattr(account, "channel_title", None),
+        }
+
+    async def record_upload_result(
+        self,
+        *,
+        user_id: UUID,
+        batch_id: UUID,
+        profile_id: UUID,
+        role: str,
+        video_id: str,
+        video_url: str | None,
+        title: str,
+        status: str = "success",
+        error_message: str | None = None,
+    ) -> str:
+        """Record the result of a desktop-direct upload so Progress shows it."""
+        from uuid import uuid4 as _uuid4
+
+        return await self._connection_repo.record_upload_result(
+            user_id=str(user_id),
+            batch_id=str(batch_id),
+            profile_id=str(profile_id),
+            role=str(role or "OK").strip().upper() or "OK",
+            job_uid=str(_uuid4()),
+            video_id=video_id,
+            video_url=video_url,
+            title=title,
+            status=status,
+            error_message=error_message,
+        )
 
     async def run_pending_upload_jobs(
         self,

@@ -7,6 +7,7 @@ V6-Mini is always allowed.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -20,6 +21,7 @@ from platform_api.services.v3.web_music_charge import (
 USER_ID = uuid4()
 FREE_PLAN = {"name": "Free", "price_cents": 0}
 PRO_PLAN = {"name": "Pro", "price_cents": 1000}
+_NOW = datetime.now(timezone.utc)
 
 
 class FakeStore:
@@ -27,8 +29,11 @@ class FakeStore:
         self.plan = plan
         self.has_pack = has_pack
 
-    async def resolve_charge_plan(self, user_id):  # noqa: ANN001
-        return self.plan
+    async def live_pack_expiry(self, user_id):  # noqa: ANN001
+        # Paid plans in this test double stand in for a live pack lot.
+        if self.plan and int(self.plan.get("price_cents") or 0) > 0:
+            return _NOW
+        return None
 
     async def has_completed_topup_this_month(self, user_id):  # noqa: ANN001
         return self.has_pack

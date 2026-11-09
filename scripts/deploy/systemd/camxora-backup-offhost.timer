@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly CamXora off-host database backup upload
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=camxora-backup-offhost.service
+
+[Install]
+WantedBy=timers.target

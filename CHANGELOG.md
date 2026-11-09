@@ -7,6 +7,357 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.3] - 2026-11-08
+
+### Fixed
+
+- **A dropped or slow session refresh no longer signs the user out.** The desktop
+  used to clear the saved tokens on any refresh failure — including timeouts,
+  connection drops and 5xx gateway errors — then showed `Unauthenticated` on every
+  poll while the footer still showed cached credits. Production refreshes were
+  observed taking 17–146s (with 499/502 replies); only a real server `401` for the
+  refresh token now clears the session. A second studio window also adopts the pair
+  rotated by the first instead of clearing itself. See
+  `docs/changelog/2026-11-08-desktop-session-refresh-resilience.md`.
+
+## [1.6.2] - 2026-11-07
+
+### Fixed
+
+- **Opening the Diagnostics route no longer crashes.** `app/router.py` imported
+  `features.logs.views.log_view`, which did not exist, so navigating to `/app/log` (and the
+  route smoke test) raised `ModuleNotFoundError`. The support-only console is now implemented, and
+  `.gitignore`'s bare `logs` rule no longer hides the `features/logs` package.
+- **The audio-analysis cache no longer grows without limit.** Entries are now float16 (no derived
+  arrays, roughly half the size), unused entries expire after 30 days, and the directory is
+  LRU-trimmed to 2 GB (`CAMXORA_AUDIO_CACHE_MAX_MB` overrides it). Settings → Preferences → Storage
+  shows the current size and can clear it.
+- Leftover update installers (`CamxoraSetup-update.exe` reached 417 MB) are removed after a
+  successful install and swept after 24 hours, and the unbounded `audio-load-diag.log` /
+  `preview-gl-diag.log` diagnostics now rotate at 8 MB.
+
+### Changed
+
+- `CACHE_VERSION` is 4, so existing audio-analysis caches are discarded on first launch and tracks
+  are re-analyzed once. The saved data is otherwise identical.
+
+## [1.6.1] - 2026-11-07
+
+### Fixed
+
+- A native upload now reports **100%** when the last chunk lands; the row used to stop at the last
+  partial tick (e.g. `8 / 10`) before switching to `Publishing`.
+- Recording a finished upload retries transient failures twice, so a video already live on YouTube is
+  never left unrecorded or uncharged because of a network blip.
+
+## [1.6.0] - 2026-11-07
+
+### Added
+
+- **YouTube publishing runs on CAMXORA's own Google client.** Settings → Profiles → Connect /
+  Reconnect / Refresh / Disconnect use the native OAuth flow, the publication Playlist dropdown
+  lists the channel's real playlists, and uploads go **straight from the desktop to YouTube** with a
+  one-hour brokered token — no storage copy, no third-party publisher.
+- **Uploads honour the Publication panel**: title and description templates, category, visibility,
+  scheduled time, AI-use disclosure, the run folder's 16:9 thumbnail, and the playlist.
+- **Resumable transfers** with live per-row percentage, cancel, and automatic resume from the byte
+  offset YouTube reports.
+- **Accounts can supply their own Google OAuth client** (Settings → YouTube) for their own quota;
+  credentials are validated against Google and stored encrypted.
+
+### Changed
+
+- The legacy provider path remains only as a fallback for profiles that are not connected natively.
+- `scripts/youtube_direct_upload.py` is the standalone CLI equivalent (`--dry-run` prints the
+  resolved publication settings without uploading).
+- Video tags are **not sent** for now: YouTube rejects the whole upload when any keyword is invalid,
+  and the Publication keyword list is free text. Tags return once they can be validated per channel.
+
+### Fixed
+
+- **Scheduled uploads** were rejected with HTTP 400: YouTube does not accept `scheduled` as a privacy
+  status, so they upload as private with `publishAt`.
+- **Connect / Reconnect** in Settings no longer aborts with an `AttributeError` before opening Google.
+- **Playlist dropdown** is a real, non-editable list and loads when the tab opens; it was previously an
+  editable combo that looked like an empty text field, and a stale auth-failure flag blocked loading
+  permanently.
+- Connection polling stops once a channel is connected instead of refreshing every two seconds.
+
+## [1.5.23] - 2026-11-06
+
+### Fixed
+
+- **YouTube uploads failed without ever reaching YouTube.** The client built the publish request with the
+  hosted media URL but the request model had no such field, so it was dropped before sending. The server
+  then asked for a second, presigned upload of the same 2.6-2.8 GB file, which exceeded the upload-link TTL
+  and failed as `UPLOAD_EXPIRED` — no post was ever created. The field is now declared (pinned by a test),
+  and the upload-link lifetime is 6 hours so a slow connection cannot expire mid-transfer.
+
+## [1.5.22] - 2026-11-06
+
+### Changed
+
+- **Clearer upload state per row**: `Sending 42%` while the file is still leaving this computer,
+  `Publishing 3m` once YouTube is processing it, `Published` when it is live. Tooltips explain which side is
+  working; no internal provider name is shown anywhere in the UI.
+- **Progress messages are floating**: status and error text appears in the footer badge instead of an inline
+  banner, so the table never shifts while an upload is running.
+- **The footer follows the selected row**: picking a row shows that row's stage and delivery state.
+
+## [1.5.21] - 2026-11-06
+
+### Fixed
+
+- **Videos uploading again even though storage already had them.** The app now asks the server whether it
+  still hosts the original for that batch/channel (same size) before transferring anything, and reuses it.
+  This works after a re-merge, a cache reset, or on another PC - cases the local cache could not cover.
+
+### Added
+
+- **Per-row upload status**, including uploads started by the pipeline: the YouTube cell shows
+  `Storage 42%` (measured bytes) and then `Uploading 3m` (provider time), with the file name in the tooltip.
+- **Cancel is per row**: it stops that row's transfer, whether the pipeline or the menu started it.
+- **One upload at a time**: merges that finish together are queued instead of sending several multi-GB
+  originals simultaneously.
+
+## [1.5.20] - 2026-11-06
+
+### Fixed
+
+- **Uploading the same video twice** is no longer possible. The server returns the job already stored for
+  that batch/channel/role (queued, processing, or already published) instead of opening a second transfer,
+  charge, and YouTube post; the app stops with "already uploading" instead of starting again. A re-merged
+  file (different size) is still publishable.
+- **Rows stuck on "Uploading"**: the upload-expiry sweep now runs when Progress is polled, not only when
+  publish jobs are listed. Dead upload links from older clients are retired instead of being reported as an
+  upload that never finishes.
+
+### Changed
+
+- The YouTube column shows **elapsed time** while publishing (`Uploading 12m`) and the tooltip names the
+  provider (Post for Me) and explains that it reports no percentage. The row menu shows a disabled
+  *YouTube upload in progress…* / *Already on YouTube* item rather than offering a second upload.
+
+## [1.5.19] - 2026-11-06
+
+### Added
+
+- **Resumable uploads**: an interrupted transfer (crash, closed app, dropped connection) continues at the
+  first missing 16 MB part instead of restarting the whole file. Part ETags are remembered per file version
+  for 24 hours.
+- **Storage cleanup**: the hosted original is deleted 7 days after a publish, once the signed media URL the
+  provider used has expired (server side).
+
+### Fixed
+
+- **Auto-publish honours the batch's choice** on automated runs. Two bugs made it fall back to live app
+  settings: the coordinator read the settings toggle directly, and the merge context used the database column
+  name while the decision read the settings key. Progress rows now carry the stored flag end to end, and runs
+  created before the choice existed keep following the app setting instead of being treated as "off".
+
+## [1.5.18] - 2026-11-06
+
+### Changed
+
+- Auto-publish now follows the **batch's stored choice** rather than the app setting at merge time: a run
+  created with YouTube Upload enabled still publishes if the toggle is later turned off (and a run
+  created without it stays unpublished). The flag travels batch → history API → pipeline context.
+
+## [1.5.17] - 2026-11-06
+
+### Added
+
+- Publishing retries transient failures automatically: a busy or unavailable provider is retried twice
+  (2 s, then 6 s) instead of failing the upload outright. Validation and auth errors still fail fast.
+
+## [1.5.16] - 2026-11-06
+
+### Fixed
+
+- The Progress row repaints while an upload runs, so the percentage advances there and not only in
+  the footer status line. The row's YouTube state is updated on every 5% step instead of once when
+  the transfer starts.
+
+## [1.5.15] - 2026-11-05
+
+### Added
+
+- **Cancel YouTube upload** in the Progress row menu: stops the running transfer and aborts the
+  multipart upload on storage.
+- **Upload reuse**: a file already pushed to storage (same path, size and mtime) skips the transfer
+  and goes straight to publishing, so a retry or a second click no longer re-sends several GB.
+
+## [1.5.14] - 2026-11-05
+
+### Changed
+
+- A Progress row shows the live upload state while a video is being sent to storage
+  (`uploading 42%`) instead of keeping its old "Not started" label, and restores the server state when
+  the transfer finishes. Previously the row looked idle for the whole multi-GB upload because the
+  publish job is only created after the file lands.
+
+## [1.5.13] - 2026-11-05
+
+### Fixed
+
+- The plan total now matches the server's credit check: drafts are priced as lyric + title per song
+  plus one album per batch (the panel used to count a single op per song, under-quoting a
+  5-batch/50-song plan by 110 credits: 940 vs 1,050).
+- The YouTube Upload toggle explains why it is unavailable (missing channel connection or
+  publication defaults per profile) instead of staying greyed out silently.
+
+## [1.5.12] - 2026-11-05
+
+### Added
+
+- **Resumable uploads for large videos.** Files of 200 MB or more are uploaded to CAMXORA storage
+  in 16 MB parts with per-part retries, then the publisher fetches the file from a signed URL.
+  A 6 GB merge no longer depends on one long PUT: a dropped part retries alone and progress is
+  reported per part.
+
+### Removed
+
+- The 1080p upload copy added in 1.5.11. CAMXORA never re-encodes the user's video.
+
+## [1.5.11] - 2026-11-05
+
+### Added
+
+- **Upload-friendly copy for large merges.** Above 2 GiB the upload worker transcodes a 1080p
+  ~6 Mbps copy (about 0.9 GB per hour) with the bundled FFmpeg, uploads that, and deletes it
+  afterwards; the original file stays on disk. A 6 GB merge now uploads ~900 MB instead of timing
+  out on a single 6 GB PUT.
+
+### Changed
+
+- Upload timeout raised to 30 minutes end-to-end with the copy step included; failures still name
+  the step and exception.
+
+## [1.5.10] - 2026-11-05
+
+### Fixed
+
+- YouTube uploads no longer fail with `OverflowError` on videos larger than 2 GiB. The upload worker's
+  progress signal was typed Qt `int` (32-bit), so the first progress emit overflowed and the transfer
+  aborted before a single byte was sent — leaving the job `pending_upload` and the row "Uploading 0/1".
+  The signal now carries Python objects.
+- The Progress notice shows upload percentage and MB sent, so a long transfer is visible.
+
+## [1.5.9] - 2026-11-05
+
+### Changed
+
+- YouTube upload failures now name the step that failed (quote / create job / upload video /
+  upload thumbnail / finalize) and the exception class, instead of a bare "Publishing failed."
+  Upload timeouts report how many megabytes were sent, and interrupted transfers report the
+  connection error. The upload timeout is 30 minutes.
+
+## [1.5.8] - 2026-11-05
+
+### Fixed
+
+- Progress right-click works again. `discover_merged_path` used `Path` without importing it, so the
+  new Upload-to-YouTube block raised `NameError` while the menu was being built and no menu appeared
+  at all. The menu block is also wrapped so a future error there can never remove the other actions.
+
+## [1.5.7] - 2026-11-04
+
+### Fixed
+
+- **Upload to YouTube** now appears for every Progress row that has a channel profile. It was
+  gated on a manual-inspection merged path, which is empty unless the manual panel had scanned that
+  run, so finished rows showed no action. The action resolves the newest `MERGED_*.mp4` in the run
+  folder (long form, reel excluded) when no inspection exists, and says so clearly when the video
+  has not been merged yet.
+
+## [1.5.6] - 2026-11-04
+
+### Fixed
+
+- The profile list repaints as soon as publish accounts load, so a freshly connected channel shows
+  its badge immediately instead of after selecting another profile.
+
+### Changed
+
+- The connected-channel badge uses the same lucide YouTube glyph, 14 px size and muted navigation
+  colour as the left menu, replacing the bright red mark.
+- The post-connect browser page draws the CAMXORA mark inline (the previous `<img>` pointed at a
+  URL that answered 502, so the logo was broken).
+
+## [1.5.5] - 2026-11-04
+
+### Fixed
+
+- Connecting a channel now completes on **our** callback page and links the account to the
+  profile immediately. The connect request passes `redirect_url_override` to Post for Me, which
+  previously redirected to its own page — so our backend never learned about the new account and
+  the panel stayed "Not connected" until a manual sync. The waiting poll also re-listens from the
+  database after each sync, so a provider response that omits the account cannot hide it.
+
+### Changed
+
+- After consent the browser lands on a CAMXORA-branded page ("YouTube connected" / failed) with the
+  account count and a "close this tab" hint, instead of the provider's generic page.
+
+## [1.5.4] - 2026-11-04
+
+### Fixed
+
+- Connecting a channel updates as soon as the browser sign-in finishes. The waiting poll now
+  calls `POST /publish/accounts/sync` instead of only listing accounts: Post for Me announces
+  uploads by webhook but not account linking, so the account never appeared until something
+  synced it (which is why pressing Connect again looked like a refresh).
+
+## [1.5.3] - 2026-11-04
+
+### Changed
+
+- Connecting a channel keeps a waiting card visible while the browser sign-in is open:
+  **Open browser again**, **Copy link** (paste it into another browser or Chrome profile that
+  holds the right Google account) and **Cancel**. Connect is disabled while waiting, and the
+  panel polls for up to ~10 minutes (3 s, then 10 s) instead of two.
+
+## [1.5.2] - 2026-11-04
+
+### Fixed
+
+- Connecting a YouTube channel now refreshes by itself: the Settings panel polls for up to
+  two minutes instead of waiting a single 8-second refresh, so finishing the browser sign-in
+  at any pace shows the connected channel without pressing Refresh.
+
+## [1.5.1] - 2026-11-04
+
+### Added
+
+- **YouTube upload credits are now part of the plan estimate.** The automation panel prices every operation live from the database (routed provider for AI ops, `local` for export/merge, `postforme` for uploads) and shows a dedicated **YouTube** credit column, so a plan's total includes what publishing will actually cost.
+- **Upload to YouTube** from a completed Progress row (right-click), and automatic publishing after a merge when the toggle is on — both report progress and reuse the same credit quote.
+- Completed rows now state their delivery status: `uploading 1/2`, `uploaded 2/2`, `upload failed · retry`, `upload blocked`.
+
+### Changed
+
+- The automation toggle is labelled **YouTube Upload** with a tooltip explaining Post for Me and per-video billing.
+- The server preflight counts upload credits too (`publish_ops` / `publish_wallet_cost`), so the button total and the API's required total agree.
+
+### Fixed
+
+- Disabling the upload toggle no longer clears the saved preference.
+- The same merged file can no longer be published (and charged) twice when both finishing paths complete a merge.
+
+## [1.5.0] - 2026-11-03
+
+### Added
+
+- **Continue with Google on the sign-in card.** Desktop sign-in now works with a Google account instead of a password. The system browser performs consent and hands the code back to the app through a one-shot loopback listener on `127.0.0.1:41580`; only the app ever receives tokens. It reuses the same Google OAuth client and redirect URI as music.camxora.com, so no extra Google Cloud configuration is needed. See `docs/changelog/2026-11-03-desktop-google-signin.md`.
+
+### Changed
+
+- Google sign-in goes through the same desktop paid-entitlement gate as the password path: an account without live pack credits gets the existing "Desktop studio requires a paid plan" message and the pack dialog, not a broken session.
+- A cancelled consent, a busy loopback port (another CAMXORA window signing in), a closed browser and a 5-minute timeout each show a specific message.
+
+### Fixed
+
+- The app no longer hangs on the sign-in screen when it talks to a platform API that predates the desktop Google hand-off; it reports that the server needs updating.
+
 ## [1.4.9] - 2026-10-22
 
 ### Added

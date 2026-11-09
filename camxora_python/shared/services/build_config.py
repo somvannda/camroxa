@@ -18,6 +18,24 @@ _API_BASE_URL = os.environ.get("CAMXORA_API_BASE_URL", "").strip()
 _PORTAL_BASE_URL = os.environ.get("CAMXORA_PORTAL_BASE_URL", "").strip()
 
 _ENV_FILE_NAMES = (".env", ".env.local", ".env.sandbox", ".env.production")
+# Files that apply regardless of which environment this build targets.
+_ENV_FILE_ALWAYS = (".env", ".env.local")
+# One-per-build environment files: a release installer ships exactly one.
+_ENV_FILE_ENVIRONMENTS = (".env.sandbox", ".env.production")
+
+
+def _declared_build_env() -> str:
+    """Environment this process explicitly targets ("" when not declared).
+
+    Uses only the process env and the value baked at import time — never the
+    bundled files — so ``_load_bundled_env`` can pick which ``.env.*`` files
+    apply without recursing into ``_resolve_build_env``.
+    """
+    raw = str(os.environ.get("CAMXORA_BUILD_ENV") or "").strip().lower()
+    if raw:
+        return raw
+    baked = str(_BUILD_ENV or "").strip().lower()
+    return "" if baked in {"", "development"} else baked
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -36,6 +54,19 @@ def _read_env_file(path: Path) -> dict[str, str]:
 
 
 def _load_bundled_env() -> dict[str, str]:
+    """Merge bundled ``.env`` files that apply to this build environment.
+
+    A sandbox installer must never pick up ``.env.production`` (leftover in
+    ``_internal``, the install dir, or the source tree): merging every
+    environment's file let the last one win, which pointed sandbox builds at
+    production URLs.
+
+    Resolution order:
+    1. ``CAMXORA_BUILD_ENV`` declared → that environment's file only.
+    2. Exactly one ``.env.sandbox`` / ``.env.production`` present → use it (a
+       release installer ships exactly one and sets no env var at runtime).
+    3. Both present (dev checkout) → neither; ``.env``/``.env.local`` only.
+    """
     candidates: list[Path] = []
     install_dir = get_install_dir()
     if install_dir is not None:
@@ -51,10 +82,23 @@ def _load_bundled_env() -> dict[str, str]:
             candidates.extend(Path(meipass) / name for name in _ENV_FILE_NAMES)
     module_dir = Path(__file__).resolve().parents[2]
     candidates.extend(module_dir / name for name in _ENV_FILE_NAMES)
+
+    declared = _declared_build_env()
+    if declared:
+        allowed = {*_ENV_FILE_ALWAYS, f".env.{declared}"}
+    else:
+        present = {
+            candidate.name
+            for candidate in candidates
+            if candidate.name in _ENV_FILE_ENVIRONMENTS and candidate.is_file()
+        }
+        allowed = {*_ENV_FILE_ALWAYS, *present} if len(present) == 1 else set(_ENV_FILE_ALWAYS)
+
     merged: dict[str, str] = {}
     for candidate in candidates:
-        if candidate.is_file():
-            merged.update(_read_env_file(candidate))
+        if candidate.name not in allowed or not candidate.is_file():
+            continue
+        merged.update(_read_env_file(candidate))
     return merged
 
 

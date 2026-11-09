@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from features.create.widgets.icons import apply_button_icon, icon_label, section_heading
 from features.create.widgets.studio_panel import NestedPanel, StudioPanel
 from features.progress.widgets.operational_rows_card import EffectiveProgressRow
+from features.workflow.lib.workflow_steps import format_delivery_summary
 from shared.lib.formatting import format_channel_role_label
 from shared.lib.manual_asset_paths import ManualAssetInspection, manual_inspection_key
 from shared.lib.progress_presentation import (
@@ -420,6 +421,11 @@ class ProgressDetailCard(StudioPanel):
         export_raw = format_pipeline_step_text(entry.effective_converter or row.converter)
         merge_raw = format_pipeline_step_text(entry.effective_merge or row.merge)
         youtube_raw = format_youtube_compact(row)
+        delivery = format_delivery_summary(row)
+        if delivery and delivery not in youtube_raw:
+            youtube_raw = (
+                f"{youtube_raw} · {delivery}" if youtube_raw not in {"—", ""} else delivery
+            )
         if meta.youtube_url:
             youtube_raw = f"{youtube_raw} · {meta.youtube_url}" if youtube_raw not in {"—", ""} else meta.youtube_url
         self._bind_step(self._converter_label, self._converter_detail, self._export_dot, export_raw)

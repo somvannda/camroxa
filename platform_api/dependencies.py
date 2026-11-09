@@ -697,6 +697,40 @@ def get_youtube_connection_service():
     )
 
 
+def get_postforme_client():
+    """Dependency that returns the Post for Me API client."""
+    from platform_api.services.postforme_client import PostForMeClient
+
+    settings = get_settings()
+    return PostForMeClient(
+        api_key=settings.postforme_api_key,
+        base_url=settings.postforme_api_base_url,
+        timeout_seconds=settings.postforme_timeout_seconds,
+    )
+
+
+def get_publish_repo():
+    """Dependency that returns the publishing repository instance."""
+    from platform_api.repositories.publish_repo import PublishRepository
+
+    return PublishRepository(db=get_db_pool())
+
+
+def get_publish_service():
+    """Dependency that returns the Post for Me publishing service."""
+    from platform_api.services.publish_service import PublishService
+
+    settings = get_settings()
+    return PublishService(
+        db=get_db_pool(),
+        repo=get_publish_repo(),
+        client=get_postforme_client(),
+        billing=get_v3_billing_service(),
+        enabled=settings.postforme_enabled,
+        webhook_secret=settings.postforme_webhook_secret,
+    )
+
+
 # ---------------------------------------------------------------------------
 # ConnectionRegistry singleton (lives for the lifetime of the process)
 # ---------------------------------------------------------------------------
@@ -794,38 +828,16 @@ def get_turnstile_service():
 # ---------------------------------------------------------------------------
 
 
-def get_v2_subscription_service():
-    """Dependency that returns the v2 SubscriptionService instance."""
-    from platform_api.db.asyncpg_adapter import wrap_pool
-    from platform_api.services.v2.subscription_service import SubscriptionService
-    from platform_api.services.shared.cutluy_service import get_cutluy_service
-
-    return SubscriptionService(
-        db=wrap_pool(get_db_pool()),
-        cutluy=get_cutluy_service()
-    )
-
-
-def get_v2_credit_service():
-    """Dependency that returns the v2 CreditService instance."""
-    from platform_api.db.asyncpg_adapter import wrap_pool
-    from platform_api.services.v2.credit_service import CreditService
-
-    return CreditService(db=wrap_pool(get_db_pool()))
-
-
 def get_v2_topup_service():
     """Dependency that returns the v2 TopupService instance."""
     from platform_api.db.asyncpg_adapter import wrap_pool
     from platform_api.services.v2.topup_service import TopupService
     from platform_api.services.shared.cutluy_service import get_cutluy_service
-    from platform_api.services.v2.credit_service import CreditService
 
     db = wrap_pool(get_db_pool())
     return TopupService(
         db=db,
         cutluy=get_cutluy_service(),
-        credit_service=CreditService(db=db),
     )
 
 

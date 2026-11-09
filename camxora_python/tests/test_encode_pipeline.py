@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import threading
 import time
 from types import SimpleNamespace
 
@@ -10,6 +12,7 @@ import pytest
 from visualizer.encode_pipeline import (
     PipelinedEncodeWriter,
     _percentile,
+    is_pipe_closed_error,
     pipelined_encode_enabled,
     resolve_encode_queue_size,
 )
@@ -160,3 +163,142 @@ def test_pack_fn_runs_on_writer_thread() -> None:
     stats = writer.stats()
     assert stats["packOnWriter"] is True
     assert stats["packAvgMs"] is not None
+
+
+# ── Encoder lifecycle (regression: "[Errno 22] Invalid argument" at the tail) ──
+
+
+class _ErrLog:
+    def __init__(self, text: str = "") -> None:
+        self.text = text
+
+    def seek(self, _pos: int) -> int:
+        return 0
+
+    def read(self) -> str:
+        return self.text
+
+
+class _ExitedProcess:
+    """Encoder that already exited (e.g. ffmpeg hit the audio tail)."""
+
+    def __init__(self, code: int) -> None:
+        self.stdin = _SlowStdin(delay_sec=0.0)
+        self._code = code
+
+    def poll(self) -> int:
+        return self._code
+
+
+def test_pipe_closed_error_recognises_windows_einval() -> None:
+    """Windows reports a dead child pipe as EINVAL (22), not EPIPE (32)."""
+    assert is_pipe_closed_error(BrokenPipeError("closed")) is True
+    assert is_pipe_closed_error(OSError(errno.EINVAL, "Invalid argument")) is True
+    assert is_pipe_closed_error(OSError(errno.ENOSPC, "No space left")) is False
+    assert is_pipe_closed_error(RuntimeError("nope")) is False
+
+
+def test_clean_encoder_exit_is_not_an_error() -> None:
+    """ffmpeg exiting 0 at the audio tail must not abort an otherwise good export."""
+    proc = _ExitedProcess(0)
+    writer = PipelinedEncodeWriter(proc, queue_size=2)
+    writer.submit(b"frame-a")
+    writer.submit(b"frame-b")
+    writer.finish()  # must not raise
+
+    stats = writer.stats()
+    assert stats["encoderExitedEarly"] is True
+    assert stats["framesWritten"] == 0
+    assert stats["framesDropped"] >= 1
+    assert proc.stdin.chunks == []
+
+
+def test_encoder_failure_reports_exit_code_and_stderr() -> None:
+    proc = _ExitedProcess(3)
+    writer = PipelinedEncodeWriter(
+        proc,
+        queue_size=2,
+        err_file=_ErrLog("Conversion failed!"),
+        err_path=r"C:\out\ffmpeg_error_deadbeef.log",
+    )
+    writer.submit(b"frame")
+    with pytest.raises(RuntimeError) as excinfo:
+        writer.finish()
+
+    message = str(excinfo.value)
+    assert "code 3" in message
+    assert "Conversion failed!" in message
+    assert "ffmpeg_error_deadbeef.log" in message
+
+
+def test_einval_write_with_live_encoder_is_reported_as_closed_pipe() -> None:
+    class _EINVALStdin:
+        def write(self, _data: bytes) -> None:
+            raise OSError(errno.EINVAL, "Invalid argument")
+
+        def close(self) -> None:
+            return
+
+    proc = SimpleNamespace(stdin=_EINVALStdin(), poll=lambda: None)
+    writer = PipelinedEncodeWriter(proc, queue_size=2, err_file=None)
+    writer.submit(b"frame")
+    with pytest.raises(RuntimeError, match="FFmpeg pipe closed unexpectedly"):
+        writer.finish()
+
+
+def test_stuck_writer_terminates_encoder_instead_of_hanging(monkeypatch) -> None:
+    """A blocked pipe write used to hang finish() and then enc.wait() forever."""
+    from visualizer import encode_pipeline as mod
+
+    release = threading.Event()
+
+    class _BlockedStdin:
+        def write(self, _data: bytes) -> None:
+            release.wait(5.0)
+
+        def close(self) -> None:
+            return
+
+    proc = _MockProcess(_BlockedStdin())  # type: ignore[arg-type]
+    monkeypatch.setattr(mod, "_FINISH_JOIN_TIMEOUT_SEC", 0.05)
+    writer = PipelinedEncodeWriter(proc, queue_size=2)
+    writer.submit(b"frame")
+    try:
+        with pytest.raises(RuntimeError, match="did not finish"):
+            writer.finish()
+        assert proc.terminated or proc.killed
+    finally:
+        release.set()
+
+
+def test_ffmpeg_pipe_command_does_not_use_shortest(monkeypatch, tmp_path) -> None:
+    """``-shortest`` lets the audio track end the output mid-render (the crash)."""
+    from visualizer import gpu_render
+
+    captured: dict[str, list[str]] = {}
+
+    def _fake_popen(cmd, **_kwargs):
+        captured["cmd"] = list(cmd)
+        return SimpleNamespace(poll=lambda: None, stdin=None)
+
+    monkeypatch.setattr(
+        "visualizer.nvenc_capability.probe_h264_nvenc", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(gpu_render, "popen_hidden", _fake_popen)
+
+    enc, codec = gpu_render._start_ffmpeg(
+        "ffmpeg",
+        str(tmp_path / "track.mp3"),
+        str(tmp_path / "out.mp4"),
+        640,
+        360,
+        30,
+        "fast",
+    )
+    cmd = captured["cmd"]
+    assert codec == "libx264"
+    assert "-shortest" not in cmd
+    assert "pipe:0" in cmd
+    assert cmd[-1] == str(tmp_path / "out.mp4")
+    enc._err_file.close()
+

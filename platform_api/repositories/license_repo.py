@@ -497,9 +497,10 @@ class LicenseRepository:
     async def has_paid_desktop_access(self, user_id: str) -> bool:
         """True when the user may use the desktop studio.
 
-        Credits-only model: a live credit pack is the only entitlement.
-        Plans, licenses and web subscriptions no longer grant access.
-        Pack lots expire 30 days after purchase, so access ends with the pack.
+        Credits-only model: a live credit pack -- or an admin comp, which is the
+        same 30-day credit -- is the only entitlement. Plans, licenses and web
+        subscriptions no longer grant access. Both lot kinds expire 30 days out,
+        so access ends with the credits.
         """
         result = await self._pool.fetchval(
             """
@@ -512,7 +513,7 @@ class LicenseRepository:
                     SELECT 1
                     FROM credit_wallet_lots lot
                     WHERE lot.user_id = $1
-                      AND lot.tag = 'pack'
+                      AND lot.tag IN ('pack', 'admin')
                       AND lot.remaining_units > 0
                       AND lot.expires_at IS NOT NULL
                       AND lot.expires_at > NOW()
@@ -1016,23 +1017,9 @@ class PlanRepository:
         return [_row_to_plan(row) for row in rows]
 
     async def get_web_music_subscriber_counts(self, plan_ids: list[UUID]) -> dict[UUID, int]:
-        """Return active web subscription counts per plan."""
-        if not plan_ids:
-            return {}
-        rows = await self._pool.fetch(
-            """
-            SELECT plan_id, COUNT(*)::int AS subscriber_count
-            FROM web_subscriptions
-            WHERE plan_id = ANY($1::uuid[])
-              AND status IN ('active', 'past_due')
-            GROUP BY plan_id
-            """,
-            plan_ids,
-        )
-        return {
-            row["plan_id"]: int(row["subscriber_count"] or 0)
-            for row in rows
-        }
+        """Active web subscription counts per plan (subscriptions retired)."""
+        _ = plan_ids
+        return {}
 
     async def create_web_music(
         self,
@@ -1087,18 +1074,8 @@ class PlanRepository:
                 details={"plan_id": str(plan_id)},
             )
 
-        subscriber_count = int(
-            await self._pool.fetchval(
-                """
-                SELECT COUNT(*)::int
-                FROM web_subscriptions
-                WHERE plan_id = $1
-                  AND status IN ('active', 'past_due', 'cancelled')
-                """,
-                plan_id,
-            )
-            or 0
-        )
+        # Subscriptions are retired, so no plan can have legacy web subscribers.
+        subscriber_count = 0
         if subscriber_count > 0:
             raise ValidationError(
                 message="Cannot permanently delete a web music plan that has subscribers.",

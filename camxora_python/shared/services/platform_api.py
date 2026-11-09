@@ -27,6 +27,18 @@ from shared.models.auth import (
     UserMeResponse,
     WebMusicSubscriptionPlan,
 )
+from shared.models.publishing import (
+    CreatePublishJobRequest,
+    CreatePublishJobResponse,
+    PublishAccount,
+    PublishAccountsResponse,
+    PublishConnectSession,
+    PublishJob,
+    PublishJobsResponse,
+    PublishQuote,
+    RetryPublishJobResponse,
+    StartPublishConnectionResponse,
+)
 from shared.models.platform import (
     AlbumRewriteResponse,
     BatchCreateRequest,
@@ -123,6 +135,29 @@ class PlatformApi:
             "/auth/refresh",
             method="POST",
             body={"refresh_token": refresh_token},
+        )
+        return TokenResponse.model_validate(data)
+
+    def google_auth_url(self, desktop_port: int) -> dict[str, Any]:
+        """Consent URL for the desktop hand-off.
+
+        The API keeps the same registered https redirect the website uses and
+        signs ``desktop_port`` into the state; the callback page forwards the
+        browser to the app's loopback listener.
+        """
+        data = self._client.request(
+            "/auth/google/url",
+            params={"desktop_port": int(desktop_port)},
+            timeout=20.0,
+        )
+        return data if isinstance(data, dict) else {}
+
+    def google_callback(self, code: str, state: str) -> TokenResponse:
+        """Exchange the loopback ``code`` for a desktop session."""
+        data = self._client.request(
+            "/auth/google/callback",
+            method="POST",
+            body={"code": code, "state": state},
         )
         return TokenResponse.model_validate(data)
 
@@ -864,9 +899,251 @@ class PlatformApi:
         )
         return YouTubeConnectionResponse.model_validate(data)
 
+    def enqueue_youtube_merge_upload(
+        self,
+        *,
+        profile_id: str,
+        batch_id: str,
+        role: str,
+        merged_mp4_path: str,
+    ) -> dict[str, Any]:
+        """Queue a server-side YouTube upload for an already-merged MP4.
+
+        Used by the Progress page's manual "Upload to YouTube" action, where the
+        merged artifact already exists on this machine and the direct-Google
+        connection (not Post for Me) owns the channel.
+        """
+        data = self._client.request(
+            f"/youtube/profiles/{profile_id}/uploads/merge",
+            method="POST",
+            auth=True,
+            body={
+                "batch_id": batch_id,
+                "role": role,
+                "merged_mp4_path": merged_mp4_path,
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
     def list_youtube_playlists(self, profile_id: str) -> YouTubePlaylistsResponse:
         data = self._client.request(f"/youtube/profiles/{profile_id}/playlists", auth=True)
         return YouTubePlaylistsResponse.model_validate(data)
+
+    # --- Post for Me publishing -------------------------------------------
+
+    def get_youtube_quota(self) -> dict[str, Any]:
+        """Uploads used today against Google's per-project allowance."""
+        data = self._client.request("/youtube/quota", auth=True)
+        return data if isinstance(data, dict) else {}
+
+    def issue_youtube_access_token(self, profile_id: str) -> dict[str, Any]:
+        """1-hour Google token so the desktop uploads straight to YouTube."""
+        data = self._client.request(
+            f"/youtube/profiles/{profile_id}/access-token",
+            method="POST",
+            auth=True,
+        )
+        return data if isinstance(data, dict) else {}
+
+    def report_youtube_upload(
+        self,
+        *,
+        batch_id: str,
+        profile_id: str,
+        role: str,
+        video_id: str,
+        video_url: str | None,
+        title: str,
+        status: str = "success",
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        """Record a direct upload so Progress shows the final state."""
+        data = self._client.request(
+            "/youtube/uploads/report",
+            method="POST",
+            auth=True,
+            body={
+                "batch_id": batch_id,
+                "profile_id": profile_id,
+                "role": role,
+                "video_id": video_id,
+                "video_url": video_url,
+                "title": title,
+                "status": status,
+                "error_message": error_message,
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
+    def list_publish_accounts(self, profile_id: str | None = None) -> list[PublishAccount]:
+        params = {"profile_id": profile_id} if profile_id else None
+        data = self._client.request("/publish/accounts", auth=True, params=params)
+        if isinstance(data, dict):
+            return PublishAccountsResponse.model_validate(data).accounts
+        return []
+
+    def start_publish_connection(
+        self, profile_id: str, platform: str = "youtube"
+    ) -> StartPublishConnectionResponse:
+        data = self._client.request(
+            "/publish/accounts/connect",
+            method="POST",
+            auth=True,
+            body={"profile_id": profile_id, "platform": platform},
+        )
+        return StartPublishConnectionResponse.model_validate(data)
+
+    def sync_publish_accounts(
+        self, profile_id: str, platform: str = "youtube"
+    ) -> list[PublishAccount]:
+        data = self._client.request(
+            "/publish/accounts/sync",
+            method="POST",
+            auth=True,
+            body={"profile_id": profile_id, "platform": platform},
+        )
+        if isinstance(data, dict):
+            return PublishAccountsResponse.model_validate(data).accounts
+        return []
+
+    def latest_publish_connection(self, profile_id: str) -> PublishConnectSession | None:
+        data = self._client.request(
+            "/publish/accounts/latest-session",
+            auth=True,
+            params={"profile_id": profile_id},
+        )
+        if not data:
+            return None
+        return PublishConnectSession.model_validate(data)
+
+    def disconnect_publish_account(self, account_id: str) -> dict[str, Any]:
+        result = self._client.request(
+            f"/publish/accounts/{account_id}",
+            method="DELETE",
+            auth=True,
+        )
+        return result or {"message": "Publishing account disconnected."}
+
+    def get_publish_quote(self) -> PublishQuote:
+        data = self._client.request("/publish/quote", auth=True)
+        return PublishQuote.model_validate(data)
+
+    def create_publish_job(
+        self, payload: CreatePublishJobRequest
+    ) -> CreatePublishJobResponse:
+        data = self._client.request(
+            "/publish/jobs",
+            method="POST",
+            auth=True,
+            body=payload.model_dump(exclude_none=True),
+        )
+        return CreatePublishJobResponse.model_validate(data)
+
+    def find_publish_media(
+        self, *, batch_id: str, role: str, size_bytes: int
+    ) -> dict[str, Any]:
+        """An original the server still hosts for this slot (retry without re-upload)."""
+        data = self._client.request(
+            "/publish/media",
+            auth=True,
+            params={
+                "batch_id": str(batch_id),
+                "role": str(role or "OK"),
+                "size_bytes": int(size_bytes),
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
+    def create_publish_upload(self, *, file_name: str, content_type: str, size_bytes: int, first_part_count: int = 10) -> dict[str, Any]:
+        """Open a multipart upload and get the first presigned part URLs."""
+        data = self._client.request(
+            "/publish/uploads",
+            method="POST",
+            auth=True,
+            body={
+                "file_name": file_name,
+                "content_type": content_type,
+                "size_bytes": int(size_bytes),
+                "first_part_count": int(first_part_count),
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
+    def sign_publish_upload_parts(
+        self, *, key: str, upload_id: str, part_numbers: list[int]
+    ) -> list[dict[str, Any]]:
+        data = self._client.request(
+            "/publish/uploads/parts",
+            method="POST",
+            auth=True,
+            body={"key": key, "upload_id": upload_id, "part_numbers": list(part_numbers)},
+        )
+        parts = data.get("parts") if isinstance(data, dict) else None
+        return list(parts or [])
+
+    def complete_publish_upload(
+        self, *, key: str, upload_id: str, parts: list[dict[str, Any]]
+    ) -> str:
+        data = self._client.request(
+            "/publish/uploads/complete",
+            method="POST",
+            auth=True,
+            body={"key": key, "upload_id": upload_id, "parts": parts},
+        )
+        return str((data or {}).get("media_url") or "")
+
+    def abort_publish_upload(self, *, key: str, upload_id: str) -> None:
+        self._client.request(
+            "/publish/uploads/abort",
+            method="POST",
+            auth=True,
+            body={"key": key, "upload_id": upload_id},
+        )
+
+    def complete_publish_job(self, job_uid: str, checksum: str | None = None) -> PublishJob:
+        body = {"checksum": checksum} if checksum else {}
+        data = self._client.request(
+            f"/publish/jobs/{job_uid}/complete",
+            method="POST",
+            auth=True,
+            body=body,
+        )
+        return PublishJob.model_validate(data)
+
+    def get_publish_job(self, job_uid: str) -> PublishJob:
+        data = self._client.request(f"/publish/jobs/{job_uid}", auth=True)
+        return PublishJob.model_validate(data)
+
+    def list_publish_jobs(
+        self, batch_id: str | None = None, status: str | None = None
+    ) -> list[PublishJob]:
+        params: dict[str, Any] = {}
+        if batch_id:
+            params["batch_id"] = batch_id
+        if status:
+            params["status"] = status
+        data = self._client.request(
+            "/publish/jobs", auth=True, params=params or None
+        )
+        if isinstance(data, dict):
+            return PublishJobsResponse.model_validate(data).jobs
+        return []
+
+    def retry_publish_job(self, job_uid: str) -> RetryPublishJobResponse:
+        data = self._client.request(
+            f"/publish/jobs/{job_uid}/retry",
+            method="POST",
+            auth=True,
+        )
+        return RetryPublishJobResponse.model_validate(data)
+
+    def cancel_publish_job(self, job_uid: str) -> PublishJob:
+        data = self._client.request(
+            f"/publish/jobs/{job_uid}/cancel",
+            method="POST",
+            auth=True,
+        )
+        return PublishJob.model_validate(data)
 
     def get_content_pool_stats(self) -> ContentPoolStatsResponse:
         data = self._client.request("/content-pools/stats", auth=True)

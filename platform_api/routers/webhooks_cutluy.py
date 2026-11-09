@@ -9,17 +9,12 @@ from typing import Any
 from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel
 
-from platform_api.services.v2.subscription_service import SubscriptionService
 from platform_api.services.v2.topup_service import TopupService
 from platform_api.exceptions import ValidationError
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 logger = logging.getLogger(__name__)
-
-
-async def _get_subscription_service() -> SubscriptionService:
-    raise NotImplementedError("SubscriptionService dependency not configured.")
 
 
 async def _get_topup_service() -> TopupService:
@@ -54,36 +49,23 @@ async def cutluy_webhook(
     logger.info("Received CutLuy webhook: %s (payment_type=%s)", event_type, payment_type)
 
     if event_type.startswith("subscription.") or payment_type == "subscription":
-        subscription_service = await _get_subscription_service()
-        result = await subscription_service.handle_cutluy_webhook(
+        # Web-music subscriptions are retired in favour of the credits-only v3
+        # wallet. Acknowledge so CutLuy stops retrying, but do not credit.
+        logger.info("Ignoring retired subscription webhook: %s", event_type)
+        return WebhookResponse(
+            received=True,
+            processed=False,
+            message="Web-music subscriptions are retired; no credit applied.",
+        )
+
+    if event_type in {"payment.completed", "payment.failed"}:
+        topup_service = await _get_topup_service()
+        result = await topup_service.handle_topup_webhook(
             event_type=event_type,
             payload=payload,
             signature=x_cutluy_signature,
             raw_body=body_bytes,
         )
-        return WebhookResponse(
-            received=True,
-            processed=result.get("processed", False),
-            message=result.get("message", "Subscription webhook processed"),
-        )
-
-    if event_type in {"payment.completed", "payment.failed"}:
-        if payment_type == "subscription":
-            subscription_service = await _get_subscription_service()
-            result = await subscription_service.handle_cutluy_webhook(
-                event_type=event_type,
-                payload=payload,
-                signature=x_cutluy_signature,
-                raw_body=body_bytes,
-            )
-        else:
-            topup_service = await _get_topup_service()
-            result = await topup_service.handle_topup_webhook(
-                event_type=event_type,
-                payload=payload,
-                signature=x_cutluy_signature,
-                raw_body=body_bytes,
-            )
 
         return WebhookResponse(
             received=True,

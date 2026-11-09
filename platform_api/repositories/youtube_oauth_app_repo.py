@@ -20,6 +20,7 @@ class YouTubeOAuthAppRecord:
     client_id: str
     encrypted_client_secret: bytes
     is_default: bool
+    owner_user_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -148,6 +149,58 @@ class YouTubeOAuthAppRepository:
         )
         return self._row_to_record(row) if row else None
 
+    async def get_for_user(self, user_id: str) -> YouTubeOAuthAppRecord | None:
+        """The user's own Google app, when they supplied one."""
+        row = await self._db.fetchrow(
+            """
+            SELECT id, name, client_id, encrypted_client_secret, is_default, owner_user_id,
+                   created_at, updated_at
+            FROM youtube_oauth_apps
+            WHERE owner_user_id = $1::uuid
+            LIMIT 1
+            """,
+            user_id,
+        )
+        return self._row_to_record(row) if row else None
+
+    async def save_for_user(
+        self,
+        *,
+        user_id: str,
+        name: str,
+        client_id: str,
+        encrypted_client_secret: bytes,
+    ) -> YouTubeOAuthAppRecord | None:
+        """Create or replace the user's own app (one per account)."""
+        row = await self._db.fetchrow(
+            """
+            INSERT INTO youtube_oauth_apps (
+                name, client_id, encrypted_client_secret, is_default, owner_user_id,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, FALSE, $4::uuid, NOW(), NOW())
+            ON CONFLICT (owner_user_id) WHERE owner_user_id IS NOT NULL
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                client_id = EXCLUDED.client_id,
+                encrypted_client_secret = EXCLUDED.encrypted_client_secret,
+                updated_at = NOW()
+            RETURNING id, name, client_id, encrypted_client_secret, is_default,
+                      owner_user_id, created_at, updated_at
+            """,
+            name,
+            client_id,
+            encrypted_client_secret,
+            user_id,
+        )
+        return self._row_to_record(row) if row else None
+
+    async def delete_for_user(self, user_id: str) -> bool:
+        result = await self._db.execute(
+            "DELETE FROM youtube_oauth_apps WHERE owner_user_id = $1::uuid", user_id
+        )
+        return str(result).endswith("1")
+
     async def get_default(self) -> YouTubeOAuthAppRecord | None:
         row = await self._db.fetchrow(
             """
@@ -168,6 +221,7 @@ class YouTubeOAuthAppRepository:
             client_id=str(row["client_id"] or ""),
             encrypted_client_secret=bytes(row["encrypted_client_secret"] or b""),
             is_default=bool(row["is_default"]),
+            owner_user_id=str(row["owner_user_id"]) if row.get("owner_user_id") else None,
             created_at=row.get("created_at"),
             updated_at=row.get("updated_at"),
         )

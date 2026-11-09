@@ -56,6 +56,7 @@ class PipelineAutomationService(QObject):
         self._export_worker: VideoPipelineExportWorker | None = None
         self._merge_worker: VideoPipelineMergeWorker | None = None
         self._merge_context: dict[str, Any] = {}
+        self._publish_worker: Any = None
         self._busy = False
         self._video_charge: dict[str, Any] = {}
         self._merge_charge: dict[str, Any] = {}
@@ -358,6 +359,8 @@ class PipelineAutomationService(QObject):
             "branch": branch,
             "batch_id": candidate.batch_id,
             "role": candidate.role,
+            "auto_upload_youtube": getattr(candidate, "auto_upload_youtube", None),
+            "autoUploadYouTube": getattr(candidate, "auto_upload_youtube", None),
             "auto_merge": auto_merge,
             "shuffle": shuffle_merge,
             "mp4_paths": ordered_mp4s,
@@ -819,7 +822,105 @@ class PipelineAutomationService(QObject):
             role=str(context.get("role") or "OK"),
             run_dir=str(context.get("run_dir") or ""),
         )
+        self._maybe_auto_publish(merged_output, context)
         self._schedule_progress_local_sync()
+
+    def _maybe_auto_publish(self, merged_output: str, context: dict[str, Any]) -> None:
+        """Publish this merge when the batch asked for it, not live settings.
+
+        The decision is the same pure helper the video page uses, so the batch's
+        stored YouTube choice wins over the toggle's current state.
+        """
+        if is_app_quitting():
+            return
+        from shared.lib.publish_auto import (
+            auto_publish_plan,
+            claim_publish,
+            worker_context,
+        )
+
+        plan = auto_publish_plan(self._settings, context, merged_output)
+        if plan is None:
+            return
+
+        if not claim_publish(plan.merged_path):
+            # The video page already published this file in this session.
+            return
+        queued_context = worker_context(plan)
+        running = getattr(self, "_publish_worker", None)
+        if running is not None and running.isRunning():
+            # Several merges can finish close together; sending three 2.6 GB
+            # originals at once saturates the uplink and makes the Progress
+            # rows impossible to read. Run them one at a time.
+            queue = getattr(self, "_publish_queue", None)
+            if queue is None:
+                queue = []
+                self._publish_queue = queue
+            queue.append(queued_context)
+            emit_shell_status(
+                "Another YouTube upload is running — this one is queued next.",
+                tone="neutral",
+            )
+            return
+        self._start_publish_worker(queued_context)
+
+    def _start_publish_worker(self, auto_context: dict[str, object]) -> None:
+        from shared.lib.publish_auto import release_publish
+
+        try:
+            from shared.workers.data_workers import YouTubeDirectUploadWorker
+
+            self._publish_claim_path = str(auto_context.get("merged_path") or "")
+            worker = YouTubeDirectUploadWorker(
+                self._api,
+                profile_id=str(auto_context.get("profile_id") or ""),
+                batch_id=str(auto_context.get("batch_id") or ""),
+                role=str(auto_context.get("role") or "OK"),
+                merged_path=str(auto_context.get("merged_path") or ""),
+                parent=self,
+            )
+            worker.status_changed.connect(lambda text: emit_shell_status(str(text), tone="neutral"))
+            worker.succeeded.connect(self._on_publish_succeeded)
+            worker.failed.connect(self._on_publish_failed)
+            worker.finished.connect(self._on_publish_worker_finished)
+            self._publish_worker = worker
+            worker.start()
+        except Exception as exc:
+            release_publish(str(auto_context.get("merged_path") or ""))
+            from shared.services.app_logger import log_warn
+
+            log_warn(f"Auto-upload could not start: {exc}", category="export")
+
+    def _on_publish_worker_finished(self) -> None:
+        self._publish_worker = None
+        queue = getattr(self, "_publish_queue", None) or []
+        while queue:
+            next_context = queue.pop(0)
+            if next_context:
+                self._start_publish_worker(next_context)
+                return
+
+    def _on_publish_succeeded(self, job: object) -> None:
+        if isinstance(job, dict):
+            status = "success" if job.get("video_id") else "processing"
+            message = f"YouTube upload published ({job.get('url') or ''})." if job.get("video_id") else "YouTube upload queued."
+        else:
+            status = str(getattr(job, "status", "") or "processing")
+            message = f"YouTube upload queued ({status})."
+        emit_shell_status(message, tone="neutral")
+        from shared.services.app_logger import log_info
+
+        log_info(message, category="export")
+
+    def _on_publish_failed(self, message: str) -> None:
+        text = str(message or "YouTube upload failed.").strip()
+        emit_shell_status(text, tone="warning")
+        from shared.lib.publish_auto import release_publish
+        from shared.services.app_logger import log_warn
+
+        release_publish(getattr(self, "_publish_claim_path", ""))
+        self._publish_claim_path = ""
+        log_warn(text, category="export")
 
     def _on_merge_failed(self, message: str) -> None:
         if self._is_user_initiated_stop(message):

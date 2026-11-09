@@ -11,6 +11,15 @@ from shared.models.platform import OperationCostResponse
 TRACKS_PER_SONG_PACKAGE = 2
 # Each album/channel is merged once.
 MERGE_OPS_PER_BATCH = 2
+# One publish job per merged video (see docs/music-automation-credits-and-youtube-pipeline-plan.md).
+PUBLISH_OPS_PER_MERGE = 1
+
+
+def upload_ops_for_plan(merge_ops: int, *, auto_upload: bool) -> int:
+    """YouTube uploads a plan will bill, given how many merges it produces."""
+    if not auto_upload:
+        return 0
+    return max(0, int(merge_ops)) * PUBLISH_OPS_PER_MERGE
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +44,10 @@ class MusicPlanCostBreakdown:
     merge_unit_cost: float | None
     merge_ops: int
     merge_total_cost: float | None
-    total_cost: float | None
+    publish_unit_cost: float | None = None
+    upload_ops: int = 0
+    publish_total_cost: float | None = 0.0
+    total_cost: float | None = None
 
     @property
     def image_jobs_per_song(self) -> int:
@@ -136,6 +148,11 @@ def get_music_plan_cost_breakdown(
     auto_video: bool = False,
     auto_merge: bool = False,
     auto_reel: bool = False,
+    publish_cost: OperationCostResponse | None = None,
+    auto_upload: bool = False,
+    title_cost: OperationCostResponse | None = None,
+    album_cost: OperationCostResponse | None = None,
+    server_draft_math: bool = False,
 ) -> MusicPlanCostBreakdown | None:
     if (
         song_count <= 0
@@ -149,7 +166,13 @@ def get_music_plan_cost_breakdown(
     pair_count = len(primary_profiles)
     planned_batch_count = pair_count * planned_day_count
     planned_song_count = planned_batch_count * song_count
-    draft_unit_cost = get_operation_unit_cost(lyric_cost)
+    lyric_unit_cost = get_operation_unit_cost(lyric_cost)
+    title_unit_cost = get_operation_unit_cost(title_cost)
+    album_unit_cost_cost = get_operation_unit_cost(album_cost)
+    # The server prices drafts as lyric + title per song and one album per
+    # batch (`batch_service.draft_ops_per_batch = song_count * 2 + 1`); the
+    # panel used to count one op per song, which under-quoted every plan.
+    draft_unit_cost = lyric_unit_cost
     suno_unit_cost = get_operation_unit_cost(music_cost)
     image_unit_cost = get_operation_unit_cost(image_cost)
     jobs_per_batch, jobs_all_pairs = _image_jobs_for_pairs(primary_profiles, secondary_profiles)
@@ -160,7 +183,17 @@ def get_music_plan_cost_breakdown(
         else 0
     )
 
-    draft_total_cost = None if draft_unit_cost is None else draft_unit_cost * planned_song_count
+    if not server_draft_math:
+        draft_total_cost = None if draft_unit_cost is None else draft_unit_cost * planned_song_count
+    elif lyric_unit_cost is None or title_unit_cost is None or album_unit_cost_cost is None:
+        draft_total_cost = None
+    else:
+        # Mirrors batch_service: lyric + title per song, one album per batch.
+        draft_total_cost = (
+            lyric_unit_cost * planned_song_count
+            + title_unit_cost * planned_song_count
+            + album_unit_cost_cost * planned_batch_count
+        )
     suno_total_cost = 0 if not auto_gsuno else None if suno_unit_cost is None else suno_unit_cost * planned_song_count
     if not auto_gen_image or image_source_mode == "manual":
         image_total_cost = 0.0
@@ -190,6 +223,17 @@ def get_music_plan_cost_breakdown(
     else:
         merge_total_cost = merge_unit_cost * merge_ops
 
+    # YouTube publishing is charged per merged video. Same rule as the server
+    # preflight (batch_service) so the panel total matches what the API charges.
+    publish_unit_cost = get_operation_unit_cost(publish_cost)
+    upload_ops = upload_ops_for_plan(merge_ops, auto_upload=bool(auto_upload and billable_merge))
+    if upload_ops <= 0:
+        publish_total_cost: float | None = 0.0
+    elif publish_unit_cost is None:
+        publish_total_cost = None
+    else:
+        publish_total_cost = publish_unit_cost * upload_ops
+
     total_cost = None
     if (
         draft_total_cost is not None
@@ -197,6 +241,7 @@ def get_music_plan_cost_breakdown(
         and image_total_cost is not None
         and video_total_cost is not None
         and merge_total_cost is not None
+        and publish_total_cost is not None
     ):
         total_cost = (
             draft_total_cost
@@ -204,6 +249,7 @@ def get_music_plan_cost_breakdown(
             + image_total_cost
             + video_total_cost
             + merge_total_cost
+            + publish_total_cost
         )
 
     return MusicPlanCostBreakdown(
@@ -226,6 +272,9 @@ def get_music_plan_cost_breakdown(
         merge_unit_cost=merge_unit_cost,
         merge_ops=merge_ops,
         merge_total_cost=merge_total_cost,
+        publish_unit_cost=publish_unit_cost,
+        upload_ops=upload_ops,
+        publish_total_cost=publish_total_cost,
         total_cost=total_cost,
     )
 
@@ -246,6 +295,11 @@ def get_batch_generate_total_cost(
     auto_video: bool = False,
     auto_merge: bool = False,
     auto_reel: bool = False,
+    publish_cost: OperationCostResponse | None = None,
+    auto_upload: bool = False,
+    title_cost: OperationCostResponse | None = None,
+    album_cost: OperationCostResponse | None = None,
+    server_draft_math: bool = False,
 ) -> float | None:
     """Batch Generate button total — mirrors getBatchGenerateTotalCost in MusicWorkspacePage.tsx."""
     breakdown = get_music_plan_cost_breakdown(
@@ -264,6 +318,11 @@ def get_batch_generate_total_cost(
         auto_video,
         auto_merge,
         auto_reel,
+        publish_cost,
+        auto_upload,
+        title_cost,
+        album_cost,
+        server_draft_math,
     )
     return get_batch_generate_total_cost_from_breakdown(breakdown)
 

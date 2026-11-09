@@ -206,7 +206,12 @@ from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID, VIDEO_WORKSPACE_ID
 from shared.widgets.wheel_guard import guard_page_wheel_controls
-from shared.workers.data_workers import PatchSettingsWorker, VideoPatchTemplateWorker, VideoWorkspaceWorker
+from shared.workers.data_workers import (
+    PatchSettingsWorker,
+    PublishUploadWorker,
+    VideoPatchTemplateWorker,
+    VideoWorkspaceWorker,
+)
 from features.video.workers.manual_export_worker import ManualExportRequest, VideoManualExportWorker
 from features.video.workers.pipeline_export_worker import PipelineExportRequest, VideoPipelineExportWorker
 from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, VideoPipelineMergeWorker
@@ -276,6 +281,7 @@ class VideoView(QWidget):
         self._store = VideoLocalStore()
         self._workspace: VideoWorkspaceState | None = None
         self._settings: dict[str, object] = {}
+        self._auto_publish_workers: list[PublishUploadWorker] = []
         self._template_draft: dict | None = None
         self._persisted_draft_snapshot = ""
         self._template_name_draft = ""
@@ -1521,6 +1527,8 @@ class VideoView(QWidget):
             "completed": len(mp3_list),
             "total": len(mp3_list),
             "profile_id": profile_id,
+            "auto_upload_youtube": getattr(row.meta, "auto_upload_youtube", None),
+            "autoUploadYouTube": getattr(row.meta, "auto_upload_youtube", None),
             "ref_base": ref_base,
             **encode_fields,
         }
@@ -3080,6 +3088,56 @@ class VideoView(QWidget):
                 or ""
             ),
         )
+        self._maybe_auto_publish(merge_context, merged_output)
+
+    def _maybe_auto_publish(self, merge_context: dict, merged_path: str | None) -> None:
+        """Publish this merge to YouTube when the automation toggle is on.
+
+        The decision is pure (`auto_publish_plan`); the worker quotes credits,
+        creates the publish job and PUTs the file off the UI thread, so a failed
+        upload never blocks or fails the merge that just completed.
+        """
+        from shared.lib.publish_auto import (
+            auto_publish_plan,
+            claim_publish,
+            release_publish,
+            worker_context,
+        )
+
+        plan = auto_publish_plan(self._settings, merge_context, merged_path)
+        if plan is None:
+            return
+        if not claim_publish(plan.merged_path):
+            # Another path already published this file (video page vs pipeline).
+            return
+        from shared.workers.data_workers import YouTubeDirectUploadWorker
+
+        worker = YouTubeDirectUploadWorker(
+            self._api,
+            profile_id=plan.profile_id,
+            batch_id=str(plan.batch_id or ""),
+            role=plan.role,
+            merged_path=plan.merged_path,
+            parent=self,
+        )
+        worker.status_changed.connect(lambda message: notify_action(message, tone="neutral"))
+        worker.succeeded.connect(
+            lambda _result: notify_action("Video published to YouTube.", tone="success")
+        )
+        worker.failed.connect(
+            lambda message: notify_action(f"YouTube upload failed: {message}", tone="error")
+        )
+        worker.failed.connect(lambda *_: release_publish(plan.merged_path))
+        worker.finished.connect(lambda: self._auto_publish_workers_remove(worker))
+        self._auto_publish_workers.append(worker)
+        worker.start()
+
+    def _auto_publish_workers_remove(self, worker: PublishUploadWorker) -> None:
+        try:
+            self._auto_publish_workers.remove(worker)
+        except ValueError:
+            pass
+        worker.deleteLater()
 
     def _on_pipeline_merge_failed(self, message: str) -> None:
         user_stop = self._is_user_initiated_stop(

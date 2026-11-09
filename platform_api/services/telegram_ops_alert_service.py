@@ -513,6 +513,16 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
                      WHERE t.user_id = u.id
                        AND t.payment_status = 'completed'
                        AND COALESCE(t.completed_at, t.created_at) >= date_trunc('month', NOW())
+                   )
+                   OR EXISTS(
+                     -- Admin top-ups are comps: no purchase row, but paid-tier
+                     -- credit, so the spend report badges them PAID like a pack.
+                     SELECT 1 FROM credit_transactions ct
+                     WHERE ct.user_id = u.id
+                       AND ct.direction = 'credit'
+                       AND ct.amount > 0
+                       AND ct.reason LIKE 'admin_adjustment:%'
+                       AND ct.created_at >= date_trunc('month', NOW())
                    ) AS has_pack_this_month
             FROM users u
             WHERE u.id = $1
@@ -1013,8 +1023,6 @@ def install_telegram_ops_hooks(*, enable_poller: bool = True) -> None:
     _patch_login()
     _patch_billing_fulfill()
     _patch_plan_quota_log()
-    _patch_v2_credit_service()
-    _patch_v2_subscription_service()
     _patch_web_music_downloads()
     if not enable_poller:
         return
@@ -1213,104 +1221,7 @@ def _patch_plan_quota_log() -> None:
 
 
 def _patch_v2_credit_service() -> None:
-    try:
-        from platform_api.services.v2.credit_service import CreditService
-    except Exception:
-        return
-
-    def _wrap_consume(original):  # type: ignore[no-untyped-def]
-        async def consume_credits(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            result = await original(self, *args, **kwargs)
-            user_id = kwargs.get("user_id", args[0] if args else None)
-            amount = kwargs.get("amount", args[1] if len(args) > 1 else None)
-            source = kwargs.get("source", args[2] if len(args) > 2 else "")
-            reference_id = kwargs.get(
-                "reference_id", args[3] if len(args) > 3 else None
-            )
-            if result and user_id is not None and amount is not None:
-                notify_web_music_spend(
-                    user_id=user_id,
-                    amount=int(amount),
-                    source=str(source or ""),
-                    reference_id=reference_id,
-                )
-            return result
-
-        return consume_credits
-
-    def _wrap_refund(original):  # type: ignore[no-untyped-def]
-        async def refund_credits(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            result = await original(self, *args, **kwargs)
-            user_id = kwargs.get("user_id", args[0] if args else None)
-            amount = kwargs.get("amount", args[1] if len(args) > 1 else None)
-            source = kwargs.get("source", args[2] if len(args) > 2 else "")
-            reference_id = kwargs.get(
-                "reference_id", args[3] if len(args) > 3 else None
-            )
-            if result and user_id is not None and amount is not None:
-                notify_web_music_refund(
-                    user_id=user_id,
-                    amount=int(amount),
-                    source=str(source or ""),
-                    reference_id=reference_id,
-                )
-            return result
-
-        return refund_credits
-
-    _patch_method(CreditService, "consume_credits", _wrap_consume)
-    _patch_method(CreditService, "refund_credits", _wrap_refund)
-    logger.info("Telegram ops hooks installed on web-music credit service.")
+    """Removed: the v2 web-music credit service is gone (v3-only)."""
+    return
 
 
-def _patch_v2_subscription_service() -> None:
-    try:
-        from platform_api.services.v2.subscription_service import SubscriptionService
-    except Exception:
-        return
-
-    def _wrap_payment_completed(original):  # type: ignore[no-untyped-def]
-        async def _handle_payment_completed(self, data):  # type: ignore[no-untyped-def]
-            result = await original(self, data)
-            payload = data or {}
-            metadata = payload.get("metadata") if isinstance(payload, dict) else {}
-            if not isinstance(metadata, dict):
-                metadata = {}
-            amount = payload.get("amount_cents")
-            if amount is None:
-                amount = payload.get("amount")
-            try:
-                amount_cents = int(amount) if amount is not None else None
-            except (TypeError, ValueError):
-                amount_cents = None
-            notify_payment(
-                user_id=metadata.get("user_id") or payload.get("user_id"),
-                plan_name=metadata.get("plan_name") or payload.get("plan_name"),
-                amount_cents=amount_cents,
-                product="web_music_subscription",
-                extra_lines=[
-                    f"subscription: {_esc(metadata.get('subscription_id'))}",
-                ]
-                if metadata.get("subscription_id")
-                else None,
-            )
-            return result
-
-        return _handle_payment_completed
-
-    def _wrap_renewed(original):  # type: ignore[no-untyped-def]
-        async def _handle_subscription_renewed(self, data):  # type: ignore[no-untyped-def]
-            result = await original(self, data)
-            payload = data or {}
-            notify_payment(
-                user_id=payload.get("user_id"),
-                plan_name="renewal",
-                product="web_music_renewal",
-            )
-            return result
-
-        return _handle_subscription_renewed
-
-    _patch_method(SubscriptionService, "_handle_payment_completed", _wrap_payment_completed)
-    _patch_method(SubscriptionService, "_handle_subscription_renewed", _wrap_renewed)
-    logger.info("Telegram ops hooks installed on web-music subscription service.")

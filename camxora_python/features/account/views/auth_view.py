@@ -47,6 +47,7 @@ class AuthView(QFrame):
     login_requested = Signal(str, str)
     register_requested = Signal(str, str, str)
     switch_account_requested = Signal(str)
+    google_signin_requested = Signal()
 
     def __init__(self, storage: SecureStorage | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -227,6 +228,8 @@ class AuthView(QFrame):
     def set_busy(self, busy: bool) -> None:
         self._login_btn.setEnabled(not busy)
         self._login_btn.setText("Signing in…" if busy else "Sign In")
+        if hasattr(self, "_google_btn"):
+            self._google_btn.setEnabled(not busy)
         if hasattr(self, "_create_btn"):
             self._create_btn.setEnabled(not busy)
         self._saved_accounts_host.setEnabled(not busy)
@@ -318,6 +321,14 @@ class AuthView(QFrame):
         self._login_btn.setAutoDefault(True)
         self._login_btn.clicked.connect(self._submit_login)
         layout.addWidget(self._login_btn)
+
+        layout.addSpacing(10)
+        self._google_btn = QPushButton("Continue with Google")
+        self._google_btn.setObjectName("auth_google_button")
+        self._google_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._google_btn.setFont(studio_font(14, QFont.Weight.Medium))
+        self._google_btn.clicked.connect(self._request_google_signin)
+        layout.addWidget(self._google_btn)
 
         if REGISTRATION_ENABLED:
             layout.addSpacing(12)
@@ -433,6 +444,10 @@ class AuthView(QFrame):
         self._persist_remembered_email(email)
         self.clear_error()
         self.login_requested.emit(email, password)
+
+    def _request_google_signin(self) -> None:
+        self.clear_error()
+        self.google_signin_requested.emit()
 
     def _submit_register(self) -> None:
         if not REGISTRATION_ENABLED:

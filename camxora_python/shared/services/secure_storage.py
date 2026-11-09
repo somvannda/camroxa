@@ -33,6 +33,28 @@ class SecureStorage:
     def get(self, key: str) -> str | None:
         return self._data.get(key)
 
+    def reload(self) -> bool:
+        """Re-read the store from disk (another app instance may have saved it).
+
+        Returns ``False`` and leaves the in-memory copy untouched when the file
+        cannot be read right now (concurrent save, antivirus lock), so a failed
+        reload can never lose credentials.
+        """
+        try:
+            if not self._path.is_file():
+                return False
+            encrypted = self._path.read_text(encoding="utf-8").strip()
+            if not encrypted:
+                return False
+            raw = dpapi_decrypt_from_base64(encrypted)
+            parsed = json.loads(raw)
+        except (OSError, json.JSONDecodeError, ValueError):
+            return False
+        if not isinstance(parsed, dict):
+            return False
+        self._data = {str(k): str(v) for k, v in parsed.items()}
+        return True
+
     def set(self, key: str, value: str) -> None:
         self._data[key] = value
         self._save()

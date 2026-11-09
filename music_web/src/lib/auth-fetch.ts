@@ -19,7 +19,23 @@ function shouldSkipRefresh(path: string): boolean {
 
 let refreshPromise: Promise<boolean> | null = null;
 
+// `music.camxora.com` keeps polling license/credit endpoints every few seconds
+// while signed out. Without this backoff every one of those 401s triggered a
+// fresh `POST /auth/refresh` (which also 401s), producing thousands of useless
+// auth calls a day. A rejected refresh (401/403) is remembered briefly; a
+// network failure is not, so a real login is picked up immediately.
+const REFRESH_REJECT_BACKOFF_MS = 60_000;
+let refreshBlockedUntil = 0;
+
+export function resetAuthRefreshState(): void {
+  refreshPromise = null;
+  refreshBlockedUntil = 0;
+}
+
 async function refreshAccessCookie(): Promise<boolean> {
+  if (Date.now() < refreshBlockedUntil) {
+    return false;
+  }
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
@@ -32,7 +48,14 @@ async function refreshAccessCookie(): Promise<boolean> {
           },
           body: '{}',
         });
-        return response.ok;
+        if (response.ok) {
+          refreshBlockedUntil = 0;
+          return true;
+        }
+        if (response.status === 401 || response.status === 403) {
+          refreshBlockedUntil = Date.now() + REFRESH_REJECT_BACKOFF_MS;
+        }
+        return false;
       } catch {
         return false;
       }

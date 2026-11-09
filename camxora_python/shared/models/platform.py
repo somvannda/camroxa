@@ -146,6 +146,7 @@ class ProgressRowMeta(BaseModel):
     long_ready: bool = False
     reel_ready: bool = False
     pipeline_complete: bool = False
+    auto_upload_youtube: bool | None = None
     music_started_at: datetime | None = None
     music_updated_at: datetime | None = None
     image_started_at: datetime | None = None
@@ -368,6 +369,7 @@ class MusicHistoryBatch(BaseModel):
     alt_profile_name: str | None = None
     ok_album: str | None = None
     alt_album: str | None = None
+    auto_upload_youtube: bool | None = None
     created_at: str = ""
     updated_at: str = ""
     songs: list[MusicHistorySong] = Field(default_factory=list)
@@ -487,6 +489,7 @@ class MusicPlanPreflightRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
 
 
 class MusicPlanPreflightResponse(BaseModel):
@@ -505,6 +508,8 @@ class MusicPlanPreflightResponse(BaseModel):
     merge_ops: int = 0
     video_wallet_cost: int = 0
     merge_wallet_cost: int = 0
+    publish_ops: int = 0
+    publish_wallet_cost: int = 0
 
 
 class BatchCreateRequest(BaseModel):
@@ -521,6 +526,7 @@ class BatchCreateRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
     song_count: int = 4
     language: str = "en"
     secondary_language: str | None = None

@@ -116,6 +116,16 @@ Subprocess export remains a **fallback** after Phase 2 (crash isolation), not th
 4. Preview writes cache on first analysis; export reads cache before librosa.
 5. Invalidate on MP3 mtime/size change or settings hash mismatch.
 6. API: `get_audio_analysis_cache(path) -> CachedAnalysis | None`, `set_audio_analysis_cache(path, data)`.
+7. **Eviction (added 2026-11):** the cache is machine-global and must stay bounded.
+   - `mag` is stored as float16; `freqs` / `bass_idx` / `mid_idx` / `treble_idx` are
+     rebuilt from `sample_rate + n_fft` and are not persisted.
+   - `prune_audio_analysis_cache()` deletes broken pairs, entries from older
+     `CACHE_VERSION` builds, entries unused for 30 days, then LRU-trims to a
+     2 GB budget (`CAMXORA_AUDIO_CACHE_MAX_MB`, min 256 MB).
+   - Runs at startup on a daemon thread (`app/bootstrap.py`) and — throttled to
+     once per 10 minutes — after each write.
+   - `audio_analysis_cache_stats()` / `clear_audio_analysis_cache()` back the
+     Settings → Preferences → Storage panel.
 
 **Acceptance criteria:**
 

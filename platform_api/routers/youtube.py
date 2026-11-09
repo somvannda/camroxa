@@ -22,6 +22,24 @@ from platform_api.services.youtube_connection_service import (
 )
 
 router = APIRouter(prefix="/youtube", tags=["youtube"])
+
+
+class YouTubeAccessTokenResponse(BaseModel):
+    access_token: str
+    expires_in: int
+    channel_id: str | None = None
+    channel_title: str | None = None
+
+
+class RecordYouTubeUploadRequest(BaseModel):
+    batch_id: UUID
+    profile_id: UUID
+    role: str = "OK"
+    video_id: str
+    video_url: str | None = None
+    title: str = ""
+    status: str = "success"
+    error_message: str | None = None
 logger = logging.getLogger(__name__)
 
 
@@ -168,6 +186,136 @@ async def _resolve_youtube_callback_url(pool: Any) -> str:
     return build_youtube_oauth_callback_url(api_base)
 
 
+# ---------------------------------------------------------------------------
+# Bring your own Google OAuth client
+# ---------------------------------------------------------------------------
+
+
+class UserOAuthAppResponse(BaseModel):
+    configured: bool = False
+    client_id: str | None = None
+    name: str | None = None
+
+
+class SaveUserOAuthAppRequest(BaseModel):
+    client_id: str
+    client_secret: str
+    name: str = "My Google app"
+
+
+async def _oauth_credentials_work(client_id: str, client_secret: str, callback_url: str) -> tuple[bool, str]:
+    """Ask Google whether this client id/secret pair exists.
+
+    A deliberately invalid authorization code produces `invalid_client` for
+    bad credentials and `invalid_grant` for good ones, so this validates the
+    pair without storing anything.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "grant_type": "authorization_code",
+                    "code": "camxora-validation-code",
+                    "redirect_uri": callback_url,
+                },
+            )
+    except Exception as exc:  # noqa: BLE001 - reported to the user
+        return False, f"Could not reach Google: {exc}"
+
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    error = str(body.get("error") or "").strip()
+    if error == "invalid_client":
+        return False, "Google rejected that client id / secret pair."
+    if error in {"invalid_grant", "invalid_request", "redirect_uri_mismatch"}:
+        return True, ""
+    if response.status_code < 400:
+        return True, ""
+    return False, f"Google rejected the credentials ({error or response.status_code})."
+
+
+@router.get("/oauth-app", response_model=UserOAuthAppResponse)
+async def get_user_youtube_oauth_app(ctx: CurrentUserDep) -> UserOAuthAppResponse:
+    """Whether this account connected with its own Google client."""
+    from platform_api.dependencies import get_youtube_oauth_app_repo
+
+    app = await get_youtube_oauth_app_repo().get_for_user(ctx.user_id)
+    if app is None:
+        return UserOAuthAppResponse()
+    return UserOAuthAppResponse(configured=True, client_id=app.client_id, name=app.name)
+
+
+@router.put("/oauth-app", response_model=UserOAuthAppResponse)
+async def save_user_youtube_oauth_app(
+    request: SaveUserOAuthAppRequest,
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> UserOAuthAppResponse:
+    """Save the user's own Google client so connects use their quota.
+
+    Bring-your-own keeps each account on its own YouTube quota (a shared
+    project allows ~6 uploads/day) and avoids the platform app's verification
+    being a single point of failure.
+    """
+    from fastapi import HTTPException
+
+    from platform_api.dependencies import (
+        get_youtube_oauth_app_repo,
+        get_youtube_oauth_encryption,
+    )
+
+    client_id = str(request.client_id or "").strip()
+    client_secret = str(request.client_secret or "").strip()
+    if not client_id.endswith(".apps.googleusercontent.com"):
+        raise HTTPException(
+            status_code=400,
+            detail="That does not look like a Google OAuth client id.",
+        )
+    if len(client_secret) < 10:
+        raise HTTPException(status_code=400, detail="The client secret is too short.")
+
+    encryption = get_youtube_oauth_encryption()
+    if encryption is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Credential storage is unavailable on this server.",
+        )
+
+    callback_url = await _resolve_youtube_callback_url(pool)
+    ok, reason = await _oauth_credentials_work(client_id, client_secret, callback_url)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    record = await get_youtube_oauth_app_repo().save_for_user(
+        user_id=ctx.user_id,
+        name=str(request.name or "My Google app").strip() or "My Google app",
+        client_id=client_id,
+        encrypted_client_secret=encryption.encrypt(client_secret),
+    )
+    if record is None:
+        raise HTTPException(status_code=500, detail="Could not save the credentials.")
+    logger.info("User %s saved their own YouTube OAuth app", ctx.user_id)
+    return UserOAuthAppResponse(
+        configured=True, client_id=record.client_id, name=record.name
+    )
+
+
+@router.delete("/oauth-app", status_code=200)
+async def delete_user_youtube_oauth_app(ctx: CurrentUserDep) -> dict[str, Any]:
+    """Forget the user's own client and fall back to the platform app."""
+    from platform_api.dependencies import get_youtube_oauth_app_repo
+
+    removed = await get_youtube_oauth_app_repo().delete_for_user(ctx.user_id)
+    return {"removed": bool(removed)}
+
+
 @router.post("/profiles/{profile_id}/connect", response_model=StartYouTubeConnectionResponse)
 async def start_youtube_connection(
     profile_id: UUID,
@@ -262,6 +410,100 @@ async def youtube_oauth_callback(
 </html>
         """.strip()
     )
+
+
+class YouTubeQuotaResponse(BaseModel):
+    limit: int
+    used: int
+    remaining: int
+    resets_at: str
+
+
+@router.get("/quota", response_model=YouTubeQuotaResponse)
+async def youtube_quota(
+    ctx: CurrentUserDep,
+    service: YouTubeConnectionServiceDep,
+) -> YouTubeQuotaResponse:
+    """Uploads used today against Google's per-project daily allowance."""
+    data = await service.quota_status(UUID(ctx.user_id))
+    return YouTubeQuotaResponse(**data)
+
+
+@router.post(
+    "/profiles/{profile_id}/access-token", response_model=YouTubeAccessTokenResponse
+)
+async def issue_youtube_access_token(
+    profile_id: UUID,
+    ctx: CurrentUserDep,
+    service: YouTubeConnectionServiceDep,
+) -> YouTubeAccessTokenResponse:
+    """Short-lived token so the desktop can upload straight to YouTube."""
+    data = await service.issue_access_token(
+        user_id=UUID(ctx.user_id), profile_id=profile_id
+    )
+    return YouTubeAccessTokenResponse(**data)
+
+
+@router.post("/uploads/report")
+async def report_youtube_upload(
+    request: RecordYouTubeUploadRequest,
+    ctx: CurrentUserDep,
+    service: YouTubeConnectionServiceDep,
+) -> dict[str, Any]:
+    """Record a desktop-direct upload, then charge it once it is live.
+
+    Native uploads used to bypass billing entirely while the legacy provider
+    path charged, so the same action cost different amounts depending on the
+    route. The charge is applied here, exactly once per job row.
+    """
+    job_id = await service.record_upload_result(
+        user_id=UUID(ctx.user_id),
+        batch_id=request.batch_id,
+        profile_id=request.profile_id,
+        role=request.role,
+        video_id=request.video_id,
+        video_url=request.video_url,
+        title=request.title,
+        status=request.status,
+        error_message=request.error_message,
+    )
+    if job_id and str(request.status) == "success":
+        await _charge_native_upload(UUID(ctx.user_id), job_id)
+
+    return {"ok": True, "job_id": job_id}
+
+
+async def _charge_native_upload(user_id: UUID, job_id: str) -> None:
+    """Charge the publish price once, guarded by the job's charged column."""
+    from platform_api.dependencies import get_v3_billing_service
+    from platform_api.services.publish_pricing import POSTFORME_PUBLISH_OP
+
+    pool = get_db_pool()
+    try:
+        row = await pool.fetchrow(
+            "SELECT credits_charged_units, credit_ref_id FROM youtube_upload_jobs "
+            "WHERE id = $1::uuid",
+            job_id,
+        )
+        if row is None or int(row["credits_charged_units"] or 0) > 0:
+            return
+        charge = await get_v3_billing_service().charge(
+            user_id=user_id,
+            op=POSTFORME_PUBLISH_OP,
+            ref_id=f"youtube-upload:{job_id}",
+            product="desktop",
+        )
+        units = int(charge.get("amount_units") or 0)
+        await pool.execute(
+            "UPDATE youtube_upload_jobs SET credits_charged_units = $2, "
+            "credit_ref_id = $3, updated_at = NOW() WHERE id = $1::uuid "
+            "AND credits_charged_units = 0",
+            job_id,
+            units,
+            f"youtube-upload:{job_id}",
+        )
+    except Exception:
+        logger.warning("Could not charge native YouTube upload %s", job_id, exc_info=True)
 
 
 @router.post("/connect-sessions/{session_id}/select-channel", response_model=YouTubeConnectionResponse)

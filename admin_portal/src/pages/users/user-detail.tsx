@@ -101,7 +101,7 @@ const creditTopupSchema = z.object({
   amount: z
     .number({ invalid_type_error: 'Amount is required' })
     .refine((v) => v !== 0, 'Amount cannot be zero'),
-  reason: z.string().min(1, 'Reason is required').max(500),
+  reason: z.string().min(1, 'Reason is required').max(255, 'Reason must be 255 characters or fewer'),
 });
 
 type CreditTopupFormValues = z.infer<typeof creditTopupSchema>;
@@ -1479,7 +1479,8 @@ export default function UserDetailPage() {
             <DialogTitle>Top up credits</DialogTitle>
             <DialogDescription>
               Adjust wallet balance for {user.email}. Positive adds credits; negative deducts.
-              Applies immediately (admin-only, audit-logged).
+              Applies immediately (admin-only, audit-logged). Added credits are valid for 30
+              days, the same clock as a credit pack.
             </DialogDescription>
           </DialogHeader>
           <Form {...creditForm}>

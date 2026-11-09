@@ -102,7 +102,9 @@ export default function CreditHeader({ variant = 'compact' }: CreditHeaderProps)
   async function loadData() {
     try {
       const creditData = await fetchCreditBalance().catch(() => null);
-      setBalance(creditData);
+      // Keep the last good balance: a failed refresh must not blank the chip to
+      // "0 credits" right after a purchase adds credits to the wallet.
+      if (creditData) setBalance(creditData);
     } finally {
       setLoading(false);
     }

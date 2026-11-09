@@ -28,6 +28,7 @@ _DRAFT = "#A78BFA"
 _SUNO = "#38BDF8"
 _IMAGE = "#00C878"
 _VIDEO = "#14B8A6"
+_YOUTUBE = "#EF4444"
 _TOTAL = "#00C878"
 
 AI_STRUCTURE_SENTINEL = "__ai_structure__"
@@ -156,7 +157,11 @@ class AutomationCard(StudioPanel):
         self._auto_video = StudioCheckBox("Auto-Video")
         self._auto_merge = StudioCheckBox("Auto Merge")
         self._auto_reel = StudioCheckBox("Auto Reel")
-        self._auto_upload = StudioCheckBox("Auto-Upload")
+        self._auto_upload = StudioCheckBox("YouTube Upload")
+        self._auto_upload.setToolTip(
+            "Publish each merged video to YouTube. "
+            "Requires a connected channel; uploads are billed per video."
+        )
         self._auto_upload.setEnabled(False)
         self._auto_upload_enabled = False
         self._skip_existing = StudioCheckBox("Skip days with batches")
@@ -276,6 +281,7 @@ class AutomationCard(StudioPanel):
         self._suno_credits = QLabel("")
         self._image_credits = QLabel("")
         self._video_credits = QLabel("Later")
+        self._youtube_credits = QLabel("")
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(6)
@@ -285,6 +291,7 @@ class AutomationCard(StudioPanel):
             (_SUNO, "Suno", self._suno_credits, "PlanCreditSuno", False),
             (_IMAGE, "Image", self._image_credits, "PlanCreditImage", False),
             (_VIDEO, "Video/Merge", self._video_credits, "PlanCreditVideo", False),
+            (_YOUTUBE, "YouTube", self._youtube_credits, "PlanCreditYoutube", False),
         ):
             value.setObjectName(object_name)
             caption_label = QLabel(caption)
@@ -491,14 +498,22 @@ class AutomationCard(StudioPanel):
         self._auto_video.setChecked(auto_video_after_suno)
         self._auto_merge.setChecked(auto_merge_after_video)
         self._auto_reel.setChecked(auto_reel_after_video)
-        if self._auto_upload_enabled:
-            self._auto_upload.setChecked(auto_upload_youtube)
+        # Restore the saved value even while the toggle is disabled, so the
+        # preference survives a session without a connected channel.
+        self._auto_upload.setChecked(auto_upload_youtube)
 
     def set_auto_upload_enabled(self, enabled: bool) -> None:
+        # Only the widget's availability follows readiness. The saved setting is
+        # never cleared here: doing that silently lost the user's preference
+        # whenever the page loaded before a channel was connected.
         self._auto_upload_enabled = enabled
         self._auto_upload.setEnabled(enabled)
-        if not enabled:
-            self._auto_upload.setChecked(False)
+
+    def set_auto_upload_hint(self, hint: str) -> None:
+        """Explain why the YouTube Upload toggle is unavailable."""
+        base = "Publish each merged video to YouTube."
+        cleaned = str(hint or "").strip()
+        self._auto_upload.setToolTip(f"{base}\n{cleaned}" if cleaned else base)
 
     def automation_values(self) -> dict[str, bool]:
         return {
@@ -507,7 +522,7 @@ class AutomationCard(StudioPanel):
             "auto_video_after_suno": self._auto_video.isChecked(),
             "auto_merge_after_video": self._auto_merge.isChecked(),
             "auto_reel_after_video": self._auto_reel.isChecked(),
-            "auto_upload_youtube": self._auto_upload.isChecked() if self._auto_upload_enabled else False,
+            "auto_upload_youtube": self._auto_upload.isChecked(),
             "skip_existing_batches": self._skip_existing.isChecked(),
         }
 
@@ -539,6 +554,8 @@ class AutomationCard(StudioPanel):
         video_ops: int = 0,
         merge_ops: int = 0,
         video_credits: float | None = None,
+        upload_ops: int = 0,
+        upload_credits: float | None = 0.0,
     ) -> None:
         batch_label = "batch" if batches == 1 else "batches"
         self._batch_value.setText(f"{batches} {batch_label}")
@@ -558,6 +575,10 @@ class AutomationCard(StudioPanel):
         else:
             self._video_value.setText("Off")
             self._video_credits.setText("Off")
+        if upload_ops > 0:
+            self._youtube_credits.setText(format_plan_credits(upload_credits))
+        else:
+            self._youtube_credits.setText("Off")
         self._total_credits.setText(format_plan_credits(total_credits))
         self._draft_credits.setText(format_plan_credits(draft_credits))
         self._suno_credits.setText(format_plan_credits(suno_credits))

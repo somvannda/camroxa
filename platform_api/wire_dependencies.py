@@ -39,8 +39,6 @@ from platform_api.dependencies import (
     get_usage_tracking_repo,
     get_user_repo,
     get_user_service,
-    get_v2_subscription_service,
-    get_v2_credit_service,
     get_v2_topup_service,
 )
 
@@ -248,6 +246,26 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[youtube_get_service] = real_youtube_connection_service
 
+    # --- publish.py ---
+    from platform_api.routers.publish import (
+        _get_job_queue_repo as publish_get_job_queue,
+        _get_publish_repo as publish_get_repo,
+        _get_publish_service as publish_get_service,
+    )
+
+    async def real_publish_service():
+        from platform_api.dependencies import get_publish_service
+
+        return get_publish_service()
+
+    async def real_publish_repo():
+        from platform_api.dependencies import get_publish_repo
+
+        return get_publish_repo()
+
+    app.dependency_overrides[publish_get_service] = real_publish_service
+    app.dependency_overrides[publish_get_repo] = real_publish_repo
+
     # --- batch.py ---
     from platform_api.routers.batch import (
         _get_batch_service as batch_get_svc,
@@ -263,6 +281,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[batch_get_svc] = real_batch_service
     app.dependency_overrides[batch_get_job_queue] = real_job_queue_repo
     app.dependency_overrides[youtube_get_job_queue] = real_job_queue_repo
+    app.dependency_overrides[publish_get_job_queue] = real_job_queue_repo
 
     # --- image_jobs.py ---
     from platform_api.routers.image_jobs import (
@@ -581,7 +600,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
         return WebMusicService(
             get_db_pool(), 
             get_generation_service(),
-            credit_service=get_v2_credit_service(),
+            credit_service=None,
             ai_routing_service=get_ai_routing_service(),
             pricing_service=get_credit_pricing_service(),
             redis=get_redis(),
@@ -598,15 +617,6 @@ def wire_all_dependencies(app: FastAPI) -> None:
         return ContentLicenseService(get_db_pool(), redis=get_redis())
 
     app.dependency_overrides[lic_svc] = real_content_license_service
-
-    # --- v2_credits.py ---
-    from platform_api.routers.v2_credits import _get_credit_service as v2_credit_get_svc
-    from platform_api.dependencies import get_v2_credit_service
-
-    async def real_v2_credit_service():
-        return get_v2_credit_service()
-
-    app.dependency_overrides[v2_credit_get_svc] = real_v2_credit_service
 
     # --- v2_topups.py ---
     from platform_api.routers.v2_topups import _get_topup_service as v2_topup_get_svc

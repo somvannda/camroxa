@@ -116,7 +116,8 @@ async def _refund_web_music_generation_on_failure(
 ) -> None:
     """Return generation credits when a web music Suno task fails asynchronously."""
     from platform_api.models.products import WEB_MUSIC_CREDITS_PER_SONG
-    from platform_api.services.v2.credit_service import get_credit_service
+    from platform_api.repositories.credit_repo import CreditRepository
+    from platform_api.services.credit_units import CREDIT_SCALE
 
     prior = str(
         prior_status.value if hasattr(prior_status, "value") else prior_status or ""
@@ -133,12 +134,13 @@ async def _refund_web_music_generation_on_failure(
         return
 
     try:
-        credit_service = get_credit_service(pool)
-        await credit_service.refund_credits(
-            user_id,
-            WEB_MUSIC_CREDITS_PER_SONG,
-            "web_music_generation",
-            reference_id=str(task_id),
+        # One refund per (user, reason, task) — a duplicate callback is a no-op.
+        await CreditRepository(pool).refund_once(
+            UUID(user_id),
+            int(WEB_MUSIC_CREDITS_PER_SONG) * CREDIT_SCALE,
+            reason="web_music_generation_failed",
+            ref_id=str(task_id),
+            metadata={"source": "web_music", "op": "music", "billing": "v3"},
         )
         logger.info(
             "Refunded %s web music credits for failed task %s user=%s",
@@ -805,6 +807,7 @@ async def suno_callback(
                 song_id=UUID(str(song_id_value)),
                 batch_id=UUID(str(batch_id_value)),
                 status=persist_status,
+                task_id=UUID(str(task_id)) if task_id else None,
                 error_message=task_error_message,
             )
         except Exception as exc:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
@@ -112,6 +112,39 @@ class WebMusicQuotaResponse(BaseModel):
     queue_limit: int = 2
     queue_used: int = 0
     previews: WebMusicPreviewsResponse | None = None
+
+
+_QUOTA_INT_FIELDS = (
+    "limit",
+    "used",
+    "remaining",
+    "credits_remaining",
+    "credits_per_song",
+    "queue_limit",
+    "queue_used",
+    "daily_free_remaining",
+    "daily_free_limit",
+)
+
+
+def _coerce_quota_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Round quota counters to ints before response-model validation.
+
+    A fractional credit balance (prorated grants, refunds, legacy lots) makes
+    Pydantic reject ``int`` fields, which surfaced as a generic 500 on the
+    Create page. Rounding keeps the endpoint total instead of failing it.
+    """
+    cleaned = dict(payload)
+    for field in _QUOTA_INT_FIELDS:
+        value = cleaned.get(field)
+        if value is None:
+            continue
+        try:
+            cleaned[field] = int(round(float(value)))
+        except (TypeError, ValueError):
+            logger.warning("web-music /quota: non-numeric %s=%r replaced with 0", field, value)
+            cleaned[field] = 0
+    return cleaned
 
 
 class WebMusicPlaylistResponse(BaseModel):
@@ -1389,7 +1422,14 @@ async def download_studio_clip_wav(
 
 @router.get("/quota", response_model=WebMusicQuotaResponse)
 async def get_quota(ctx: CurrentUserDep, service: WebMusicServiceDep) -> WebMusicQuotaResponse:
-    return WebMusicQuotaResponse(**await service.usage_today(UUID(ctx.user_id)))
+    try:
+        payload = await service.usage_today(UUID(ctx.user_id))
+    except Exception:
+        # Log the account so an intermittent 500 is traceable instead of only
+        # showing the client a generic "An unexpected error occurred.".
+        logger.exception("web-music /quota failed user=%s", ctx.user_id)
+        raise
+    return WebMusicQuotaResponse(**_coerce_quota_payload(payload))
 
 
 @router.post("/generate-draft", response_model=WebMusicDraftResponse)

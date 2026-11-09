@@ -193,6 +193,10 @@ def run_includes_reel(
     count_match = re.search(r"reel\s+(\d+)\s*/\s*(\d+)", combined)
     if count_match is not None and int(count_match.group(1)) > 0:
         return True
+    # An explicit "Reel Missing" marker means this run has no reel branch, even
+    # though the merge column still reads "Reel pending" for the branch it skips.
+    if any(token in combined for token in ("reel missing", "reel n/a", "reel not applicable")):
+        return False
     if any(
         token in combined
         for token in (

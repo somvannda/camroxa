@@ -9,6 +9,7 @@ Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,8 @@ from platform_api.utils.upload_paths import resolve_upload_path, uploads_root, u
 # ---------------------------------------------------------------------------
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +353,28 @@ def _studio_credits_burned(units: int | None) -> float:
     return units_to_credits(abs(int(units or 0)))
 
 
+def _coerce_products(value: Any) -> list[str]:
+    """Normalise ``users.products`` into a list of product keys.
+
+    The column has been a text[], a JSON string and a JSON object across
+    releases. Response-model validation used to reject anything that was not a
+    list, which turned a profile read into a 500 for those accounts.
+    """
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            return [raw]
+    if isinstance(value, dict):
+        return [str(key) for key in value.keys()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if str(item).strip()]
+    return []
+
+
 def _user_to_response(
     user,
     credit_balance: int | float = 0,
@@ -376,11 +401,14 @@ def _user_to_response(
         if isinstance(credit_balance, int)
         else float(credit_balance)
     )
+    email = str(getattr(user, "email", "") or "")
+    display_name = str(getattr(user, "display_name", "") or "").strip() or email or "Listener"
+    created_at = getattr(user, "created_at", None) or datetime.utcnow()
     return UserProfileResponse(
         id=str(user.id),
-        email=user.email,
+        email=email,
         email_confirmed=bool(getattr(user, "email_confirmed", False)),
-        display_name=user.display_name,
+        display_name=display_name,
         avatar_url=avatar_url,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         status=user.status.value if hasattr(user.status, "value") else str(user.status),
@@ -398,10 +426,10 @@ def _user_to_response(
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
         desktop_access=desktop_access,
-        products=list(products or getattr(user, "products", None) or []),
+        products=_coerce_products(products or getattr(user, "products", None)),
         pending_verification_code=pending_verification_code,
         verification_code_expires_at=verification_code_expires_at,
-        created_at=user.created_at,
+        created_at=created_at,
         updated_at=getattr(user, "updated_at", None),
     )
 
@@ -429,11 +457,18 @@ async def get_me(
     pool = get_db_pool()
     user_id = UUID(ctx.user_id)
 
-    balance_row = await pool.fetchrow(
-        "SELECT balance FROM credit_wallets WHERE user_id = $1",
-        user_id,
-    )
-    credit_balance = int(balance_row["balance"] or 0) if balance_row else 0
+    # Everything from here on is optional enrichment. A single unhealthy lookup
+    # must never turn a valid session into a 500 — that is exactly how some
+    # accounts saw "An unexpected error occurred." immediately after signing in.
+    credit_balance = 0
+    try:
+        balance_row = await pool.fetchrow(
+            "SELECT balance FROM credit_wallets WHERE user_id = $1",
+            user_id,
+        )
+        credit_balance = int(balance_row["balance"] or 0) if balance_row else 0
+    except Exception:
+        logger.warning("GET /users/me wallet lookup failed for %s", user_id, exc_info=True)
 
     profile_allowance = None
     profile_addon_slots = 0
@@ -441,18 +476,35 @@ async def get_me(
     effective_quota_channels = None
     effective_profile_allowance = None
 
-    profile_row = await pool.fetchrow(
-        "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
-        user_id,
-    )
-    channel_profile_count = int(profile_row["cnt"] or 0) if profile_row else 0
+    channel_profile_count = 0
+    try:
+        profile_row = await pool.fetchrow(
+            "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
+            user_id,
+        )
+        channel_profile_count = int(profile_row["cnt"] or 0) if profile_row else 0
+    except Exception:
+        logger.warning(
+            "GET /users/me profile count failed for %s", user_id, exc_info=True
+        )
 
     from platform_api.repositories.license_repo import LicenseRepository
 
-    desktop_access = await LicenseRepository(pool=pool).has_paid_desktop_access(str(user_id))
+    desktop_access = False
+    try:
+        desktop_access = await LicenseRepository(pool=pool).has_paid_desktop_access(str(user_id))
+    except Exception:
+        logger.warning(
+            "GET /users/me entitlement check failed for %s", user_id, exc_info=True
+        )
     plan_name = "Pro" if desktop_access else "Free"
     onboarding_paid = desktop_access
-    avatar_url = await _fetch_avatar_url(pool, user_id)
+
+    avatar_url = None
+    try:
+        avatar_url = await _fetch_avatar_url(pool, user_id)
+    except Exception:
+        logger.warning("GET /users/me avatar lookup failed for %s", user_id, exc_info=True)
 
     return _user_to_response(
         user,

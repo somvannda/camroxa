@@ -7,6 +7,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   slai: 'SLAI',
   fal: 'FAL',
   kie: 'kie.ai',
+  postforme: 'Post for Me',
 };
 
 /** Display name for a provider id, falling back to the raw id. */

@@ -96,8 +96,9 @@ def test_progress_uses_studio_header_controls(qapp: QApplication) -> None:
 def test_error_banner_without_rows(qapp: QApplication) -> None:
     view = ProgressView(PlatformApi())
     view._on_failed("network")
-    assert not view._error_banner.isHidden()
-    assert view._error_banner._label.text() == ERROR_MESSAGE
+    # Feedback is floating (footer badge); the inline banner never pushes the table.
+    assert view._error_banner.isHidden()
+    assert view._progress_load_error == "network"
     assert view._rows_card._table.item(0, 0).text() == EMPTY_MESSAGE
 
 
@@ -107,7 +108,7 @@ def test_stale_data_on_error(qapp: QApplication) -> None:
     result = WorkflowLoadResult(response=ProgressListResponse(rows=[row]), runtime_by_key={})
     view._on_loaded(result)
     view._on_failed("network")
-    assert not view._error_banner.isHidden()
+    assert view._error_banner.isHidden()
     assert view._rows_card._table.rowCount() == 1
     assert view._stats_row._active_card._value.text() == "1"
 
@@ -448,8 +449,8 @@ def test_stage_column_uses_compact_badge_and_progress_bar(qapp: QApplication) ->
     assert card._table.columnWidth(_COL_STAGE) == _STAGE_COLUMN_WIDTH
     assert card._table.columnWidth(_COL_EXPORT) == _EXPORT_COLUMN_WIDTH
     assert card._table.columnWidth(_COL_MERGE) == _MERGE_COLUMN_WIDTH
-    assert "YouTube" not in TABLE_HEADERS
-    assert card._table.columnCount() == 10
+    assert "YouTube" in TABLE_HEADERS
+    assert card._table.columnCount() == 11
     assert card._table.rowHeight(0) == _ROW_HEIGHT
     from PySide6.QtWidgets import QProgressBar
 
@@ -544,3 +545,17 @@ def test_detail_completed_hides_waiting_copy(qapp: QApplication) -> None:
     assert card._context_title.text() == "COMPLETED"
     assert card._notes.isHidden()
     assert "songs" in card._completed_summary.text()
+
+
+def test_elapsed_upload_label_uses_time_not_a_fake_percentage() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from features.progress.widgets.operational_rows_card import _elapsed_label
+
+    assert _elapsed_label(None) == ""
+    assert _elapsed_label("not-a-date") == ""
+
+    now = datetime.now(timezone.utc)
+    assert _elapsed_label(now - timedelta(seconds=20)) == "<1m"
+    assert _elapsed_label(now - timedelta(minutes=12)) == "12m"
+    assert _elapsed_label(now - timedelta(minutes=125)) == "2h 5m"

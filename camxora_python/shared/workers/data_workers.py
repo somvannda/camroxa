@@ -6,6 +6,8 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from PySide6.QtCore import QThread, Signal
 
@@ -18,11 +20,16 @@ from shared.lib.video_runtime_inspection import (
     build_video_run_inspection_map,
 )
 from shared.models.platform import DashboardOverview, ProgressFilters, ProgressListResponse
+from shared.models.publishing import (
+    CreatePublishJobRequest,
+    StartPublishConnectionResponse,
+)
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
 from shared.services.video_workspace_service import get_video_workspace_service
 
 if TYPE_CHECKING:
+    from shared.lib.upload_resume import UploadState
     from shared.models.platform import PendingMusicDownloadTarget
     from shared.services.workspace_cache import WorkspaceCache
 
@@ -1032,6 +1039,7 @@ class MusicWorkspacePayload:
     operation_costs: object
     language_options: list
     youtube_connections: list
+    publish_accounts: list = field(default_factory=list)
     suno_blocklist: object | None = None
 
 
@@ -1050,7 +1058,7 @@ class MusicWorkspaceWorker(QThread):
         previous_timeout = self._api._client._default_timeout
         self._api._client._default_timeout = self.WORKSPACE_TIMEOUT
         try:
-            with ThreadPoolExecutor(max_workers=8) as pool:
+            with ThreadPoolExecutor(max_workers=9) as pool:
                 future_profiles = pool.submit(self._api.list_profiles)
                 future_settings = pool.submit(self._api.get_settings)
                 future_descriptions = pool.submit(self._api.list_prompt_description_names)
@@ -1060,6 +1068,7 @@ class MusicWorkspaceWorker(QThread):
                 future_costs = pool.submit(self._fetch_operation_costs)
                 future_languages = pool.submit(self._fetch_language_options)
                 future_youtube = pool.submit(self._api.list_youtube_connections)
+                future_publish = pool.submit(self._fetch_publish_accounts)
                 future_blocklist = pool.submit(self._fetch_suno_blocklist)
                 profiles = future_profiles.result()
                 settings = future_settings.result()
@@ -1070,6 +1079,7 @@ class MusicWorkspaceWorker(QThread):
                 operation_costs = future_costs.result()
                 language_options = future_languages.result()
                 youtube_connections = future_youtube.result()
+                publish_accounts = future_publish.result()
                 suno_blocklist = future_blocklist.result()
             self.succeeded.emit(
                 MusicWorkspacePayload(
@@ -1082,6 +1092,7 @@ class MusicWorkspaceWorker(QThread):
                     operation_costs=operation_costs,
                     language_options=language_options,
                     youtube_connections=youtube_connections,
+                    publish_accounts=publish_accounts,
                     suno_blocklist=suno_blocklist,
                 )
             )
@@ -1099,6 +1110,12 @@ class MusicWorkspaceWorker(QThread):
             return self._api.get_operation_costs()
         except Exception:
             return OperationCostsResponse(items=[])
+
+    def _fetch_publish_accounts(self):
+        try:
+            return self._api.list_publish_accounts()
+        except Exception:
+            return []
 
     def _fetch_language_options(self):
         from shared.lib.music_settings import DEFAULT_LANGUAGE_OPTIONS, language_options_from_response
@@ -1426,13 +1443,9 @@ class CreateBatchesWorker(QThread):
                 self.succeeded.emit(result)
                 return
             if result.failed:
-                from shared.lib.music_batch_plan import format_failed_create_slots
+                from shared.lib.music_batch_plan import format_failed_create_message
 
-                suffix = "s" if result.failed_count != 1 else ""
-                detail = format_failed_create_slots(result.failed)
-                self.failed.emit(
-                    f"Could not create {result.failed_count} batch run{suffix}: {detail}"
-                )
+                self.failed.emit(format_failed_create_message(result))
                 return
             self.failed.emit("No batch runs to create.")
         except PlatformApiError as exc:
@@ -2701,6 +2714,820 @@ class YouTubeConnectionsWorker(QThread):
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Failed to load YouTube connections.")
+
+
+class PublishAccountsWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, profile_id: str | None = None, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = profile_id
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._api.list_publish_accounts(self._profile_id))
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to load publishing accounts.")
+
+
+class PublishSyncAccountsWorker(QThread):
+    """Pull provider-linked accounts into our DB (POST /publish/accounts/sync).
+
+    Post for Me reports upload events by webhook but **not** account linking, so
+    the account only appears after this sync runs. The connect flow used to rely
+    on the user clicking Connect again; polling now syncs instead of listing.
+    """
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        profile_id: str,
+        platform: str = "youtube",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = profile_id
+        self._platform = platform
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(
+                self._api.sync_publish_accounts(self._profile_id, self._platform)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to sync publishing accounts.")
+
+
+class PublishConnectionWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, profile_id: str, platform: str = "youtube", parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = profile_id
+        self._platform = platform
+
+    def run(self) -> None:
+        try:
+            linked = self._api.sync_publish_accounts(self._profile_id, self._platform)
+            if linked:
+                self.succeeded.emit(
+                    StartPublishConnectionResponse(
+                        session_id="",
+                        auth_url="",
+                        status="connected",
+                    )
+                )
+                return
+            self.succeeded.emit(
+                self._api.start_publish_connection(self._profile_id, self._platform)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to start the publishing connection.")
+
+
+class PublishDisconnectWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, account_id: str, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._account_id = account_id
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._api.disconnect_publish_account(self._account_id))
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to disconnect the publishing account.")
+
+
+class PublishJobsWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        batch_id: str | None = None,
+        status: str | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._batch_id = batch_id
+        self._status = status
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(
+                self._api.list_publish_jobs(self._batch_id, self._status)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to load publishing jobs.")
+
+
+class _ProgressReader:
+    """File wrapper that reports bytes sent to urllib while streaming a PUT."""
+
+    def __init__(self, path: str, on_progress) -> None:
+        self._path = Path(path)
+        self._fh = self._path.open("rb")
+        self._total = max(1, self._path.stat().st_size)
+        self._sent = 0
+        self._on_progress = on_progress
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._fh.read(size if size and size > 0 else 1024 * 1024)
+        if chunk:
+            self._sent += len(chunk)
+            self._on_progress(self._sent, self._total)
+        return chunk
+
+    def __len__(self) -> int:
+        return self._total
+
+    def close(self) -> None:
+        try:
+            self._fh.close()
+        except Exception:
+            pass
+
+
+# Originals above this size go through our storage (multipart) instead of a single PUT.
+URL_UPLOAD_THRESHOLD_BYTES = 200 * 1024 * 1024
+
+
+class YouTubeDirectUploadWorker(QThread):
+    """Upload one merged video straight to YouTube with a short-lived token."""
+
+    progress = Signal(object, object)
+    status_changed = Signal(str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        profile_id: str,
+        batch_id: str,
+        role: str,
+        merged_path: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = str(profile_id or "").strip()
+        self._batch_id = str(batch_id or "").strip()
+        self._role = str(role or "OK").strip().upper() or "OK"
+        self._merged_path = str(merged_path or "").strip()
+        self._activity_key = ""
+
+    def run(self) -> None:
+        from shared.lib import youtube_direct as yt
+        from shared.lib.publish_activity import (
+            begin,
+            finish,
+            mark_provider,
+            progress as activity_progress,
+            slot_key,
+        )
+
+        key = slot_key(self._batch_id, self._profile_id, self._role)
+        self._activity_key = key
+        path = Path(self._merged_path)
+        try:
+            if not path.is_file():
+                raise RuntimeError("The merged video is not on disk any more.")
+            begin(key, label=path.name, total=path.stat().st_size, worker=self)
+
+            self.status_changed.emit("Checking the connected channel…")
+            profiles = self._api.list_profiles()
+            profile = next(
+                (item for item in profiles if str(item.id) == self._profile_id), None
+            )
+            if profile is None:
+                raise RuntimeError("The channel profile for this upload was not found.")
+            meta = yt.build_metadata(profile, path)
+            self.status_changed.emit(f"Preparing “{meta['title']}”…")
+
+            try:
+                quota = self._api.get_youtube_quota()
+            except Exception:
+                quota = {}
+            if int(quota.get("remaining", 1) or 0) <= 0:
+                raise RuntimeError(
+                    f"Daily YouTube quota reached ({quota.get('used', '?')}/"
+                    f"{quota.get('limit', '?')} uploads today) — uploads resume "
+                    "tomorrow, or connect your own Google app for more."
+                )
+
+            token_data = self._api.issue_youtube_access_token(self._profile_id)
+            access_token = str(token_data.get("access_token") or "")
+            if not access_token:
+                raise RuntimeError("YouTube did not return an access token. Reconnect the channel.")
+
+            session_url = yt.start_session(access_token, meta)
+            self.status_changed.emit("Uploading to YouTube…")
+
+            def _on_progress(sent: int, total: int) -> None:
+                activity_progress(key, sent, total)
+                self.progress.emit(sent, total)
+                percent = int(sent * 100 / max(total, 1))
+                self.status_changed.emit(
+                    f"Uploading to YouTube… {percent}% "
+                    f"({yt.human_bytes(sent)} / {yt.human_bytes(total)})"
+                )
+
+            result = yt.upload_file(
+                session_url,
+                path,
+                on_progress=_on_progress,
+                is_cancelled=self.isInterruptionRequested,
+            )
+            video_id = str(result.get("id") or "")
+            if not video_id:
+                raise RuntimeError("YouTube returned no video id.")
+            url = yt.video_url(video_id)
+            mark_provider(key)
+
+            if meta.get("thumbnail"):
+                warning = yt.set_thumbnail(access_token, video_id, Path(meta["thumbnail"]))
+                if warning:
+                    self.status_changed.emit(warning)
+            if meta.get("playlist"):
+                warning = yt.add_to_playlist(access_token, meta["playlist"], video_id)
+                if warning:
+                    self.status_changed.emit(warning)
+
+            self.status_changed.emit("Recording the result…")
+            # The video is already on YouTube: losing the bookkeeping write
+            # would leave it uncharged and missing from Progress, so retry it.
+            from shared.lib.publish_retry import backoff_for, should_retry
+
+            import time as _time
+
+            report_attempt = 1
+            while True:
+                try:
+                    self._api.report_youtube_upload(
+                        batch_id=self._batch_id,
+                        profile_id=self._profile_id,
+                        role=self._role,
+                        video_id=video_id,
+                        video_url=url,
+                        title=meta["title"],
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001 - retried below
+                    status = getattr(exc, "status", None)
+                    if report_attempt >= 3 or not should_retry(status, str(exc)):
+                        raise
+                    report_attempt += 1
+                    _time.sleep(backoff_for(report_attempt - 1))
+            self.succeeded.emit(
+                {
+                    "video_id": video_id,
+                    "url": url,
+                    "title": meta["title"],
+                    "privacy": meta["visibility"],
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - reported to the user
+            if self.isInterruptionRequested():
+                self.failed.emit("Upload cancelled.")
+            else:
+                self.failed.emit(str(exc) or "YouTube upload failed.")
+        finally:
+            finish(key)
+
+
+class PublishUploadWorker(QThread):
+    """Create a publish job, upload the media, then charge + create the post."""
+
+    # (bytes sent, total bytes). `object` on purpose: merged videos are often
+    # larger than 2 GiB and Qt's `int` is 32-bit -> OverflowError on the first
+    # emit, before any byte was sent (the job then sat in pending_upload).
+    progress = Signal(object, object)
+    status_changed = Signal(str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        request_payload: CreatePublishJobRequest | None = None,
+        *,
+        auto_context: dict[str, object] | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._request = request_payload
+        self._auto_context = dict(auto_context or {})
+        self._activity_key = ""
+        self.finished.connect(self._clear_activity)
+
+    def _activity_slot(self) -> str:
+        from shared.lib.publish_activity import slot_key
+
+        request = self._request
+        context = self._auto_context
+        batch = context.get("batch_id") or getattr(request, "batch_id", "") or ""
+        profile = context.get("profile_id") or getattr(request, "profile_id", "") or ""
+        role = context.get("role") or getattr(request, "role", "OK") or "OK"
+        return slot_key(batch, profile, role)
+
+    def _clear_activity(self) -> None:
+        if not self._activity_key:
+            return
+        from shared.lib.publish_activity import finish
+
+        finish(self._activity_key)
+        self._activity_key = ""
+
+    def run(self) -> None:
+        step = "quote"
+        try:
+            request = self._request or self._build_auto_request()
+            self._request = request
+            from shared.lib.publish_activity import begin, mark_provider, progress
+
+            self._activity_key = self._activity_slot()
+            try:
+                size_hint = Path(str(request.file_path or "")).stat().st_size
+            except OSError:
+                size_hint = 0
+            begin(
+                self._activity_key,
+                label=str(request.file_name or ""),
+                total=size_hint,
+                worker=self,
+            )
+            self.progress.connect(
+                lambda sent, total: progress(self._activity_key, sent, total)
+            )
+            step = "quote"
+            self.status_changed.emit("Checking publishing credits…")
+            quote = self._api.get_publish_quote()
+            if not quote.available:
+                raise RuntimeError(
+                    f"Not enough credits: this upload costs {quote.credits_per_upload:g} "
+                    f"and your balance is {quote.balance:g}."
+                )
+            step = "create job"
+            self.status_changed.emit("Creating upload job…")
+            file_path = str(request.file_path or "").strip()
+            from shared.lib.publish_retry import backoff_for, should_retry
+
+            attempt = 1
+            while True:
+                try:
+                    return self._create_job_with_retries(
+                        request, file_path, step, attempt
+                    )
+                except PlatformApiError as exc:
+                    if attempt >= 3 or not should_retry(getattr(exc, "status", None), str(exc)):
+                        raise
+                    attempt += 1
+                    wait = backoff_for(attempt - 1)
+                    self.status_changed.emit(
+                        f"Publishing service busy — retrying in {wait:.0f}s (attempt {attempt}/3)…"
+                    )
+                    import time as _time
+
+                    _time.sleep(wait)
+            size_bytes = Path(file_path).stat().st_size if file_path and Path(file_path).is_file() else 0
+            media_url = ""
+            if size_bytes >= URL_UPLOAD_THRESHOLD_BYTES:
+                # Large original: upload it to our storage resumably and let the
+                # provider fetch it (no re-encoding, no single-PUT size wall).
+                media_url = self._upload_via_storage(request, file_path, size_bytes)
+                request = request.model_copy(update={"media_url": media_url})
+            job = self._api.create_publish_job(request)
+            if job.upload_url:
+                step = "upload video"
+                self._put(job.upload_url, file_path, "video/mp4")
+            if job.thumbnail_upload_url and request.thumbnail_path:
+                step = "upload thumbnail"
+                self.status_changed.emit("Uploading thumbnail…")
+                self._put(
+                    job.thumbnail_upload_url,
+                    request.thumbnail_path,
+                    _image_mime(request.thumbnail_path),
+                )
+            step = "finalize"
+            self.status_changed.emit("Finalizing upload…")
+            result = self._api.complete_publish_job(job.job_uid, request.file_checksum)
+            self.succeeded.emit(result)
+        except PlatformApiError as exc:
+            detail = str(exc).strip()
+            self.failed.emit(f"{step}: {detail}" if detail else f"{step}: request rejected.")
+        except Exception as exc:
+            detail = str(exc).strip()
+            label = type(exc).__name__
+            message = f"{step}: {detail}" if detail else f"{step}: {label}"
+            try:
+                from shared.services.app_logger import log_error
+
+                log_error(f"YouTube upload failed at {message}", category="export", exc=exc)
+            except Exception:
+                pass
+            self.failed.emit(message)
+
+    def _create_job_with_retries(
+        self,
+        request: CreatePublishJobRequest,
+        file_path: str,
+        step: str,
+        attempt: int,
+    ) -> None:
+        """Create (and, for URL media, finalise) the publish job, then report."""
+        size_bytes = (
+            Path(file_path).stat().st_size
+            if file_path and Path(file_path).is_file()
+            else 0
+        )
+        media_url = ""
+        if size_bytes >= URL_UPLOAD_THRESHOLD_BYTES:
+            media_url = self._reuse_server_media(request, size_bytes)
+            if media_url:
+                self.status_changed.emit(
+                    "Using the copy already in CAMXORA storage for this video…"
+                )
+            else:
+                media_url = self._upload_via_storage(request, file_path, size_bytes)
+            request = request.model_copy(update={"media_url": media_url})
+        job = self._api.create_publish_job(request)
+        from shared.lib.publish_activity import mark_provider
+
+        if bool(getattr(job, "existing", False)):
+            # The server already has a job for this batch/channel/role: never
+            # open a second transfer, a second charge, or a second YouTube post.
+            if str(job.status) == "success":
+                self.status_changed.emit(
+                    "This video is already on YouTube — nothing was uploaded again."
+                )
+            else:
+                self.status_changed.emit(
+                    "This video is already uploading to YouTube. "
+                    "No second upload was started."
+                )
+            try:
+                current = self._api.get_publish_job(job.job_uid)
+            except Exception:
+                current = None
+            if current is not None:
+                self.succeeded.emit(current)
+            mark_provider(self._activity_key)
+            return
+        if job.upload_url:
+            self.status_changed.emit("Uploading video…")
+            self._put(job.upload_url, file_path, "video/mp4")
+        else:
+            # Media was hosted by us; the server already handed it to the provider.
+            mark_provider(self._activity_key)
+        if job.thumbnail_upload_url and request.thumbnail_path:
+            self.status_changed.emit("Uploading thumbnail…")
+            self._put(
+                job.thumbnail_upload_url,
+                request.thumbnail_path,
+                _image_mime(request.thumbnail_path),
+            )
+        self.status_changed.emit("Finalizing upload…")
+        result = self._api.complete_publish_job(job.job_uid, request.file_checksum)
+        mark_provider(self._activity_key)
+        self.succeeded.emit(result)
+
+    def _reuse_server_media(self, request: CreatePublishJobRequest, size_bytes: int) -> str:
+        """A hosted original the server still holds for this slot, or ''.
+
+        The local cache only knows files on this machine: after a re-merge (new
+        mtime), a reinstall, or on another PC it misses while the server still
+        has the exact bytes for this batch/role. Asking the server is what stops
+        a retry from resending several GB.
+        """
+        batch_id = str(getattr(request, "batch_id", "") or "").strip()
+        if not batch_id:
+            return ""
+        role = str(getattr(request, "role", "OK") or "OK").strip().upper() or "OK"
+        try:
+            data = self._api.find_publish_media(
+                batch_id=batch_id, role=role, size_bytes=size_bytes
+            )
+        except Exception:
+            return ""
+        return str((data or {}).get("media_url") or "").strip()
+
+    def _upload_via_storage(self, request: CreatePublishJobRequest, file_path: str, size_bytes: int) -> str:
+        """Upload the original file to B2 in parts and return the media URL."""
+        import time
+
+        from shared.lib.publish_asset_cache import lookup_media_url, store_media_url
+        from shared.lib.upload_resume import clear_state, load_state
+
+        try:
+            stat = Path(file_path).stat()
+        except OSError:
+            stat = None
+        now = time.time()
+        if stat is not None:
+            cached = lookup_media_url(
+                file_path, size_bytes=size_bytes, mtime=stat.st_mtime, now=now
+            )
+            if cached:
+                self.status_changed.emit("Using the copy already uploaded to CAMXORA storage…")
+                return cached
+
+        state = None
+        if stat is not None:
+            state = load_state(
+                file_path,
+                size_bytes=size_bytes,
+                mtime=stat.st_mtime,
+                now=time.time(),
+            )
+        if state is not None:
+            try:
+                media_url = self._stream_parts(request, file_path, size_bytes, stat, state)
+            except Exception:
+                if self.isInterruptionRequested():
+                    raise
+                # The stored multipart upload is gone (expired or aborted): a
+                # clean one is the only way forward, and it resends the parts.
+                clear_state(file_path)
+                self.status_changed.emit(
+                    "The earlier upload could not be resumed — starting it again…"
+                )
+                media_url = self._stream_parts(request, file_path, size_bytes, stat, None)
+        else:
+            media_url = self._stream_parts(request, file_path, size_bytes, stat, None)
+
+        if not media_url:
+            raise RuntimeError("storage did not return a media URL")
+        if stat is not None:
+            store_media_url(
+                file_path,
+                size_bytes=size_bytes,
+                mtime=stat.st_mtime,
+                media_url=media_url,
+                now=time.time(),
+            )
+        self.status_changed.emit("Upload complete — sending to the publisher…")
+        return media_url
+
+    def _stream_parts(
+        self,
+        request: CreatePublishJobRequest,
+        file_path: str,
+        size_bytes: int,
+        stat: object | None,
+        state: UploadState | None,
+    ) -> str:
+        """Send the parts a resumed upload still needs (or all of them) and complete it."""
+        import time
+
+        from shared.lib.upload_resume import (
+            UPLOAD_STATE_TTL_SECONDS,
+            UploadState,
+            clear_state,
+            save_state,
+        )
+
+        urls: dict[int, str] = {}
+        if state is not None:
+            key = state.key
+            upload_id = state.upload_id
+            part_size = state.part_size
+            part_count = state.part_count
+            completed = dict(state.parts)
+            self.status_changed.emit(
+                f"Resuming upload — {len(completed)}/{part_count} parts were already sent…"
+            )
+        else:
+            init = self._api.create_publish_upload(
+                file_name=request.file_name or Path(file_path).name,
+                content_type="video/mp4",
+                size_bytes=size_bytes,
+                first_part_count=10,
+            )
+            key = str(init.get("key") or "").strip()
+            upload_id = str(init.get("upload_id") or "").strip()
+            part_size = int(init.get("part_size") or 0)
+            part_count = int(init.get("part_count") or 0)
+            if not key or not upload_id or part_size <= 0 or part_count <= 0:
+                raise RuntimeError("storage did not return a usable multipart upload")
+            urls = {
+                int(part.get("part_number") or 0): str(part.get("url") or "")
+                for part in (init.get("parts") or [])
+                if isinstance(part, dict)
+            }
+            completed = {}
+
+        def part_length(number: int) -> int:
+            offset = (number - 1) * part_size
+            return max(0, min(part_size, size_bytes - offset))
+
+        def persist(parts: dict[int, str]) -> None:
+            # Remember which parts landed so a crash resumes instead of restarting.
+            if stat is None:
+                return
+            save_state(
+                file_path,
+                size_bytes=size_bytes,
+                mtime=float(getattr(stat, "st_mtime", 0.0) or 0.0),
+                state=UploadState(
+                    key=key,
+                    upload_id=upload_id,
+                    part_size=part_size,
+                    part_count=part_count,
+                    parts=dict(parts),
+                    expires_at=0.0,
+                ),
+                now=time.time(),
+                ttl_seconds=UPLOAD_STATE_TTL_SECONDS,
+            )
+
+        persist(completed)
+        sent = sum(part_length(number) for number in completed)
+        if sent:
+            self.progress.emit(sent, size_bytes)
+
+        pending = [number for number in range(1, part_count + 1) if number not in completed]
+        for number in pending:
+            if self.isInterruptionRequested():
+                try:
+                    self._api.abort_publish_upload(key=key, upload_id=upload_id)
+                except Exception:
+                    pass
+                clear_state(file_path)
+                raise RuntimeError("Upload cancelled.")
+            url = urls.get(number)
+            if not url:
+                window = [item for item in pending if item >= number][:10]
+                signed = self._api.sign_publish_upload_parts(
+                    key=key, upload_id=upload_id, part_numbers=window
+                )
+                for part in signed:
+                    urls[int(part.get("part_number") or 0)] = str(part.get("url") or "")
+                url = urls.get(number, "")
+            if not url:
+                raise RuntimeError(f"missing upload URL for part {number}")
+            offset = (number - 1) * part_size
+            length = part_length(number)
+            etag = self._put_part(url, file_path, offset, length)
+            completed[number] = etag
+            persist(completed)
+            sent += length
+            self.progress.emit(sent, size_bytes)
+            self.status_changed.emit(
+                f"Uploading to CAMXORA storage… {int(sent * 100 / max(size_bytes, 1))}% "
+                f"({sent / 1048576:.0f} / {size_bytes / 1048576:.0f} MB)"
+            )
+
+        parts = [{"part_number": number, "etag": completed[number]} for number in sorted(completed)]
+        media_url = self._api.complete_publish_upload(
+            key=key, upload_id=upload_id, parts=parts
+        )
+        clear_state(file_path)
+        return str(media_url or "")
+
+    def _put_part(self, url: str, path: str, offset: int, length: int) -> str:
+        """PUT one 16 MB slice and return its ETag (retries twice)."""
+        with open(path, "rb") as handle:
+            handle.seek(offset)
+            payload = handle.read(length)
+        last: Exception | None = None
+        for _attempt in range(3):
+            request = urllib_request.Request(
+                url,
+                data=payload,
+                method="PUT",
+                headers={"Content-Type": "video/mp4", "Content-Length": str(len(payload))},
+            )
+            try:
+                with urllib_request.urlopen(request, timeout=600) as response:
+                    etag = str(response.headers.get("ETag") or "").strip().strip('"')
+                    if not etag:
+                        raise RuntimeError("storage did not return an ETag for the part")
+                    return etag
+            except Exception as exc:  # noqa: BLE001 - retried below
+                last = exc
+        raise RuntimeError(f"part upload failed: {type(last).__name__}: {last}")
+
+    def _build_auto_request(self) -> CreatePublishJobRequest:
+        profile_id = str(self._auto_context.get("profile_id") or "").strip()
+        merged_path = str(self._auto_context.get("merged_path") or "").strip()
+        if not profile_id:
+            raise RuntimeError("Auto-publish is missing the channel profile.")
+        if not merged_path:
+            raise RuntimeError("Auto-publish is missing the merged video path.")
+        profiles = self._api.list_profiles()
+        profile = next((item for item in profiles if str(item.id) == profile_id), None)
+        if profile is None:
+            raise RuntimeError("The channel profile for this upload was not found.")
+        config = dict(getattr(profile, "youtube_config", None) or {})
+        run_dir = str(self._auto_context.get("run_dir") or "").strip()
+        fallback_title = Path(run_dir).name or Path(merged_path).stem or str(profile.name or "CAMXORA")
+        title_template = str(config.get("title_template") or "{title}").strip() or "{title}"
+        description_template = str(config.get("description_template") or "").strip()
+        title = _render_template(title_template, fallback_title)[:100].strip() or fallback_title[:100]
+        description = _render_template(description_template, fallback_title).strip()
+        tags = config.get("tags")
+        if isinstance(tags, str):
+            tags_list = [part.strip() for part in tags.split(",") if part.strip()]
+        elif isinstance(tags, list):
+            tags_list = [str(part).strip() for part in tags if str(part).strip()]
+        else:
+            tags_list = []
+        visibility = str(config.get("visibility") or "private").strip().lower()
+        return CreatePublishJobRequest(
+            profile_id=profile_id,
+            batch_id=str(self._auto_context.get("batch_id") or "").strip() or None,
+            role=str(self._auto_context.get("role") or "OK").strip().upper() or "OK",
+            title=title,
+            description=description or None,
+            tags=tags_list,
+            privacy_status=visibility,
+            publish_at=str(config.get("publish_at") or "").strip() or None,
+            made_for_kids=bool(config.get("made_for_kids") or False),
+            contains_synthetic_media=bool(config.get("ai_use") or False),
+            file_name=Path(merged_path).name,
+            file_size_bytes=Path(merged_path).stat().st_size if Path(merged_path).is_file() else None,
+            file_path=merged_path,
+        )
+
+    def _put(self, upload_url: str, path: str, content_type: str) -> None:
+        target = str(path or "").strip()
+        if not target:
+            raise RuntimeError("Missing local file for upload.")
+        if not Path(target).is_file():
+            raise RuntimeError(f"Upload file not found: {target}")
+        size = Path(target).stat().st_size
+        reader = _ProgressReader(target, self.progress.emit)
+        request = urllib_request.Request(
+            upload_url,
+            data=reader,
+            method="PUT",
+            headers={
+                "Content-Type": content_type,
+                "Content-Length": str(size),
+            },
+        )
+        try:
+            with urllib_request.urlopen(request, timeout=1800) as response:
+                status = int(getattr(response, "status", 200) or 200)
+                if status >= 300:
+                    raise RuntimeError(f"Upload failed with HTTP {status}.")
+        except urllib_error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")[:500]
+            raise RuntimeError(f"Upload failed with HTTP {exc.code}: {body}") from exc
+        except TimeoutError as exc:
+            sent_mb = reader._sent / (1024 * 1024)
+            total_mb = size / (1024 * 1024)
+            raise RuntimeError(
+                f"Upload timed out after 30 min ({sent_mb:.1f} of {total_mb:.1f} MB sent). "
+                "Check your connection and try again."
+            ) from exc
+        except urllib_error.URLError as exc:
+            raise RuntimeError(f"Upload failed: {exc.reason}") from exc
+        except OSError as exc:
+            raise RuntimeError(
+                f"Upload interrupted: {type(exc).__name__}: {str(exc).strip() or 'connection closed'}"
+            ) from exc
+        finally:
+            reader.close()
+
+
+def _image_mime(path: str) -> str:
+    return "image/png" if Path(path).suffix.lower() == ".png" else "image/jpeg"
+
+
+def _render_template(template: str, value: str) -> str:
+    text = str(template or "").strip()
+    if not text:
+        return value
+    for token in ("{title}", "{album}", "{name}"):
+        text = text.replace(token, value)
+    return text
 
 
 class ImageSamplePacksWorker(QThread):

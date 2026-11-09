@@ -31,6 +31,7 @@ import {
   ListOrdered,
   Activity,
   Wallet,
+  AlertTriangle,
 } from 'lucide-react';
 import { Mail } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -79,6 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Usage', path: '/usage', icon: BarChart3 },
       { label: 'User Spent', path: '/user-spent', icon: Wallet },
       { label: 'Finance', path: '/finance', icon: DollarSign },
+      { label: 'Failed Refunds', path: '/failed-refunds', icon: AlertTriangle },
     ],
   },
   {

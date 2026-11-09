@@ -124,7 +124,46 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     log "Restoring musicapi checkout from ${REPO_BACKUP}..."
     mv "${REPO_BACKUP}/musicapi" "${REPO_DIR}/musicapi"
   fi
+  # The user portal is deployed from a separate checkout that is not always
+  # present in the platform tarball. Reuse the last successful build instead
+  # of rebuilding it during platform-only deploys.
+  if [[ ! -f "${REPO_DIR}/user_portal/.next/BUILD_ID" ]]; then
+    for candidate in $(ls -dt "${DEPLOY_ROOT}"/repo.bak.* 2>/dev/null); do
+      if [[ -f "${candidate}/user_portal/.next/BUILD_ID" ]]; then
+        log "Restoring user portal build from ${candidate}..."
+        mkdir -p "${REPO_DIR}/user_portal"
+        cp -a "${candidate}/user_portal/.next" "${REPO_DIR}/user_portal/.next"
+        if [[ -d "${candidate}/user_portal/node_modules" && ! -d "${REPO_DIR}/user_portal/node_modules" ]]; then
+          cp -a "${candidate}/user_portal/node_modules" "${REPO_DIR}/user_portal/node_modules"
+        fi
+        break
+      fi
+    done
+  fi
   chown -R camxora:camxora "${REPO_DIR}"
+
+  # A deploy must land exactly the commit it was built from. The archive ships
+  # .deploy-manifest.json (sha256 per file); verify it before any build or
+  # restart, then delete files the previous deploy shipped that this one does
+  # not, so a retired module cannot linger and shadow the new code.
+  if [[ ! -f "${REPO_DIR}/.deploy-manifest.json" ]]; then
+    log "ERROR: source archive has no .deploy-manifest.json; refusing to deploy unverifiable code"
+    exit 1
+  fi
+  if [[ ! -f /tmp/camxora-verify-manifest.py ]]; then
+    log "ERROR: verifier missing on the server (/tmp/camxora-verify-manifest.py)"
+    exit 1
+  fi
+  log "Verifying deployed source against .deploy-manifest.json..."
+  VERIFY_ARGS=(--repo "${REPO_DIR}" --manifest "${REPO_DIR}/.deploy-manifest.json")
+  if [[ -n "${REPO_BACKUP}" && -f "${REPO_BACKUP}/.deploy-manifest.json" ]]; then
+    VERIFY_ARGS+=(--prev-manifest "${REPO_BACKUP}/.deploy-manifest.json")
+  fi
+  python3 /tmp/camxora-verify-manifest.py "${VERIFY_ARGS[@]}" || {
+    log "ERROR: deployed source failed manifest verification; aborting before builds and restarts"
+    exit 1
+  }
+  chown camxora:camxora "${REPO_DIR}/.deploy-manifest.json" 2>/dev/null || true
 elif [[ ! -d "${REPO_DIR}/.git" ]]; then
   log "Cloning repository..."
   sudo -u camxora -H git clone --branch "${GIT_BRANCH}" "${CLONE_URL}" "${REPO_DIR}"
@@ -166,6 +205,11 @@ PLATFORM_CHMABA_API_KEY=${PLATFORM_CHMABA_API_KEY:-}
 PLATFORM_CHMABA_STORE_ID=${PLATFORM_CHMABA_STORE_ID:-}
 PLATFORM_CHMABA_WEBHOOK_SECRET=${PLATFORM_CHMABA_WEBHOOK_SECRET:-}
 PLATFORM_ENCRYPTION_MASTER_KEY=${PLATFORM_ENCRYPTION_MASTER_KEY}
+# Post for Me social publishing (YouTube uploads).
+PLATFORM_POSTFORME_API_KEY=${PLATFORM_POSTFORME_API_KEY:-}
+PLATFORM_POSTFORME_API_BASE_URL=${PLATFORM_POSTFORME_API_BASE_URL:-https://api.postforme.dev/v1}
+PLATFORM_POSTFORME_WEBHOOK_SECRET=${PLATFORM_POSTFORME_WEBHOOK_SECRET:-}
+PLATFORM_POSTFORME_ENABLED=${PLATFORM_POSTFORME_ENABLED:-false}
 PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop
 # Transactional email (Resend SMTP relay).
 PLATFORM_SMTP_HOST=${PLATFORM_SMTP_HOST:-}
@@ -218,18 +262,22 @@ ENVEOF
 "
 
 log "Building user portal..."
-sudo -u camxora -H bash -lc "
-  set -e
-  cd '${REPO_DIR}/user_portal'
-  npm ci --no-audit --no-fund
-  cat > .env.production <<ENVEOF
+if [[ -f "${REPO_DIR}/user_portal/.next/BUILD_ID" ]]; then
+  log "Reusing existing user portal build (platform-only deploy)."
+else
+  sudo -u camxora -H bash -lc "
+    set -e
+    cd '${REPO_DIR}/user_portal'
+    npm ci --no-audit --no-fund
+    cat > .env.production <<ENVEOF
 NEXT_PUBLIC_PLATFORM_API_BASE_URL=https://api.sandbox.camxora.com/api/v1
 NEXT_PUBLIC_CAMXORA_ENV=sandbox
 NEXT_PUBLIC_WEBSITE_URL=https://sandbox.camxora.com
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.sandbox.camxora.com
 ENVEOF
-  npm run build
-"
+    npm run build
+  "
+fi
 
 log "Building music web (public streaming)..."
 sudo -u camxora -H bash -lc "

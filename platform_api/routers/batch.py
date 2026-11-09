@@ -101,6 +101,7 @@ async def preflight_music_plan(
         auto_video_after_suno=request.auto_video_after_suno,
         auto_merge_after_video=request.auto_merge_after_video,
         auto_reel_after_video=request.auto_reel_after_video,
+        auto_upload_youtube=request.auto_upload_youtube,
     )
     # Desktop clients <= 1.3.2 typed wallet_balance as int and reject a
     # fractional display-credit value (Pydantic int_from_float). The field is
@@ -148,6 +149,7 @@ async def create_batch(
         auto_video_after_suno=request.auto_video_after_suno,
         auto_merge_after_video=request.auto_merge_after_video,
         auto_reel_after_video=request.auto_reel_after_video,
+            auto_upload_youtube=request.auto_upload_youtube,
         song_count=request.song_count,
         language=request.language,
         secondary_language=request.secondary_language,

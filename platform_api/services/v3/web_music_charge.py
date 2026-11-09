@@ -16,8 +16,8 @@ from uuid import UUID
 
 from platform_api.exceptions import InsufficientCreditsError, QuotaExceededError
 from platform_api.services.credit_units import units_to_credits
+from platform_api.services.free_monthly_grant import FREE_MONTHLY_CREDITS
 from platform_api.services.v3.generate_charge import map_v1_op_to_v3
-from platform_api.services.v3.ops import STUDIO_OPS
 
 ChargePath = Literal["v3", "v2", "included"]
 
@@ -106,27 +106,10 @@ class WebMusicChargeBridge:
 
     async def quote_credits(self, user_id: UUID, operation: str) -> tuple[str, int, Any]:
         op = map_v1_op_to_v3(operation) or str(operation or "").strip().lower()
-        plan_id = await self._charge_plan_id(user_id, op)
-        quote = await self._billing.quote(op=op, user_id=user_id, plan_id=plan_id)
+        # Plans are retired: the price comes from the `pricing` table alone.
+        quote = await self._billing.quote(op=op, user_id=user_id, plan_id=None)
         amount = max(0, int(round(float(quote.amount_credits or 0))))
         return op, amount, quote
-
-    @staticmethod
-    def _is_studio_op(op: str) -> bool:
-        return op in STUDIO_OPS
-
-    async def _charge_plan_id(self, user_id: UUID, op: str) -> UUID | None:
-        """Plan context for quoted ops, or None for pricing-table-only ops.
-
-        Studio operations have no plan column: their price lives in
-        ``credit_pricing`` (see ``STUDIO_OPS``), and ``plans`` is retired. Asking
-        for a charge plan there would fail on a missing table before the price
-        was ever read, so studio pricing must skip plan resolution entirely.
-        """
-        if self._is_studio_op(op):
-            return None
-        plan = await self._store.resolve_charge_plan(user_id)
-        return UUID(str(plan["id"])) if plan and plan.get("id") else None
 
     async def charge(
         self,
@@ -143,12 +126,9 @@ class WebMusicChargeBridge:
         if amount <= 0 or bool(getattr(quote, "included", False)):
             return WebMusicCharge(path="included", op=op, amount_credits=0, ref_id=ref_id)
 
-        # The free-model scope rule is about which Suno model a Free-plan user
-        # may run; studio operations carry no model and are priced flat.
-        if not self._is_studio_op(op):
-            await self._enforce_free_model_scope(
-                user_id, model, allow_free_preview=allow_free_preview
-            )
+        await self._enforce_free_model_scope(
+            user_id, model, allow_free_preview=allow_free_preview
+        )
 
         return await self._charge_v3(user_id, op, amount, ref_id=ref_id, model=model)
 
@@ -169,8 +149,7 @@ class WebMusicChargeBridge:
         """
         if allow_free_preview:
             return
-        plan = await self._store.resolve_charge_plan(user_id)
-        if not self._is_free_plan(plan):
+        if await self._is_pro(user_id):
             return
         if model_allows_free_grant(
             model,
@@ -185,31 +164,24 @@ class WebMusicChargeBridge:
             available=0,
         )
 
-    @staticmethod
-    def _is_free_plan(plan: dict[str, Any] | None) -> bool:
-        return (
-            plan is None
-            or str((plan or {}).get("name") or "").strip().lower() == "free"
-            or int((plan or {}).get("price_cents") or 0) == 0
-        )
+    async def _is_pro(self, user_id: UUID) -> bool:
+        """Pro <=> at least one live credit pack lot (see tier_service)."""
+        return bool(await self._store.live_pack_expiry(user_id))
 
     async def premium_unlocked(self, user_id: UUID) -> bool:
         """Whether a Free-plan user may use V6-Pro / V6-Wild.
 
-        True after a completed pack purchase in the current month, or while the
-        wallet holds more than the monthly grant (a pack bought earlier whose
-        credits are still live). Paid plans are always unlocked.
+        True while Pro (live pack lot), after a completed pack purchase in the
+        current month, or while the wallet holds more than the monthly grant (a
+        pack bought earlier whose credits are still live).
         """
-        plan = await self._store.resolve_charge_plan(user_id)
-        if not self._is_free_plan(plan):
+        if await self._is_pro(user_id):
             return True
         if await self._store.has_completed_topup_this_month(user_id):
             return True
         if self._credit_repo is not None:
-            free_limit = int((plan or {}).get("monthly_credits") or 0)
-            if free_limit > 0:
-                wallet_units = int(await self._credit_repo.get_balance(user_id))
-                return units_to_credits(wallet_units) > free_limit
+            wallet_units = int(await self._credit_repo.get_balance(user_id))
+            return units_to_credits(wallet_units) > FREE_MONTHLY_CREDITS
         return False
 
     async def refund(self, user_id: UUID, charge: WebMusicCharge) -> None:
@@ -278,7 +250,7 @@ class WebMusicChargeBridge:
         *,
         ref_id: str | None,
     ) -> WebMusicCharge:
-        from platform_api.services.v2.credit_service import InsufficientCreditsError as V2CreditsError
+        from platform_api.exceptions import InsufficientCreditsError as V2CreditsError
 
         if self._credit_service is None:
             raise _upgrade_error(

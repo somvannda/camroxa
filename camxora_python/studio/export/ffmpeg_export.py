@@ -30,6 +30,7 @@ from studio.media.ffmpeg_utils import get_ffmpeg_exe
 from studio.media.video_source import VideoSourceCache
 from studio.render.compositor import render_frame
 
+from shared.lib.pipe_errors import is_pipe_closed_error
 from shared.lib.subprocess_utils import popen_hidden
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,53 @@ def _write_mixed_audio(
             written += n
 
 
+def build_export_command(
+    *,
+    ffmpeg_exe: str,
+    width: int,
+    height: int,
+    fps: float,
+    audio_wav_path: Path,
+    output_path: Path,
+) -> list[str]:
+    """One-pass timeline export: raw RGB frames on stdin + the mixed WAV.
+
+    No ``-shortest``: the audio track must not decide when the output ends.
+    With it, ffmpeg stops at the audio tail while frames are still being written
+    to stdin, and the next write fails with ``EPIPE`` — or, on Windows,
+    ``OSError: [Errno 22] Invalid argument``.
+    """
+    return [
+        ffmpeg_exe,
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{width}x{height}",
+        "-r",
+        str(fps),
+        "-i",
+        "-",
+        "-i",
+        str(audio_wav_path),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        str(output_path),
+    ]
+
+
 def export_project(
     project_state: ProjectState,
     output_path: str | Path,
@@ -124,15 +172,14 @@ def export_project(
             _write_mixed_audio(project_state, mixer, audio_wav_path, duration, audio_sample_rate)
 
             n_frames = max(1, int(round(duration * fps)))
-            cmd = [
-                ffmpeg_exe, "-y",
-                "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", str(fps), "-i", "-",
-                "-i", str(audio_wav_path),
-                "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "192k",
-                "-shortest",
-                str(output_path),
-            ]
+            cmd = build_export_command(
+                ffmpeg_exe=ffmpeg_exe,
+                width=width,
+                height=height,
+                fps=fps,
+                audio_wav_path=audio_wav_path,
+                output_path=output_path,
+            )
             process = popen_hidden(
                 cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
             )
@@ -170,10 +217,27 @@ def export_project(
                         progress_callback((i + 1) / n_frames)
 
                 process.stdin.close()
-            except BrokenPipeError as exc:
-                process.wait(timeout=10)
+            except OSError as exc:
+                # Windows reports a dead child pipe as EINVAL (22), not EPIPE (32).
+                if not is_pipe_closed_error(exc):
+                    raise
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=10)
                 stderr_thread.join(timeout=5)
-                raise ExportError(f"ffmpeg exited early: {_stderr_tail()}") from exc
+                if process.returncode == 0:
+                    # ffmpeg finished on its own; the remaining frames had no sink.
+                    logger.warning(
+                        "ffmpeg closed the export pipe after finishing (frames %s/%s)",
+                        i + 1,
+                        n_frames,
+                    )
+                else:
+                    raise ExportError(
+                        f"ffmpeg exited early (exit {process.returncode}): {_stderr_tail()}"
+                    ) from exc
 
             return_code = process.wait(timeout=600)
             stderr_thread.join(timeout=5)

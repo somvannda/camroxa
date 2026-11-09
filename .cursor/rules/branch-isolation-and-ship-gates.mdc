@@ -3,22 +3,22 @@ description: Branch-per-task isolation; commit/push/merge/deploy only on explici
 alwaysApply: true
 ---
 
-# Multi-agent shipping — branch isolation + gates
+# Multi-agent shipping â€” branch isolation + gates
 
 Prevent unfinished work (e.g. DistroKid) from riding along with unrelated fixes.
 
-## One task → one branch
+## One task â†’ one branch
 
 - Start (or switch to) a **dedicated branch** for the current task before editing.
 - Prefer **git worktree** / separate checkout when another agent is already using this tree.
-- Do **not** mix unrelated features in the same branch or commit (password reset ≠ DistroKid ≠ CDN).
+- Do **not** mix unrelated features in the same branch or commit (password reset â‰  DistroKid â‰  CDN).
 - If the working tree is already dirty with other work: **path-scope** commits, or ask the user to isolate first.
 
 ## Commit / push / merge (safety ladder)
 
 | Action | Default | Only when |
 |--------|---------|-----------|
-| Edit files | Allowed for the task | — |
+| Edit files | Allowed for the task | â€” |
 | `git commit` | **Off** | User explicitly asks to commit |
 | `git push` | **Off** | User explicitly asks to push |
 | Merge to `main` | **Off** | User asks (PR merge / explicit merge) |
@@ -29,9 +29,18 @@ When committing: stage **only** task paths; verify staged diff (`git diff --cach
 ## Deploy (what ships)
 
 - Sandbox: deploy **only the surfaces this task changed** (API and/or admin), after changelog.
-- Prefer **file-scoped hotfixes** for production when the local tree has unrelated dirty files — never full `platform_api` tarball sync from a mixed workspace.
-- Production artifacts should come from **merged `main`** (or an explicit allowlisted file list), not “whatever is on disk.”
+- Prefer **file-scoped hotfixes** for production when the local tree has unrelated dirty files â€” never full `platform_api` tarball sync from a mixed workspace.
+- Production artifacts must come from **merged `main`** â€” never â€œwhatever is on disk.â€ The deploy scripts enforce this: they package a single commit with `git archive`, attach a sha256 manifest, and the server refuses to build/restart unless every file matches that commit. A tagged feature branch is **not** a production source.
 - Unfinished features stay on their branch until the user asks to merge/ship them.
+- Never edit code directly on the VPS. A server-only change is deleted by the next deploy; commit â†’ merge â†’ deploy instead.
+
+## Multi-agent deploys
+
+- The server holds a deploy lock (`.deploy.lock`, 1 h TTL). A second concurrent deploy is refused; do not override it with `CAMXORA_ALLOW_CONCURRENT_DEPLOY=1` unless you are deliberately recovering from a crashed deploy.
+- Every successful deploy writes `/opt/camxora/.deployed.json` (commit, ref, source mode, file count, actor, timestamp). Check it before blaming a deploy for a revert.
+- Because the source is the commit, your local branch/worktree state cannot change what production runs. Only what is merged to `origin/main` can ship.
+- Drift check any time: `python scripts/deploy/check_deploy_guards.py production --verify-live`. It re-hashes the live checkout against the deployed manifest and fails if anyone edited the VPS in place.
+- CI (`check_deploy_hygiene.py`) fails a PR that adds or edits a deploy script writing source into `/opt/camxora/repo` without `build_source_bundle()`/`enforce_deploy_gate()`. Do not add another ad-hoc hotfix script.
 
 ## Tell the user
 

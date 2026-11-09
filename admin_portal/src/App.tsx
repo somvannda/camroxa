@@ -60,6 +60,7 @@ const AuditLogPage = React.lazy(() => import('@/pages/audit-log/index'));
 const UsagePage = React.lazy(() => import('@/pages/usage/index'));
 const UserSpentPage = React.lazy(() => import('@/pages/user-spent/index'));
 const FinancePage = React.lazy(() => import('@/pages/finance/index'));
+const FailedRefundsPage = React.lazy(() => import('@/pages/refunds/index'));
 const BatchDetailPage = React.lazy(() => import('@/pages/batches/detail'));
 const SongDetailPage = React.lazy(() => import('@/pages/songs/detail'));
 const ClientLogsPage = React.lazy(() => import('@/pages/client-logs/index'));
@@ -122,6 +123,7 @@ function App() {
                     <Route path="/usage" element={<UsagePage />} />
                     <Route path="/user-spent" element={<UserSpentPage />} />
                     <Route path="/finance" element={<FinancePage />} />
+                    <Route path="/failed-refunds" element={<FailedRefundsPage />} />
                     <Route path="/batches/:batchId" element={<BatchDetailPage />} />
                     <Route path="/songs/:songId" element={<SongDetailPage />} />
                     <Route path="/client-logs" element={<ClientLogsPage />} />

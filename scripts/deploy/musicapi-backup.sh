@@ -25,11 +25,14 @@
 # Restore drill (run on the host; ALWAYS into a scratch DB, never `sunoapi`):
 #
 #   LATEST="$(ls -1t /opt/camxora/backups/musicapi/sunoapi-*.dump | head -n1)"
+#   # Copy the archive where postgres can read it (see the platform script note).
+#   install -o postgres -g postgres -m 600 "$LATEST" /tmp/camxora-musicapi-drill.dump
 #   sudo -u postgres createdb sunoapi_restore_check
 #   sudo -u postgres pg_restore --no-owner --no-privileges --exit-on-error \
-#     -d sunoapi_restore_check "$LATEST"
+#     -d sunoapi_restore_check /tmp/camxora-musicapi-drill.dump
 #   sudo -u postgres psql -d sunoapi_restore_check -c '\dt'   # app tables listed
 #   sudo -u postgres dropdb sunoapi_restore_check
+#   rm -f /tmp/camxora-musicapi-drill.dump
 #
 # The drill is green when pg_restore exits 0 and `\dt` lists the app tables.
 # This is a nightly logical snapshot with BACKUP_RETENTION_DAYS history; there

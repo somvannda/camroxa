@@ -1341,7 +1341,14 @@ async def _issue_session(
 )
 async def google_auth_url(
     redirect_uri: str | None = Query(default=None),
+    desktop_port: int | None = Query(default=None, ge=1, le=65535),
 ) -> GoogleAuthUrlResponse:
+    """Build the consent URL.
+
+    ``desktop_port`` asks for a native-client hand-off: keep the registered https
+    redirect (so Google needs no extra configuration) and let that page forward
+    the code to ``http://127.0.0.1:<port>/google/callback``.
+    """
     if not google_oauth.google_configured():
         raise HTTPException(status_code=503, detail="Google sign-in is not configured.")
     if redirect_uri and redirect_uri not in google_oauth.redirect_allowlist():
@@ -1350,7 +1357,7 @@ async def google_auth_url(
             details={"field": "redirect_uri"},
         )
     chosen = google_oauth.resolve_redirect_uri(redirect_uri)
-    state = sign_oauth_state(chosen)
+    state = sign_oauth_state(chosen, desktop_port=desktop_port)
     return GoogleAuthUrlResponse(
         url=google_oauth.authorization_url(chosen, state),
         state=state,
@@ -1365,6 +1372,7 @@ async def google_auth_url(
 async def google_auth_callback(
     request: GoogleCallbackRequest,
     auth_service: AuthServiceDep,
+    license_repo: LicenseRepoDep,
     response: Response,
     http_request: Request,
 ) -> TokenResponse:
@@ -1471,6 +1479,10 @@ async def google_auth_callback(
             invited_ip=get_client_ip(http_request),
         )
     await auth_service._user_repo.add_product(user.id, PRODUCT_MUSIC_WEB)
+    if is_desktop_client(http_request):
+        # Same paid-entitlement gate as the password login path, so a free
+        # account cannot enter the studio through Google instead.
+        await assert_paid_desktop_access(str(user.id), license_repo)
     await _ensure_welcome_grant(str(user.id))
     return await _issue_session(auth_service, user, response, http_request)
 

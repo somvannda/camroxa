@@ -2928,6 +2928,61 @@ async def test_preflight_includes_video_and_merge_credits(
 
 
 @pytest.mark.asyncio
+async def test_preflight_includes_youtube_upload_credits(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """Upload credits are part of the plan estimate, matching the desktop panel.
+
+    One publish job per merged video: 1 batch x 2 channels = 2 merges = 2 uploads.
+    Without the flag the plan must stay upload-free.
+    """
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    base = dict(
+        user_id="00000000-0000-0000-0000-000000000001",
+        ok_profile_ids=["00000000-0000-0000-0000-000000000002"],
+        alt_profile_ids=["00000000-0000-0000-0000-000000000003"],
+        from_date=date(2026, 6, 25),
+        to_date=date(2026, 6, 25),
+        song_count=4,
+        auto_gen_image=False,
+        auto_gsuno=True,
+        auto_video_after_suno=True,
+        auto_merge_after_video=True,
+    )
+
+    without = await service.preflight_music_plan(**base, auto_upload_youtube=False)
+    assert without["publish_ops"] == 0
+    assert without["publish_wallet_cost"] == 0
+
+    with_uploads = await service.preflight_music_plan(**base, auto_upload_youtube=True)
+    assert with_uploads["publish_ops"] == with_uploads["merge_ops"] == 2
+    # Unit price comes from the pricing service stub; assert the arithmetic, not a literal.
+    assert with_uploads["publish_wallet_cost"] > 0
+    assert with_uploads["publish_wallet_cost"] % with_uploads["publish_ops"] == 0
+    assert with_uploads["total_wallet_cost"] == (
+        without["total_wallet_cost"] + with_uploads["publish_wallet_cost"]
+    )
+    assert with_uploads["can_generate"] is True
+    assert with_uploads["reason"] is None
+
+
+@pytest.mark.asyncio
 async def test_preflight_blocks_when_only_video_credits_missing(
     batch_repo: AsyncMock,
     credit_service: AsyncMock,

@@ -54,6 +54,13 @@ class Settings(BaseSettings):
 
     # --- Database (PostgreSQL) ---
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/platform_db"
+    # Bound how long a request waits for a pooled connection. Without a limit a
+    # saturated pool queues requests indefinitely: production auth refresh was
+    # seen taking 13-90s behind slow web-music reads. Failing fast lets the
+    # client retry (the desktop treats this as a transient, non-sign-out error).
+    db_pool_acquire_timeout_seconds: float = 10.0
+    # Warn when every pooled connection stays busy this long (seconds).
+    db_pool_saturation_log_seconds: int = 30
 
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
@@ -69,6 +76,9 @@ class Settings(BaseSettings):
     # Phase 3: shorter access TTL reduces stolen JWT window (H8).
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
+    # A rotated refresh token reused within this window is treated as a benign
+    # client retry (dropped/slow response, second app window), not theft.
+    refresh_reuse_grace_seconds: int = 180
 
     # --- CORS ---
     cors_origins: list[str] = [
@@ -93,6 +103,9 @@ class Settings(BaseSettings):
     # {code,msg,data} envelope). Do not point this at a third-party reseller.
     # Overridable per environment via PLATFORM_SUNO_API_BASE_URL.
     suno_api_base_url: str = "https://musicapi.camxora.com"
+    # Per-user music cap, in credits per calendar day, across web and desktop.
+    # Protects the shared Suno account pool from one user draining it. 0 disables.
+    music_daily_credit_cap: int = 500
     # Service-to-service bearer for musicapi /internal/studio/* routes.
     studio_internal_token: str = ""
     suno_callback_base_url: str = ""
@@ -192,9 +205,27 @@ class Settings(BaseSettings):
     image_output_cache_dir: str = "./image_output_cache"
 
     # --- Desktop release installer uploads (admin portal) ---
+    # videos.insert costs 1,600 of YouTube's 10,000 daily units, so a fresh
+    # project allows six uploads per day. Raise after a quota extension.
+    youtube_daily_upload_limit: int = 6
     desktop_release_storage_path: str = "./desktop_release_storage"
     desktop_release_public_base_url: str = ""
     desktop_release_max_upload_mb: int = 500
+
+    # --- Post for Me (social publishing: YouTube first) ---
+    # Project-level API key. Server-side only; never ship it in the desktop app.
+    # See docs/postforme-publishing-integration-plan.md.
+    postforme_api_key: str = ""
+    postforme_api_base_url: str = "https://api.postforme.dev/v1"
+    # Returned by POST /v1/webhooks and compared against the
+    # `Post-For-Me-Webhook-Secret` header.
+    postforme_webhook_secret: str = ""
+    postforme_timeout_seconds: int = 30
+    # Feature flag: keep false until the sandbox end-to-end flow passes.
+    postforme_enabled: bool = False
+    # Where Post for Me sends the browser after consent. Empty = derive from the
+    # request (https://<api-host>/api/v3) so sandbox and production both work.
+    publish_callback_base_url: str = ""
 
     # --- Billing / CutLuy ---
     cutluy_api_base_url: str = "https://cutluy.com"

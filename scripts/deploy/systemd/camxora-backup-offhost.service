@@ -1,0 +1,12 @@
+[Unit]
+Description=CamXora off-host database backup upload
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root: reads the root-only backup credential and the 0750 backup directories.
+User=root
+ExecStart=/usr/bin/python3 /opt/camxora/repo/scripts/deploy/backup-offhost.py
+Nice=10
+TimeoutStartSec=3600

@@ -63,7 +63,7 @@ import {
   type WebMusicWorkspace,
 } from '@/lib/web-music-api';
 import { formatGeneratedTime, formatModelVersionTag } from '@/lib/clip-display';
-import { fetchCreditBalance, fetchSubscriptionPlans, type CreditBalance } from '@/lib/subscription-api';
+import { fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
 import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
 import { createStoreZip, type ZipEntry } from '@/lib/zip-store';
 
@@ -122,6 +122,20 @@ function isOpenGeneration(item: WebMusicGeneration): boolean {
 
 function clipTrackId(generation: WebMusicGeneration, clip: WebMusicClip): string {
   return `${generation.id}:${clip.variant}`;
+}
+
+/**
+ * Turn a failed studio refresh into a message the user can act on. The platform
+ * API answers an unhandled 5xx with a generic "An unexpected error occurred.",
+ * which tells the user nothing — especially right after a successful payment.
+ */
+function describeRefreshError(err: unknown): string {
+  const status = err instanceof MusicApiError ? err.status : 0;
+  const message = err instanceof Error ? err.message.trim() : '';
+  if (status >= 500 || /unexpected error/i.test(message)) {
+    return 'Could not refresh the studio just now. Your credits are safe — try again in a moment.';
+  }
+  return message || 'Could not refresh the studio.';
 }
 
 function clipDisplayTitle(generation: WebMusicGeneration, clip: WebMusicClip): string {
@@ -605,28 +619,45 @@ export default function CreatePageClient() {
 
   async function refreshList(workspaceId?: string | null) {
     const resolvedWorkspaceId = workspaceId ?? activeWorkspaceId ?? undefined;
-    const [nextQuota, list, workspaceList, nextBalance, nextPlans] = await Promise.all([
+    // Every call settles on its own. A single 5xx (quota, song list, workspace
+    // list) used to abort this whole refresh, so a fulfilled top-up never
+    // updated the credit chip and the raw server error leaked into the page.
+    const [quotaResult, listResult, workspaceResult, balanceResult] = await Promise.allSettled([
       fetchWebMusicQuota(),
       listWebMusicGenerations(WORKSPACE_PAGE_SIZE, 0, resolvedWorkspaceId),
-      listWebMusicWorkspaces().catch(() => ({ items: [] as WebMusicWorkspace[] })),
-      fetchCreditBalance().catch(() => null),
-      fetchSubscriptionPlans().catch(() => ({ plans: [] })),
+      listWebMusicWorkspaces(),
+      fetchCreditBalance(),
     ]);
-    setQuota(nextQuota);
-    setCreditBalance(nextBalance);
-    const priced = nextPlans.plans.find((plan) => Number(plan.lyric_credits || 0) > 0 || Number(plan.music_credits || 0) > 0)
-      || nextPlans.plans.find((plan) => /free/i.test(plan.name))
-      || nextPlans.plans[0];
-    setLyricCredits(Number((priced && priced.lyric_credits) || 0));
-    setMusicCredits(Number((priced && priced.music_credits) || 0));
-    setItems(list.items);
-    setTotal(Number(list.total ?? list.items.length));
-    setWorkspaces(workspaceList.items);
-    if (!activeWorkspaceId && workspaceList.items.length) {
-      const defaultWorkspace =
-        workspaceList.items.find((workspace) => workspace.is_default) ?? workspaceList.items[0];
-      setActiveWorkspaceId(defaultWorkspace.id);
+
+    // Credits first: the balance is the part the user just paid for.
+    if (balanceResult.status === 'fulfilled') {
+      setCreditBalance(balanceResult.value);
     }
+    if (quotaResult.status === 'fulfilled') {
+      setQuota(quotaResult.value);
+      // Plans are retired; the per-generation price comes from the quota payload.
+      setMusicCredits(Number(quotaResult.value.credits_per_song || 0));
+      setLyricCredits(0);
+    }
+    if (listResult.status === 'fulfilled') {
+      setItems(listResult.value.items);
+      setTotal(Number(listResult.value.total ?? listResult.value.items.length));
+    }
+    if (workspaceResult.status === 'fulfilled') {
+      setWorkspaces(workspaceResult.value.items);
+      if (!activeWorkspaceId && workspaceResult.value.items.length) {
+        const defaultWorkspace =
+          workspaceResult.value.items.find((workspace) => workspace.is_default) ??
+          workspaceResult.value.items[0];
+        setActiveWorkspaceId(defaultWorkspace.id);
+      }
+    }
+
+    // Surface the first real failure so the caller can show one clear message.
+    const failure = [quotaResult, listResult, workspaceResult].find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) throw failure.reason;
   }
 
   async function loadMoreGenerations() {
@@ -654,7 +685,7 @@ export default function CreatePageClient() {
         return merged;
       });
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Unable to load more songs');
+      setCreateError(describeRefreshError(err));
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
@@ -664,7 +695,7 @@ export default function CreatePageClient() {
   useEffect(() => {
     if (!user) return;
     void refreshList().catch((err) => {
-      setCreateError(err instanceof Error ? err.message : 'Unable to load workspace');
+      setCreateError(describeRefreshError(err));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -674,6 +705,8 @@ export default function CreatePageClient() {
     // The checkout modal dispatches this once CutLuy confirms and credits land.
     // Without listening, "Upgrade to Pro" stayed on screen until a manual reload.
     const onCreditsUpdated = () => {
+      // A background refresh: the balance is applied inside refreshList even
+      // when another panel fails, so never surface a raw server error here.
       void refreshList().catch(() => undefined);
     };
     window.addEventListener('camxora:credits-updated', onCreditsUpdated);
@@ -691,7 +724,7 @@ export default function CreatePageClient() {
         setTotal(Number(list.total ?? list.items.length));
       })
       .catch((err) => {
-        setCreateError(err instanceof Error ? err.message : 'Unable to load workspace');
+        setCreateError(describeRefreshError(err));
       });
   }, [user, activeWorkspaceId]);
 
@@ -1260,8 +1293,15 @@ export default function CreatePageClient() {
       try {
         return await generateWebMusic(input);
       } catch (err) {
+        // A 429 is retryable only when it is a short-window rate limit. Quota
+        // errors (daily music cap, no credits) will not clear by waiting, so
+        // retrying just delays the real message by up to three cooldowns.
+        const isQuota =
+          err instanceof MusicApiError &&
+          (err.code === 'QUOTA_EXCEEDED' || /daily music limit|quota|credits/i.test(err.message));
         const retryable =
-          err instanceof MusicApiError && (err.status === 429 || err.status === 503);
+          err instanceof MusicApiError &&
+          (err.status === 503 || (err.status === 429 && !isQuota));
         attempt += 1;
         if (!retryable || attempt > 3) throw err;
         const waitMs =

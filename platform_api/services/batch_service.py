@@ -257,6 +257,20 @@ class SettingsServiceProtocol(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def charge_stash_keys(song_id: UUID, task_id: "UUID | str | None") -> list[str]:
+    """Stash keys for the amount an attempt actually charged.
+
+    The task key is first and is per attempt, so retrying a song cannot clobber
+    the amount a previous failure still needs to refund. The song key remains as
+    a fallback for an attempt that never produced a task id.
+    """
+    keys: list[str] = []
+    if task_id:
+        keys.append(f"suno:task:{task_id}")
+    keys.append(f"suno:{song_id}")
+    return keys
+
+
 class BatchService:
     """Batch orchestration service.
 
@@ -332,13 +346,15 @@ class BatchService:
         auto_video_after_suno: bool = False,
         auto_merge_after_video: bool = False,
         auto_reel_after_video: bool = False,
+        auto_upload_youtube: bool = False,
     ) -> dict[str, Any]:
         """Validate whether an entire automation plan can run before creating batches.
 
-        The estimate covers the full pipeline: drafts + Suno + images **and**
-        the local video-export + merge operations that run after them. Video and
-        merge are otherwise charged per stage at export time, which let plans
-        start and then stall at export when the wallet ran dry.
+        The estimate covers the full pipeline: drafts + Suno + images, the local
+        video-export + merge operations that run after them, and the YouTube
+        uploads that publishing will bill. Video/merge/upload are otherwise
+        charged per stage later, which let plans start and then stall when the
+        wallet ran dry.
         """
         from collections import defaultdict
 
@@ -443,10 +459,17 @@ class BatchService:
             video_wallet_cost = (await self._local_operation_price("video")) * video_ops
         if merge_ops > 0:
             merge_wallet_cost = (await self._local_operation_price("video_merge")) * merge_ops
-        total_wallet_cost += video_wallet_cost + merge_wallet_cost
+        # Post for Me bills one upload per published video. A merge yields one
+        # video; Auto-Reel adds a second. Same rule as the desktop estimate
+        # (shared/lib/music_costs.py) so the panel and this check agree.
+        publish_ops = merge_ops if (auto_upload_youtube and merge_ops > 0) else 0
+        publish_wallet_cost = 0
+        if publish_ops > 0:
+            publish_wallet_cost = (await self._publish_operation_price()) * publish_ops
+        total_wallet_cost += video_wallet_cost + merge_wallet_cost + publish_wallet_cost
 
         video_merge_note = ""
-        if video_ops > 0 or merge_ops > 0:
+        if video_ops > 0 or merge_ops > 0 or publish_ops > 0:
             note_parts: list[str] = []
             if video_ops > 0:
                 note_parts.append(
@@ -457,6 +480,11 @@ class BatchService:
                 note_parts.append(
                     f"merge {units_to_credits(merge_wallet_cost)} "
                     f"({merge_ops} merge{'s' if merge_ops != 1 else ''})"
+                )
+            if publish_ops > 0:
+                note_parts.append(
+                    f"YouTube upload {units_to_credits(publish_wallet_cost)} "
+                    f"({publish_ops} upload{'s' if publish_ops != 1 else ''})"
                 )
             video_merge_note = " Includes " + " and ".join(note_parts) + "."
 
@@ -586,6 +614,8 @@ class BatchService:
                         "merge_ops": merge_ops,
                         "video_wallet_cost": video_wallet_cost,
                         "merge_wallet_cost": merge_wallet_cost,
+                        "publish_ops": publish_ops,
+                        "publish_wallet_cost": publish_wallet_cost,
                     }
             except QuotaExceededError as exc:
                 quota_reason = exc.message
@@ -611,6 +641,8 @@ class BatchService:
                     "merge_ops": merge_ops,
                     "video_wallet_cost": video_wallet_cost,
                     "merge_wallet_cost": merge_wallet_cost,
+                    "publish_ops": publish_ops,
+                    "publish_wallet_cost": publish_wallet_cost,
                 }
             except InsufficientCreditsError as exc:
                 details = exc.details or {}
@@ -630,6 +662,8 @@ class BatchService:
                     "merge_ops": merge_ops,
                     "video_wallet_cost": video_wallet_cost,
                     "merge_wallet_cost": merge_wallet_cost,
+                    "publish_ops": publish_ops,
+                    "publish_wallet_cost": publish_wallet_cost,
                 }
         elif wallet_balance < total_wallet_cost:
             required_credits = units_to_credits(total_wallet_cost)
@@ -673,6 +707,8 @@ class BatchService:
             "merge_ops": merge_ops,
             "video_wallet_cost": video_wallet_cost,
             "merge_wallet_cost": merge_wallet_cost,
+            "publish_ops": publish_ops,
+            "publish_wallet_cost": publish_wallet_cost,
         }
 
     async def create_batch(
@@ -692,6 +728,7 @@ class BatchService:
         auto_video_after_suno: bool = False,
         auto_merge_after_video: bool = False,
         auto_reel_after_video: bool = False,
+        auto_upload_youtube: bool = False,
         language: str = "en",
         secondary_language: str | None = None,
         creativity_level: int = 50,
@@ -829,6 +866,9 @@ class BatchService:
             total_cost += (await self._local_operation_price("video")) * video_ops
         if merge_ops > 0:
             total_cost += (await self._local_operation_price("video_merge")) * merge_ops
+        publish_ops = merge_ops if (auto_upload_youtube and merge_ops > 0) else 0
+        if publish_ops > 0:
+            total_cost += (await self._publish_operation_price()) * publish_ops
 
         image_jobs = 0
         if billable_auto_gen_image:
@@ -876,6 +916,7 @@ class BatchService:
             status=BATCH_STATUS_PENDING,
             auto_gen_image=auto_gen_image,
             auto_gsuno=auto_gsuno,
+            auto_upload_youtube=bool(auto_upload_youtube),
             planned_from_date=from_date,
             planned_to_date=to_date,
             ok_run_dir=resolved_ok,
@@ -2500,7 +2541,11 @@ class BatchService:
                 task_id=task_id,
             )
         except Exception as exc:
-            await self.update_song_to_suno_failed(song.id)
+            # A quota/cap rejection is a deferral, not a generation failure: the
+            # song was never submitted and must stay retryable. Marking it
+            # suno_failed hid the real reason and made desktops retry forever.
+            if not isinstance(exc, QuotaExceededError):
+                await self.update_song_to_suno_failed(song.id)
             reason = str(exc) or exc.__class__.__name__
             draft_log.log_suno_submit_failed(
                 batch_id=str(batch.id),
@@ -4262,14 +4307,23 @@ class BatchService:
         batch_id: UUID,
         status: TaskStatus,
         *,
+        task_id: UUID | None = None,
         error_message: str | None = None,
     ) -> list[ImageJob]:
-        """Route Suno callback status changes back into the batch lifecycle."""
+        """Route Suno callback status changes back into the batch lifecycle.
+
+        ``task_id`` identifies the individual attempt. It is threaded through
+        here and not yet used: a song can be submitted several times, and the
+        refund path currently keys its per-attempt charge on the song, so a
+        retry overwrites the amount the previous failure needed to refund. The
+        follow-up change keys that stash on ``task_id`` instead.
+        """
         if status == TaskStatus.SUCCESS:
             if self._enforcement_service is not None:
                 pop = getattr(self._enforcement_service, "pop_operation_charge", None)
                 if pop is not None:
-                    await pop(f"suno:{song_id}")
+                    for key in charge_stash_keys(song_id, task_id):
+                        await pop(key)
             return await self.on_suno_task_completed(song_id=song_id, batch_id=batch_id)
 
         song = await self._batch_repo.get_song_by_id(song_id)
@@ -4361,6 +4415,7 @@ class BatchService:
                         music_sub_model=music_sub_model,
                         charged_credit_units=None,
                         song_id=song_id,
+                        ref_id=str(task_id) if task_id else None,
                         reason="suno_generation_failed",
                         secondary_channel_profile_id=(
                             batch.alt_profile_id if batch is not None else None
@@ -4524,6 +4579,26 @@ class BatchService:
         if spec is None:
             return 0
         return credits_to_units(float(spec["list_credits_display"]))
+
+    async def _publish_operation_price(self) -> int:
+        """Unit price (micro-credits) for one Post for Me YouTube upload.
+
+        Reads the ``credit_pricing`` row for the postforme provider; falls back to
+        the publishing list price so preflight never hard-fails when the row is
+        missing (same pattern as ``_local_operation_price``).
+        """
+        from platform_api.services.credit_units import credits_to_units
+        from platform_api.services.publish_pricing import (
+            POSTFORME_UPLOAD_CREDITS,
+        )
+
+        try:
+            price = await self._pricing_service.get_price("postforme", "upload", "")
+            if price:
+                return int(price)
+        except Exception:
+            pass
+        return credits_to_units(float(POSTFORME_UPLOAD_CREDITS))
 
     async def _resolve_batch_languages(
         self,
@@ -5234,6 +5309,7 @@ class BatchService:
                     "music",
                     music_provider,
                     sub_model=music_sub_model,
+                    ref_id=str(song.id),
                 )
                 billing_applied = True
                 alt_profile_id = getattr(batch, "alt_profile_id", None)
@@ -5280,7 +5356,8 @@ class BatchService:
             if self._enforcement_service is not None:
                 stash = getattr(self._enforcement_service, "stash_operation_charge", None)
                 if stash is not None:
-                    await stash(f"suno:{song.id}", int(charged or 0))
+                    for key in charge_stash_keys(song.id, task_id):
+                        await stash(key, int(charged or 0))
             return task_id
         except Exception as exc:
             self._log_suno_failure_metric(
@@ -5315,6 +5392,7 @@ class BatchService:
         music_sub_model: str | None = None,
         charged_credit_units: int | None = None,
         song_id: UUID,
+        ref_id: str | None = None,
         reason: str = "suno_generation_failed",
         secondary_channel_profile_id: UUID | None = None,
     ) -> None:
@@ -5324,11 +5402,16 @@ class BatchService:
         charged = charged_credit_units
         if charged is None:
             pop = getattr(self._enforcement_service, "pop_operation_charge", None)
+            charged = 0
             if pop is not None:
-                stored = await pop(f"suno:{song_id}")
-                charged = int(stored or 0) if stored is not None else 0
-            else:
-                charged = 0
+                # The task key is per attempt, so a retry of the same song does
+                # not overwrite it. The song key stays as a fallback for an
+                # attempt that never produced a task id.
+                for key in charge_stash_keys(song_id, ref_id):
+                    stored = await pop(key)
+                    if stored is not None:
+                        charged = int(stored or 0)
+                        break
         try:
             await self._enforcement_service.refund_failed_operation(
                 UUID(user_id),

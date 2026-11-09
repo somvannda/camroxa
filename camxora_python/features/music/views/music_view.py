@@ -146,6 +146,7 @@ class MusicView(QWidget):
         self._pending_title_rewrite_row: HistoryRow | None = None
         self._profiles: list[ProfileResponse] = []
         self._youtube_connections: list[YouTubeConnectionResponse] = []
+        self._publish_accounts: list[object] = []
         self._history = MusicHistoryListResponse()
         self._settings_raw: dict = {}
         self._music_settings = MusicSettingsState()
@@ -765,6 +766,7 @@ class MusicView(QWidget):
         self._error_banner.hide()
         self._profiles = list(payload.profiles)
         self._youtube_connections = self._normalize_youtube_connections(list(payload.youtube_connections))
+        self._publish_accounts = list(getattr(payload, "publish_accounts", []) or [])
         if self._cache is not None:
             self._cache.apply_settings_workspace(youtube_connections=self._youtube_connections)
         self._history = payload.history
@@ -954,10 +956,16 @@ class MusicView(QWidget):
             self._youtube_connections = self._normalize_youtube_connections(connections)
 
     def _build_readiness_report(self):
+        publish_profile_ids = {
+            str(getattr(account, "profile_id", "") or "").strip()
+            for account in self._publish_accounts
+            if str(getattr(account, "profile_id", "") or "").strip()
+        }
         return build_music_readiness_report(
             profiles=self._selected_profiles(),
             settings=self._settings_raw,
             youtube_connections=self._youtube_connections,
+            publish_account_profile_ids=publish_profile_ids,
         )
 
     def _on_song_fields_changed(self) -> None:
@@ -1120,9 +1128,21 @@ class MusicView(QWidget):
             self._music_settings.auto_video_after_suno,
             self._music_settings.auto_merge_after_video,
             self._music_settings.auto_reel_after_video,
+            self._operation_costs.get("publish"),
+            self._music_settings.auto_upload_youtube,
         )
-        breakdown = get_music_plan_cost_breakdown(*cost_args)
-        total_cost = get_batch_generate_total_cost(*cost_args)
+        breakdown = get_music_plan_cost_breakdown(
+            *cost_args,
+            title_cost=self._operation_costs.get("title"),
+            album_cost=self._operation_costs.get("album"),
+            server_draft_math=True,
+        )
+        total_cost = get_batch_generate_total_cost(
+            *cost_args,
+            title_cost=self._operation_costs.get("title"),
+            album_cost=self._operation_costs.get("album"),
+            server_draft_math=True,
+        )
         preflight = self._generation_preflight
         if preflight and preflight.covered_by_subscription:
             if not self._music_settings.auto_gsuno and not self._music_settings.auto_gen_image:
@@ -1146,7 +1166,15 @@ class MusicView(QWidget):
         readiness = self._build_readiness_report()
         setup_ready = readiness.generate_ready if base_ready else False
         can_generate = base_ready and setup_ready and (preflight.can_generate if preflight is not None else False)
-        self._automation_card.set_auto_upload_enabled(bool(base_ready and readiness.upload_ready))
+        upload_ready = bool(base_ready and readiness.upload_ready)
+        self._automation_card.set_auto_upload_enabled(upload_ready)
+        if upload_ready:
+            self._automation_card.set_auto_upload_hint("")
+        else:
+            missing = readiness.incomplete_upload_labels()
+            self._automation_card.set_auto_upload_hint(
+                "Upload needs: " + "; ".join(missing) if missing else "Finish the plan first."
+            )
         self._automation_card.set_generate_enabled(can_generate)
         warnings = []
         if pair_mismatch:
@@ -1170,6 +1198,9 @@ class MusicView(QWidget):
                 format_operation_cost_label(self._operation_costs.get("lyric"), "Draft"),
                 format_operation_cost_label(self._operation_costs.get("music"), "Suno"),
                 format_operation_cost_label(self._operation_costs.get("background_image"), "Image"),
+                format_operation_cost_label(self._operation_costs.get("video"), "Video export"),
+                format_operation_cost_label(self._operation_costs.get("video_merge"), "Merge"),
+                format_operation_cost_label(self._operation_costs.get("publish"), "YouTube upload"),
             ]
         )
         self._automation_card.set_cost_lines(costs)
@@ -1193,6 +1224,8 @@ class MusicView(QWidget):
                 video_ops=breakdown.video_ops,
                 merge_ops=breakdown.merge_ops,
                 video_credits=breakdown.video_merge_total_cost,
+                upload_ops=breakdown.upload_ops,
+                upload_credits=breakdown.publish_total_cost,
             )
         self._automation_card.set_helper_text("")
         self._render_history()
@@ -2011,6 +2044,7 @@ class MusicView(QWidget):
             auto_video_after_suno=self._music_settings.auto_video_after_suno,
             auto_merge_after_video=self._music_settings.auto_merge_after_video,
             auto_reel_after_video=self._music_settings.auto_reel_after_video,
+            auto_upload_youtube=self._music_settings.auto_upload_youtube,
         )
         worker = MusicPlanPreflightWorker(self._api, payload, parent=self)
         worker.succeeded.connect(self._on_preflight_succeeded)
@@ -2086,6 +2120,7 @@ class MusicView(QWidget):
                         auto_video_after_suno=self._music_settings.auto_video_after_suno,
                         auto_merge_after_video=self._music_settings.auto_merge_after_video,
                         auto_reel_after_video=self._music_settings.auto_reel_after_video,
+                        auto_upload_youtube=self._music_settings.auto_upload_youtube,
                         song_count=self._music_settings.song_count,
                         language=self._music_settings.language,
                         secondary_language=self._music_settings.secondary_language or None,

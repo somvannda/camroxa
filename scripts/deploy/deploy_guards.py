@@ -23,6 +23,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import posixpath
 import shlex
 import subprocess
 import uuid
@@ -172,16 +173,29 @@ def deploy_gate_violations(
     is_merged: bool,
     allow_dirty: bool = False,
     allow_unmerged: bool = False,
+    require_merged: bool = False,
+    require_clean: bool = True,
 ) -> list[str]:
-    """Return human-readable reasons the given state may not be deployed."""
+    """Return human-readable reasons the given state may not be deployed.
+
+    ``require_merged`` is the production rule: a tag no longer excuses a HEAD
+    (or a source commit) that is not on the base ref. That is how a feature
+    branch once shipped to production and reverted main's work.
+    """
     violations: list[str] = []
-    if state.dirty and not allow_dirty:
+    if state.dirty and require_clean and not allow_dirty:
         shown = ", ".join(state.dirty_files[:5])
         more = "" if len(state.dirty_files) <= 5 else f" (+{len(state.dirty_files) - 5} more)"
         violations.append(
             f"worktree has {len(state.dirty_files)} uncommitted change(s): {shown}{more}"
         )
-    if not state.tagged and not is_merged and not allow_unmerged:
+    if require_merged and not allow_unmerged:
+        if not is_merged:
+            violations.append(
+                f"source commit {state.short} is not merged to the base ref — "
+                "merge it (or tag a release on main) so what is live is reproducible"
+            )
+    elif not state.tagged and not is_merged and not allow_unmerged:
         violations.append(
             "HEAD is not tagged and is not merged to the base ref — commit/merge it "
             "(or tag a release) so what is live is reproducible"
@@ -201,16 +215,19 @@ def build_gate(
     repo_root: Path = REPO_ROOT,
     *,
     base_ref: str | None = None,
+    commit: str | None = None,
     runner: GitRunner | None = None,
 ) -> DeployGate:
     """Collect git state + merge status without enforcing any rule.
 
     Used by environments that are allowed to deploy WIP branches (e.g. sandbox)
-    but still want the deployed marker recorded.
+    but still want the deployed marker recorded. ``commit`` lets a deploy check
+    the commit it is actually about to ship instead of the local HEAD.
     """
     resolved_base = base_ref or _env_base_ref()
     state = collect_repo_state(repo_root, runner=runner)
-    merged = is_ancestor(repo_root, state.commit, resolved_base, runner=runner)
+    subject = commit or state.commit
+    merged = is_ancestor(repo_root, subject, resolved_base, runner=runner)
     return DeployGate(state=state, base_ref=resolved_base, merged=merged)
 
 
@@ -220,20 +237,34 @@ def enforce_deploy_gate(
     base_ref: str | None = None,
     allow_dirty: bool = False,
     allow_unmerged: bool = False,
+    commit: str | None = None,
+    require_merged: bool = False,
+    require_clean: bool = True,
     runner: GitRunner | None = None,
 ) -> DeployGate:
     """Validate this worktree can be deployed. Raises ``SystemExit`` otherwise."""
     allow_dirty = allow_dirty or _env_flag(ALLOW_DIRTY_ENV)
     allow_unmerged = allow_unmerged or _env_flag(ALLOW_UNMERGED_ENV)
 
-    gate = build_gate(repo_root, base_ref=base_ref, runner=runner)
+    gate = build_gate(repo_root, base_ref=base_ref, commit=commit, runner=runner)
     state = gate.state
+    if commit and commit != state.commit:
+        # The gate should report the commit being deployed, not the local HEAD.
+        state = RepoState(
+            commit=commit,
+            short=commit[:7],
+            branch=state.branch,
+            tags=state.tags,
+            dirty_files=state.dirty_files,
+        )
 
     violations = deploy_gate_violations(
         state,
         is_merged=gate.merged,
         allow_dirty=allow_dirty,
         allow_unmerged=allow_unmerged,
+        require_merged=require_merged,
+        require_clean=require_clean,
     )
     if violations:
         detail = "\n  - ".join(violations)
@@ -245,9 +276,10 @@ def enforce_deploy_gate(
         )
 
     print(
-        f"[deploy-guard] worktree clean; HEAD {state.short}"
+        f"[deploy-guard] source commit {state.short}"
         f"{' (' + state.tags[0] + ')' if state.tagged else ''}"
         f" merged to {gate.base_ref}: {gate.merged}"
+        f" clean worktree: {not state.dirty}"
     )
     return DeployGate(
         state=state,
@@ -264,7 +296,16 @@ def enforce_deploy_gate(
 
 
 def deployed_marker_path(remote_repo: str = DEFAULT_REMOTE_REPO) -> str:
-    return f"{str(remote_repo).rstrip('/')}/{MARKER_FILENAME}"
+    """Marker lives beside the checkout, not inside it.
+
+    A SYNC_FROM_LOCAL deploy renames the whole checkout to ``repo.bak.*`` and
+    extracts a fresh one, so a marker (or lock) kept inside it vanishes for the
+    duration of the deploy — that is how the lock stopped refusing concurrent
+    deploys mid-run.
+    """
+    return posixpath.join(
+        posixpath.dirname(str(remote_repo).rstrip("/")), MARKER_FILENAME
+    )
 
 
 def build_marker(
@@ -339,7 +380,10 @@ class DeployLock:
 
 
 def deploy_lock_path(remote_repo: str = DEFAULT_REMOTE_REPO) -> str:
-    return f"{str(remote_repo).rstrip('/')}/{LOCK_FILENAME}"
+    """Lock beside the checkout so the repo swap cannot move it away."""
+    return posixpath.join(
+        posixpath.dirname(str(remote_repo).rstrip("/")), LOCK_FILENAME
+    )
 
 
 def build_acquire_lock_script(

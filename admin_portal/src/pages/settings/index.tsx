@@ -8,6 +8,7 @@ import { ImageGenerationSection } from './image-generation-section';
 import { MusicLanguagesSection } from './music-languages-section';
 import { SunoBlocklistSection } from './suno-blocklist-section';
 import { FailAbsorbSection } from './fail-absorb-section';
+import { DailyMusicCapSection } from './daily-music-cap-section';
 import { MusicWebCreditsNote } from '@/pages/settings/music-web-credits-note';
 import { PaymentSection } from './payment-section';
 import { StreamingStorageSection } from './streaming-section';
@@ -111,7 +112,7 @@ export default function SettingsPage() {
           <TabsTrigger value="suno-blocklist">Suno Blocklist</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="music-web">Music Web</TabsTrigger>
-          <TabsTrigger value="fail-absorb">Fail / Retry Absorb</TabsTrigger>
+          <TabsTrigger value="fail-absorb">Limits</TabsTrigger>
           <TabsTrigger value="streaming">Streaming</TabsTrigger>
           <TabsTrigger value="youtube-oauth">YouTube OAuth</TabsTrigger>
           <TabsTrigger value="user-data">
@@ -149,6 +150,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="fail-absorb" className="mt-6">
+          <DailyMusicCapSection />
           <FailAbsorbSection />
         </TabsContent>
 

@@ -14,7 +14,44 @@ from platform_api.services.auth_service import AuthService
 
 
 @pytest.mark.asyncio
-async def test_refresh_reuse_revokes_all_sessions() -> None:
+async def test_recent_revoke_is_treated_as_concurrent_refresh() -> None:
+    user_id = uuid4()
+    user_repo = AsyncMock()
+    user_repo.get_by_email = AsyncMock(return_value=MagicMock(id=user_id, email="user@example.com"))
+    refresh_repo = AsyncMock()
+    refresh_repo.get_by_hash = AsyncMock(
+        return_value={
+            "user_id": user_id,
+            "revoked_at": datetime.now(timezone.utc) - timedelta(seconds=2),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=1),
+        }
+    )
+    refresh_repo.revoke_all_for_user = AsyncMock()
+
+    settings = Settings(
+        jwt_secret="x" * 40,
+        access_token_expire_minutes=15,
+        refresh_token_expire_days=7,
+    )
+    service = AuthService(
+        config=settings,
+        user_repo=user_repo,
+        refresh_token_repo=refresh_repo,
+    )
+    service._decode_token = MagicMock(  # type: ignore[method-assign]
+        return_value=MagicMock(email="user@example.com", type="refresh")
+    )
+    service._hash_token = MagicMock(return_value="hash")  # type: ignore[method-assign]
+    service._issue_token_pair = AsyncMock(return_value=MagicMock())  # type: ignore[method-assign]
+
+    await service.refresh_token("concurrent-refresh-token")
+
+    refresh_repo.revoke_all_for_user.assert_not_awaited()
+    service._issue_token_pair.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stale_refresh_token_rejects_only_that_session() -> None:
     user_id = uuid4()
     user_repo = AsyncMock()
     refresh_repo = AsyncMock()
@@ -32,6 +69,7 @@ async def test_refresh_reuse_revokes_all_sessions() -> None:
         jwt_secret="x" * 40,
         access_token_expire_minutes=15,
         refresh_token_expire_days=7,
+        refresh_reuse_grace_seconds=15,
     )
     service = AuthService(
         config=settings,
@@ -46,6 +84,48 @@ async def test_refresh_reuse_revokes_all_sessions() -> None:
     with pytest.raises(AuthenticationError) as exc:
         await service.refresh_token("stolen-refresh-token")
 
-    assert exc.value.details["error_code"] == "REFRESH_TOKEN_REUSE"
-    refresh_repo.revoke_all_for_user.assert_awaited_once()
-    user_repo.increment_token_version.assert_awaited_once()
+    assert exc.value.details["error_code"] == "REFRESH_TOKEN_ROTATED"
+    refresh_repo.revoke_all_for_user.assert_not_awaited()
+    user_repo.increment_token_version.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_client_retry_after_dropped_response_is_not_theft() -> None:
+    """A retry minutes after the server rotated the token is a client retry.
+
+    Production refreshes take 17–146s under load; the previous 15s window
+    rejected the retry and forced a sign-out ("Unauthenticated" in the app).
+    """
+    user_id = uuid4()
+    user_repo = AsyncMock()
+    user_repo.get_by_email = AsyncMock(return_value=MagicMock(id=user_id, email="user@example.com"))
+    refresh_repo = AsyncMock()
+    refresh_repo.get_by_hash = AsyncMock(
+        return_value={
+            "user_id": user_id,
+            "revoked_at": datetime.now(timezone.utc) - timedelta(seconds=60),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=1),
+        }
+    )
+    refresh_repo.revoke_all_for_user = AsyncMock()
+
+    settings = Settings(
+        jwt_secret="x" * 40,
+        access_token_expire_minutes=15,
+        refresh_token_expire_days=7,
+    )
+    service = AuthService(
+        config=settings,
+        user_repo=user_repo,
+        refresh_token_repo=refresh_repo,
+    )
+    service._decode_token = MagicMock(  # type: ignore[method-assign]
+        return_value=MagicMock(email="user@example.com", type="refresh")
+    )
+    service._hash_token = MagicMock(return_value="hash")  # type: ignore[method-assign]
+    service._issue_token_pair = AsyncMock(return_value=MagicMock())  # type: ignore[method-assign]
+
+    await service.refresh_token("retried-refresh-token")
+
+    refresh_repo.revoke_all_for_user.assert_not_awaited()
+    service._issue_token_pair.assert_awaited_once()
