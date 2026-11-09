@@ -57,11 +57,15 @@ export function StudioFooter(props: StudioFooterProps) {
           chain.map((pluginId) => (
             <span key={pluginId} className="se-chain-chip">{pluginId}</span>
           ))
-        ) : (
-          <span className="se-foot-note">No effects on this track yet.</span>
-        )}
-        <button type="button" className="se-chain-add" disabled aria-label="Add effect (use the dock above)">
-          <Icon name="fa-plus" />
+        ) : null}
+        <button
+          type="button"
+          className="se-chain-add"
+          disabled
+          aria-label="Add Track Effects (use the dock above)"
+          title="Effects are added in the dock above the footer"
+        >
+          <Icon name="fa-plus" /> Add Track Effects
         </button>
       </div>
 

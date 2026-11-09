@@ -676,6 +676,34 @@ test("song detail rail follows the captured anatomy", async ({ page }) => {
   });
 });
 
+test("plugin dock sits above the footer on the captured surface", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel dock" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  const info = await page.evaluate(() => {
+    const dock = document.querySelector(".sp-dock");
+    const foot = document.querySelector(".se-foot");
+    const add = document.querySelector(".sp-add-inline");
+    if (!dock || !foot || !add) return null;
+    const dockBox = dock.getBoundingClientRect();
+    const footBox = foot.getBoundingClientRect();
+    return {
+      dockWidth: Math.round(dockBox.width),
+      dockBottom: Math.round(dockBox.bottom),
+      footTop: Math.round(footBox.top),
+      background: getComputedStyle(dock).backgroundColor,
+      addHeight: Math.round(add.getBoundingClientRect().height),
+    };
+  });
+  // The captured dock is a full-width band above the footer, with a 36 px add pill.
+  expect(info).not.toBeNull();
+  expect(info?.dockWidth).toBe(REFERENCE_VIEWPORT.width);
+  expect(info?.dockBottom).toBe(info?.footTop);
+  expect(info?.background).toBe("rgb(16, 16, 18)");
+  expect(info?.addHeight).toBe(36);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

@@ -199,9 +199,11 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
           );
         })}
 
-        <button type="button" className="sp-add" onClick={() => setCatalogOpen(true)}>
-          <Icon name="fa-plus" /> Add effect
-        </button>
+        {chain.length > 0 ? (
+          <button type="button" className="sp-add" onClick={() => setCatalogOpen(true)}>
+            <Icon name="fa-plus" /> Add effect
+          </button>
+        ) : null}
       </div>
 
       {catalogOpen ? (

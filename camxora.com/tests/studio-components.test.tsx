@@ -846,7 +846,7 @@ describe("StudioFooter", () => {
         onWhatsThis={noop}
       />
     );
-    expect(screen.getByText("No effects on this track yet.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Add Track Effects/ })).toBeTruthy();
     await user.click(screen.getByLabelText("Zoom in"));
     expect(onZoomIn).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("All projects").getAttribute("href")).toBe("/studio");
