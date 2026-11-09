@@ -2,6 +2,32 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-09 — Pixel parity (D-022)
+
+The Studio is now built to the captured layout, palette and type scale, verified by a
+Playwright gate at the capture viewport (1689×1277). Targets live in
+`reference/METRICS.json`; the log of matched regions and intentional divergences is
+`docs/studio/PIXEL_PARITY.md`.
+
+### Shipped
+
+| Area | What landed |
+|---|---|
+| **Frame** | `#111111` body, 52 px header/footer `#0a0a0a`, 260 px track panel `#141416`, 360 px library rail `#101012`, text `#f7f4ef` |
+| **Header** | 36 px pill groups (project, undo/redo, transport, time, tempo), `120 BPM 4/4`, ellipsis project chip |
+| **Tracks** | 85 px rows on `#141416` with `#1c1c1e` fader capsules, pan arch, 24 px controls, colour strip, `#262628` selection, pinned `Main` strip, wired all-controls head toggle |
+| **Timeline** | 30 px ruler `#101012` with thinning labels, 22 px `#1e1e20` time ruler with adaptive ticks, grey playhead + cyan flag, 82 px clips with 10 px radius, decoded waveforms, hover-only trim/fade grips |
+| **Library** | floating 360 px card inset 8 px; 64 px tiles with colour icon squares; 56 px rows; 30 px filter chips; uploads chip bar; colour flyout submenus |
+| **Rails** | clip info and song detail rebuilt to the captured anatomy (hero, Remix, waveform, underlined tabs, section cards) |
+| **Menus** | Learn popover, track/add-track/project/clip menus, export menu and toast, share dialog all on the captured surfaces |
+| **Plugins** | dock band + slot cards, catalog dialog with Learn chips, and a working **four-band EQ card** (selector, switch, six shapes, multi-point curve, Freq/Q/Gain knobs) backed by four cascaded biquads |
+
+### Verified
+
+`check:ui`, typecheck, `next build`, vitest 181/181, full studio e2e 80 passed / 1
+skipped, plus the pixel gate (21 assertions) and axe checks.
+
+
 ## Session 2026-11-04 — Studio build: gaps closed, tests and CI in place
 
 Continued from the 2026-11-03 capture/backfill session. This one is about **building**
