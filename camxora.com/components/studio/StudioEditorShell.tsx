@@ -58,6 +58,8 @@ import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
+import { StudioMidiEditor } from "@/components/studio/StudioMidiEditor";
+import { sanitizeNotes, scheduleMidiNote, type MidiNote } from "@/lib/studio-midi";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -89,6 +91,7 @@ type ClipLike = {
   songId?: string;
   offset?: number;
   fadeIn?: number;
+  midi?: { notes?: MidiNote[] };
 };
 
 function clock(seconds: number): string {
@@ -340,6 +343,7 @@ export function StudioEditorShell() {
     event.stopPropagation();
     setSelectedTrack(trackId);
     setSelectedClip(clip.id);
+    if ((clip as { midi?: unknown }).midi) setMidiClipId(clip.id);
     const group = selectedIds.includes(clip.id) ? selectedIds : [clip.id];
     setSelectedIds(group);
     const origins: Record<string, number> = {};
@@ -351,6 +355,7 @@ export function StudioEditorShell() {
   }
   const [exporting, setExporting] = useState(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
+  const [midiClipId, setMidiClipId] = useState<string | null>(null);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -1592,6 +1597,62 @@ export function StudioEditorShell() {
     setSelectedTrack(next.id);
   }
 
+  /** Create a MIDI track with a four-bar empty clip and open the editor (S31/S64). */
+  function addMidiTrack() {
+    const stamp = Date.now().toString(36);
+    const trackId = `track-${stamp}`;
+    const clipId = `clip-${stamp}`;
+    const name = `MIDI ${tracks.length + 1}`;
+    const color = colorForTrackName(name);
+    const nextTrack: StudioTrack = {
+      id: trackId,
+      name,
+      color,
+      index: tracks.length,
+      volume: 80,
+      pan: 0,
+      muted: false,
+      solo: false,
+      hidden: false,
+      collapsed: false,
+      groupId: null,
+      chain: [],
+      clipIds: [clipId],
+    };
+    const clip: ClipLike = {
+      id: clipId,
+      title: "MIDI clip",
+      start: 0,
+      duration: secondsPerBar * 4,
+      color,
+      midi: { notes: [] },
+    };
+    const data = currentData() as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      { ...data, lanes: [...lanes, clip], tracks: [...tracks, nextTrack] },
+      "a MIDI track",
+      [...tracks, nextTrack]
+    );
+    setSelectedTrack(trackId);
+    setMidiClipId(clipId);
+  }
+
+  /** Replace a MIDI clip's notes through the same document writer as every edit. */
+  function setMidiNotes(clipId: string, notes: MidiNote[]) {
+    const data = currentData() as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      {
+        ...data,
+        lanes: lanes.map((clip) =>
+          clip.id === clipId ? { ...clip, midi: { notes } } : clip
+        ),
+      },
+      "MIDI notes"
+    );
+  }
+
   const derivedChains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
     return (data.chains as Record<string, PluginChainEntry[]>) || {};
@@ -2168,7 +2229,7 @@ export function StudioEditorShell() {
   /** Minimal playback engine: decode each clip's audio and schedule it from the playhead. */
   const audioRef = useRef<{
     ctx: AudioContext;
-    sources: AudioBufferSourceNode[];
+    sources: AudioScheduledSourceNode[];
     analyser?: AnalyserNode;
     disposeChains?: (() => void)[];
   } | null>(null);
@@ -2433,6 +2494,27 @@ export function StudioEditorShell() {
       );
       audioRef.current?.sources.push(source);
     }
+
+    // MIDI clips: synth voices into the same track input, so chains, mute, solo and
+    // volume all apply exactly like audio clips.
+    for (const clip of arrangement) {
+      const notes = sanitizeNotes((clip as ClipLike).midi?.notes);
+      if (notes.length === 0) continue;
+      const start = clip.start ?? 0;
+      const track = tracks.find((item) => item.clipIds.includes(clip.id));
+      const anySolo = tracks.some((item) => item.solo);
+      const audible = track ? !track.muted && (!anySolo || track.solo) : true;
+      const volume = audible ? (track?.volume ?? 80) : 0;
+      const destination = trackInput(track?.id ?? clip.id, volume);
+      for (const note of notes) {
+        const absolute = start + note.start;
+        if (absolute + note.length <= from) continue;
+        const when = now + Math.max(0, absolute - from) / playbackRate;
+        audioRef.current?.sources.push(
+          scheduleMidiNote(context, destination, note, when, playbackRate)
+        );
+      }
+    }
   }
 
   /** Decode every clip's audio once, for export (W4.3). */
@@ -2492,6 +2574,7 @@ export function StudioEditorShell() {
         offset: (clip as { offset?: number }).offset,
         fadeIn: (clip as { fadeIn?: number }).fadeIn,
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
+        midi: (clip as ClipLike).midi,
       }));
       const exportTracks: ExportTrack[] = tracks.map((track) => ({
         id: track.id,
@@ -2859,6 +2942,12 @@ export function StudioEditorShell() {
 
   const railOpen = libraryOpen || inspectorOpen;
 
+  /** The MIDI clip open in the bottom editor, if any (notes coerced to the model). */
+  const midiClipSource = midiClipId ? clips.find((clip) => clip.id === midiClipId) : undefined;
+  const midiClip = midiClipSource
+    ? { ...midiClipSource, midi: { notes: sanitizeNotes(midiClipSource.midi?.notes) } }
+    : undefined;
+
   return (
     <>
       {/* The reference gates Studio below 768 px (S65): desktop-only notice. */}
@@ -2994,6 +3083,7 @@ export function StudioEditorShell() {
           onHide={hideTrack}
           onDelete={deleteTrack}
           onAddTrack={addTrack}
+          onAddMidiTrack={addMidiTrack}
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
@@ -3372,7 +3462,17 @@ export function StudioEditorShell() {
         onRequestStems={() => void requestStems()}
       />
 
-      {selectedTrack ? (
+      {midiClip ? (
+        <StudioMidiEditor
+          clip={midiClip}
+          barWidth={barWidth}
+          secondsPerBar={secondsPerBar}
+          loop={loop}
+          onToggleLoop={() => setLoop((value) => !value)}
+          onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
+          onClose={() => setMidiClipId(null)}
+        />
+      ) : selectedTrack ? (
         <StudioPluginDock
           chain={chains[selectedTrack] ?? []}
           trackName={tracks.find((track) => track.id === selectedTrack)?.name}

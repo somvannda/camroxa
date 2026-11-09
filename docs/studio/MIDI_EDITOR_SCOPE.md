@@ -8,6 +8,21 @@ Evidence: `reference/screens/S31-midi-clip-editor.jpeg` (3200×560, 2× DPR),
 `S63-1280px.jpeg`, `S64-1024px.jpeg`. Feature ids: `SUNO_STUDIO_FEATURE_INVENTORY.md`
 §6 (MIDI-001…MIDI-006).
 
+## Built (this branch)
+
+- **Model** — `lib/studio-midi.ts`: notes on `clip.midi.notes`, MIDI-number to frequency,
+  names, sanitising and quantise.
+- **Entry/panel** — Add-track → MIDI creates a four-bar clip and opens a bottom editor
+  (piano gutter, note grid, velocity lane, tabs, control bar). Click adds a snapped note,
+  drag moves it (time + pitch), double-click deletes.
+- **Playback and export** — synth voices are scheduled into the same per-track input for
+  live playback and for the offline renderer, so chains, mute/solo and volume apply.
+- **Tests** — `tests/studio-midi.test.ts` (model) and `tests/e2e/studio-midi.spec.ts`
+  (panel geometry, add/move/delete, persistence, reopen).
+
+Still open: velocity editing in the lane, transpose/octave, key/scale controls, and the
+pitch-bend/modulation lanes (tabs are disabled with reasons).
+
 ## What the capture shows
 
 From S31 (divide pixel values by 2 for CSS px) and the bottom panel in S64:

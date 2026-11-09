@@ -59,7 +59,7 @@ test("the add-track menu keeps the captured items and letters", async ({ page })
   await expect(items.nth(0)).toHaveText("Audio A");
   await expect(items.nth(1)).toHaveText("MIDI M");
   await expect(items.nth(2)).toHaveText("Upload U");
-  await expect(items.nth(1)).toBeDisabled();
+  await expect(items.nth(1)).toBeEnabled();
 
   await items.nth(0).click();
   await expect(page.locator(".se-track")).toHaveCount(2);

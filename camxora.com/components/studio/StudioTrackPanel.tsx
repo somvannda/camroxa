@@ -45,6 +45,7 @@ export type StudioTrackPanelProps = {
   onHide: (trackId: string) => void;
   onDelete: (trackId: string) => void;
   onAddTrack: () => void;
+  onAddMidiTrack: () => void;
   onAddUploadTrack: () => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
@@ -83,6 +84,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onHide,
     onDelete,
     onAddTrack,
+    onAddMidiTrack,
     onAddUploadTrack,
     onToggleHidden,
     onShowAllHidden,
@@ -428,8 +430,10 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
               <button
                 type="button"
                 role="menuitem"
-                disabled
-                title="MIDI tracks are not built in this editor"
+                onClick={() => {
+                  setAddOpen(false);
+                  onAddMidiTrack();
+                }}
               >
                 <span className="se-add-icon" data-tone="midi">
                   <Icon name="fa-table-columns" />

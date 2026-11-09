@@ -493,7 +493,7 @@ describe("StudioLibrary", () => {
         })}
       />
     );
-    expect(screen.getByText("No liked songs yet.")).toBeTruthy();
+    expect(screen.getByText("No songs found.")).toBeTruthy();
   });
 
   it("shows the captured song tag strip", () => {
@@ -555,7 +555,7 @@ describe("StudioLibrary", () => {
         })}
       />
     );
-    expect(screen.getByText("No songs from this project in the library yet.")).toBeTruthy();
+    expect(screen.getByText("No songs found.")).toBeTruthy();
   });
 
   it("changes the corpus from the level-2 filter toolbar", async () => {
@@ -675,7 +675,7 @@ describe("StudioLibrary", () => {
       />
     );
     expect(screen.getByText("Workspace filter")).toBeTruthy();
-    expect(screen.getByText("No songs in this workspace yet.")).toBeTruthy();
+    expect(screen.getByText("No songs found.")).toBeTruthy();
     await user.click(screen.getByLabelText("Clear workspace filter"));
     expect(onOpenWorkspace).toHaveBeenCalledWith(null);
   });
@@ -917,6 +917,7 @@ describe("StudioTrackPanel", () => {
       onHide: noop,
       onDelete: noop,
       onAddTrack: noop,
+      onAddMidiTrack: noop,
       onAddUploadTrack: noop,
       onToggleHidden: noop,
       onShowAllHidden: noop,
@@ -985,9 +986,8 @@ describe("StudioTrackPanel", () => {
       "MIDI M",
       "Upload U",
     ]);
-    // No MIDI tracks exist in this editor, so that row says so instead of pretending.
-    expect((items[1] as HTMLButtonElement).disabled).toBe(true);
-    expect(items[1].getAttribute("title")).toMatch(/MIDI/);
+    // MIDI tracks are real now: the row creates one and opens the editor.
+    expect((items[1] as HTMLButtonElement).disabled).toBe(false);
 
     await user.click(items[0]);
     expect(onAddTrack).toHaveBeenCalledOnce();

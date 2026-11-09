@@ -12,6 +12,7 @@
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { normaliseChannels } from "@/lib/studio-normalise";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
+import { scheduleMidiNote, type MidiNote } from "@/lib/studio-midi";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
 export type ExportClip = {
@@ -23,6 +24,7 @@ export type ExportClip = {
   /** Fade-in length in seconds (S25). */
   fadeIn?: number;
   audioUrl?: string | null;
+  midi?: { notes?: MidiNote[] };
 };
 
 export type ExportTrack = {
@@ -179,6 +181,22 @@ export async function renderMix(
     }
     const node = source as AudioBufferSourceNode & { start: (w: number, o?: number, d?: number) => void };
     node.start(when, Math.max(0, clip.offset ?? 0) + offset, playable);
+  }
+
+  // MIDI clips render through the same track inputs, so chains/mix apply to them too.
+  for (const clip of clips) {
+    if (options.clipIds && !options.clipIds.has(clip.id)) continue;
+    const notes = clip.midi?.notes ?? [];
+    if (notes.length === 0) continue;
+    const track = tracks.find((item) => item.clipIds.includes(clip.id));
+    const audible = track ? !track.muted && (!anySolo || track.solo) : true;
+    if (!audible) continue;
+    const destination = trackInput(track?.id ?? clip.id, track?.volume ?? 80);
+    for (const note of notes) {
+      const absolute = (clip.start ?? 0) + note.start;
+      if (absolute < from - 0.001 || absolute >= to) continue;
+      scheduleMidiNote(context, destination, note, Math.max(0, absolute - from));
+    }
   }
 
   const rendered = await context.startRendering();
