@@ -626,6 +626,42 @@ test("clip info rail follows the captured anatomy", async ({ page }) => {
   });
 });
 
+test("song detail rail follows the captured anatomy", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel song" });
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await page.getByRole("button", { name: /All Songs/ }).click();
+  await page.locator(".se-lib-song").first().dblclick();
+  const panel = page.getByRole("complementary", { name: "Song details" });
+  await expect(panel).toBeVisible();
+  const info = await panel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const art = element.querySelector(".se-song-hero .se-clip-art")?.getBoundingClientRect();
+    const tab = element.querySelector(".se-lib-tab")?.getBoundingClientRect();
+    const card = element.querySelector(".se-song-section");
+    return {
+      x: Math.round(rect.x),
+      width: Math.round(rect.width),
+      radius: getComputedStyle(element).borderTopLeftRadius,
+      art: art ? Math.round(art.width) : null,
+      tabHeight: tab ? Math.round(tab.height) : null,
+      cardBackground: card ? getComputedStyle(card).backgroundColor : null,
+      cardRadius: card ? getComputedStyle(card).borderTopLeftRadius : null,
+    };
+  });
+  // S27/EXTRA detail: floating 360 px rail, 52 px hero, 38 px tabs, #141416 cards.
+  expect(info).toMatchObject({
+    x: REFERENCE_VIEWPORT.width - 368,
+    width: 360,
+    radius: "12px",
+    art: 52,
+    tabHeight: 38,
+    cardBackground: "rgb(20, 20, 22)",
+    cardRadius: "12px",
+  });
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
