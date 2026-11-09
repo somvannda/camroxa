@@ -206,7 +206,7 @@ def compute_stage_progress_percent(
     status = _normalize_progress_status(effective_status)
     meta = row.meta
 
-    if stage == "done" or status == "done":
+    if stage in {"done", "completed"} or status in {"done", "completed"}:
         return "100%"
     if stage == "error" or status == "failed":
         return "—"
