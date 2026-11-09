@@ -216,16 +216,6 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
           aria-label="Choose audio file"
           onChange={(event) => void importFile(event.target.files?.[0])}
         />
-        <button
-          type="button"
-          className="se-lib-tool"
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          aria-label="Upload audio"
-        >
-          <Icon name="fa-arrow-up-from-bracket" />
-          <span>{uploading ? "Uploading…" : "Upload"}</span>
-        </button>
       </>
     );
 
@@ -606,6 +596,50 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
           <>
             <div className="se-lib-tools" role="toolbar" aria-label="Upload actions">
               {uploadControl}
+              <button
+                type="button"
+                className="se-lib-chip"
+                disabled
+                title="Filters are not built for uploads"
+              >
+                <Icon name="fa-filter" />
+                <span>Filter</span>
+              </button>
+              <button
+                type="button"
+                className="se-lib-chip"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
+                <Icon name="fa-plus" />
+                <span>{uploading ? "Uploading..." : "New"}</span>
+              </button>
+              <button
+                type="button"
+                className="se-lib-chip"
+                aria-label="Liked only"
+                onClick={() => onOpenSongs("liked")}
+              >
+                <Icon name="fa-heart" />
+              </button>
+              <button
+                type="button"
+                className="se-lib-chip"
+                onClick={() => {
+                  onOpenSongs("all");
+                  onFilter("project");
+                }}
+              >
+                In Project
+              </button>
+              <button
+                type="button"
+                className="se-lib-chip"
+                disabled
+                title="Stems need a finished separation first"
+              >
+                Stems
+              </button>
             </div>
             {uploadError ? (
               <p className="se-lib-empty" role="alert">
