@@ -21,6 +21,8 @@ functional controls the capture does not show (listed below).
 | Track row | 85 px, name x48 y100 11 px, controls 24×24, faders 167+50 at x28 y126 | same (y125) |
 | Colour strip | x8, 10 px wide | same |
 | Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom, labels thin 1/2/4/8 bars as it drops | same |
+| Time ruler | 22 px `#1e1e20` band with dim labels (labels kept at AA contrast) | same |
+| Playhead | 1 px `#4c4c4c` line with a cyan `#3dafff` ruler flag | same |
 | Lane | 86 px, starts y82 | same |
 | Clip | starts y84, 82 px tall, radius 10, label at +17 | same; waveform painted from the decoded clip audio (peaks cached per URL) |
 | Footer band | 52 px `#0a0a0a`, control pills 36 px | same |
@@ -31,6 +33,7 @@ functional controls the capture does not show (listed below).
 | Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink) | same |
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
+| Track head | 29 px strip with an all-controls toggle left and a panel-collapse control right | left wired, right disabled (not built) |
 | Learn popover | 206 px, 44 px rows, 11 px hints | same |
 | Track options menu | 164 px, 33 px icon rows inside the panel | same (inline colour swatches) |
 | Add-track menu | 208 px, 50 px rows, 24 px colour icon squares | same |
@@ -60,4 +63,4 @@ functional controls the capture does not show (listed below).
 - Song row subtitle copy (the capture shows a description line; we show tags).
 - Generation prompt bar, history drawer and plugin dock cards — reference surfaces
   whose behaviour is not built, so they stay out of the chrome pass.
-- Track panel head icons (sort / expand) — captured, behaviour unknown.
+- Track panel panel-collapse control — captured, its collapsed layout is not.
