@@ -29,6 +29,8 @@ from shared.lib.progress_presentation import (
     format_youtube_compact,
     resolve_progress_error_message,
 )
+from shared.lib.publish_activity import describe as describe_upload
+from shared.lib.publish_activity import slot_key as upload_slot_key
 
 
 def _status_tone(status: str) -> str:
@@ -420,14 +422,24 @@ class ProgressDetailCard(StudioPanel):
 
         export_raw = format_pipeline_step_text(entry.effective_converter or row.converter)
         merge_raw = format_pipeline_step_text(entry.effective_merge or row.merge)
-        youtube_raw = format_youtube_compact(row)
-        delivery = format_delivery_summary(row)
-        if delivery and delivery not in youtube_raw:
-            youtube_raw = (
-                f"{youtube_raw} · {delivery}" if youtube_raw not in {"—", ""} else delivery
-            )
-        if meta.youtube_url:
-            youtube_raw = f"{youtube_raw} · {meta.youtube_url}" if youtube_raw not in {"—", ""} else meta.youtube_url
+        # A live upload has no server row until the transfer finishes, so the
+        # inspector must read the same activity registry as the table cell.
+        live_youtube = describe_upload(
+            upload_slot_key(meta.batch_id, meta.profile_id, meta.role)
+        )
+        youtube_raw = live_youtube or format_youtube_compact(row)
+        if not live_youtube:
+            delivery = format_delivery_summary(row)
+            if delivery and delivery not in youtube_raw:
+                youtube_raw = (
+                    f"{youtube_raw} · {delivery}" if youtube_raw not in {"—", ""} else delivery
+                )
+            if meta.youtube_url:
+                youtube_raw = (
+                    f"{youtube_raw} · {meta.youtube_url}"
+                    if youtube_raw not in {"—", ""}
+                    else meta.youtube_url
+                )
         self._bind_step(self._converter_label, self._converter_detail, self._export_dot, export_raw)
         self._bind_step(self._merge_label, self._merge_detail, self._merge_dot, merge_raw)
         self._bind_step(self._youtube_label, self._youtube_detail, self._youtube_dot, youtube_raw)

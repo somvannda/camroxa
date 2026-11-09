@@ -146,6 +146,8 @@ _STAGE_BADGE_COLORS = {
 }
 _STATUS_COLORS = {
     "completed": "#00C878",
+    "published": "#00C878",
+    "uploaded": "#00C878",
     "pending": "#F59E0B",
     "not started": "#60758C",
     "failed": "#F43F5E",
