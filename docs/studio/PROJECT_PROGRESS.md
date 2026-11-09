@@ -18,7 +18,7 @@ Playwright gate at the capture viewport (1689×1277). Targets live in
 | **Tracks** | 85 px rows on `#141416` with `#1c1c1e` fader capsules, pan arch, 24 px controls, colour strip, `#262628` selection, pinned `Main` strip, wired all-controls head toggle and a 44 px panel-collapse rail |
 | **Timeline** | 30 px ruler `#101012` with thinning labels, 22 px `#1e1e20` time ruler with adaptive ticks, grey playhead + cyan flag, 82 px clips with 10 px radius, decoded waveforms, hover-only trim/fade grips |
 | **Library** | floating 360 px card inset 8 px; 64 px tiles with colour icon squares; 56 px rows; 30 px filter chips; uploads chip bar; colour flyout submenus |
-| **Rails** | clip info and song detail rebuilt to the captured anatomy (hero, Remix, waveform, underlined tabs, section cards) |
+| **Rails** | clip info and song detail rebuilt to the captured anatomy (hero, Remix, waveform, underlined tabs, section cards); history drawer on the captured surface |
 | **Menus** | Learn popover, track/add-track/project/clip menus, export menu and toast, share dialog all on the captured surfaces |
 | **Plugins** | dock band + slot cards, catalog dialog with Learn chips, and a working **four-band EQ card** (selector, switch, six shapes, multi-point curve, Freq/Q/Gain knobs) backed by four cascaded biquads |
 

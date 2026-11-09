@@ -34,6 +34,7 @@ functional controls the capture does not show (listed below).
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same |
 | Uploads level | Filter / New / liked / In Project / Stems chips | same; Filter and Stems disabled |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
+| History drawer | 300 px panel under the header, inset 8 px, on #101012 | same surface; our version list/restore inside |
 | Plugin dock | full-width band above the footer, slot cards on #141416 | same |
 | EQ card | 450 px card: Band selector + switch, six shape buttons, yellow curve with per-band handles, Freq/Q/Gain knobs | same; four bands, real cascaded biquads |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |
