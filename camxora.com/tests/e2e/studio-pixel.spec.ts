@@ -996,6 +996,29 @@ test("filtered library shows the captured empty state", async ({ page }) => {
   await expect(library.getByLabel("Search library")).toHaveValue("");
 });
 
+test("library tiles sit on the captured grid", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel tiles" });
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const tiles = await page.locator(".se-lib-tile").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      };
+    })
+  );
+  // S52: 169×64 tiles, 8 px inset, 4 px gap, first row at y52.
+  expect(tiles).toHaveLength(4);
+  expect(tiles[0]).toMatchObject({ x: 1330, y: 53, width: 169, height: 64 });
+  expect(tiles[1].x).toBe(1503);
+  expect(tiles[2].y).toBe(121);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
