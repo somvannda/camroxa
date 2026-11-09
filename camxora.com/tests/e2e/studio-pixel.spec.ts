@@ -745,6 +745,14 @@ test("plugin catalog dialog matches the captured surface", async ({ page }) => {
     labelSize: "11px",
   });
 
+  // S39: each card opens with a device preview; ours is drawn from the plugin family.
+  const previews = await dialog.locator(".sp-card-preview").evaluateAll((nodes) =>
+    nodes.map((node) => Math.round(node.getBoundingClientRect().height))
+  );
+  expect(previews.length).toBeGreaterThan(0);
+  expect(previews.every((height) => height === 88)).toBe(true);
+  expect(await dialog.locator(".sp-card-preview path").count()).toBeGreaterThan(0);
+
   // S39: each card carries a Learn chip that explains the effect; it must not add it.
   const learn = dialog.locator(".sp-card-learn").first();
   await learn.hover();

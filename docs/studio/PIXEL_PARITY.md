@@ -42,7 +42,7 @@ functional controls the capture does not show (listed below).
 | EQ card | 450 px card: Band selector + switch, six shape buttons, yellow curve with per-band handles, Freq/Q/Gain knobs | same; four bands, real cascaded biquads |
 | Popped-out plugin | large floating card from the external-link control | same: fixed 460 px (520 for EQ) at the bottom-right |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |
-| Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 14 px names, Learn chips, uppercase section label | same; preview art omitted (no assets) |
+| Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 88 px device previews, 14 px names, Learn chips, uppercase section label | same; previews are our own traces/knobs per plugin family, not copied art |
 | Track head | 29 px strip with an all-controls toggle left and a panel-collapse control right | both wired; collapse folds the panel to a 44 px rail (own layout, never captured) |
 | Learn popover | 206 px, 44 px rows, 11 px hints | same |
 | Track options menu | 164 px, 33 px icon rows inside the panel; Color opens a flyout | same |

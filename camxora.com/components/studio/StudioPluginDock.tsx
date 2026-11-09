@@ -333,6 +333,40 @@ function EqCard({
   );
 }
 
+
+/** Small device preview on each catalog card (S39): knobs plus a family-shaped trace. */
+const PREVIEW_PATHS: Record<string, string> = {
+  eq: "M0 30 H30 Q55 30 70 14 Q85 -2 100 14 Q115 30 140 30 H200",
+  compressor: "M0 40 L60 30 L120 16 L200 10",
+  limiter: "M0 26 L120 20 L150 12 L200 12",
+  gate: "M0 8 H70 L80 46 H200",
+  delay: "M0 30 H40 L50 12 L60 30 H80 L90 18 L100 30 H120 L130 22 L140 30 H200",
+  reverb: "M0 12 Q40 12 60 30 Q90 52 200 44",
+  chorus: "M0 30 Q25 6 50 30 T100 30 T150 30 T200 30",
+  distortion: "M0 42 L20 18 L40 42 L60 18 L80 42 L100 18 L120 42 L140 18 L160 42 L180 18 L200 42",
+  convolution: "M0 46 L30 44 L60 10 L70 40 L90 34 L120 42 L150 40 L200 46",
+};
+
+function PluginPreview({ id }: { id: string }) {
+  const path = PREVIEW_PATHS[id] ?? "M0 30 H200";
+  return (
+    <span className="sp-card-preview" aria-hidden="true">
+      <svg viewBox="0 0 200 52" preserveAspectRatio="none">
+        <path d={path} />
+      </svg>
+      <span className="sp-card-knobs">
+        {[0.32, 0.55, 0.74].map((value, index) => (
+          <span
+            key={index}
+            className="sp-card-knob"
+            style={{ ["--p" as string]: `${(value * 270).toFixed(0)}deg` }}
+          />
+        ))}
+      </span>
+    </span>
+  );
+}
+
 export function StudioPluginDock({ chain, onChange, trackName }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -551,6 +585,7 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                   className="sp-card"
                   onClick={() => add(plugin.id)}
                 >
+                  <PluginPreview id={plugin.id} />
                   <span className="sp-card-name">
                     {plugin.name}
                     {plugin.unverified ? (
