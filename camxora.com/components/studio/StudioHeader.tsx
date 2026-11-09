@@ -238,17 +238,6 @@ export function StudioHeader(props: StudioHeaderProps) {
             Count-in {countInBeat}
           </span>
         ) : null}
-        <button
-          type="button"
-          className={`se-icon${loop ? " on" : ""}`}
-          onClick={onToggleLoop}
-          aria-pressed={loop}
-          aria-label="Loop"
-          title="Loop"
-          data-help="loop"
-        >
-          <Icon name="fa-repeat" />
-        </button>
         <button type="button" className="se-icon" onClick={onStop} aria-label="Stop">
           <Icon name="fa-stop" />
         </button>
@@ -261,6 +250,17 @@ export function StudioHeader(props: StudioHeaderProps) {
           data-help="play"
         >
           <Icon name={playing ? "fa-pause" : "fa-play"} />
+        </button>
+        <button
+          type="button"
+          className={`se-icon${loop ? " on" : ""}`}
+          onClick={onToggleLoop}
+          aria-pressed={loop}
+          aria-label="Loop"
+          title="Loop"
+          data-help="loop"
+        >
+          <Icon name="fa-repeat" />
         </button>
         <button
           type="button"

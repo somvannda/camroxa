@@ -4669,7 +4669,9 @@ html{color-scheme:dark}
   .se-shell.has-rail .se-head .se-save{display:none}
   .se-shell.has-rail .se-head [data-help="library"]{display:none}
 }
-@media (max-width:900px){.se-tracks{width:200px}.se-head{grid-template-columns:1fr auto;height:auto;padding:8px 10px}.se-head-center{grid-column:1 / -1;order:3;justify-content:center}.se-head-right{justify-content:flex-end}}
+@media (max-width:1100px){.se-head .se-save,.se-head .se-meter,.se-head .se-input-toggle{display:none}.se-head-center .se-icon[aria-label="Stop"]{display:none}.se-head [data-help="metronome"]{display:none}}
+@media (max-width:900px){.se-head-left .se-head-group{display:none}.se-tracks{width:260px}.se-head{grid-template-columns:auto 1fr auto;height:52px;padding:0 10px;gap:8px}.se-head-left,.se-head-center,.se-head-right{gap:6px}.se-head .se-icon{width:26px}.se-chip{max-width:150px;padding:0 10px}.se-head-group.se-time{gap:6px;padding:0 8px}.se-head-group.se-time .se-readout:nth-child(2){display:none}.se-bpm{width:44px}.se-signature{width:42px}.se-head .se-pill{padding:0 10px}}
+@media (max-width:1000px){.se-shell.has-rail .se-head,.se-shell.has-rail .se-foot{padding-right:12px}.se-shell.has-rail .se-body{padding-right:0}}
 
 .studio-start-songs{margin-top:44px;display:flex;flex-direction:column;gap:16px}
 

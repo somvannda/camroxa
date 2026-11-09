@@ -947,6 +947,27 @@ test("studio gates below 768 with the desktop notice", async ({ page }) => {
   expect(info.href).toBe("/create");
 });
 
+test("narrow headers keep the captured controls", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel narrow" });
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  // S64: undo/redo stay at 1024; save/meter/speed/stop/metronome do not.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await expect(page.locator(".se-save")).toBeHidden();
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  // S65: no undo/redo, panel stays 260, transport and time/tempo remain.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  const panel = await page.locator(".se-tracks").evaluate((element) =>
+    Math.round(element.getBoundingClientRect().width)
+  );
+  expect(panel).toBe(260);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
