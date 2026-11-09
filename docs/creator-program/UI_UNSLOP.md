@@ -48,6 +48,18 @@ The data itself is honest: real creator records, real statuses, no fake counters
 
 ## Follow-ups
 
-- Apply a dedicated unslop pass to the existing Creator Studio, Verification, Directory, and public page: remove uppercase eyebrows, reduce primary buttons to one per screen, and replace the public-page purple gradient fallback with a neutral surface or a real banner.
-- Vary the stat-card rhythm instead of four equal cards.
-- Keep the release route as the only signature on release surfaces.
+### Applied in the second pass
+
+- Removed uppercase tracked eyebrows from Creator Studio, Verification, Directory, and the public creator page; they now use quiet sentence-case meta text.
+- Replaced the four equal stat cards with a single `CreatorMetrics` strip (hairline rules, tabular figures, quieter rhythm) on Studio, Verification, Releases, and the public page.
+- Reduced Verification to one primary action per screen: the application submit stays primary; identity evidence is now secondary.
+- Replaced the public-page purple gradient banner fallback with a neutral graphite surface and a hairline.
+- Converted the Studio checklist from eight equal cards to a compact readiness list.
+
+### Still open
+
+- The global primary button still uses the app-wide purple gradient. A full brand pass should either keep it as the one accent or move primary buttons to an off-white surface with dark text.
+- Uppercase tracked eyebrows still exist outside the creator surfaces (`Discover`, `Charts`, etc.).
+- The Studio header still has several actions; keep one primary and move the rest into a quieter secondary row.
+- Add a real banner image when a creator uploads one, instead of the neutral fallback.
+

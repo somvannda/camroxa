@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { CreatorMetrics } from "@/components/CreatorMetrics";
 import {
   createRelease,
   CreatorApiError,
@@ -239,12 +240,14 @@ export function CreatorReleasesView() {
       {error ? <p className="fine" style={{ color: "#f87171" }} role="alert">{error}</p> : null}
       {success ? <p className="fine" style={{ color: "#4ade80" }} role="status">{success}</p> : null}
 
-      <div className="dash-stats">
-        <div className="dash-stat"><b style={{ fontVariantNumeric: "tabular-nums" }}>{drafts}</b><span>Drafts</span></div>
-        <div className="dash-stat"><b style={{ fontVariantNumeric: "tabular-nums" }}>{inReview}</b><span>In review</span></div>
-        <div className="dash-stat"><b style={{ fontVariantNumeric: "tabular-nums" }}>{live}</b><span>Live</span></div>
-        <div className="dash-stat"><b style={{ fontVariantNumeric: "tabular-nums" }}>{releases.length}</b><span>Total</span></div>
-      </div>
+      <CreatorMetrics
+        items={[
+          { label: "Drafts", value: drafts },
+          { label: "In review", value: inReview },
+          { label: "Live", value: live },
+          { label: "Total", value: releases.length },
+        ]}
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, alignItems: "start" }}>
         <section className="panel">
@@ -373,6 +376,30 @@ export function CreatorReleasesView() {
           )}
         </section>
       </div>
+
+      <section className="panel" style={{ marginTop: 24 }}>
+        <div className="sec-head">
+          <h2>How releases work</h2>
+          <span className="fine">Review takes up to 3 business days</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24 }}>
+          <div>
+            <p className="fine" style={{ margin: 0 }}>01</p>
+            <strong style={{ display: "block", margin: "4px 0" }}>Pick a finished generation</strong>
+            <p className="fine" style={{ margin: 0, textAlign: "left" }}>Only tracks with stored audio can be submitted.</p>
+          </div>
+          <div>
+            <p className="fine" style={{ margin: 0 }}>02</p>
+            <strong style={{ display: "block", margin: "4px 0" }}>Send it to review</strong>
+            <p className="fine" style={{ margin: 0, textAlign: "left" }}>We check rights, metadata, and audio readiness.</p>
+          </div>
+          <div>
+            <p className="fine" style={{ margin: 0 }}>03</p>
+            <strong style={{ display: "block", margin: "4px 0" }}>Go live</strong>
+            <p className="fine" style={{ margin: 0, textAlign: "left" }}>Approved releases appear on your creator page and in the catalog.</p>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

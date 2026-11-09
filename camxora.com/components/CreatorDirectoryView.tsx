@@ -37,7 +37,7 @@ export function CreatorDirectoryView() {
     <div className="page">
       <div className="page-head">
         <div>
-          <div className="eyebrow">Creators</div>
+          <p className="fine" style={{ margin: 0 }}>Creators</p>
           <h1>Creator directory</h1>
           <p>Verified and emerging creators building Khmer music on Camxora.</p>
         </div>

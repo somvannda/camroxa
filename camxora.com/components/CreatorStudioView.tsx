@@ -154,7 +154,7 @@ export function CreatorStudioView() {
     <div className="page">
       <div className="page-head">
         <div>
-          <div className="eyebrow">Creator Studio</div>
+          <p className="fine" style={{ margin: 0 }}>Creator Studio</p>
           <h1>{profile ? profile.display_name : "Claim your creator page"}</h1>
           <p>
             {profile
@@ -182,23 +182,40 @@ export function CreatorStudioView() {
       {success ? <p className="fine" style={{ color: "#4ade80" }} role="status">{success}</p> : null}
 
       {profile ? (
-        <div className="dash-stats">
-          {[
-            ["handle", "Handle"],
-            ["display_name", "Name"],
-            ["bio", "Bio"],
-            ["avatar", "Avatar"],
-            ["genre", "Genre"],
-            ["first_release", "First release"],
-            ["verified", "Verified"],
-            ["payout_ready", "Payout ready"],
-          ].map(([key, label]) => (
-            <div className="dash-stat" key={key}>
-              <b>{checklist[key] ? "✓" : "○"}</b>
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <div className="sec-head">
+            <h2>Profile readiness</h2>
+            <span className="fine">{Object.values(checklist).filter(Boolean).length} of 8 complete</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 24px" }}>
+            {[
+              ["handle", "Handle"],
+              ["display_name", "Name"],
+              ["bio", "Bio"],
+              ["avatar", "Avatar"],
+              ["genre", "Genre"],
+              ["first_release", "First release"],
+              ["verified", "Verified"],
+              ["payout_ready", "Payout ready"],
+            ].map(([key, label]) => (
+              <div
+                key={key}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "8px 0",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <span className="fine">{label}</span>
+                <span style={{ color: checklist[key] ? "#a7f3d0" : "rgba(255,255,255,0.4)", fontSize: 12 }}>
+                  {checklist[key] ? "Done" : "Missing"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       <section className="panel">

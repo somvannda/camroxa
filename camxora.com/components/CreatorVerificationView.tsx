@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { CreatorMetrics } from "@/components/CreatorMetrics";
 import {
   CreatorApiError,
   fetchProgramStatus,
@@ -166,7 +167,7 @@ export function CreatorVerificationView() {
     <div className="page">
       <div className="page-head">
         <div>
-          <div className="eyebrow">Creator Studio / Verification</div>
+          <p className="fine" style={{ margin: 0 }}>Creator Studio / Verification</p>
           <h1>Verification</h1>
           <p>Apply for the Verified Creator badge and track your review.</p>
         </div>
@@ -179,12 +180,14 @@ export function CreatorVerificationView() {
       {error ? <p className="fine" style={{ color: "#f87171" }} role="alert">{error}</p> : null}
       {success ? <p className="fine" style={{ color: "#4ade80" }} role="status">{success}</p> : null}
 
-      <div className="dash-stats">
-        <div className="dash-stat"><b>{status.profile.tier}</b><span>Current tier</span></div>
-        <div className="dash-stat"><b>{application ? STATUS_LABELS[application.status] ?? application.status : "Not applied"}</b><span>Application</span></div>
-        <div className="dash-stat"><b>{status.badges.length}</b><span>Active badges</span></div>
-        <div className="dash-stat"><b>{status.verifications.length}</b><span>Evidence items</span></div>
-      </div>
+      <CreatorMetrics
+        items={[
+          { label: "Current tier", value: status.profile.tier },
+          { label: "Application", value: application ? STATUS_LABELS[application.status] ?? application.status : "Not applied" },
+          { label: "Active badges", value: status.badges.length },
+          { label: "Evidence items", value: status.verifications.length },
+        ]}
+      />
 
       {application ? (
         <section className="panel">
@@ -295,7 +298,7 @@ export function CreatorVerificationView() {
             />
           </div>
           <div className="page-actions">
-            <button className="btn btn-primary" type="submit" disabled={saving || !evidenceRef.trim()}>
+            <button className="btn btn-ghost" type="submit" disabled={saving || !evidenceRef.trim()}>
               Submit evidence
             </button>
           </div>

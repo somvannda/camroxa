@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { CreatorMetrics } from "@/components/CreatorMetrics";
 import { CreatorApiError, fetchCreator, type CreatorProfile } from "@/lib/creator-api";
 
 function formatCount(value: number): string {
@@ -72,9 +73,9 @@ export function CreatorPublicView({ handle }: { handle: string }) {
     <div className="page">
       <div className="page-head">
         <div>
-          <div className="eyebrow">
+          <p className="fine" style={{ margin: 0 }}>
             <Link href="/creators">Creators</Link> / {creator.handle}
-          </div>
+          </p>
           <h1>{creator.display_name}</h1>
           <p>{creator.tagline || "Creator on Camxora."}</p>
         </div>
@@ -96,7 +97,8 @@ export function CreatorPublicView({ handle }: { handle: string }) {
             height: 190,
             background: creator.banner_url
               ? `center / cover no-repeat url(${creator.banner_url})`
-              : "linear-gradient(135deg, #4c1d95 0%, #7c3aed 55%, #0a0e27 100%)",
+              : "#15161d",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         />
         <div style={{ padding: "0 24px 24px", marginTop: -52 }}>
@@ -136,12 +138,14 @@ export function CreatorPublicView({ handle }: { handle: string }) {
         </div>
       </section>
 
-      <div className="dash-stats">
-        <div className="dash-stat"><b>{formatCount(creator.stats.monthly_listeners)}</b><span>Monthly listeners</span></div>
-        <div className="dash-stat"><b>{formatCount(creator.stats.followers)}</b><span>Followers</span></div>
-        <div className="dash-stat"><b>{creator.stats.releases.toLocaleString()}</b><span>Releases</span></div>
-        <div className="dash-stat"><b>{formatCount(creator.stats.valid_streams)}</b><span>Valid streams</span></div>
-      </div>
+      <CreatorMetrics
+        items={[
+          { label: "Monthly listeners", value: formatCount(creator.stats.monthly_listeners) },
+          { label: "Followers", value: formatCount(creator.stats.followers) },
+          { label: "Releases", value: creator.stats.releases },
+          { label: "Valid streams", value: formatCount(creator.stats.valid_streams) },
+        ]}
+      />
 
       <section className="panel">
         <div className="sec-head"><h2>About</h2></div>
