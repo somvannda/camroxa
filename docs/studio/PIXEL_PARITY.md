@@ -35,6 +35,7 @@ functional controls the capture does not show (listed below).
 | Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink) | same |
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same |
 | Uploads level | Filter / New / liked / In Project / Stems chips | same; Filter and Stems disabled |
+| Empty library | centred “No songs found.” + 38 px Reset all filters pill | same (only when filters/search caused it) |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
 | History drawer | 300 px panel under the header, inset 8 px, on #101012, ‹ date › stepper | same; our version list/restore inside |
 | Plugin dock | full-width band above the footer, slot cards on #141416 | same |
