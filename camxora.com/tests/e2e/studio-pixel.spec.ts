@@ -117,7 +117,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(timeline.ruler).toMatchObject({ height: 30, background: "rgb(16, 16, 18)" });
   expect(timeline.lane?.y).toBe(82);
   expect(timeline.clip).toMatchObject({ y: 84, height: 82 });
-  expect(timeline.radius).toBe("8px");
+  expect(timeline.radius).toBe("10px");
 
   // §2 header: 36 px pills on a 52 px band; project chip at x≈115, undo/redo grouped.
   const header = await page.evaluate(() => {

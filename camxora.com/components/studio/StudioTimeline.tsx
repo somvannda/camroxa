@@ -2,6 +2,7 @@
 
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 
+import { Waveform } from "@/components/studio/Waveform";
 import { dragToStart } from "@/lib/studio-snap";
 import type { StudioTrack } from "@/lib/studio-tracks";
 
@@ -34,6 +35,19 @@ export type TimelineDrag = {
 };
 
 export type TimelineMarquee = { x1: number; y1: number; x2: number; y2: number };
+
+/**
+ * Clip label colour for a clip fill. Pastel track colours (the editor's default
+ * palette) need dark text to stay readable; the saturated reference colours keep
+ * white. Keeps the captured look without failing contrast (axe color-contrast).
+ */
+function labelOn(fill: string): string {
+  const value = fill.replace("#", "");
+  if (value.length !== 6) return "#ffffff";
+  const channel = (index: number) => parseInt(value.slice(index, index + 2), 16) / 255;
+  const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  return luminance > 0.55 ? "#111111" : "#ffffff";
+}
 
 export type StudioTimelineProps = {
   tracks: StudioTrack[];
@@ -188,13 +202,28 @@ export function StudioTimeline(props: StudioTimelineProps) {
                       className={`se-clip${isSelected ? " selected" : ""}${
                         isDragging ? " dragging" : ""
                       }${preview ? " trimming" : ""}`}
-                      style={{ left, width, background: clip.color || track.color }}
+                      style={{
+                        left,
+                        width,
+                        background: clip.color || track.color,
+                        color: labelOn(clip.color || track.color),
+                      }}
                       onPointerDown={(event) => onClipPointerDown(event, clip, track.id)}
                       onContextMenu={(event) => onClipContextMenu(event, clip)}
                       aria-pressed={isSelected}
                     >
                       <span className="se-clip-head">{clip.title || "Clip"}</span>
-                      <span className="se-clip-body" aria-hidden="true" />
+                      <span className="se-clip-body" aria-hidden="true">
+                        {clip.audioUrl ? (
+                          <Waveform
+                            url={clip.audioUrl}
+                            width={Math.max(20, Math.round(width))}
+                            height={58}
+                            label={`${clip.title || "Clip"} waveform`}
+                            color="rgba(0,0,0,.34)"
+                          />
+                        ) : null}
+                      </span>
                       {isSelected ? (
                         <>
                           <span

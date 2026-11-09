@@ -22,7 +22,7 @@ functional controls the capture does not show (listed below).
 | Colour strip | x8, 10 px wide | same |
 | Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom | same |
 | Lane | 86 px, starts y82 | same |
-| Clip | starts y84, 82 px tall, radius 8 | same (no waveform paint, see below) |
+| Clip | starts y84, 82 px tall, radius 10, label at +17 | same; waveform painted from the decoded clip audio (peaks cached per URL) |
 | Footer band | 52 px `#0a0a0a`, control pills 36 px | same |
 | Footer groups | tools and view icons grouped in pills, white Learn pill | same |
 | Library rail | floating 360 px card, inset 8 px top/right/bottom, radius 12, `#101012` | same |
@@ -42,7 +42,7 @@ functional controls the capture does not show (listed below).
 | Search collapses to the magnifier | matches the capture; it expands on focus/typing |
 | Add is an icon button in rows | D-016 keeps Add next to drag without widening the measured row |
 | Master fader lives in the footer | the capture's footer shows the FX chip only; the fader is wired (F-01) |
-| Clip waveform paint | geometry matches; painting needs decoded audio per clip (not built) |
+| Clip label colour | dark on pastel fills, white on the saturated reference fills (contrast-safe; the capture only shows white on purple) |
 
 ## Still to measure
 
