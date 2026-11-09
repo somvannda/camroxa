@@ -288,7 +288,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   />
                   <input
                     type="range"
-                    className="se-track-slider"
+                    className="se-track-slider pan"
                     min={-100}
                     max={100}
                     step={1}

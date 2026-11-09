@@ -47,7 +47,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
 
   // §1 frame.
   expect(frame.head).toMatchObject({ height: 52, background: "rgb(10, 10, 10)" });
-  expect(frame.tracks).toMatchObject({ width: 260, background: "rgb(28, 28, 30)" });
+  expect(frame.tracks).toMatchObject({ width: 260, background: "rgb(20, 20, 22)" });
   expect(frame.foot).toMatchObject({ height: 52, background: "rgb(10, 10, 10)" });
   expect(frame.body).toMatchObject({ background: "rgb(17, 17, 17)" });
   expect(frame.shell?.color).toBe("rgb(247, 244, 239)");
@@ -86,6 +86,16 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(track.buttons.slice(0, 3).every((button) => button.height === 24)).toBe(true);
   expect(track.buttons[3]?.width).toBe(16);
   expect(Math.abs((track.buttons[0]?.x ?? 0) - 162)).toBeLessThanOrEqual(6);
+  expect(
+    await page.evaluate(() => {
+      const row = document.querySelector(".se-track");
+      const pan = document.querySelector(".se-track-slider.pan");
+      return {
+        row: row ? getComputedStyle(row).backgroundColor : null,
+        pan: pan !== null,
+      };
+    })
+  ).toEqual({ row: "rgba(0, 0, 0, 0)", pan: true });
   expect(track.sliders).toHaveLength(2);
   expect(track.sliders[0]?.x).toBe(28);
   expect(track.sliders[0]?.width).toBe(167);
@@ -504,7 +514,7 @@ test("selecting a track highlights its panel row and lane", async ({ page }) => 
   // S25: the selected track tints both the gutter row and its lane.
   expect(info.rowSelected).toBe(true);
   expect(info.laneSelected).toBe(true);
-  expect(info.rowBackground).toBe("rgba(255, 255, 255, 0.06)");
+  expect(info.rowBackground).toBe("rgb(38, 38, 40)");
   expect(info.laneBackground).toBe("rgba(255, 255, 255, 0.05)");
 });
 
