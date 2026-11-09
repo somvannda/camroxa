@@ -348,16 +348,16 @@ export function StudioHeader(props: StudioHeaderProps) {
               {normalise ? "✓ " : ""}Normalise mix to −1 dBFS
             </button>
             <button type="button" role="menuitem" onClick={() => onExport("mix")}>
-              Full mix (WAV)
+              <Icon name="fa-music" /> Full mix (WAV)
             </button>
             <button type="button" role="menuitem" onClick={() => onExport("tracks")}>
-              One file per track
+              <Icon name="fa-layer-group" /> One file per track
             </button>
             <button type="button" role="menuitem" disabled={!rangeReady} onClick={() => onExport("range")}>
-              Selected time range (WAV)
+              <Icon name="fa-clock" /> Selected time range (WAV)
             </button>
             <button type="button" role="menuitem" onClick={() => onExport("json")}>
-              Project (JSON)
+              <Icon name="fa-file-code" /> Project (JSON)
             </button>
           </div>
         ) : null}
