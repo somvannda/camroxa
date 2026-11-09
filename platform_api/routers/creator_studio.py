@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.routers.creators_public import CreatorLink, CreatorPublicProfile
 from platform_api.services.creator_profile_service import CreatorProfileService
+from platform_api.services.creator_program_service import CreatorProgramService
 
 router = APIRouter(prefix="/creator", tags=["creator-studio"])
 
@@ -19,7 +20,12 @@ async def _get_creator_service() -> CreatorProfileService:
     raise NotImplementedError("CreatorProfileService dependency not configured.")
 
 
+async def _get_program_service() -> CreatorProgramService:
+    raise NotImplementedError("CreatorProgramService dependency not configured.")
+
+
 CreatorServiceDep = Annotated[CreatorProfileService, Depends(_get_creator_service)]
+ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -90,6 +96,20 @@ class HandleAvailabilityResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
 
 
+class ApplicationRequest(BaseModel):
+    pitch: str = Field(..., min_length=50, max_length=500)
+    links: list[CreatorLink] = Field(default_factory=list)
+    track_ids: list[str] = Field(default_factory=list)
+    rights_attested: bool = False
+    requested_tier: Literal["verified"] = "verified"
+    identity: dict | None = None
+
+
+class VerificationRequest(BaseModel):
+    kind: Literal["identity", "authenticity", "business", "voice_consent"]
+    evidence_ref: str = Field(..., min_length=1, max_length=1000)
+
+
 @router.get("/me", response_model=CreatorStudioResponse)
 async def get_my_creator_profile(
     ctx: CurrentUserDep, service: CreatorServiceDep
@@ -124,3 +144,44 @@ async def check_handle(
     handle: str = Query(..., min_length=1, max_length=30),
 ) -> HandleAvailabilityResponse:
     return HandleAvailabilityResponse.model_validate(await service.availability(handle))
+
+
+@router.get("/application")
+async def get_application_status(
+    ctx: CurrentUserDep, service: ProgramServiceDep
+) -> dict:
+    return await service.get_status(ctx.user_id)
+
+
+@router.post("/application", status_code=201)
+async def submit_application(
+    body: ApplicationRequest,
+    ctx: CurrentUserDep,
+    service: ProgramServiceDep,
+) -> dict:
+    return await service.submit_application(ctx.user_id, body.model_dump(exclude_unset=True))
+
+
+@router.post("/application/withdraw")
+async def withdraw_application(
+    ctx: CurrentUserDep, service: ProgramServiceDep
+) -> dict:
+    return await service.withdraw_application(ctx.user_id)
+
+
+@router.get("/verification")
+async def get_verification_status(
+    ctx: CurrentUserDep, service: ProgramServiceDep
+) -> dict:
+    return await service.get_status(ctx.user_id)
+
+
+@router.post("/verification", status_code=201)
+async def submit_verification(
+    body: VerificationRequest,
+    ctx: CurrentUserDep,
+    service: ProgramServiceDep,
+) -> dict:
+    return await service.submit_verification(
+        ctx.user_id, kind=body.kind, evidence_ref=body.evidence_ref
+    )

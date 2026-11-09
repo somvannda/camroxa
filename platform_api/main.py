@@ -804,6 +804,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         streaming_library,
         creators_public,
         creator_studio,
+        admin_creators,
     )
     from platform_api.routers import web_music, web_music_licenses
     from platform_api.routers import v2_topups, webhooks_cutluy
@@ -879,6 +880,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         streaming_library.router,
         creators_public.router,
         creator_studio.router,
+        admin_creators.router,
         web_music.router,
         web_music_licenses.router,
         webhooks_cutluy.router,
