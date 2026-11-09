@@ -968,6 +968,34 @@ test("narrow headers keep the captured controls", async ({ page }) => {
   expect(panel).toBe(260);
 });
 
+test("filtered library shows the captured empty state", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel empty" });
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await page.getByRole("button", { name: /All Songs/ }).click();
+  const library = page.getByRole("complementary", { name: "Library" });
+  await library.getByLabel("Search library").fill("zzz-no-such-song");
+  await expect(library.getByText("No songs found.")).toBeVisible();
+  const reset = library.getByRole("button", { name: "Reset all filters" });
+  await expect(reset).toBeVisible();
+  const box = await reset.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      height: Math.round(rect.height),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+    };
+  });
+  // S58: centred notice with a 38 px pill Reset all filters.
+  expect(box.height).toBe(38);
+  expect(box.radius).toBe("999px");
+  expect(box.background).toBe("rgb(28, 28, 30)");
+  await reset.click();
+  await expect(library.getByLabel("Search library")).toHaveValue("");
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

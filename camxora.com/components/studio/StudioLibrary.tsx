@@ -173,6 +173,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
 
     const activeWorkspace = (workspaces ?? []).find((item) => item.id === activeWorkspaceId) ?? null;
     const filter: SongFilter = view.kind === "songs" ? view.filter : "all";
+    /** Empty result caused by a filter/search rather than a truly empty library (S58). */
+    const filteredOut = Boolean(q) || filter !== "all" || Boolean(activeWorkspaceId);
     const visibleSongs = (songs ?? [])
       .filter((song) =>
         view.kind === "songs" && view.filter === "liked"
@@ -472,17 +474,28 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               </ul>
             ) : null}
             {songs === null ? (
-              <p className="se-lib-empty">Loading songs…</p>
+              <p className="se-lib-empty">Loading songs</p>
             ) : visibleSongs.length === 0 ? (
-              <p className="se-lib-empty">
-                {view.filter === "liked"
-                  ? "No liked songs yet."
-                  : view.filter === "project"
-                    ? "No songs from this project in the library yet."
-                    : activeWorkspace
-                      ? "No songs in this workspace yet."
-                      : "No songs yet. Create one, then drop it onto a track here."}
-              </p>
+              filteredOut ? (
+                <div className="se-lib-empty-state">
+                  <p>No songs found.</p>
+                  <button
+                    type="button"
+                    className="se-lib-reset"
+                    onClick={() => {
+                      onQuery("");
+                      onFilter("all");
+                      onOpenWorkspace(null);
+                    }}
+                  >
+                    Reset all filters
+                  </button>
+                </div>
+              ) : (
+                <p className="se-lib-empty">
+                  No songs yet. Create one, then drop it onto a track here.
+                </p>
+              )
             ) : (
               <ul className="se-lib-list">
                 {groupByDay(visibleSongs).map((group) => (
