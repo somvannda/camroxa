@@ -90,12 +90,18 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
   } = props;
 
   const visible = tracks.filter((track) => !track.hidden);
+  useEffect(() => {
+    if (menuTrackId === null) setColorOpen(false);
+  }, [menuTrackId]);
   const allCollapsed =
     visible.length > 0 && visible.every((track) => track.collapsed);
   const hiddenTracks = tracks.filter((track) => track.hidden);
 
   // Add-track menu (§8.3). Local state: nothing outside this panel depends on it.
   const [addOpen, setAddOpen] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
+  /** Fixed coordinates so the colour flyout escapes the scrolling list's clip. */
+  const [colorPos, setColorPos] = useState<{ top: number; left: number } | null>(null);
   /** Fixed coordinates: the menu must escape the scrolling list so it is never clipped. */
   const [addMenuPos, setAddMenuPos] = useState<{ top: number; left: number } | null>(null);
   const addRef = useRef<HTMLDivElement | null>(null);
@@ -159,21 +165,58 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   <button type="button" role="menuitem" onClick={() => onRenameStart(track)}>
                     <Icon name="fa-pen" /> Rename track
                   </button>
-                  <div className="se-track-menu-colors" role="group" aria-label="Track colour">
-                    <span className="se-track-menu-label">Color</span>
-                    {TRACK_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        aria-label={`Use ${color}`}
-                        style={{ background: color }}
-                        className={track.color === color ? "on" : undefined}
-                        onClick={() => {
-                          onUpdateTrack(track.id, { color });
-                          onToggleMenu(null);
-                        }}
-                      />
-                    ))}
+                  <div className="se-menu-sub">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-haspopup="true"
+                      aria-expanded={colorOpen}
+                      onClick={(event) => {
+                        if (!colorOpen) {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          const width = 196;
+                          const left =
+                            rect.right + 6 + width > window.innerWidth
+                              ? Math.max(8, rect.left - width - 6)
+                              : rect.right + 6;
+                          setColorPos({
+                            left,
+                            top: Math.min(Math.max(8, rect.top - 6), window.innerHeight - 190),
+                          });
+                        }
+                        setColorOpen((open) => !open);
+                      }}
+                    >
+                      <Icon name="fa-circle" /> Color <Icon name="fa-chevron-right" />
+                    </button>
+                    {colorOpen ? (
+                      <div
+                        className="se-track-menu-colors"
+                        role="group"
+                        aria-label="Track colour"
+                        style={
+                          colorPos
+                            ? { position: "fixed", top: colorPos.top, left: colorPos.left }
+                            : undefined
+                        }
+                      >
+                        <div className="se-color-grid">
+                          {TRACK_COLORS.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              aria-label={`Use ${color}`}
+                              style={{ background: color }}
+                              className={track.color === color ? "on" : undefined}
+                              onClick={() => {
+                                onUpdateTrack(track.id, { color });
+                                onToggleMenu(null);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <button
                     type="button"

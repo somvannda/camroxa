@@ -408,7 +408,9 @@ test("clip context menu matches the captured popover", async ({ page }) => {
   const info = await menu.evaluate((element) => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
-    const rows = Array.from(element.querySelectorAll(":scope > button")).map((row) => {
+    const rows = Array.from(
+      element.querySelectorAll(":scope > button, :scope > .se-menu-sub > button")
+    ).map((row) => {
       const box = row.getBoundingClientRect();
       const hint = row.querySelector("span");
       return {

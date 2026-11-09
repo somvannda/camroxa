@@ -941,6 +941,7 @@ describe("StudioTrackPanel", () => {
     const items = screen.getAllByRole("menuitem").map((node) => node.textContent?.trim());
     expect(items).toEqual([
       "Rename track",
+      "Color",
       "Collapse controls",
       "Duplicate",
       "Hide & Mute Track",

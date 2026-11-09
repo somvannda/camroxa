@@ -3222,32 +3222,49 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-info-circle" /> Clip Info
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  aria-haspopup="true"
-                  aria-expanded={clipColorOpen}
-                  onClick={() => setClipColorOpen((open) => !open)}
-                >
-                  <Icon name="fa-circle" /> Clip Color <Icon name="fa-chevron-right" />
-                </button>
-                {clipColorOpen ? (
-                  <div className="se-clip-menu-colors" role="group" aria-label="Clip colour">
-                    {CLIP_COLORS.map((color) => (
+                <div className="se-menu-sub">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    aria-haspopup="true"
+                    aria-expanded={clipColorOpen}
+                    onClick={() => setClipColorOpen((open) => !open)}
+                  >
+                    <Icon name="fa-circle" /> Clip Color <Icon name="fa-chevron-right" />
+                  </button>
+                  {clipColorOpen ? (
+                    <div className="se-clip-menu-colors" role="group" aria-label="Clip colour">
                       <button
-                        key={color}
                         type="button"
-                        aria-label={`Clip colour ${color}`}
-                        style={{ background: color }}
-                        className={clip.color === color ? "on" : undefined}
+                        className="se-color-auto"
+                        aria-pressed={!clip.color}
                         onClick={() => {
-                          setClipColor(clip.id, color);
+                          setClipColor(clip.id, "");
                           setClipMenu(null);
                         }}
-                      />
-                    ))}
-                  </div>
-                ) : null}
+                      >
+                        <span className="se-color-dot" aria-hidden="true" />
+                        Auto
+                        {!clip.color ? <Icon name="fa-check" /> : null}
+                      </button>
+                      <div className="se-color-grid">
+                        {CLIP_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            aria-label={`Clip colour ${color}`}
+                            style={{ background: color }}
+                            className={clip.color === color ? "on" : undefined}
+                            onClick={() => {
+                              setClipColor(clip.id, color);
+                              setClipMenu(null);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
                 <div className="se-clip-menu-sep" />
                 <button
                   type="button"
