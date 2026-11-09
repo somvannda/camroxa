@@ -45,6 +45,8 @@ export type StudioTrackPanelProps = {
   onAddUploadTrack: () => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
+  /** Capture head: one control expands or collapses every visible track. */
+  onToggleAllCollapsed: () => void;
 
   /** Master strip pinned at the panel bottom (reference F-01/F-02). */
   masterVolume: number;
@@ -79,6 +81,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onAddUploadTrack,
     onToggleHidden,
     onShowAllHidden,
+    onToggleAllCollapsed,
     masterVolume,
     masterMuted,
     onMasterVolume,
@@ -87,6 +90,8 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
   } = props;
 
   const visible = tracks.filter((track) => !track.hidden);
+  const allCollapsed =
+    visible.length > 0 && visible.every((track) => track.collapsed);
   const hiddenTracks = tracks.filter((track) => track.hidden);
 
   // Add-track menu (§8.3). Local state: nothing outside this panel depends on it.
@@ -111,9 +116,27 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
   return (
     <aside className="se-tracks" aria-label="Tracks">
       <div className="se-tracks-head">
-        <span className="se-tracks-title">
+        <button
+          type="button"
+          className="se-icon"
+          aria-label={allCollapsed ? "Expand all track controls" : "Collapse all track controls"}
+          title={allCollapsed ? "Expand all track controls" : "Collapse all track controls"}
+          onClick={onToggleAllCollapsed}
+        >
+          <Icon name="fa-bars" />
+        </button>
+        <span className="se-sr-only">
           {tracks.length} track{tracks.length === 1 ? "" : "s"}
         </span>
+        <button
+          type="button"
+          className="se-icon"
+          aria-label="Collapse track panel"
+          title="Panel collapse is not built in this editor"
+          disabled
+        >
+          <Icon name="fa-angles-right" />
+        </button>
       </div>
 
       <div className="se-track-list">

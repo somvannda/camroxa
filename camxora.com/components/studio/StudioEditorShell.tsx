@@ -1398,6 +1398,15 @@ export function StudioEditorShell() {
     setLocalTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
   }
 
+  /** Capture head control: expand or collapse every visible track at once. */
+  function toggleAllCollapsed() {
+    const visible = tracks.filter((track) => !track.hidden);
+    const next = !(visible.length > 0 && visible.every((track) => track.collapsed));
+    commitTracks(
+      tracks.map((track) => (track.hidden ? track : { ...track, collapsed: next }))
+    );
+  }
+
   function duplicateTrack(trackId: string) {
     const source = tracks.find((track) => track.id === trackId);
     if (!source) return;
@@ -2964,6 +2973,7 @@ export function StudioEditorShell() {
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
+          onToggleAllCollapsed={toggleAllCollapsed}
           masterVolume={masterVolume}
           masterMuted={masterMuted}
           onMasterVolume={(value) => {

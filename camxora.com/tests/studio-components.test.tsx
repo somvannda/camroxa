@@ -918,6 +918,7 @@ describe("StudioTrackPanel", () => {
       onAddUploadTrack: noop,
       onToggleHidden: noop,
       onShowAllHidden: noop,
+      onToggleAllCollapsed: noop,
       masterVolume: 85,
       masterMuted: false,
       onMasterVolume: noop,

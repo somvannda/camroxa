@@ -170,7 +170,21 @@ test("global frame matches the captured metrics", async ({ page }) => {
   });
   expect(playhead.flagX).not.toBeNull();
   expect(Math.abs((playhead.flagX ?? 0) - (playhead.lineX ?? 0))).toBeLessThanOrEqual(5);
-  expect(playhead.lineColor).toBe("rgb(247, 244, 239)");
+  expect(playhead.lineColor).toBe("rgb(76, 76, 76)");
+
+  // §4 bottom time ruler: 22 px band #1e1e20 with dim labels.
+  const timeRuler = await page.evaluate(() => {
+    const band = document.querySelector(".se-ruler-time");
+    const label = document.querySelector(".se-time-tick");
+    return {
+      height: band ? Math.round(band.getBoundingClientRect().height) : null,
+      background: band ? getComputedStyle(band).backgroundColor : null,
+      labelColor: label ? getComputedStyle(label).color : null,
+    };
+  });
+  expect(timeRuler.height).toBe(22);
+  expect(timeRuler.background).toBe("rgb(30, 30, 32)");
+  expect(timeRuler.labelColor).toBe("rgb(139, 144, 166)");
 });
 
 test("library song rows use the captured anatomy", async ({ page }) => {
@@ -543,6 +557,25 @@ test("export toast matches the captured banner", async ({ page }) => {
   expect(box.radius).toBe("16px");
   expect(box.background).toBe("rgb(28, 28, 30)");
   expect(box.fontSize).toBe("22px");
+});
+
+test("track panel head toggles every track's controls", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel head" });
+  const head = page.locator(".se-tracks-head");
+  await expect(head.locator("button")).toHaveCount(2);
+  const sizes = await head.locator("button").evaluateAll((nodes) =>
+    nodes.map((node) => Math.round(node.getBoundingClientRect().width))
+  );
+  // S16: 24 px icons at each end of the 29 px head; the collapse-panel control is
+  // captured but not built, so it is disabled with a reason.
+  expect(sizes).toEqual([24, 24]);
+  await expect(head.getByRole("button", { name: "Collapse track panel" })).toBeDisabled();
+  await head.getByRole("button", { name: "Collapse all track controls" }).click();
+  await expect(page.locator(".se-track .se-track-slider")).toHaveCount(0);
+  await head.getByRole("button", { name: "Expand all track controls" }).click();
+  await expect(page.locator(".se-track .se-track-slider")).toHaveCount(2);
 });
 
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
