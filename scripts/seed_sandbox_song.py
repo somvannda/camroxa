@@ -138,9 +138,10 @@ async def main() -> int:
             workspace_id,
             True,
             True,
-            # No encrypted package: the proxy may serve the signed object instead.
-            "none",
-            "none",
+            # `ready` is what makes the API expose a playable audio/download URL;
+            # no encrypted package is required by our waveform path.
+            "ready",
+            "ready",
             4.0,
             4.0,
             key_ok,
