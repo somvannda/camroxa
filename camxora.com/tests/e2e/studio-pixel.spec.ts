@@ -772,7 +772,7 @@ test("clip colour opens the captured submenu", async ({ page }) => {
   expect(info.swatches).toBe(5);
 });
 
-test("EQ card draws the captured curve and drags", async ({ page }) => {
+test("EQ card matches the captured band editor and drags", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
   await createStudioProject(page, { title: "Pixel curve" });
@@ -780,21 +780,34 @@ test("EQ card draws the captured curve and drags", async ({ page }) => {
   await page.locator(".sp-add-inline").click();
   const dialog = page.getByRole("dialog", { name: "Add a track plugin" });
   await dialog.getByRole("button", { name: /^EQ\b/ }).first().click();
-  const svg = page.locator(".sp-slot .sp-eq");
-  await expect(svg).toBeVisible();
-  const handle = page.locator(".sp-eq-handle");
-  const before = await handle.getAttribute("cy");
+
+  const card = page.locator(".sp-slot-eq");
+  await expect(card.locator(".sp-eq")).toBeVisible();
+  // S40/S42: band selector + switch, six shapes, one handle per band, three knobs.
+  await expect(card.getByLabel("EQ band")).toHaveValue("1");
+  await expect(card.getByRole("switch", { name: "Band 1 enabled" })).toBeChecked();
+  await expect(card.locator(".sp-eq-shapes button")).toHaveCount(6);
+  await expect(card.locator(".sp-eq-handle")).toHaveCount(4);
+  await expect(card.locator(".sp-knob")).toHaveCount(3);
+
+  const gain = card.getByRole("slider", { name: "Gain" });
+  const before = Number(await gain.inputValue());
+  const handle = card.locator(".sp-eq-handle").first();
   const box = await handle.boundingBox();
   if (!box) throw new Error("no handle");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2, box.y - 30, { steps: 5 });
   await page.mouse.up();
-  const after = await handle.getAttribute("cy");
-  const gain = await page.locator(".sp-slot .sp-param-value").nth(2).innerText();
-  // S42: a log-frequency curve with a draggable handle; dragging up adds gain.
-  expect(Number(after)).toBeLessThan(Number(before));
-  expect(gain).toMatch(/^[1-9]\d*(\.\d+)?db$/);
+  expect(Number(await gain.inputValue())).toBeGreaterThan(before);
+
+  await card.getByRole("button", { name: "High cut" }).click();
+  await expect(card.getByRole("button", { name: "High cut" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await card.getByLabel("EQ band").selectOption("3");
+  await expect(card.locator(".sp-eq-shapes button.on")).toHaveCount(1);
 });
 
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {

@@ -4441,7 +4441,7 @@ html{color-scheme:dark}
 /* ------------------------------------------------------------------ */
 /* Studio plugin chain dock                                            */
 /* ------------------------------------------------------------------ */
-.sp-dock{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.06);background:#101012;flex:none;max-height:320px}
+.sp-dock{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.06);background:#101012;flex:none;max-height:380px}
 .sp-rail{display:flex;gap:10px;padding:10px;overflow-x:auto;scrollbar-width:thin}
 .sp-empty{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:96px;padding:16px;color:#c2c2c1}
 .sp-empty p{margin:0;font-size:12px;color:#8b90a6}
@@ -4466,7 +4466,29 @@ html{color-scheme:dark}
 .sp-modes button{height:24px;padding:0 10px;border:0;border-radius:999px;background:#1c1c1e;color:#c2c2c1;font:inherit;font-size:11px;cursor:pointer}
 .sp-modes button.on{border-color:rgba(168,85,247,.6);background:rgba(168,85,247,.16);color:#efe9ff}
 .sp-asset{margin-bottom:8px;padding:6px 8px;border:1px dashed rgba(255,255,255,.12);border-radius:8px;color:#8b90a6;font-size:11px}
-.sp-eq{display:block;width:100%;height:120px;margin:0 0 8px;border-radius:8px;background:#101012;cursor:crosshair;touch-action:none}
+.sp-slot.sp-slot-eq{width:450px}
+.sp-eq-card{display:flex;flex-direction:column;gap:8px}
+.sp-eq-bandbar{display:flex;align-items:center;gap:8px}
+.sp-band-select{flex:1;height:40px;padding:0 10px;border:0;border-radius:10px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:13px}
+.sp-band-toggle{position:relative;width:38px;height:22px;flex:none;border:0;border-radius:999px;background:#3a3a40;cursor:pointer}
+.sp-band-toggle::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#f7f4ef;transition:left .15s}
+.sp-band-toggle.on{background:#de1678}
+.sp-band-toggle.on::after{left:19px}
+.sp-eq-shapes{display:flex;gap:6px}
+.sp-eq-shapes button{display:grid;place-items:center;width:56px;height:36px;border:0;border-radius:8px;background:#1c1c1e;color:#8b90a6;cursor:pointer}
+.sp-eq-shapes button svg{width:26px;height:16px}
+.sp-eq-shapes button path{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.sp-eq-shapes button.on{background:#de1678;color:#fff}
+.sp-knobs{display:flex;align-items:flex-start;justify-content:space-around;gap:10px;padding:2px 0 0}
+.sp-knob{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:#8b90a6}
+.sp-knob-dial{position:relative;width:62px;height:62px;border-radius:50%;background:conic-gradient(#d6bd12 0 var(--p), #2b2b30 var(--p) 270deg, transparent 270deg)}
+.sp-knob-dial::after{content:"";position:absolute;inset:7px;border-radius:50%;background:#141416;z-index:0}
+.sp-knob-pointer{z-index:1}
+.sp-knob-pointer{position:absolute;left:50%;top:8px;width:2px;height:17px;margin-left:-1px;border-radius:2px;background:#d6bd12;transform-origin:50% 23px}
+.sp-knob-input{position:absolute;inset:0 0 18px;width:100%;opacity:0;cursor:ew-resize}
+.sp-knob:focus-within .sp-knob-dial{outline:2px solid #d6bd12;outline-offset:2px}
+.sp-knob-label{font-size:11px}
+.sp-eq{display:block;width:100%;height:124px;margin:0 0 8px;border-radius:8px;background:#101012;cursor:crosshair;touch-action:none}
 .sp-eq-axis{stroke:rgba(255,255,255,.12);stroke-width:1}
 .sp-eq-grid{stroke:rgba(255,255,255,.05);stroke-width:1}
 .sp-eq-fill{fill:rgba(214,189,18,.16)}
@@ -4495,7 +4517,7 @@ html{color-scheme:dark}
 .sp-card-name em{font-style:normal;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#faed87}
 .sp-card-desc{font-size:12px;line-height:1.45;color:#8b90a6}
 .sp-none{font-size:12px;color:#8b90a6}
-@media (max-width:900px){.sp-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-slot{width:260px}}
+@media (max-width:900px){.sp-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-slot{width:260px}.sp-slot.sp-slot-eq{width:300px}}
 
 /* ------------------------------------------------------------------ */
 /* Studio editor shell (reference layout)                              */

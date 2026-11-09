@@ -129,19 +129,29 @@ export function createPluginAudio(
   }
 
   if (id === "eq") {
-    const band = ctx.createBiquadFilter();
-    band.type = "peaking";
+    // Four cascaded biquads matching the card (S40/S42): per-band shape + enable.
+    const eqTypes: BiquadFilterType[] = ["highpass", "peaking", "highshelf", "lowshelf", "lowpass", "notch"];
+    const eqBands = [0, 1, 2, 3].map(() => ctx.createBiquadFilter());
+    for (let index = 1; index < eqBands.length; index += 1) {
+      eqBands[index - 1].connect(eqBands[index]);
+    }
     const apply = (p: Record<string, number>) => {
-      band.frequency.value = clamp(p["band1.freq"] ?? 1000, 20, 20000);
-      band.Q.value = clamp(p["band1.q"] ?? 1, 0.0001, 30);
-      band.gain.value = clamp(p["band1.gain"] ?? 0, -40, 40);
+      eqBands.forEach((band, index) => {
+        const n = index + 1;
+        const on = (p[`band${n}.on`] ?? 1) >= 0.5;
+        const shape = Math.round(clamp(p[`band${n}.type`] ?? 1, 0, 5));
+        band.type = on ? eqTypes[shape] : "peaking";
+        band.frequency.value = clamp(p[`band${n}.freq`] ?? 1000, 20, 20000);
+        band.Q.value = clamp(p[`band${n}.q`] ?? 1, 0.0001, 30);
+        band.gain.value = on ? clamp(p[`band${n}.gain`] ?? 0, -40, 40) : 0;
+      });
     };
     apply(params);
     return {
-      input: band,
-      output: band,
+      input: eqBands[0],
+      output: eqBands[eqBands.length - 1],
       update: apply,
-      dispose: () => band.disconnect(),
+      dispose: () => eqBands.forEach((band) => band.disconnect()),
     };
   }
 

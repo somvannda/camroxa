@@ -36,6 +36,7 @@ test("the track menu writes a chosen colour", async ({ page }) => {
 
   await page.getByRole("button", { name: "Options for Track 1", exact: true }).click();
   await page.getByRole("menuitem", { name: "Collapse controls" }).waitFor();
+  await page.getByRole("menuitem", { name: "Color" }).click();
   const swatch = page.getByRole("button", { name: "Use #a78bfa" });
   await expect(swatch).toBeVisible();
   await swatch.click();

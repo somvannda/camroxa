@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { Icon } from "@/components/Icon";
 import {
@@ -39,73 +39,297 @@ type Props = {
  * visual affordance differs.
  */
 
-/**
- * EQ curve for the dock card (S42): a log-frequency bell drawn from the band's
- * freq/Q/gain, with a handle that drags frequency horizontally and gain vertically.
- * The sliders stay below, so both input styles reach the same params.
- */
-function EqCurve({
-  freq,
-  q,
-  gain,
+const EQ_F_MIN = 20;
+const EQ_F_MAX = 20000;
+const EQ_DB = 24;
+const EQ_W = 400;
+const EQ_H = 124;
+const EQ_PAD = 8;
+const EQ_TYPES = ["highpass", "peaking", "highshelf", "lowshelf", "lowpass", "notch"] as const;
+
+/** Filter shapes from the captured card (S42), drawn as tiny curve glyphs. */
+const EQ_SHAPES: Array<{ id: number; label: string; path: string }> = [
+  { id: 0, label: "Low cut", path: "M1 8 H12 Q16 8 19 14 L27 16" },
+  { id: 1, label: "Bell", path: "M1 15 Q7 15 10 9 Q13 3 16 9 Q19 15 27 15" },
+  { id: 2, label: "High shelf", path: "M1 15 H9 Q13 15 16 8 H27" },
+  { id: 3, label: "Low shelf", path: "M1 8 H12 Q15 15 19 15 H27" },
+  { id: 4, label: "High cut", path: "M1 2 Q9 2 12 8 Q15 14 18 16 H27" },
+  { id: 5, label: "Notch", path: "M1 8 H10 L13 15 L16 8 H27" },
+];
+
+/** One band's magnitude in dB at a frequency (display curve, not the DSP filter). */
+function bandDb(freq: number, band: { freq: number; q: number; gain: number; type: number; on: boolean }) {
+  if (!band.on) return 0;
+  const octaves = Math.log2(freq / Math.max(1, band.freq));
+  const width = Math.max(0.35, 2.2 / Math.max(0.1, band.q));
+  switch (band.type) {
+    case 0:
+      return -24 / (1 + Math.pow(freq / band.freq, 6));
+    case 2:
+      return band.gain * (1 - 1 / (1 + Math.pow(freq / band.freq, 6)));
+    case 3:
+      return band.gain / (1 + Math.pow(freq / band.freq, 6));
+    case 4:
+      return -24 / (1 + Math.pow(band.freq / Math.max(1, freq), 6));
+    case 5:
+      return -Math.abs(band.gain || 18) * Math.exp(-Math.pow(octaves / 0.18, 2));
+    default:
+      return band.gain * Math.exp(-Math.pow(octaves / width, 2));
+  }
+}
+
+function formatFreq(value: number): string {
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}khz`;
+  return `${Math.round(value)}hz`;
+}
+
+function Knob({
+  label,
+  value,
+  min,
+  max,
+  step,
+  title,
+  log,
+  disabled,
   onChange,
 }: {
-  freq: number;
-  q: number;
-  gain: number;
-  onChange: (patch: { freq?: number; gain?: number }) => void;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  title: string;
+  log?: boolean;
+  disabled?: boolean;
+  onChange: (value: number) => void;
 }) {
-  const W = 290;
-  const H = 120;
-  const PAD = 8;
-  const F_MIN = 20;
-  const F_MAX = 20000;
-  const DB = 24;
+  const pct = log
+    ? Math.min(
+        1,
+        Math.max(
+          0,
+          (Math.log(Math.max(1, value)) - Math.log(min)) / (Math.log(max) - Math.log(min))
+        )
+      )
+    : Math.min(1, Math.max(0, (value - min) / (max - min)));
+  return (
+    <label className="sp-knob">
+      <span
+        className="sp-knob-dial"
+        style={{ ["--p" as string]: `${(pct * 270).toFixed(1)}deg` }}
+        aria-hidden="true"
+      >
+        <span
+          className="sp-knob-pointer"
+          style={{ transform: `rotate(${(-135 + pct * 270).toFixed(1)}deg)` }}
+        />
+      </span>
+      <input
+        className="sp-knob-input"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={label}
+        aria-valuetext={title}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span className="sp-knob-label">{label}</span>
+    </label>
+  );
+}
 
-  const xFor = (value: number) => {
-    const t = (Math.log10(value) - Math.log10(F_MIN)) / (Math.log10(F_MAX) - Math.log10(F_MIN));
-    return PAD + Math.min(1, Math.max(0, t)) * (W - PAD * 2);
+/**
+ * EQ card from the dock capture (S40/S42): band selector with an enable switch, the six
+ * filter-shape buttons, a shared curve with one handle per band, and three knobs for the
+ * selected band. The model carries four bands (see studio-plugins); the curve is display
+ * math over the same params the audio chain uses.
+ */
+function EqCard({
+  params,
+  disabled,
+  onChange,
+}: {
+  params: Record<string, number>;
+  disabled: boolean;
+  onChange: (key: string, value: number) => void;
+}) {
+  const [selected, setSelected] = useState(1);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const value = (key: string, fallback: number) => params[key] ?? fallback;
+  const bands = [1, 2, 3, 4].map((n) => ({
+    n,
+    freq: value(`band${n}.freq`, n === 1 ? 1000 : n === 2 ? 200 : n === 3 ? 4000 : 10000),
+    q: value(`band${n}.q`, 1),
+    gain: value(`band${n}.gain`, 0),
+    type: Math.round(value(`band${n}.type`, 1)),
+    on: value(`band${n}.on`, 1) >= 0.5,
+  }));
+  const current = bands[selected - 1];
+
+  const xFor = (freq: number) => {
+    const t =
+      (Math.log10(Math.max(EQ_F_MIN, freq)) - Math.log10(EQ_F_MIN)) /
+      (Math.log10(EQ_F_MAX) - Math.log10(EQ_F_MIN));
+    return EQ_PAD + Math.min(1, Math.max(0, t)) * (EQ_W - EQ_PAD * 2);
   };
-  const yFor = (db: number) => H / 2 - (db / DB) * (H / 2 - PAD);
+  const yFor = (db: number) => EQ_H / 2 - (db / EQ_DB) * (EQ_H / 2 - EQ_PAD);
 
   const points: string[] = [];
-  for (let px = PAD; px <= W - PAD; px += 3) {
-    const t = (px - PAD) / (W - PAD * 2);
-    const f = Math.pow(10, Math.log10(F_MIN) + t * (Math.log10(F_MAX) - Math.log10(F_MIN)));
-    const octaves = Math.log2(f / Math.max(1, freq));
-    const width = Math.max(0.35, 2.2 / Math.max(0.1, q));
-    const db = gain * Math.exp(-Math.pow(octaves / width, 2));
-    points.push(`${px.toFixed(1)},${yFor(db).toFixed(1)}`);
+  for (let px = EQ_PAD; px <= EQ_W - EQ_PAD; px += 3) {
+    const t = (px - EQ_PAD) / (EQ_W - EQ_PAD * 2);
+    const freq = Math.pow(10, Math.log10(EQ_F_MIN) + t * (Math.log10(EQ_F_MAX) - Math.log10(EQ_F_MIN)));
+    const db = bands.reduce((sum, band) => sum + bandDb(freq, band), 0);
+    points.push(`${px.toFixed(1)},${yFor(Math.max(-EQ_DB, Math.min(EQ_DB, db))).toFixed(1)}`);
   }
-  const stroke = `M ${PAD},${H / 2} L ${points.join(" L ")} L ${W - PAD},${H / 2}`;
+  const curve = `M ${EQ_PAD},${EQ_H / 2} L ${points.join(" L ")} L ${EQ_W - EQ_PAD},${EQ_H / 2}`;
 
-  const drag = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.buttons !== 1 && event.type === "pointermove") return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const tx = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    const ty = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
-    const nextFreq = Math.round(F_MIN * Math.pow(F_MAX / F_MIN, tx));
-    const nextGain = Math.round(((0.5 - ty) * 2 * DB) * 10) / 10;
-    onChange({ freq: nextFreq, gain: nextGain });
+  const dragTo = (clientX: number, clientY: number, band: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const tx = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const ty = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    const freq = Math.round(EQ_F_MIN * Math.pow(EQ_F_MAX / EQ_F_MIN, tx));
+    const gain = Math.round((0.5 - ty) * 2 * EQ_DB * 10) / 10;
+    onChange(`band${band}.freq`, Math.min(EQ_F_MAX, Math.max(EQ_F_MIN, freq)));
+    onChange(`band${band}.gain`, Math.min(EQ_DB, Math.max(-EQ_DB, gain)));
   };
 
   return (
-    <svg
-      className="sp-eq"
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label="EQ curve: drag to set frequency and gain"
-      onPointerDown={drag}
-      onPointerMove={drag}
-    >
-      <line x1={PAD} x2={W - PAD} y1={H / 2} y2={H / 2} className="sp-eq-axis" />
-      <line x1={xFor(100)} x2={xFor(100)} y1={PAD} y2={H - PAD} className="sp-eq-grid" />
-      <line x1={xFor(1000)} x2={xFor(1000)} y1={PAD} y2={H - PAD} className="sp-eq-grid" />
-      <line x1={xFor(10000)} x2={xFor(10000)} y1={PAD} y2={H - PAD} className="sp-eq-grid" />
-      <path d={`${stroke} Z`} className="sp-eq-fill" />
-      <path d={stroke} className="sp-eq-line" />
-      <circle cx={xFor(freq)} cy={yFor(gain)} r={4} className="sp-eq-handle" />
-    </svg>
+    <div className="sp-eq-card">
+      <div className="sp-eq-bandbar">
+        <select
+          className="sp-band-select"
+          aria-label="EQ band"
+          value={selected}
+          disabled={disabled}
+          onChange={(event) => setSelected(Number(event.target.value))}
+        >
+          {bands.map((band) => (
+            <option key={band.n} value={band.n}>
+              Band {band.n}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={current.on}
+          aria-label={`Band ${selected} enabled`}
+          disabled={disabled}
+          className={`sp-band-toggle${current.on ? " on" : ""}`}
+          onClick={() => onChange(`band${selected}.on`, current.on ? 0 : 1)}
+        />
+      </div>
+
+      <div className="sp-eq-shapes" role="group" aria-label="Filter shape">
+        {EQ_SHAPES.map((shape) => (
+          <button
+            key={shape.id}
+            type="button"
+            aria-label={shape.label}
+            aria-pressed={current.type === shape.id}
+            disabled={disabled}
+            className={current.type === shape.id ? "on" : undefined}
+            onClick={() => onChange(`band${selected}.type`, shape.id)}
+          >
+            <svg viewBox="0 0 28 18" aria-hidden="true">
+              <path d={shape.path} />
+            </svg>
+          </button>
+        ))}
+      </div>
+
+      <svg
+        className="sp-eq"
+        viewBox={`0 0 ${EQ_W} ${EQ_H}`}
+        role="img"
+        ref={svgRef}
+        aria-label="EQ curve: drag a band handle to set frequency and gain"
+        onPointerMove={(event) => {
+          if (dragging === null) return;
+          if (event.buttons !== 1) {
+            setDragging(null);
+            return;
+          }
+          dragTo(event.clientX, event.clientY, dragging);
+        }}
+        onPointerUp={() => setDragging(null)}
+        onPointerCancel={() => setDragging(null)}
+        onPointerLeave={() => setDragging(null)}
+      >
+        <line x1={EQ_PAD} x2={EQ_W - EQ_PAD} y1={EQ_H / 2} y2={EQ_H / 2} className="sp-eq-axis" />
+        {[100, 1000, 10000].map((freq) => (
+          <line
+            key={freq}
+            x1={xFor(freq)}
+            x2={xFor(freq)}
+            y1={EQ_PAD}
+            y2={EQ_H - EQ_PAD}
+            className="sp-eq-grid"
+          />
+        ))}
+        <path d={`${curve} Z`} className="sp-eq-fill" />
+        <path d={curve} className="sp-eq-line" />
+        {bands.map((band) =>
+          band.on ? (
+            <circle
+              key={band.n}
+              cx={xFor(band.freq)}
+              cy={yFor(Math.max(-EQ_DB, Math.min(EQ_DB, bandDb(band.freq, band))))}
+              r={selected === band.n ? 5 : 4}
+              className={`sp-eq-handle${selected === band.n ? " on" : ""}`}
+              role="button"
+              aria-label={`Band ${band.n} handle`}
+              onPointerDown={(event) => {
+                setSelected(band.n);
+                setDragging(band.n);
+                dragTo(event.clientX, event.clientY, band.n);
+              }}
+            />
+          ) : null
+        )}
+      </svg>
+
+      <div className="sp-knobs">
+        <Knob
+          label="Freq"
+          value={current.freq}
+          min={EQ_F_MIN}
+          max={EQ_F_MAX}
+          step={1}
+          title={formatFreq(current.freq)}
+          log
+          disabled={disabled}
+          onChange={(next) => onChange(`band${selected}.freq`, next)}
+        />
+        <Knob
+          label="Q"
+          value={current.q}
+          min={0.1}
+          max={18}
+          step={0.1}
+          title={current.q.toFixed(1)}
+          disabled={disabled}
+          onChange={(next) => onChange(`band${selected}.q`, next)}
+        />
+        <Knob
+          label="Gain"
+          value={current.gain}
+          min={-24}
+          max={24}
+          step={0.5}
+          title={`${current.gain}db`}
+          disabled={disabled}
+          onChange={(next) => onChange(`band${selected}.gain`, next)}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -149,7 +373,9 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
           return (
             <article
               key={entry.entryId}
-              className={`sp-slot${entry.bypassed ? " is-bypassed" : ""}`}
+              className={`sp-slot${entry.bypassed ? " is-bypassed" : ""}${
+                plugin.id === "eq" ? " sp-slot-eq" : ""
+              }`}
               aria-label={`${plugin.name} slot ${index + 1}`}
             >
               <header className="sp-slot-head">
@@ -239,24 +465,13 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
               ) : null}
 
               {plugin.id === "eq" ? (
-                <EqCurve
-                  freq={entry.params["band1.freq"] ?? 1000}
-                  q={entry.params["band1.q"] ?? 1}
-                  gain={entry.params["band1.gain"] ?? 0}
-                  onChange={(patch) => {
-                    let next = chain;
-                    if (patch.freq !== undefined) {
-                      next = setParam(next, entry.entryId, "band1.freq", patch.freq);
-                    }
-                    if (patch.gain !== undefined) {
-                      next = setParam(next, entry.entryId, "band1.gain", patch.gain);
-                    }
-                    onChange(next);
-                  }}
+                <EqCard
+                  params={entry.params}
+                  disabled={Boolean(entry.bypassed)}
+                  onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
                 />
-              ) : null}
-
-              <div className="sp-params">
+              ) : (
+                <div className="sp-params">
                 {primary.map((param) => (
                   <ParamControl
                     key={param.key}
@@ -283,7 +498,8 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                     onChange={(value) => onChange(setParam(chain, entry.entryId, param.key, value))}
                   />
                 ))}
-              </div>
+                </div>
+              )}
             </article>
           );
         })}
