@@ -4813,8 +4813,10 @@ html{color-scheme:dark}
 .se-learn-menu button{display:flex;align-items:center;gap:8px;text-align:left;padding:10px 12px;border-radius:8px}
 .se-learn-menu button span{margin-left:auto;opacity:.7}
 .se-learn-menu button:disabled{opacity:.5}
-.se-help-card{position:fixed;width:256px;display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:10px;background:hsl(var(--foreground));color:hsl(var(--background));z-index:80;pointer-events:none;box-shadow:0 6px 16px rgba(0,0,0,.35)}
-.se-help-first{right:16px;bottom:64px;left:auto;top:auto;width:280px;pointer-events:auto;z-index:79}
+.se-help-card{position:fixed;width:256px;display:flex;flex-direction:column;gap:4px;padding:16px;border-radius:16px;background:#d2d0ce;color:#111111;z-index:80;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.se-help-card strong{font-size:12px;font-weight:700;line-height:16.2px}
+.se-help-card span{font-size:12px;line-height:16.2px;color:rgba(17,17,17,.8)}
+.se-help-first{right:16px;bottom:64px;left:auto;top:auto;width:256px;pointer-events:auto;z-index:79}
 .se-help-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
 .se-help-actions .se-pill{background:transparent;color:inherit;border-color:rgba(0,0,0,.35)}
 .se-help-actions .se-pill.on{background:hsl(var(--background));color:hsl(var(--foreground));border-color:transparent}

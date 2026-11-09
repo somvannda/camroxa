@@ -184,6 +184,43 @@ test("library song rows use the captured anatomy", async ({ page }) => {
   expect(anatomy.rowHeight).toBeGreaterThanOrEqual(76);
 });
 
+test("What's This card matches the captured hover card", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel help" });
+  const card = page.locator(".se-help-first");
+  await expect(card).toBeVisible();
+  const box = await card.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const title = element.querySelector("strong");
+    const body = element.querySelector(":scope > span");
+    return {
+      width: Math.round(rect.width),
+      bottom: Math.round(window.innerHeight - rect.bottom),
+      radius: style.borderTopLeftRadius,
+      padding: style.paddingTop,
+      background: style.backgroundColor,
+      color: style.color,
+      titleSize: title ? getComputedStyle(title).fontSize : null,
+      titleWeight: title ? getComputedStyle(title).fontWeight : null,
+      bodySize: body ? getComputedStyle(body).fontSize : null,
+      bodyLine: body ? getComputedStyle(body).lineHeight : null,
+    };
+  });
+  // §7.1: 256 px wide, light #d2d0ce, radius 16, padding 16, 12 px/700 title.
+  expect(box.width).toBe(256);
+  expect(box.radius).toBe("16px");
+  expect(box.padding).toBe("16px");
+  expect(box.background).toBe("rgb(210, 208, 206)");
+  expect(box.color).toBe("rgb(17, 17, 17)");
+  expect(box.titleSize).toBe("12px");
+  expect(box.titleWeight).toBe("700");
+  expect(box.bodySize).toBe("12px");
+  expect(box.bodyLine).toBe("16.2px");
+  expect(box.bottom).toBe(64);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
