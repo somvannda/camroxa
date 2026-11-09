@@ -2952,6 +2952,19 @@ export function StudioEditorShell() {
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
+          masterVolume={masterVolume}
+          masterMuted={masterMuted}
+          onMasterVolume={(value) => {
+            setMasterVolume(value);
+            applyMasterGain(value, masterMuted);
+          }}
+          onMasterCommit={() => commitMaster()}
+          onToggleMasterMute={() => {
+            const next = !masterMuted;
+            setMasterMuted(next);
+            applyMasterGain(masterVolume, next);
+            commitMaster(masterVolume, next);
+          }}
         />
 
         <StudioTimeline
@@ -3298,19 +3311,6 @@ export function StudioEditorShell() {
           const updated = { ...settingsRef.current, whatsThis: next };
           setSettings(updated);
           writeStudioSettings(updated);
-        }}
-        masterVolume={masterVolume}
-        masterMuted={masterMuted}
-        onMasterVolume={(value) => {
-          setMasterVolume(value);
-          applyMasterGain(value, masterMuted);
-        }}
-        onMasterCommit={() => commitMaster()}
-        onToggleMasterMute={() => {
-          const next = !masterMuted;
-          setMasterMuted(next);
-          applyMasterGain(masterVolume, next);
-          commitMaster(masterVolume, next);
         }}
       />
 

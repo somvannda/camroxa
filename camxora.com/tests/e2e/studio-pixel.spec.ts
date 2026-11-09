@@ -67,7 +67,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
       const rect = element.getBoundingClientRect();
       return { x: Math.round(rect.x), width: Math.round(rect.width), height: Math.round(rect.height) };
     });
-    const sliders = Array.from(document.querySelectorAll(".se-track-slider")).map((element) => {
+    const sliders = Array.from(document.querySelectorAll(".se-track .se-track-slider")).map((element) => {
       const rect = element.getBoundingClientRect();
       return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
     });
@@ -427,6 +427,33 @@ test("share dialog matches the captured surface", async ({ page }) => {
   expect(info.titleWeight).toBe("700");
   expect(info.actionHeight).toBe(44);
   expect(info.backdrop).toBe("rgba(0, 0, 0, 0.72)");
+});
+
+test("master strip is pinned to the captured track panel bottom", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel master" });
+  const info = await page.evaluate(() => {
+    const strip = document.querySelector(".se-master-strip");
+    const fader = strip?.querySelector(".se-track-slider");
+    if (!strip || !fader) return null;
+    const stripBox = strip.getBoundingClientRect();
+    const faderBox = fader.getBoundingClientRect();
+    return {
+      right: Math.round(stripBox.right),
+      faderX: Math.round(faderBox.x),
+      faderWidth: Math.round(faderBox.width),
+      footerMaster: document.querySelectorAll(".se-foot .se-master").length,
+      label: strip.querySelector(".se-master-label")?.textContent,
+    };
+  });
+  // S19/S49: Main + fader pinned at the bottom of the 260 px panel, not the footer.
+  expect(info).not.toBeNull();
+  expect(info?.right).toBe(259);
+  expect(info?.label).toBe("Main");
+  expect(info?.faderX).toBe(28);
+  expect(info?.faderWidth).toBe(223);
+  expect(info?.footerMaster).toBe(0);
 });
 
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {

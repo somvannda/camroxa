@@ -22,12 +22,6 @@ export type StudioFooterProps = {
   onToggleLibrary: () => void;
   whatsThis: boolean;
   onWhatsThis: (next: boolean) => void;
-  /** Master volume 0–100 and the main mute (reference F-01/F-02). */
-  masterVolume: number;
-  masterMuted: boolean;
-  onMasterVolume: (value: number) => void;
-  onMasterCommit: () => void;
-  onToggleMasterMute: () => void;
 };
 
 export function StudioFooter(props: StudioFooterProps) {
@@ -43,11 +37,6 @@ export function StudioFooter(props: StudioFooterProps) {
     onToggleLibrary,
     whatsThis,
     onWhatsThis,
-    masterVolume,
-    masterMuted,
-    onMasterVolume,
-    onMasterCommit,
-    onToggleMasterMute,
   } = props;
 
   return (
@@ -61,34 +50,6 @@ export function StudioFooter(props: StudioFooterProps) {
           <button type="button" className="se-icon" disabled aria-label="List (not wired)"><Icon name="fa-bars" /></button>
           <button type="button" className="se-icon" disabled aria-label="Microphone input (use Record in the transport)" title="Recording lives in the transport: arm a track, then Record"><Icon name="fa-microphone" /></button>
         </span>
-      </div>
-
-      <div className="se-master" data-help="master">
-        <span className="se-master-label">Main</span>
-        <input
-          type="range"
-          className="se-master-fader"
-          min={0}
-          max={100}
-          step={1}
-          value={masterVolume}
-          aria-label="Master volume"
-          onChange={(event) => onMasterVolume(Number(event.target.value))}
-          onPointerUp={onMasterCommit}
-          onKeyUp={onMasterCommit}
-          onBlur={onMasterCommit}
-        />
-        <span className="se-master-value">{masterMuted ? "Muted" : `${masterVolume}`}</span>
-        <button
-          type="button"
-          className={`se-pill${masterMuted ? " on" : ""}`}
-          aria-pressed={masterMuted}
-          aria-label="Mute main"
-          data-help="master-mute"
-          onClick={onToggleMasterMute}
-        >
-          M
-        </button>
       </div>
 
       <div className="se-chain">

@@ -45,6 +45,13 @@ export type StudioTrackPanelProps = {
   onAddUploadTrack: () => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
+
+  /** Master strip pinned at the panel bottom (reference F-01/F-02). */
+  masterVolume: number;
+  masterMuted: boolean;
+  onMasterVolume: (value: number) => void;
+  onMasterCommit: () => void;
+  onToggleMasterMute: () => void;
 };
 
 export function StudioTrackPanel(props: StudioTrackPanelProps) {
@@ -72,6 +79,11 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onAddUploadTrack,
     onToggleHidden,
     onShowAllHidden,
+    masterVolume,
+    masterMuted,
+    onMasterVolume,
+    onMasterCommit,
+    onToggleMasterMute,
   } = props;
 
   const visible = tracks.filter((track) => !track.hidden);
@@ -376,6 +388,34 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
             ) : null}
           </div>
         ) : null}
+      </div>
+
+      <div className="se-master-strip" data-help="master">
+        <div className="se-master-head">
+          <span className="se-master-label">Main</span>
+          <button
+            type="button"
+            className={`se-icon${masterMuted ? " on" : ""}`}
+            aria-pressed={masterMuted}
+            aria-label="Mute main"
+            onClick={onToggleMasterMute}
+          >
+            <Icon name={masterMuted ? "fa-volume-xmark" : "fa-volume-high"} />
+          </button>
+        </div>
+        <input
+          type="range"
+          className="se-track-slider"
+          min={0}
+          max={100}
+          step={1}
+          value={masterVolume}
+          aria-label="Master volume"
+          onChange={(event) => onMasterVolume(Number(event.target.value))}
+          onPointerUp={onMasterCommit}
+          onKeyUp={onMasterCommit}
+          onBlur={onMasterCommit}
+        />
       </div>
     </aside>
   );
