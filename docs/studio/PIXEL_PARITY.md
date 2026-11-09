@@ -17,7 +17,7 @@ functional controls the capture does not show (listed below).
 | Header band | 52 px `#0a0a0a`, pills 36 px at y8, radius 999 | same |
 | Project chip | x115, 36 px, `#1c1c1e` | x110 (brand wordmark is wider) |
 | Transport/time/tempo | grouped pills, 36 px | same grouping |
-| Track panel | 260 px `#1c1c1e`, head 29 px | same |
+| Track panel | 260 px canvas `#141416`, head 29 px | same |
 | Track row | 85 px, name x48 y100 11 px, controls 24×24, faders 167+50 at x28 y126 | same (y125) |
 | Colour strip | x8, 10 px wide | same |
 | Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom, labels thin 1/2/4/8 bars as it drops | same |
