@@ -20,9 +20,10 @@ Evidence: `reference/screens/S31-midi-clip-editor.jpeg` (3200×560, 2× DPR),
 - **Tests** — `tests/studio-midi.test.ts` (model) and `tests/e2e/studio-midi.spec.ts`
   (panel geometry, add/move/delete, persistence, reopen).
 
-Velocity editing in the lane is built too (click/drag sets the nearest note velocity). Still
-open: transpose/octave, key/scale controls, and the pitch-bend/modulation lanes (tabs are
-disabled with reasons).
+Velocity editing and key/scale are built too: dragging the lane sets the nearest note velocity,
+and Key/Scale dim out-of-scale rows and snap new notes into the selected scale. Still open:
+transpose/octave, the pitch-bend/modulation lanes (tabs disabled with reasons) and MIDI file
+import/export.
 
 ## What the capture shows
 

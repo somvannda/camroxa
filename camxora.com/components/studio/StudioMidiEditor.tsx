@@ -31,10 +31,37 @@ export type StudioMidiEditorProps = {
   barWidth: number;
   secondsPerBar: number;
   loop: boolean;
+  keyName: string;
+  scaleName: string;
+  onKeyChange: (key: string) => void;
+  onScaleChange: (scale: string) => void;
   onToggleLoop: () => void;
   onChangeNotes: (notes: MidiNote[]) => void;
   onClose: () => void;
 };
+
+const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const SCALES: Record<string, number[]> = {
+  major: [0, 2, 4, 5, 7, 9, 11],
+  minor: [0, 2, 3, 5, 7, 8, 10],
+};
+
+function inScale(pitch: number, keyName: string, scaleName: string): boolean {
+  const scale = SCALES[scaleName];
+  if (!scale) return true;
+  const root = KEYS.indexOf(keyName);
+  if (root < 0) return true;
+  return scale.includes((((pitch - root) % 12) + 12) % 12);
+}
+
+function snapToScale(pitch: number, keyName: string, scaleName: string): number {
+  if (inScale(pitch, keyName, scaleName)) return pitch;
+  for (let offset = 1; offset <= 6; offset += 1) {
+    if (inScale(pitch - offset, keyName, scaleName)) return pitch - offset;
+    if (inScale(pitch + offset, keyName, scaleName)) return pitch + offset;
+  }
+  return pitch;
+}
 
 type DragState = {
   id: string;
@@ -45,7 +72,19 @@ type DragState = {
 };
 
 export function StudioMidiEditor(props: StudioMidiEditorProps) {
-  const { clip, barWidth, secondsPerBar, loop, onToggleLoop, onChangeNotes, onClose } = props;
+  const {
+    clip,
+    barWidth,
+    secondsPerBar,
+    loop,
+    keyName,
+    scaleName,
+    onKeyChange,
+    onScaleChange,
+    onToggleLoop,
+    onChangeNotes,
+    onClose,
+  } = props;
   const notes = clip.midi?.notes ?? [];
   const duration = Math.max(0.5, clip.duration ?? secondsPerBar * 4);
   const width = Math.max(96, (duration / secondsPerBar) * barWidth);
@@ -82,7 +121,7 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     if (event.button !== 0) return;
     const grid = event.currentTarget;
     const start = timeAt(event.clientX, grid);
-    const pitch = pitchAt(event.clientY, grid);
+    const pitch = snapToScale(pitchAt(event.clientY, grid), keyName, scaleName);
     const note: MidiNote = {
       id: `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
       pitch,
@@ -227,7 +266,9 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             return (
               <span
                 key={pitch}
-                className={`se-midi-row${isBlackKey(pitch) ? " black" : ""}`}
+                className={`se-midi-row${isBlackKey(pitch) ? " black" : ""}${
+                  inScale(pitch, keyName, scaleName) ? "" : " out"
+                }`}
                 style={{ top: index * MIDI_ROW, height: MIDI_ROW }}
                 aria-hidden="true"
               />
@@ -323,8 +364,28 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         >
           Apply
         </button>
-        <span className="se-midi-control">Key —</span>
-        <span className="se-midi-control">Scale Off</span>
+        <label className="se-midi-control">
+          Key
+          <select aria-label="Key" value={keyName} onChange={(event) => onKeyChange(event.target.value)}>
+            {KEYS.map((key) => (
+              <option key={key} value={key}>
+                {key} Maj
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="se-midi-control">
+          Scale
+          <select
+            aria-label="Scale"
+            value={scaleName}
+            onChange={(event) => onScaleChange(event.target.value)}
+          >
+            <option value="off">Off</option>
+            <option value="major">Major</option>
+            <option value="minor">Minor</option>
+          </select>
+        </label>
         <span className="se-midi-control">View All</span>
       </div>
     </section>

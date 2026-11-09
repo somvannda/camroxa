@@ -4673,6 +4673,7 @@ html{color-scheme:dark}
 .se-midi-grid{position:relative;flex:none;background:#111111;cursor:crosshair}
 .se-midi-row{position:absolute;left:0;right:0;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.03)}
 .se-midi-row.black{background:rgba(255,255,255,.02)}
+.se-midi-row.out{background:#0d0d0f}
 .se-midi-note{position:absolute;height:10px;padding:0;border:0;border-radius:3px;cursor:grab}
 .se-midi-note:hover{filter:brightness(1.15)}
 .se-midi-velocity{position:relative;height:64px;border-top:1px solid rgba(255,255,255,.06);cursor:ns-resize}

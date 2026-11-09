@@ -2943,6 +2943,9 @@ export function StudioEditorShell() {
   const railOpen = libraryOpen || inspectorOpen;
 
   /** The MIDI clip open in the bottom editor, if any (notes coerced to the model). */
+  const midiKey = String((currentData() as { key?: unknown }).key ?? "C");
+  const midiScale = String((currentData() as { scale?: unknown }).scale ?? "off");
+
   const midiClipSource = midiClipId ? clips.find((clip) => clip.id === midiClipId) : undefined;
   const midiClip = midiClipSource
     ? { ...midiClipSource, midi: { notes: sanitizeNotes(midiClipSource.midi?.notes) } }
@@ -3468,6 +3471,14 @@ export function StudioEditorShell() {
           barWidth={barWidth}
           secondsPerBar={secondsPerBar}
           loop={loop}
+          keyName={midiKey}
+          scaleName={midiScale}
+          onKeyChange={(next) => {
+            writeProjectData({ ...currentData(), key: next }, "the project key");
+          }}
+          onScaleChange={(next) => {
+            writeProjectData({ ...currentData(), scale: next }, "the project scale");
+          }}
           onToggleLoop={() => setLoop((value) => !value)}
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
           onClose={() => setMidiClipId(null)}

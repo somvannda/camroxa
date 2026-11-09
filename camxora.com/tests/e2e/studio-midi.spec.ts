@@ -58,6 +58,13 @@ test("a MIDI track opens the captured editor and edits notes", async ({ page }) 
     before ?? ""
   );
 
+  // Key/scale are real: non-scale rows dim and new notes snap into C major.
+  await panel.getByLabel("Scale").selectOption("major");
+  await expect(panel.locator(".se-midi-row.out").first()).toBeAttached();
+  await grid.click({ position: { x: 140, y: 52 } });
+  const snapped = await panel.locator(".se-midi-note").last().getAttribute("aria-label");
+  expect(snapped).toMatch(/Note [A-G]\d at/);
+
   // Velocity lane drag lowers the selected note's velocity.
   const velocityBefore = Number(await panel.locator(".se-midi-note").first().getAttribute("data-velocity"));
   const bar = panel.locator(".se-midi-velocity-bar").first();
