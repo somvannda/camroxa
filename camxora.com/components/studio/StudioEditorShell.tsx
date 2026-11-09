@@ -3185,6 +3185,14 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
+                  disabled
+                  title="Heal Edits is not built in this editor"
+                >
+                  <Icon name="fa-wand-magic" /> Heal Edits
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
                   disabled={!canSplit}
                   onClick={() => {
                     splitClips([clip.id], playhead);
@@ -3193,7 +3201,6 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-scissors" /> Split <span>Ctrl E</span>
                 </button>
-                <div className="se-clip-menu-sep" />
                 <button
                   type="button"
                   role="menuitem"
@@ -3203,6 +3210,17 @@ export function StudioEditorShell() {
                   }}
                 >
                   <Icon name="fa-pen" /> Rename
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setClipMenu(null);
+                    setLibraryOpen(false);
+                    setInspectorOpen(true);
+                  }}
+                >
+                  <Icon name="fa-info-circle" /> Clip Info
                 </button>
                 <button
                   type="button"
@@ -3230,17 +3248,6 @@ export function StudioEditorShell() {
                     ))}
                   </div>
                 ) : null}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setClipMenu(null);
-                    setLibraryOpen(false);
-                    setInspectorOpen(true);
-                  }}
-                >
-                  <Icon name="fa-info-circle" /> Clip Info
-                </button>
                 <div className="se-clip-menu-sep" />
                 <button
                   type="button"
@@ -3260,7 +3267,23 @@ export function StudioEditorShell() {
                   disabled={!clip.audioUrl}
                   onClick={() => void downloadClipWav(clip.id)}
                 >
-                  <Icon name="fa-download" /> Download .WAV
+                  <Icon name="fa-download" /> Download WAV
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled
+                  title="MIDI conversion is not built in this editor"
+                >
+                  <Icon name="fa-music" /> Get MIDI
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled
+                  title="Clips carry no plugin chain in this editor"
+                >
+                  <Icon name="fa-xmark" /> Remove FX
                 </button>
               </div>
             );

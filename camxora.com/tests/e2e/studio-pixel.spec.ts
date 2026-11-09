@@ -428,7 +428,21 @@ test("clip context menu matches the captured popover", async ({ page }) => {
   expect(info.width).toBe(158);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(28, 28, 30)");
-  expect(info.rows[0]?.text).toBe("Copy Ctrl C");
+  expect(info.rows.map((row) => row.text)).toEqual([
+    "Copy Ctrl C",
+    "Paste Ctrl V",
+    "Duplicate Ctrl D",
+    "Delete Backspace",
+    "Heal Edits",
+    "Split Ctrl E",
+    "Rename",
+    "Clip Info",
+    "Clip Color",
+    "Get Stems",
+    "Download WAV",
+    "Get MIDI",
+    "Remove FX",
+  ]);
   expect(info.rows[0]?.hintSize).toBe("11px");
   expect(info.rows.every((row) => row.height === 38)).toBe(true);
 });
