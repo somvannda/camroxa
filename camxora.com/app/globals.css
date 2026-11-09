@@ -4842,11 +4842,13 @@ html{color-scheme:dark}
 .se-track-buttons button.on{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
 
 .se-track{position:relative}
-.se-track-menu{position:absolute;top:32px;left:150px;z-index:45;display:flex;flex-direction:column;gap:2px;min-width:196px;padding:6px;border-radius:10px;background:hsl(var(--card));border:1px solid hsl(var(--border))}
-.se-track-menu button{text-align:left;padding:7px 9px;border-radius:8px}
+.se-track-menu{position:absolute;top:32px;right:8px;left:auto;z-index:45;display:flex;flex-direction:column;gap:0;min-width:164px;padding:3px 0;border-radius:12px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45)}
+.se-track-menu button{display:flex;align-items:center;gap:8px;height:33px;padding:0 12px;border-radius:0;text-align:left;font-size:13px}
+.se-track-menu button:hover{background:rgba(255,255,255,.06)}
 .se-track-menu button.danger{color:hsl(var(--destructive))}
-.se-track-menu-colors{display:flex;gap:6px;padding:6px 9px}
-.se-track-menu-colors button{width:20px;height:20px;border-radius:999px;border:1px solid hsl(var(--border))}
+.se-track-menu-colors{display:flex;align-items:center;gap:6px;height:33px;padding:0 12px}
+.se-track-menu-label{font-size:13px;margin-right:2px}
+.se-track-menu-colors button{width:14px;height:14px;padding:0;border-radius:999px;border:0}
 .se-track-menu-colors button.on{outline:2px solid hsl(var(--accent))}
 .se-track-rename{width:96px;padding:2px 6px;border-radius:6px;background:hsl(var(--card));color:inherit;border:1px solid hsl(var(--accent))}
 .se-hidden-wrap{position:relative;display:flex;justify-content:flex-end;padding:0 10px 8px}

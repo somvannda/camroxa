@@ -231,7 +231,7 @@ test("Learn menu matches the captured popover", async ({ page }) => {
   const info = await menu.evaluate((element) => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
-    const rows = Array.from(element.querySelectorAll("button")).map((row) => {
+    const rows = Array.from(element.querySelectorAll(":scope > button")).map((row) => {
       const box = row.getBoundingClientRect();
       return { text: (row.textContent ?? "").replace(/\s+/g, " ").trim(), height: Math.round(box.height) };
     });
@@ -253,6 +253,43 @@ test("Learn menu matches the captured popover", async ({ page }) => {
     "What's This? On",
   ]);
   expect(info.rows.every((row) => row.height === 44)).toBe(true);
+});
+
+test("track options menu matches the captured popover", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel track menu" });
+  await page.getByRole("button", { name: "Options for Track 1" }).click();
+  const menu = page.getByRole("menu", { name: "Track 1 options" });
+  await expect(menu).toBeVisible();
+  const info = await menu.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const rows = Array.from(element.querySelectorAll(":scope > button")).map((row) => {
+      const box = row.getBoundingClientRect();
+      return { text: (row.textContent ?? "").replace(/\s+/g, " ").trim(), height: Math.round(box.height) };
+    });
+    return {
+      width: Math.round(rect.width),
+      right: Math.round(rect.right),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+      rows,
+    };
+  });
+  // S19: 164 px card on #1c1c1e, 12 px radius, 33 px rows inside the 260 px panel.
+  expect(info.width).toBe(164);
+  expect(info.radius).toBe("12px");
+  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.right).toBeLessThanOrEqual(260);
+  expect(info.rows.map((row) => row.text)).toEqual([
+    "Rename track",
+    "Collapse controls",
+    "Duplicate",
+    "Hide & Mute Track",
+    "Delete",
+  ]);
+  expect(info.rows.every((row) => row.height === 33)).toBe(true);
 });
 
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {

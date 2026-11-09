@@ -116,9 +116,10 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
               {menuTrackId === track.id ? (
                 <div className="se-track-menu" role="menu" aria-label={`${track.name} options`}>
                   <button type="button" role="menuitem" onClick={() => onRenameStart(track)}>
-                    Rename track
+                    <Icon name="fa-pen" /> Rename track
                   </button>
                   <div className="se-track-menu-colors" role="group" aria-label="Track colour">
+                    <span className="se-track-menu-label">Color</span>
                     {TRACK_COLORS.map((color) => (
                       <button
                         key={color}
@@ -141,13 +142,14 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                       onToggleMenu(null);
                     }}
                   >
+                    <Icon name="fa-thumbtack" />
                     {track.collapsed ? "Expand controls" : "Collapse controls"}
                   </button>
                   <button type="button" role="menuitem" onClick={() => onDuplicate(track.id)}>
-                    Duplicate
+                    <Icon name="fa-copy" /> Duplicate
                   </button>
                   <button type="button" role="menuitem" onClick={() => onHide(track.id)}>
-                    Hide &amp; Mute Track
+                    <Icon name="fa-eye-slash" /> Hide &amp; Mute Track
                   </button>
                   <button
                     type="button"
@@ -155,7 +157,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     className="danger"
                     onClick={() => onDelete(track.id)}
                   >
-                    Delete
+                    <Icon name="fa-trash" /> Delete
                   </button>
                 </div>
               ) : null}
