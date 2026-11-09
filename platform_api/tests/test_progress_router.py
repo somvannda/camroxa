@@ -68,6 +68,9 @@ def _progress_row(
     song_failed: int = 0,
     pipeline_complete: bool = False,
     youtube_success: int = 0,
+    youtube_failed: int = 0,
+    youtube_batch_success: int = 0,
+    youtube_legacy: bool = False,
     background_path: str | None = None,
     auto_upload_youtube: bool | None = None,
 ):
@@ -115,11 +118,16 @@ def _progress_row(
             }
         },
         youtube_groups={
-            (batch_id, profile_id, "OK"): {"success": youtube_success, "pending": 0, "failed": 0, "latest_status": "SUCCESS" if youtube_success else ""}
+            (batch_id, profile_id, "OK"): {"success": youtube_success, "pending": 0, "failed": youtube_failed, "latest_status": "FAILED" if youtube_failed else ("SUCCESS" if youtube_success else "")}
         }
-        if youtube_success
+        if youtube_success or youtube_failed
         else {},
-        youtube_batch_groups={},
+        youtube_batch_groups={
+            batch_id: {"success": youtube_batch_success, "pending": 0, "failed": 0, "latest_status": "SUCCESS" if youtube_batch_success else ""}
+        }
+        if youtube_batch_success
+        else {},
+        youtube_legacy_batches=frozenset({batch_id}) if youtube_legacy else frozenset(),
     )
 
 
@@ -210,6 +218,76 @@ def test_progress_keeps_error_when_thumbnail_failed() -> None:
 def test_progress_keeps_done_when_youtube_succeeded() -> None:
     row = _progress_row(bg_ready=1, bg_total=1, long_ready=False, youtube_success=1)
     assert row.stage == "Done"
+    # A published video can only exist after a merged file, even though the API
+    # host cannot list the desktop run folder.
+    assert row.converter == "Completed"
+    assert row.merge == "Completed"
+
+
+def test_progress_does_not_publish_a_row_from_a_sibling_channels_upload() -> None:
+    row = _progress_row(
+        bg_ready=1,
+        bg_total=1,
+        long_ready=False,
+        youtube_batch_success=1,
+    )
+    assert row.stage != "Done"
+    assert row.meta.youtube_success == 0
+    assert row.youtube != "Ready"
+
+
+def test_progress_uses_batch_aggregate_only_for_legacy_slotless_uploads() -> None:
+    row = _progress_row(
+        bg_ready=1,
+        bg_total=1,
+        long_ready=False,
+        youtube_batch_success=1,
+        youtube_legacy=True,
+    )
+    assert row.stage == "Done"
+    assert row.meta.youtube_success == 1
+
+
+def test_progress_marks_a_failed_upload_as_youtube_failed() -> None:
+    row = _progress_row(
+        bg_ready=1,
+        bg_total=1,
+        long_ready=False,
+        pipeline_complete=True,
+        youtube_failed=1,
+    )
+    # Media finished, so the stage stays Completed; the YouTube column is the
+    # honest failure signal and export/merge remain complete.
+    assert row.stage == "Completed"
+    assert row.youtube == "Failed"
+    assert row.converter == "Completed"
+    assert row.merge == "Completed"
+
+
+def test_finalize_youtube_group_uses_the_newest_attempt() -> None:
+    from platform_api.routers.progress import _finalize_youtube_group
+
+    group = {
+        "success": 3,
+        "pending": 0,
+        "failed": 0,
+        "latest_status": "FAILED",
+        "youtube_url": "https://youtu.be/old",
+        "created_at": None,
+        "updated_at": None,
+    }
+    _finalize_youtube_group(group)
+    assert group["success"] == 0
+    assert group["failed"] == 1
+    assert group["youtube_url"] is None
+
+    group.update(
+        {"success": 1, "failed": 1, "latest_status": "SUCCESS", "youtube_url": "https://youtu.be/new"}
+    )
+    _finalize_youtube_group(group)
+    assert group["success"] == 1
+    assert group["failed"] == 0
+    assert group["youtube_url"] == "https://youtu.be/new"
 
 
 def test_progress_keeps_completed_when_pipeline_complete() -> None:

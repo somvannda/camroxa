@@ -451,39 +451,48 @@ class YouTubeConnectionRepository:
 
         Reuses the newest job row for that slot when one exists; otherwise
         inserts one, so Progress and the audit trail agree with YouTube.
+        A slot that already published is never downgraded by a later quota or
+        retry failure — otherwise a failed re-attempt would hide the live video.
         """
-        row = await self._db.fetchrow(
+        existing = await self._db.fetchrow(
             """
-            UPDATE youtube_upload_jobs
-            SET status = $5,
-                youtube_video_id = $6,
-                youtube_url = $7,
-                title = COALESCE(NULLIF($8, ''), title),
-                error_message = $9,
-                updated_at = NOW()
-            WHERE id = (
-                SELECT id FROM youtube_upload_jobs
-                WHERE user_id = $1::uuid
-                  AND batch_id = $2::uuid
-                  AND profile_id = $3::uuid
-                  AND role = $4
-                ORDER BY created_at DESC
-                LIMIT 1
-            )
-            RETURNING id
+            SELECT id, status FROM youtube_upload_jobs
+            WHERE user_id = $1::uuid
+              AND batch_id = $2::uuid
+              AND profile_id = $3::uuid
+              AND role = $4
+            ORDER BY created_at DESC
+            LIMIT 1
             """,
             user_id,
             batch_id,
             profile_id,
             role,
-            status,
-            video_id or None,
-            video_url,
-            title,
-            error_message,
         )
-        if row is not None:
-            return str(row["id"])
+        if existing is not None:
+            existing_id = str(existing["id"])
+            if str(existing["status"] or "").lower() == "success" and status != "success":
+                return existing_id
+            updated = await self._db.fetchrow(
+                """
+                UPDATE youtube_upload_jobs
+                SET status = $2,
+                    youtube_video_id = $3,
+                    youtube_url = $4,
+                    title = COALESCE(NULLIF($5, ''), title),
+                    error_message = $6,
+                    updated_at = NOW()
+                WHERE id = $1::uuid
+                RETURNING id
+                """,
+                existing_id,
+                status,
+                video_id or None,
+                video_url,
+                title,
+                error_message,
+            )
+            return str(updated["id"]) if updated is not None else existing_id
 
         created = await self._db.fetchrow(
             """
