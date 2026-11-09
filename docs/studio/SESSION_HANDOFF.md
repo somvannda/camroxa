@@ -46,7 +46,10 @@ Helpers in `scripts/`:
   default workspace** (the library filters songs by workspace, so a fresh account with
   no workspace lists nothing).
 - `seed_sandbox_song.py` - writes `public/seed/demo-loop.wav` and inserts a completed
-  `suno_task`, so the library/provenance paths have real data. Both scripts honour
+  `suno_task`, so the library/provenance paths have real data. When
+  `PLATFORM_STREAMING_B2_*` is configured it also uploads the WAV to a task-scoped key
+  (`web-music/<task>/seed-ok.wav`), which is what makes the download/waveform path work;
+  pass `--force` to replace an existing seed task. Both scripts honour
   `PLATFORM_DATABASE_URL` (async URLs accepted); the seed URL is overridable with
   `STUDIO_SEED_PUBLIC_URL`. Note the three things
   the list endpoint filters on (`source='web_music'`, a `workspace_id`) and the two

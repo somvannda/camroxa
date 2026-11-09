@@ -45,6 +45,11 @@ function mmss(seconds: number | undefined): string {
 
 export function StudioClipInfo(props: StudioClipInfoProps) {
   const { width, clip, trackName, source, stems, onRequestStems, onClose } = props;
+  // Ready assets reject the raw stream URL (encrypted-player guard); the download
+  // endpoint returns the same audio as a plain file and is what the waveform can decode.
+  const waveformUrl =
+    source?.clips?.find((candidate) => candidate.audio_url === clip.audioUrl)?.download_url ??
+    clip.audioUrl;
   const [tab, setTab] = useState<"info" | "stems">("info");
 
   return (
@@ -82,7 +87,7 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
         </dl>
 
         <Waveform
-          url={clip.audioUrl}
+          url={waveformUrl}
           width={320}
           height={56}
           className="se-inspector-wave"

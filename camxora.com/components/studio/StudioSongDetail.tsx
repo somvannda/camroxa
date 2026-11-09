@@ -128,7 +128,7 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
           <Icon name={playing ? "fa-pause" : "fa-play"} />
         </button>
         <Waveform
-          url={clip?.audio_url}
+          url={clip?.download_url ?? clip?.audio_url}
           width={240}
           height={40}
           className="se-song-wave"

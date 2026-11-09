@@ -47,6 +47,40 @@ def write_wav(path: str, seconds: float = 4.0, rate: int = 22050) -> None:
         out.writeframes(bytes(frames))
 
 
+def upload_seed(task_id) -> tuple[str | None, str | None]:
+    """Upload the seed WAV to the configured S3 stand-in, keyed by task id.
+
+    The playback proxy only signs task-scoped storage keys; without this the seed is
+    listable but not streamable (it would hit the encrypted-player guard).
+    """
+    key_id = os.environ.get("PLATFORM_STREAMING_B2_KEY_ID")
+    app_key = os.environ.get("PLATFORM_STREAMING_B2_APPLICATION_KEY")
+    bucket = os.environ.get("PLATFORM_STREAMING_B2_BUCKET")
+    endpoint = os.environ.get("PLATFORM_STREAMING_B2_ENDPOINT")
+    region = os.environ.get("PLATFORM_STREAMING_B2_REGION", "us-east-1")
+    if not (key_id and app_key and bucket and endpoint):
+        return None, None
+    try:
+        import boto3
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=key_id,
+            aws_secret_access_key=app_key,
+            region_name=region,
+        )
+        key_ok = f"web-music/{task_id}/seed-ok.wav"
+        key_alt = f"web-music/{task_id}/seed-alt.wav"
+        for key in (key_ok, key_alt):
+            s3.upload_file(WAV_PATH, bucket, key, ExtraArgs={"ContentType": "audio/wav"})
+        print("uploaded seed audio to", bucket)
+        return key_ok, key_alt
+    except Exception as exc:  # noqa: BLE001 - seeding is best effort
+        print("upload skipped:", exc)
+        return None, None
+
+
 async def main() -> int:
     write_wav(WAV_PATH)
     print("wav:", WAV_PATH)
@@ -61,25 +95,31 @@ async def main() -> int:
         existing = await conn.fetchval(
             "select id from suno_tasks where user_id=$1 and title=$2", user_id, "Seed Demo Loop"
         )
-        if existing:
+        if existing and "--force" not in sys.argv:
             print("task already exists:", existing)
             return 0
+        if existing:
+            await conn.execute("delete from suno_tasks where id=$1", existing)
+            print("removed old seed task")
 
         now = datetime.now(timezone.utc)
         workspace_id = await conn.fetchval(
             "select id from web_music_workspaces where user_id=$1 order by is_default desc limit 1",
             user_id,
         )
+        task_id = uuid4()
+        key_ok, key_alt = upload_seed(task_id)
         await conn.execute(
             """
             insert into suno_tasks (
                 id, user_id, request_hash, model, title, lyrics, style, instrumental,
                 status, audio_url_ok, downloaded_ok, downloaded_alt, created_at, updated_at,
                 source, workspace_id, stream_ready_ok, stream_ready_alt,
-                package_status_ok, package_status_alt, duration_ok, duration_alt
-            ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                package_status_ok, package_status_alt, duration_ok, duration_alt,
+                b2_storage_key_ok, b2_storage_key_alt
+            ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
             """,
-            uuid4(),
+            task_id,
             user_id,
             f"seed-{uuid4().hex[:12]}",
             "v6",
@@ -98,12 +138,15 @@ async def main() -> int:
             workspace_id,
             True,
             True,
-            "ready",
-            "ready",
+            # No encrypted package: the proxy may serve the signed object instead.
+            "none",
+            "none",
             4.0,
             4.0,
+            key_ok,
+            key_alt,
         )
-        print("inserted Seed Demo Loop ->", PUBLIC_URL)
+        print("inserted Seed Demo Loop ->", key_ok or PUBLIC_URL)
         return 0
     finally:
         await conn.close()
