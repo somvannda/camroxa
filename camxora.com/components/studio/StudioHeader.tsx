@@ -152,7 +152,7 @@ export function StudioHeader(props: StudioHeaderProps) {
         ) : (
           <button type="button" className="se-chip" disabled>
             {title}
-            <Icon name="fa-chevron-down" />
+            <Icon name="fa-ellipsis" />
           </button>
         )}
         <span className="se-head-group">

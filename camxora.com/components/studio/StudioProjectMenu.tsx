@@ -293,7 +293,7 @@ export function StudioProjectMenu({
         onClick={() => setOpen((value) => !value)}
       >
         {label}
-        <Icon name="fa-chevron-down" />
+        <Icon name="fa-ellipsis" />
       </button>
 
       {open ? (
