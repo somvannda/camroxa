@@ -90,6 +90,9 @@ class FakeStore:
             return datetime.now(timezone.utc)
         return None
 
+    async def has_completed_topup_this_month(self, user_id: UUID) -> bool:
+        return False
+
     async def get_active_free_plan(self) -> dict | None:
         return {
             "id": str(FREE_PLAN_ID),
@@ -110,6 +113,12 @@ class RetiredPlansStore:
     async def resolve_charge_plan(self, user_id: UUID) -> dict | None:
         self.resolve_calls += 1
         raise RuntimeError('relation "plans" does not exist')
+
+    async def live_pack_expiry(self, user_id: UUID):
+        return None
+
+    async def has_completed_topup_this_month(self, user_id: UUID) -> bool:
+        return False
 
 
 class FakeWallet:
@@ -444,14 +453,14 @@ async def test_studio_refund_reverses_the_studio_charge() -> None:
 
 
 @pytest.mark.asyncio
-async def test_music_op_still_resolves_a_charge_plan() -> None:
-    """The studio carve-out must not remove plan context from generated ops."""
+async def test_music_op_prices_without_a_plan_lookup() -> None:
+    """Plans are retired: even generated ops price from the table, not a plan row."""
     store = FakeStore()
     bridge, _billing, _grant = _studio_bridge(store=store)
 
     await bridge.charge(USER_ID, "music", ref_id="res-1")
 
-    assert store.resolve_calls >= 1
+    assert store.resolve_calls == 0
 
 
 @pytest.mark.asyncio
