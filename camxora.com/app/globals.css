@@ -4855,7 +4855,7 @@ html{color-scheme:dark}
 .se-master-value{min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
 
 .se-add-wrap{position:relative;display:flex;flex-direction:column}
-.se-add-menu{position:absolute;left:0;bottom:44px;display:flex;flex-direction:column;min-width:208px;padding:6px;border-radius:12px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:45}
+.se-add-menu{position:fixed;z-index:60;display:flex;flex-direction:column;min-width:208px;padding:6px;border-radius:12px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:45}
 .se-add-menu button{display:flex;align-items:center;gap:12px;height:50px;padding:0 12px;border-radius:9px;text-align:left;font-size:13px}
 .se-add-menu button:hover:not(:disabled){background:rgba(255,255,255,.06)}
 .se-add-menu button span{margin-left:auto}

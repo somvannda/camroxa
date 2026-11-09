@@ -96,7 +96,10 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
 
   // Add-track menu (§8.3). Local state: nothing outside this panel depends on it.
   const [addOpen, setAddOpen] = useState(false);
+  /** Fixed coordinates: the menu must escape the scrolling list so it is never clipped. */
+  const [addMenuPos, setAddMenuPos] = useState<{ top: number; left: number } | null>(null);
   const addRef = useRef<HTMLDivElement | null>(null);
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!addOpen) return;
     const onPointer = (event: PointerEvent) => {
@@ -105,11 +108,14 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setAddOpen(false);
     };
+    const onScroll = () => setAddOpen(false);
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [addOpen]);
 
@@ -311,14 +317,37 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
           <button
             type="button"
             className="se-add-track"
+            ref={addButtonRef}
             aria-haspopup="menu"
             aria-expanded={addOpen}
-            onClick={() => setAddOpen((value) => !value)}
+            onClick={() => {
+              if (!addOpen) {
+                const rect = addButtonRef.current?.getBoundingClientRect();
+                if (rect) {
+                  const menuHeight = 170;
+                  const top =
+                    rect.bottom + menuHeight > window.innerHeight
+                      ? Math.max(8, rect.top - menuHeight - 4)
+                      : rect.bottom + 4;
+                  setAddMenuPos({ top, left: Math.max(8, rect.left) });
+                }
+              }
+              setAddOpen((value) => !value);
+            }}
           >
             <Icon name="fa-plus" /> Add new track
           </button>
           {addOpen ? (
-            <div className="se-add-menu" role="menu" aria-label="Add a track">
+            <div
+              className="se-add-menu"
+              role="menu"
+              aria-label="Add a track"
+              style={
+                addMenuPos
+                  ? { position: "fixed", top: addMenuPos.top, left: addMenuPos.left }
+                  : undefined
+              }
+            >
               <button
                 type="button"
                 role="menuitem"
