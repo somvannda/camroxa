@@ -2,7 +2,7 @@
   width: 100%;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 32px 32px 80px;
+  padding: 96px 32px 80px;
 }
 
 .header {
@@ -328,6 +328,10 @@
   background: #74c69d;
 }
 
+.dotDanger {
+  background: #f28b82;
+}
+
 .flow {
   display: flex;
   align-items: center;
@@ -525,6 +529,117 @@
   display: inline-flex;
 }
 
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.genreChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.creatorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.creatorCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  color: var(--text);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.creatorCard:hover {
+  border-color: var(--line2);
+  background: var(--panel2);
+}
+
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+.avatarFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel2);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.searchField {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 280px;
+  max-width: 420px;
+}
+
+.searchField .icon {
+  position: absolute;
+  left: 12px;
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.searchInput {
+  padding-left: 34px;
+}
+
+.skeleton {
+  height: 14px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+  background-size: 200% 100%;
+  animation: creatorShimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonPanel {
+  display: grid;
+  gap: 12px;
+}
+
+@keyframes creatorShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .stack {
   display: grid;
   gap: 16px;
@@ -532,7 +647,7 @@
 
 @media (max-width: 720px) {
   .page {
-    padding: 20px 20px 64px;
+    padding: 88px 20px 64px;
   }
 
   .title {

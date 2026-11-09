@@ -227,3 +227,26 @@ export function CreatorCheckbox({
     </label>
   );
 }
+
+export function CreatorStatus({
+  label,
+  tone = "neutral",
+}: {
+  label: string;
+  tone?: "neutral" | "review" | "live" | "danger";
+}) {
+  const dot =
+    tone === "live"
+      ? styles.dotLive
+      : tone === "review"
+        ? styles.dotReview
+        : tone === "danger"
+          ? styles.dotDanger
+          : "";
+  return (
+    <span className={styles.status}>
+      <span className={`${styles.dot} ${dot}`.trim()} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}

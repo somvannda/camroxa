@@ -1,15 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { CreatorMetrics } from "@/components/CreatorMetrics";
 import {
   CreatorButton,
+  CreatorButtonLink,
   CreatorCheckbox,
   CreatorField,
+  CreatorHeader,
   CreatorInput,
+  CreatorPage,
+  CreatorPanel,
   CreatorSelect,
+  CreatorStatus,
   CreatorTextarea,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
@@ -41,6 +45,13 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
 };
 
+function statusTone(status: string): "neutral" | "review" | "live" | "danger" {
+  if (status === "approved") return "live";
+  if (["submitted", "in_review", "changes_requested"].includes(status)) return "review";
+  if (status === "rejected") return "danger";
+  return "neutral";
+}
+
 export function CreatorVerificationView() {
   const [status, setStatus] = useState<CreatorProgramStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,8 +66,7 @@ export function CreatorVerificationView() {
   const [saving, setSaving] = useState(false);
 
   async function refresh() {
-    const data = await fetchProgramStatus();
-    setStatus(data);
+    setStatus(await fetchProgramStatus());
   }
 
   useEffect(() => {
@@ -139,32 +149,51 @@ export function CreatorVerificationView() {
   }
 
   if (loading) {
-    return <div className="page"><p className="fine" style={{ textAlign: "left" }}>Loading verification…</p></div>;
+    return (
+      <CreatorPage>
+        <CreatorHeader meta="Creator Studio" title="Verification" />
+        <div className={styles.skeletonPanel}>
+          <div className={styles.skeleton} style={{ width: 260, height: 28 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 96 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 220 }} />
+        </div>
+      </CreatorPage>
+    );
   }
 
   if (unauthorized) {
     return (
-      <div className="page">
-        <div className="invite-signin panel">
-          <span className="invite-hero-icon"><Icon name="fa-badge-check" /></span>
-          <h1>Verification</h1>
-          <p>Sign in to apply for Verified Creator status.</p>
-          <Link className="btn btn-primary" href="/login?next=/creator/verification">Sign in</Link>
-        </div>
-      </div>
+      <CreatorPage>
+        <CreatorHeader meta="Creator Studio" title="Verification" />
+        <CreatorPanel>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>Sign in to apply</p>
+            <p className={styles.emptyBody}>Apply for Verified Creator status and track your review.</p>
+            <div>
+              <CreatorButtonLink href="/login?next=/creator/verification" variant="primary">
+                Sign in
+              </CreatorButtonLink>
+            </div>
+          </div>
+        </CreatorPanel>
+      </CreatorPage>
     );
   }
 
   if (!status?.profile) {
     return (
-      <div className="page">
-        <div className="invite-signin panel">
-          <span className="invite-hero-icon"><Icon name="fa-user-plus" /></span>
-          <h1>Claim a creator page first</h1>
-          <p>You need a creator profile before you can apply for verification.</p>
-          <Link className="btn btn-primary" href="/creator">Open Creator Studio</Link>
-        </div>
-      </div>
+      <CreatorPage>
+        <CreatorHeader meta="Creator Studio" title="Verification" />
+        <CreatorPanel>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>Claim a creator page first</p>
+            <p className={styles.emptyBody}>You need a creator profile before you can apply for verification.</p>
+            <div>
+              <CreatorButtonLink href="/creator" variant="primary">Open Creator Studio</CreatorButtonLink>
+            </div>
+          </div>
+        </CreatorPanel>
+      </CreatorPage>
     );
   }
 
@@ -173,21 +202,25 @@ export function CreatorVerificationView() {
     !application || application.status === "changes_requested" || application.status === "rejected";
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <p className="fine" style={{ margin: 0 }}>Creator Studio / Verification</p>
-          <h1>Verification</h1>
-          <p>Apply for the Verified Creator badge and track your review.</p>
-        </div>
-        <div className="page-actions">
-          <Link className="btn btn-ghost" href="/creator">Back to Studio</Link>
-          <Link className="btn btn-ghost" href={`/creators/${status.profile.handle}`}>View public page</Link>
-        </div>
-      </div>
+    <CreatorPage>
+      <CreatorHeader
+        meta="Creator Studio"
+        title="Verification"
+        description="Apply for the Verified Creator badge and track your review."
+        actions={
+          <>
+            <CreatorButtonLink href="/creator" variant="ghost">
+              <Icon name="fa-arrow-left" /> Back to Studio
+            </CreatorButtonLink>
+            <CreatorButtonLink href={`/creators/${status.profile.handle}`} variant="ghost">
+              <Icon name="fa-arrow-up-right-from-square" /> View public page
+            </CreatorButtonLink>
+          </>
+        }
+      />
 
-      {error ? <p className="fine" style={{ color: "#f87171" }} role="alert">{error}</p> : null}
-      {success ? <p className="fine" style={{ color: "#4ade80" }} role="status">{success}</p> : null}
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {success ? <p className={styles.success} role="status">{success}</p> : null}
 
       <CreatorMetrics
         items={[
@@ -199,34 +232,35 @@ export function CreatorVerificationView() {
       />
 
       {application ? (
-        <section className="panel" style={{ padding: 24 }}>
-          <div className="sec-head">
-            <h2>Application status</h2>
-            <span className="fine">Version {application.version}</span>
-          </div>
-          <p>
-            <strong>{STATUS_LABELS[application.status] ?? application.status}</strong>
-            {application.submitted_at ? ` · submitted ${formatDate(application.submitted_at)}` : ""}
-            {application.sla_due_at ? ` · review by ${formatDate(application.sla_due_at)}` : ""}
-          </p>
-          {application.decision_reason ? (
-            <p className="fine" style={{ textAlign: "left" }}>Reviewer note: {application.decision_reason}</p>
-          ) : null}
-          {["submitted", "in_review", "changes_requested"].includes(application.status) ? (
-            <div className="page-actions" style={{ marginTop: 12 }}>
-              <button className="btn btn-ghost" type="button" onClick={onWithdraw} disabled={saving}>
-                Withdraw application
-              </button>
+        <CreatorPanel title="Application status" meta={`Version ${application.version}`}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <div>
+              <CreatorStatus
+                label={STATUS_LABELS[application.status] ?? application.status}
+                tone={statusTone(application.status)}
+              />
+              <p className={styles.rowMeta}>
+                {application.submitted_at ? `Submitted ${formatDate(application.submitted_at)}` : "Not submitted"}
+                {application.sla_due_at ? ` · review by ${formatDate(application.sla_due_at)}` : ""}
+              </p>
             </div>
+            {["submitted", "in_review", "changes_requested"].includes(application.status) ? (
+              <CreatorButton variant="secondary" type="button" onClick={onWithdraw} disabled={saving}>
+                Withdraw application
+              </CreatorButton>
+            ) : null}
+          </div>
+          {application.decision_reason ? (
+            <p className={styles.rowMeta}>Reviewer note: {application.decision_reason}</p>
           ) : null}
-        </section>
+        </CreatorPanel>
       ) : null}
 
       {canApply ? (
-        <section className="panel" style={{ marginTop: 16, padding: 24 }}>
-          <div className="sec-head">
-            <h2>{application?.status === "changes_requested" ? "Update and resubmit" : "Apply for verification"}</h2>
-          </div>
+        <CreatorPanel
+          title={application?.status === "changes_requested" ? "Update and resubmit" : "Apply for verification"}
+          className={styles.sectionGap}
+        >
           <form className={styles.form} onSubmit={onApply}>
             <CreatorField
               label="Why should we verify you? (50–500 characters)"
@@ -265,22 +299,20 @@ export function CreatorVerificationView() {
               </CreatorButton>
             </div>
           </form>
-        </section>
+        </CreatorPanel>
       ) : null}
 
-      <section className="panel" style={{ marginTop: 16, padding: 24 }}>
-        <div className="sec-head">
-          <h2>Identity evidence</h2>
-          <span className="fine">Encrypted and reviewed by a human.</span>
-        </div>
+      <CreatorPanel
+        title="Identity evidence"
+        meta="Encrypted and reviewed by a human"
+        className={styles.sectionGap}
+      >
         <form className={styles.form} onSubmit={onVerification}>
           <CreatorField label="Evidence type" htmlFor="evidence-kind">
             <CreatorSelect
               id="evidence-kind"
               value={evidenceKind}
-              onValueChange={(value) =>
-                setEvidenceKind(value as CreatorVerification["kind"])
-              }
+              onValueChange={(value) => setEvidenceKind(value as CreatorVerification["kind"])}
               options={[
                 { value: "identity", label: "Identity document" },
                 { value: "authenticity", label: "Authenticity / social proof" },
@@ -305,30 +337,34 @@ export function CreatorVerificationView() {
             </CreatorButton>
           </div>
         </form>
-      </section>
+      </CreatorPanel>
 
-      <section className="panel" style={{ marginTop: 16, padding: 24 }}>
-        <div className="sec-head"><h2>Evidence history</h2></div>
+      <CreatorPanel title="Evidence history" className={styles.sectionGap}>
         {status.verifications.length === 0 ? (
-          <p className="fine" style={{ textAlign: "left" }}>No evidence submitted yet.</p>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>No evidence submitted yet</p>
+            <p className={styles.emptyBody}>Identity, authenticity, business, and voice-consent evidence will appear here.</p>
+          </div>
         ) : (
-          <div className="invite-table-wrap">
-            <table className="invite-table">
-              <thead><tr><th>Type</th><th>Status</th><th>Submitted</th><th>Reviewed</th></tr></thead>
-              <tbody>
-                {status.verifications.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.kind.replace("_", " ")}</td>
-                    <td>{item.status}</td>
-                    <td>{formatDate(item.created_at)}</td>
-                    <td>{formatDate(item.reviewed_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className={styles.list}>
+            {status.verifications.map((item) => (
+              <div className={styles.row} key={item.id}>
+                <div>
+                  <p className={styles.rowTitle}>{item.kind.replace("_", " ")}</p>
+                  <p className={styles.rowMeta}>
+                    Submitted {formatDate(item.created_at)}
+                    {item.reviewed_at ? ` · reviewed ${formatDate(item.reviewed_at)}` : ""}
+                  </p>
+                </div>
+                <CreatorStatus
+                  label={item.status}
+                  tone={item.status === "approved" ? "live" : item.status === "rejected" ? "danger" : "review"}
+                />
+              </div>
+            ))}
           </div>
         )}
-      </section>
-    </div>
+      </CreatorPanel>
+    </CreatorPage>
   );
 }

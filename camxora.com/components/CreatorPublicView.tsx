@@ -1,9 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { CreatorMetrics } from "@/components/CreatorMetrics";
+import {
+  CreatorButton,
+  CreatorButtonLink,
+  CreatorHeader,
+  CreatorPage,
+  CreatorPanel,
+  creatorButtonClass,
+} from "@/components/CreatorUI";
+import styles from "@/components/creator-ui.module.css";
 import { CreatorApiError, fetchCreator, type CreatorProfile } from "@/lib/creator-api";
 
 function formatCount(value: number): string {
@@ -44,61 +52,83 @@ export function CreatorPublicView({ handle }: { handle: string }) {
   }, [handle]);
 
   if (loading) {
-    return <div className="page"><p className="fine" style={{ textAlign: "left" }}>Loading creator…</p></div>;
+    return (
+      <CreatorPage>
+        <CreatorHeader meta="Creator" title={`@${handle}`} />
+        <div className={styles.skeletonPanel}>
+          <div className={styles.skeleton} style={{ width: "100%", height: 190 }} />
+          <div className={styles.skeleton} style={{ width: 260, height: 28 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 120 }} />
+        </div>
+      </CreatorPage>
+    );
   }
 
   if (notFound) {
     return (
-      <div className="page">
-        <div className="invite-signin panel">
-          <span className="invite-hero-icon"><Icon name="fa-user-slash" /></span>
-          <h1>Creator not found</h1>
-          <p>This creator page does not exist or is no longer available.</p>
-          <Link className="btn btn-primary" href="/creators">Browse creators</Link>
-        </div>
-      </div>
+      <CreatorPage>
+        <CreatorHeader meta="Creators" title="Creator not found" />
+        <CreatorPanel>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>This creator is not available</p>
+            <p className={styles.emptyBody}>The page may have been removed, renamed, or unpublished.</p>
+            <div>
+              <CreatorButtonLink href="/creators" variant="primary">Browse creators</CreatorButtonLink>
+            </div>
+          </div>
+        </CreatorPanel>
+      </CreatorPage>
     );
   }
 
   if (error || !creator) {
     return (
-      <div className="page">
-        <p className="fine" style={{ color: "#f87171" }} role="alert">{error || "Creator unavailable"}</p>
-        <Link className="btn btn-ghost" href="/creators">Back to creators</Link>
-      </div>
+      <CreatorPage>
+        <CreatorHeader meta="Creators" title={creator?.display_name ?? "Creator"} />
+        <CreatorPanel>
+          <p className={styles.error} role="alert">{error || "Creator unavailable"}</p>
+          <div className={styles.actions} style={{ marginTop: 16 }}>
+            <CreatorButtonLink href="/creators" variant="secondary">Back to creators</CreatorButtonLink>
+          </div>
+        </CreatorPanel>
+      </CreatorPage>
     );
   }
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <p className="fine" style={{ margin: 0 }}>
-            <Link href="/creators">Creators</Link> / {creator.handle}
-          </p>
-          <h1>{creator.display_name}</h1>
-          <p>{creator.tagline || "Creator on Camxora."}</p>
-        </div>
-        <div className="page-actions">
-          <button className="btn btn-primary" type="button" disabled title="Follows ship in Phase 2">
-            <Icon name="fa-user-plus" /> Follow
-          </button>
-          {creator.support_enabled ? (
-            <button className="btn btn-ghost" type="button" disabled title="Tips ship in Phase 3">
-              <Icon name="fa-heart" /> Support
-            </button>
-          ) : null}
-        </div>
-      </div>
+    <CreatorPage>
+      <CreatorHeader
+        meta={`Creator / @${creator.handle}`}
+        title={creator.display_name}
+        description={creator.tagline || "Creator on Camxora."}
+        actions={
+          <>
+            <CreatorButton variant="secondary" type="button" disabled title="Follows ship in Phase 2">
+              <Icon name="fa-user-plus" /> Follow
+            </CreatorButton>
+            {creator.support_enabled ? (
+              <CreatorButton variant="ghost" type="button" disabled title="Tips ship in Phase 3">
+                <Icon name="fa-heart" /> Support
+              </CreatorButton>
+            ) : null}
+            <CreatorButtonLink href="/creators" variant="ghost">
+              <Icon name="fa-users" /> All creators
+            </CreatorButtonLink>
+          </>
+        }
+      />
 
-      <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
+      <section
+        className={styles.panel}
+        style={{ padding: 0, overflow: "hidden", marginBottom: 24 }}
+      >
         <div
           style={{
-            height: 190,
+            height: creator.banner_url ? 190 : 120,
             background: creator.banner_url
               ? `center / cover no-repeat url(${creator.banner_url})`
-              : "#15161d",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
+              : "var(--panel2)",
+            borderBottom: "1px solid var(--line)",
           }}
         />
         <div style={{ padding: "0 24px 24px", marginTop: -52 }}>
@@ -106,32 +136,32 @@ export function CreatorPublicView({ handle }: { handle: string }) {
             <img
               src={creator.avatar_url}
               alt=""
-              style={{ width: 112, height: 112, borderRadius: "50%", border: "4px solid #0a0e27", objectFit: "cover" }}
+              className={styles.avatar}
+              style={{ width: 112, height: 112, border: "4px solid var(--bg)" }}
             />
           ) : (
             <span
-              style={{
-                display: "inline-flex", width: 112, height: 112, borderRadius: "50%",
-                border: "4px solid #0a0e27", background: "#1b2a41", alignItems: "center",
-                justifyContent: "center", fontSize: 40, fontWeight: 700,
-              }}
+              className={styles.avatarFallback}
+              style={{ width: 112, height: 112, border: "4px solid var(--bg)", fontSize: 34 }}
             >
               {creator.display_name.slice(0, 1).toUpperCase()}
             </span>
           )}
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
             <div>
-              <h2 style={{ margin: "10px 0 2px" }}>
+              <h2 style={{ margin: "12px 0 2px", fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em" }}>
                 {creator.display_name}
                 {creator.badges.includes("verified") ? (
-                  <span title="Verified creator" style={{ color: "#60a5fa", marginLeft: 8 }}>✓</span>
+                  <span title="Verified creator" style={{ color: "var(--lav)", marginLeft: 8 }}>✓</span>
                 ) : null}
               </h2>
-              <p className="fine" style={{ margin: 0 }}>@{creator.handle} · {creator.city || creator.country_code || "Cambodia"}</p>
+              <p className={styles.rowMeta} style={{ marginTop: 2 }}>
+                @{creator.handle} · {creator.city || creator.country_code || "Cambodia"}
+              </p>
             </div>
-            <div className="chip-row" style={{ margin: 0 }}>
+            <div className={styles.chipRow}>
               {creator.genres.map((genre) => (
-                <span className="chip2" key={genre}>{genre}</span>
+                <span className={styles.genreChip} key={genre}>{genre}</span>
               ))}
             </div>
           </div>
@@ -147,33 +177,41 @@ export function CreatorPublicView({ handle }: { handle: string }) {
         ]}
       />
 
-      <section className="panel" style={{ padding: 24 }}>
-        <div className="sec-head"><h2>About</h2></div>
-        <p>{creator.bio || "This creator has not added a bio yet."}</p>
-        <div className="chip-row" style={{ marginTop: 12 }}>
-          <span className="chip2">AI: {creator.ai_disclosure.replace("_", " ")}</span>
-          <span className="chip2">Tier: {creator.tier}</span>
-          {creator.influences.map((influence) => (
-            <span className="chip2" key={influence}>{influence}</span>
-          ))}
-        </div>
+      <CreatorPanel title="About">
+        <p className={styles.emptyBody} style={{ maxWidth: "72ch" }}>
+          {creator.bio || "This creator has not added a bio yet."}
+        </p>
+        <p className={styles.rowMeta} style={{ marginTop: 16 }}>
+          AI disclosure: {creator.ai_disclosure.replace("_", " ")} · Tier: {creator.tier}
+        </p>
+        {creator.influences.length ? (
+          <p className={styles.rowMeta}>Influences: {creator.influences.join(", ")}</p>
+        ) : null}
         {creator.links.length ? (
-          <div className="page-actions" style={{ marginTop: 16 }}>
+          <div className={styles.actions} style={{ marginTop: 16 }}>
             {creator.links.map((link) => (
-              <a className="btn btn-ghost" href={link.url} key={link.url} target="_blank" rel="noreferrer">
+              <a
+                className={creatorButtonClass("secondary")}
+                href={link.url}
+                key={link.url}
+                target="_blank"
+                rel="noreferrer"
+              >
                 {link.label}
               </a>
             ))}
           </div>
         ) : null}
-      </section>
+      </CreatorPanel>
 
-      <section className="panel" style={{ padding: 24 }}>
-        <div className="sec-head"><h2>Releases</h2></div>
-        <p className="fine" style={{ textAlign: "left" }}>
-          Release management ships in Phase 2. This creator has no published releases in the preview.
-        </p>
-      </section>
-    </div>
+      <CreatorPanel title="Releases" meta="0 published" className={styles.sectionGap}>
+        <div className={styles.empty}>
+          <p className={styles.emptyTitle}>No published releases yet</p>
+          <p className={styles.emptyBody}>
+            Release management ships in Phase 2. Published releases will appear here and in the catalog.
+          </p>
+        </div>
+      </CreatorPanel>
+    </CreatorPage>
   );
 }

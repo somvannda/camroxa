@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Icon } from "@/components/Icon";
 import {
   CreatorButton,
   CreatorButtonLink,
@@ -155,7 +156,12 @@ export function CreatorStudioView() {
   if (loading) {
     return (
       <CreatorPage>
-        <p className={styles.hint}>Loading Creator Studio…</p>
+        <CreatorHeader meta="Creator Studio" title="Creator Studio" />
+        <div className={styles.skeletonPanel}>
+          <div className={styles.skeleton} style={{ width: 260, height: 28 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 120 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 320 }} />
+        </div>
       </CreatorPage>
     );
   }
@@ -195,12 +201,18 @@ export function CreatorStudioView() {
           <>
             {profile ? (
               <CreatorButtonLink href={`/creators/${profile.handle}`} variant="secondary">
-                View public page
+                <Icon name="fa-arrow-up-right-from-square" /> View public page
               </CreatorButtonLink>
             ) : null}
-            <CreatorButtonLink href="/creator/releases" variant="ghost">Releases</CreatorButtonLink>
-            <CreatorButtonLink href="/creator/verification" variant="ghost">Verification</CreatorButtonLink>
-            <CreatorButtonLink href="/creators" variant="ghost">Browse creators</CreatorButtonLink>
+            <CreatorButtonLink href="/creator/releases" variant="ghost">
+              <Icon name="fa-record-vinyl" /> Releases
+            </CreatorButtonLink>
+            <CreatorButtonLink href="/creator/verification" variant="ghost">
+              <Icon name="fa-circle-check" /> Verification
+            </CreatorButtonLink>
+            <CreatorButtonLink href="/creators" variant="ghost">
+              <Icon name="fa-users" /> Browse creators
+            </CreatorButtonLink>
           </>
         }
       />

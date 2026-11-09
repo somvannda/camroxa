@@ -7,15 +7,16 @@
 ## 1. The rules
 
 1. **Never put content directly in `className="panel"`.** Use `CreatorPanel`; it always applies 24px padding and a header slot.
-2. **Never use raw `<button className="btn ...">` or `<input className="auth-input">` in creator screens.** Use `CreatorButton`, `CreatorButtonLink`, and `CreatorField` + `styles.input` / `styles.textarea` / `styles.select`.
-3. **Every page starts with `CreatorPage` and `CreatorHeader`.** The page owns the max width and 32px padding; the header owns the 32px bottom gap and action row.
-4. **One primary action per screen.** Primary is the off-white button. Everything else is `secondary` or `ghost`.
-5. **No gradients, glows, colored shadows, emoji labels, uppercase tracked labels, or `transition-all`.**
-6. **Every form field is a `CreatorField`.** Label, control, optional hint. Fields are 20px apart; label is 8px above the control.
-7. **Controls are 44px tall.** Inputs, selects, and buttons share the same height and 10px radius.
-8. **Every list row uses `styles.row`.** 18px vertical padding, hairline separator, title/meta on the left, actions on the right.
-9. **Empty states use `styles.empty`.** A title, one sentence, one action. No icon tile unless the icon is the action.
-10. **Check the screen at 1440px and 320px before calling it done.**
+2. **Never use raw `<button className="btn ...">` or `<input className="auth-input">` in creator screens.** Use `CreatorButton`, `CreatorButtonLink`, and `CreatorField` + `CreatorInput` / `CreatorTextarea` / `CreatorSelect` / `CreatorCheckbox`.
+3. **Every page starts with `CreatorPage` and `CreatorHeader`.** The page owns the 96px top offset below the fixed 68px topbar, the max width, and the 32px side padding; the header owns the 32px bottom gap and action row.
+4. **One primary action per screen.** Primary is the flat brand-violet button. Everything else is `secondary` or `ghost`.
+5. **Icon rule.** Navigation buttons get a leading icon. Form submit buttons and row actions do not. Do not mix a set of header actions with some icons and some without.
+6. **No gradients, glows, colored shadows, emoji labels, uppercase tracked labels, or `transition-all`.**
+7. **Every form field is a `CreatorField`.** Label, control, optional hint. Fields are 20px apart; label is 8px above the control.
+8. **Controls are 44px tall.** Inputs, selects, checkboxes, and buttons share the same radius and focus ring.
+9. **Every list row uses `styles.row`.** 18px vertical padding, hairline separator, title/meta on the left, actions on the right.
+10. **Empty states use `styles.empty`.** A title, one sentence, one action. No icon tile unless the icon is the action.
+11. **Check the screen at 1440px and 320px before calling it done.**
 
 ## 2. Primitives
 
@@ -42,7 +43,8 @@
 | Token | Value |
 |---|---|
 | Page max width | 1240px |
-| Page padding | 32px (20px under 720px) |
+| Page top offset | 96px (68px fixed topbar + 28px gap) |
+| Page padding | 32px sides, 80px bottom (20px sides under 720px) |
 | Panel padding | 24px |
 | Form gap | 20px |
 | Field gap | 8px |

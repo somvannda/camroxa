@@ -13,6 +13,7 @@ import {
   CreatorPage,
   CreatorPanel,
   CreatorSelect,
+  CreatorStatus,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -44,19 +45,11 @@ function stage(status: string): number {
   return 2;
 }
 
-function Status({ status }: { status: string }) {
-  const dot =
-    status === "published"
-      ? `${styles.dot} ${styles.dotLive}`
-      : stage(status) === 1
-        ? `${styles.dot} ${styles.dotReview}`
-        : styles.dot;
-  return (
-    <span className={styles.status}>
-      <span className={dot} aria-hidden="true" />
-      {STATUS_LABEL[status] || status}
-    </span>
-  );
+function statusTone(status: string): "neutral" | "review" | "live" | "danger" {
+  if (status === "published") return "live";
+  if (["submitted", "in_review", "changes_requested"].includes(status)) return "review";
+  if (["rejected", "taken_down"].includes(status)) return "danger";
+  return "neutral";
 }
 
 function ReleaseFlow({ status }: { status: string }) {
@@ -217,7 +210,12 @@ export function CreatorReleasesView() {
   if (loading) {
     return (
       <CreatorPage>
-        <p className={styles.hint}>Loading releases…</p>
+        <CreatorHeader meta="Creator Studio" title="Releases" />
+        <div className={styles.skeletonPanel}>
+          <div className={styles.skeleton} style={{ width: 220, height: 28 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 72 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 260 }} />
+        </div>
       </CreatorPage>
     );
   }
@@ -253,8 +251,12 @@ export function CreatorReleasesView() {
         description="Move a finished generation from draft to live on Camxora."
         actions={
           <>
-            <CreatorButtonLink href="/creator" variant="ghost">Back to Studio</CreatorButtonLink>
-            <CreatorButtonLink href="/create" variant="ghost">Create music</CreatorButtonLink>
+            <CreatorButtonLink href="/creator" variant="ghost">
+              <Icon name="fa-arrow-left" /> Back to Studio
+            </CreatorButtonLink>
+            <CreatorButtonLink href="/create" variant="ghost">
+              <Icon name="fa-plus" /> Create music
+            </CreatorButtonLink>
           </>
         }
       />
@@ -347,7 +349,10 @@ export function CreatorReleasesView() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 10 }}>
                         <p className={styles.rowTitle}>{metadata.title || "Untitled"}</p>
-                        <Status status={release.status} />
+                        <CreatorStatus
+                          label={STATUS_LABEL[release.status] || release.status}
+                          tone={statusTone(release.status)}
+                        />
                       </div>
                       <p className={styles.rowMeta}>
                         {metadata.genre || "No genre"} · {metadata.release_type || "single"}

@@ -3,6 +3,15 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import {
+  CreatorButtonLink,
+  CreatorHeader,
+  CreatorInput,
+  CreatorPage,
+  CreatorPanel,
+  CreatorStatus,
+} from "@/components/CreatorUI";
+import styles from "@/components/creator-ui.module.css";
 import { fetchCreators, type CreatorProfile } from "@/lib/creator-api";
 
 export function CreatorDirectoryView() {
@@ -34,90 +43,85 @@ export function CreatorDirectoryView() {
   }, [query]);
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <p className="fine" style={{ margin: 0 }}>Creators</p>
-          <h1>Creator directory</h1>
-          <p>Verified and emerging creators building Khmer music on Camxora.</p>
-        </div>
-        <div className="page-actions">
-          <Link className="btn btn-primary" href="/creator">
+    <CreatorPage>
+      <CreatorHeader
+        meta="Creators"
+        title="Creator directory"
+        description="Verified and emerging creators building Khmer music on Camxora."
+        actions={
+          <CreatorButtonLink href="/creator" variant="primary">
             <Icon name="fa-microphone-lines" /> Open Creator Studio
-          </Link>
+          </CreatorButtonLink>
+        }
+      />
+
+      <div className={styles.toolbar}>
+        <div className={styles.searchField}>
+          <Icon name="fa-magnifying-glass" />
+          <CreatorInput
+            className={styles.searchInput}
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search creators by name or handle"
+            aria-label="Search creators"
+          />
         </div>
       </div>
 
-      <form className="search search-page-form" role="search" onSubmit={(event) => event.preventDefault()}>
-        <Icon name="fa-magnifying-glass" />
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search creators by name or handle..."
-          aria-label="Search creators"
-        />
-      </form>
-
-      {error ? (
-        <p className="fine" style={{ color: "#f87171", marginBottom: 16 }} role="alert">
-          {error}
-        </p>
-      ) : null}
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
       {loading ? (
-        <p className="fine" style={{ textAlign: "left" }}>Loading creators…</p>
-      ) : items.length === 0 ? (
-        <div className="invite-empty panel">
-          <p>No creators match “{query}”.</p>
-          <Link className="btn btn-ghost" href="/creator">Claim your creator page</Link>
+        <div className={styles.creatorGrid}>
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <div className={styles.creatorCard} key={item}>
+              <div className={styles.skeleton} style={{ width: 56, height: 56, borderRadius: "50%" }} />
+              <div style={{ flex: 1, display: "grid", gap: 8 }}>
+                <div className={styles.skeleton} style={{ width: "60%" }} />
+                <div className={styles.skeleton} style={{ width: "40%" }} />
+              </div>
+            </div>
+          ))}
         </div>
+      ) : items.length === 0 ? (
+        <CreatorPanel>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>No creators match “{query}”</p>
+            <p className={styles.emptyBody}>Try another name, or claim your own creator page.</p>
+            <div>
+              <CreatorButtonLink href="/creator" variant="secondary">Claim a creator page</CreatorButtonLink>
+            </div>
+          </div>
+        </CreatorPanel>
       ) : (
         <>
-          <div className="sec-head">
-            <h2>{query ? `Results for “${query}”` : "Creators to follow"}</h2>
-            <span className="fine">{items.length} shown</span>
-          </div>
-          <div className="creator-grid">
+          <p className={styles.meta} style={{ marginBottom: 12 }}>
+            {query ? `Results for “${query}”` : "Creators to follow"} · {items.length} shown
+          </p>
+          <div className={styles.creatorGrid}>
             {items.map((creator) => (
-              <Link className="creator-card" href={`/creators/${creator.handle}`} key={creator.handle}>
+              <Link className={styles.creatorCard} href={`/creators/${creator.handle}`} key={creator.handle}>
                 {creator.avatar_url ? (
-                  <img src={creator.avatar_url} alt="" />
+                  <img src={creator.avatar_url} alt="" className={styles.avatar} />
                 ) : (
-                  <span
-                    style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: "50%",
-                      background: "#1b2a41",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 24,
-                      fontWeight: 700,
-                      flex: "0 0 auto",
-                    }}
-                    aria-hidden="true"
-                  >
+                  <span className={styles.avatarFallback} aria-hidden="true">
                     {creator.display_name.slice(0, 1).toUpperCase()}
                   </span>
                 )}
-                <div>
-                  <strong>
-                    {creator.display_name}
-                    {creator.badges.includes("verified") ? (
-                      <span title="Verified creator" style={{ color: "#60a5fa", marginLeft: 6 }}>✓</span>
-                    ) : null}
-                  </strong>
-                  <span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p className={styles.rowTitle}>{creator.display_name}</p>
+                  <p className={styles.rowMeta}>
                     {creator.genres[0] ?? "Creator"} · {creator.stats.followers.toLocaleString()} followers
-                  </span>
+                  </p>
                 </div>
+                {creator.badges.includes("verified") ? (
+                  <CreatorStatus label="Verified" tone="live" />
+                ) : null}
               </Link>
             ))}
           </div>
         </>
       )}
-    </div>
+    </CreatorPage>
   );
 }
