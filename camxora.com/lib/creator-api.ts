@@ -237,3 +237,80 @@ export async function submitVerification(input: {
     body: JSON.stringify(input),
   });
 }
+
+export type CreatorRelease = {
+  id: string;
+  creator_id: string;
+  source_type: string;
+  source_task_id: string;
+  source_variant: "ok" | "alt";
+  album_id?: string | null;
+  track_id?: string | null;
+  status:
+    | "draft"
+    | "submitted"
+    | "in_review"
+    | "changes_requested"
+    | "approved"
+    | "scheduled"
+    | "published"
+    | "taken_down"
+    | "rejected";
+  metadata: {
+    title?: string;
+    genre?: string;
+    genres?: string[];
+    language?: string;
+    release_type?: string;
+    rights_attested?: boolean;
+    lyrics?: string | null;
+    description?: string | null;
+    cover_url?: string | null;
+    release_date?: string | null;
+  };
+  ai_disclosure: string;
+  origin: string;
+  submitted_at?: string | null;
+  sla_due_at?: string | null;
+  reviewed_at?: string | null;
+  published_at?: string | null;
+  takedown_reason?: string | null;
+  created_at?: string | null;
+};
+
+export async function fetchReleases(): Promise<{ items: CreatorRelease[] }> {
+  return studioJson<{ items: CreatorRelease[] }>("/api/v3/creator/releases");
+}
+
+export async function createRelease(input: {
+  source_task_id: string;
+  variant: "ok" | "alt";
+  metadata: CreatorRelease["metadata"];
+}): Promise<{ release: CreatorRelease }> {
+  return studioJson<{ release: CreatorRelease }>("/api/v3/creator/releases", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function submitRelease(releaseId: string): Promise<{ release: CreatorRelease }> {
+  return studioJson<{ release: CreatorRelease }>(
+    `/api/v3/creator/releases/${encodeURIComponent(releaseId)}/submit`,
+    { method: "POST" }
+  );
+}
+
+export async function withdrawRelease(releaseId: string): Promise<{ release: CreatorRelease }> {
+  return studioJson<{ release: CreatorRelease }>(
+    `/api/v3/creator/releases/${encodeURIComponent(releaseId)}/withdraw`,
+    { method: "POST" }
+  );
+}
+
+export async function unpublishRelease(releaseId: string): Promise<{ release: CreatorRelease }> {
+  return studioJson<{ release: CreatorRelease }>(
+    `/api/v3/creator/releases/${encodeURIComponent(releaseId)}/unpublish`,
+    { method: "POST" }
+  );
+}

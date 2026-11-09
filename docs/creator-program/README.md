@@ -68,6 +68,7 @@ Everything else (collaborator splits, marketplace, subscriptions, brand briefs, 
 | [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) | Every feature, page, state, notification, and edge case — page by page |
 | [USER_FLOWS.md](./USER_FLOWS.md) | End-to-end journeys, state machines, and how the program connects to every other Camxora feature |
 | [SAMPLE_CREATORS.md](./SAMPLE_CREATORS.md) | Deferred sample pack: 8 fictional creators, Khmer-first discography (3 pop albums × 10 + 7 EPs), SLai avatar plan |
+| [UI_UNSLOP.md](./UI_UNSLOP.md) | unslop audit, direction, passes, and follow-ups for the creator surfaces |
 | [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md) | Current-state audit, data model, migrations, APIs, jobs, admin RBAC, security, test matrix |
 | [ROADMAP.md](./ROADMAP.md) | Phasing, dependencies on the Studio work, capacity, acceptance criteria, open decisions |
 
