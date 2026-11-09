@@ -87,6 +87,10 @@ test("a MIDI track opens the captured editor and edits notes", async ({ page }) 
   const velocityAfter = Number(await panel.locator(".se-midi-note").first().getAttribute("data-velocity"));
   expect(velocityAfter).toBeLessThan(velocityBefore);
 
+  // The arrangement clip previews the notes.
+  const midiClip = page.locator(".se-clip", { hasText: "MIDI clip" }).first();
+  await expect(midiClip.locator(".se-clip-midi span").first()).toBeVisible();
+
   await panel.getByRole("button", { name: "Close MIDI editor" }).click();
   await expect(page.getByRole("region", { name: "MIDI editor" })).toHaveCount(0);
 });

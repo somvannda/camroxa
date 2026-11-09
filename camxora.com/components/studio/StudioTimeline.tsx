@@ -3,6 +3,7 @@
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 
 import { Waveform } from "@/components/studio/Waveform";
+import { MIDI_MAX_PITCH, MIDI_MIN_PITCH, type MidiNote } from "@/lib/studio-midi";
 import { dragToStart } from "@/lib/studio-snap";
 import type { StudioTrack } from "@/lib/studio-tracks";
 
@@ -26,6 +27,7 @@ export type TimelineClip = {
   color?: string;
   audioUrl?: string | null;
   songId?: string;
+  midi?: { notes?: MidiNote[] };
 };
 
 export type TimelineDrag = {
@@ -246,6 +248,23 @@ export function StudioTimeline(props: StudioTimelineProps) {
                             label={`${clip.title || "Clip"} waveform`}
                             color="rgba(0,0,0,.34)"
                           />
+                        ) : clip.midi?.notes?.length ? (
+                          <span className="se-clip-midi">
+                            {clip.midi.notes.map((note) => (
+                              <span
+                                key={note.id}
+                                style={{
+                                  left: `${(note.start / Math.max(0.01, clip.duration ?? 1)) * 100}%`,
+                                  width: `${Math.max(1, (note.length / Math.max(0.01, clip.duration ?? 1)) * 100)}%`,
+                                  top: `${
+                                    ((MIDI_MAX_PITCH - note.pitch) /
+                                      (MIDI_MAX_PITCH - MIDI_MIN_PITCH)) *
+                                    100
+                                  }%`,
+                                }}
+                              />
+                            ))}
+                          </span>
                         ) : null}
                       </span>
                       {isSelected ? (
