@@ -292,6 +292,41 @@ test("track options menu matches the captured popover", async ({ page }) => {
   expect(info.rows.every((row) => row.height === 33)).toBe(true);
 });
 
+test("add-track menu matches the captured popover", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel add menu" });
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  const menu = page.getByRole("menu", { name: "Add a track" });
+  await expect(menu).toBeVisible();
+  const info = await menu.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const rows = Array.from(element.querySelectorAll("button")).map((row) => {
+      const box = row.getBoundingClientRect();
+      const icon = row.querySelector(".se-add-icon")?.getBoundingClientRect();
+      return {
+        text: (row.textContent ?? "").replace(/\s+/g, " ").trim(),
+        height: Math.round(box.height),
+        icon: icon ? Math.round(icon.width) : null,
+      };
+    });
+    return {
+      width: Math.round(rect.width),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+      rows,
+    };
+  });
+  // S20: 208 px card on #1c1c1e, 50 px rows, 24 px coloured icon squares.
+  expect(info.width).toBe(208);
+  expect(info.radius).toBe("12px");
+  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.rows.map((row) => row.text)).toEqual(["Audio A", "MIDI M", "Upload U"]);
+  expect(info.rows.every((row) => row.height === 50)).toBe(true);
+  expect(info.rows.every((row) => row.icon === 24)).toBe(true);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

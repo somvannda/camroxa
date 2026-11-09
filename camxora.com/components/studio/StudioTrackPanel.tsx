@@ -292,7 +292,10 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   onAddTrack();
                 }}
               >
-                Audio <span>A</span>
+                <span className="se-add-icon" data-tone="audio">
+                  <Icon name="fa-music" />
+                </span>
+                Audio <span className="se-add-key">A</span>
               </button>
               <button
                 type="button"
@@ -300,7 +303,10 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                 disabled
                 title="MIDI tracks are not built in this editor"
               >
-                MIDI <span>M</span>
+                <span className="se-add-icon" data-tone="midi">
+                  <Icon name="fa-table-columns" />
+                </span>
+                MIDI <span className="se-add-key">M</span>
               </button>
               <button
                 type="button"
@@ -310,7 +316,10 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   onAddUploadTrack();
                 }}
               >
-                Upload <span>U</span>
+                <span className="se-add-icon" data-tone="upload">
+                  <Icon name="fa-arrow-up-from-bracket" />
+                </span>
+                Upload <span className="se-add-key">U</span>
               </button>
             </div>
           ) : null}
