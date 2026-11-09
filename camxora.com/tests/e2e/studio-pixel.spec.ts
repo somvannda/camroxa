@@ -516,6 +516,35 @@ test("hovering a clip explains it with the captured card", async ({ page }) => {
   expect(box.background).toBe("rgb(210, 208, 206)");
 });
 
+test("export toast matches the captured banner", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel toast" });
+  await page.getByRole("button", { name: "Export menu" }).click();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: /Project \(JSON\)/ }).click();
+  await downloaded;
+  const toast = page.getByRole("status").filter({ hasText: "download started" });
+  await expect(toast).toBeVisible();
+  const box = await toast.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      width: Math.round(rect.width),
+      left: Math.round(rect.left),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+      fontSize: style.fontSize,
+    };
+  });
+  // S51: a bottom-left banner on #1c1c1e, radius 16, 888 px wide.
+  expect(box.width).toBe(888);
+  expect(box.left).toBe(24);
+  expect(box.radius).toBe("16px");
+  expect(box.background).toBe("rgb(28, 28, 30)");
+  expect(box.fontSize).toBe("22px");
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

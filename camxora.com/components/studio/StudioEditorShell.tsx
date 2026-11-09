@@ -350,6 +350,7 @@ export function StudioEditorShell() {
     dragRef.current = { startX: event.clientX, ids: group, origins, ghost: settingsRef.current.ghostDrag };
   }
   const [exporting, setExporting] = useState(false);
+  const [exportToast, setExportToast] = useState<string | null>(null);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -2468,6 +2469,7 @@ export function StudioEditorShell() {
     setExportOpen(false);
     if (scope === "json") {
       download(JSON.stringify(project, null, 2), `${project.title || "project"}.json`, "application/json");
+      setExportToast("Project download started!");
       return;
     }
     setExporting(true);
@@ -2503,6 +2505,7 @@ export function StudioEditorShell() {
           masterGain,
         });
         download(wav, `${project.title || "mix"}.wav`, "audio/wav");
+        setExportToast("Full mix download started!");
       } else if (scope === "range") {
         // Exports exactly the loop range, the reference's "Selected Time Range" (§87).
         const wav = await renderMix(buffers, exportClips, exportTracks, {
@@ -2513,7 +2516,8 @@ export function StudioEditorShell() {
           from: loopStart,
           to: loopEnd,
         });
-        download(wav, `${project.title || "mix"} — selection.wav`, "audio/wav");
+        download(wav, `${project.title || "mix"} - selection.wav`, "audio/wav");
+        setExportToast("Selection download started!");
       } else {
         for (const track of exportTracks) {
           const wav = await renderMix(buffers, exportClips, exportTracks, {
@@ -2523,8 +2527,9 @@ export function StudioEditorShell() {
             honourSolo: false,
           });
           const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
-          download(wav, `${project.title || "project"} — ${label}.wav`, "audio/wav");
+          download(wav, `${project.title || "project"} - ${label}.wav`, "audio/wav");
         }
+        setExportToast("One file per track download started!");
       }
     } catch {
       setError("Export failed. Check that the clips still have audio.");
@@ -2532,6 +2537,13 @@ export function StudioEditorShell() {
       setExporting(false);
     }
   }
+
+  // The export toast dismisses itself; the capture keeps a manual close too.
+  useEffect(() => {
+    if (!exportToast) return;
+    const timer = window.setTimeout(() => setExportToast(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [exportToast]);
 
   /** Sample the master analyser while playing (W4.4). */
   useEffect(() => {
@@ -3314,6 +3326,20 @@ export function StudioEditorShell() {
           writeStudioSettings(updated);
         }}
       />
+
+      {exportToast ? (
+        <div className="se-toast" role="status">
+          <span>{exportToast}</span>
+          <button
+            type="button"
+            className="se-icon"
+            aria-label="Dismiss export message"
+            onClick={() => setExportToast(null)}
+          >
+            <Icon name="fa-xmark" />
+          </button>
+        </div>
+      ) : null}
 
       {error ? <div className="se-error" role="alert">{error}</div> : null}
       {recordError ? (
