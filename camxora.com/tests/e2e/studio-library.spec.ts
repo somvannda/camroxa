@@ -56,7 +56,8 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
     .poll(
       async () =>
         (await library.locator(".se-lib-row").count()) +
-        (await library.locator(".se-lib-empty").count())
+        (await library.locator(".se-lib-empty").count()) +
+        (await library.locator(".se-lib-empty-state").count())
     )
     .toBeGreaterThan(0);
 
