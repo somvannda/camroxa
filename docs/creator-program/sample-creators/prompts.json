@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "note": "Original prompts written for the Creator Program sample pack. These are NOT copied from the production music_descriptions / music_moods catalog. Every artist and every album gets its own prompt so sample content does not collapse into one generic sound.",
+  "negative_prompt": "no impersonation of real artists, no copyrighted melodies, no uncleared samples, no brand names, no explicit content, no muddy low end, no clipped peaks, no robotic vocal tuning, no generic stock EDM drop",
+  "creators": {
+    "sokha": {
+      "artist_prompt": "Khmer pop artist, soft alto lead, Khmer-language hooks with occasional English ad-libs, warm analog synths, plucked khim accents, rounded bass, live-feel drums, intimate close mix, rainy-city nostalgia, 96-118 BPM, 3-4 minute radio structure",
+      "albums": {
+        "bassac-moon": {
+          "title": "Bassac Moon",
+          "prompt": "Night-drive Khmer synth-pop, 100-108 BPM, A minor, glassy arpeggios, gated snare, round sub bass, plucked khim accents, soft alto lead, double-tracked Khmer hook with English ad-libs, neon river reflections, intimate close mix, 3-4 minute radio structure",
+          "bpm": "100-108",
+          "key": "A minor",
+          "mood": ["night drive", "neon", "longing", "city lights"],
+          "track_count": 10
+        },
+        "rainy-season": {
+          "title": "Rainy Season",
+          "prompt": "Monsoon Khmer pop ballad, 84-96 BPM, D minor, Rhodes chords, rain foley, brushed drums, warm upright bass, close-mic alto, breathy Khmer verses, cello swells, longing and distance, sparse intimate mix",
+          "bpm": "84-96",
+          "key": "D minor",
+          "mood": ["monsoon", "longing", "distance", "rain"],
+          "track_count": 10
+        },
+        "golden-hour": {
+          "title": "Golden Hour",
+          "prompt": "Bright Khmer dance-pop, 112-118 BPM, C major, plucked khim hook, hand claps, four-on-the-floor kick, bright saw bass, group chant chorus, summer festival warmth, radio-ready mix",
+          "bpm": "112-118",
+          "key": "C major",
+          "mood": ["summer", "hope", "dance", "friends"],
+          "track_count": 10
+        }
+      }
+    },
+    "vannak": {
+      "artist_prompt": "Khmer hip hop artist, confident baritone, dense Khmer bars with occasional English punchlines, dusty boom-bap drums, upright bass, temple bell and vinyl textures, minor keys, 88-94 BPM, street vignettes and block nostalgia",
+      "albums": {
+        "street-temple": {
+          "title": "Street Temple",
+          "prompt": "90s-style Khmer hip hop, 88-94 BPM, minor key, dusty boom-bap drums, upright bass, temple bell and vinyl crackle textures, confident baritone, dense Khmer bars, street vignettes, no auto-tune, sample-free composition",
+          "bpm": "88-94",
+          "key": "E minor",
+          "mood": ["street", "nostalgia", "pride", "hustle"],
+          "track_count": 5
+        }
+      }
+    },
+    "dara": {
+      "artist_prompt": "Khmer neo-soul R&B singer, smooth tenor with falsetto ad-libs, Rhodes piano, brushed snare, warm finger bass, analog tape warmth, rain-window intimacy, 72-84 BPM, late-night Arrangement",
+      "albums": {
+        "river-lights": {
+          "title": "River Lights",
+          "prompt": "Khmer neo-soul R&B, 72-84 BPM, D minor, Rhodes piano, brushed snare, warm finger bass, falsetto ad-libs, rain-window intimacy, analog tape warmth, spacious late-night mix",
+          "bpm": "72-84",
+          "key": "D minor",
+          "mood": ["midnight", "intimacy", "rain", "slow burn"],
+          "track_count": 5
+        }
+      }
+    },
+    "kanya": {
+      "artist_prompt": "Khmer ballad singer, close-mic female vocal, plain-language storytelling about family, migration, and the long bus home, solo piano, soft strings, acoustic guitar, 62-72 BPM, sparse and dignified",
+      "albums": {
+        "letters-home": {
+          "title": "Letters Home",
+          "prompt": "Khmer piano ballad, 62-72 BPM, C major, solo piano, soft strings, acoustic guitar, close-mic female vocal, plain-language storytelling about family and distance, sparse arrangement, no vocal stacks",
+          "bpm": "62-72",
+          "key": "C major",
+          "mood": ["home", "distance", "family", "memory"],
+          "track_count": 5
+        }
+      }
+    },
+    "rithy": {
+      "artist_prompt": "Khmer big-room EDM producer, festival-scale synth leads, four-on-the-floor kick, sidechained bass, Khmer pentatonic melodic motifs, 126-132 BPM, energetic drops and night-drive atmosphere",
+      "albums": {
+        "neon-bay": {
+          "title": "Neon Bay",
+          "prompt": "Khmer big-room EDM, 126-132 BPM, F minor, saw lead, four-on-the-floor kick, sidechained bass, Khmer pentatonic motif, festival drop, energetic night-drive atmosphere, clean modern club production",
+          "bpm": "126-132",
+          "key": "F minor",
+          "mood": ["festival", "night drive", "energy", "neon"],
+          "track_count": 5
+        }
+      }
+    },
+    "chenda": {
+      "artist_prompt": "Khmer traditional fusion artist, tro fiddle and khim, pentatonic motifs, electronic pulses, hand percussion, ritual atmosphere, organic-electronic blend, 78-96 BPM, patient arrangements",
+      "albums": {
+        "golden-fibers": {
+          "title": "Golden Fibers",
+          "prompt": "Khmer traditional fusion, 78-96 BPM, modal, tro fiddle and khim, pentatonic motifs, electronic pulses, hand percussion, ritual atmosphere, organic-electronic blend, patient arrangement with space for the instruments",
+          "bpm": "78-96",
+          "key": "modal",
+          "mood": ["ritual", "memory", "temple", "weaving"],
+          "track_count": 5
+        }
+      }
+    },
+    "pisey": {
+      "artist_prompt": "Khmer lo-fi producer, instrumental, cassette wow and flutter, rain and room noise, Rhodes, soft kick, muted guitar, 68-80 BPM, sleep/study/drive mood, no vocals",
+      "albums": {
+        "rainy-kampot": {
+          "title": "Rainy Kampot",
+          "prompt": "Khmer lo-fi, 68-80 BPM, instrumental, cassette wow and flutter, rain and room noise, Rhodes chords, soft kick, muted guitar, sleep/study mood, no vocals, gentle tape saturation",
+          "bpm": "68-80",
+          "key": "F major",
+          "mood": ["rain", "study", "sleep", "slow afternoon"],
+          "track_count": 5
+        }
+      }
+    },
+    "sovan": {
+      "artist_prompt": "Khmer conscious rap artist, dense Khmer-language bars, sparse drums, dark piano loop, minor keys, 82-96 BPM, social commentary about work, family, and the cost of leaving, no hook clichés",
+      "albums": {
+        "concrete-khmer": {
+          "title": "Concrete Khmer",
+          "prompt": "Khmer conscious rap, 82-96 BPM, sparse drums, dark piano loop, minor keys, dense Khmer-language bars, social commentary about work, family, and migration, no hook clichés, dry close vocal",
+          "bpm": "82-96",
+          "key": "G minor",
+          "mood": ["concrete", "work", "family", "resolve"],
+          "track_count": 5
+        }
+      }
+    }
+  }
+}

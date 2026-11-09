@@ -729,6 +729,17 @@ Every action is logged, reasoned, and appealable (except illegal content).
 - New creators get a **cold-start boost** (e.g., 14 days of discovery rotation) to avoid rich-get-richer dynamics.
 - Genre and language diversity targets are reviewed quarterly.
 
+### 13.4 Sample content pack (deferred)
+
+A fictional sample catalog — 8 creators, 10 releases, 65 Khmer-first tracks — is specified in [SAMPLE_CREATORS.md](./SAMPLE_CREATORS.md).
+
+- It is **not seeded at launch** and is not a launch dependency.
+- It exists for QA, design, demo, and marketing after identity/publishing ship.
+- Sample creators must be labeled, tagged, and removable in one command.
+- Real SLai avatars require a valid key; the local key is currently invalid.
+- Actual audio generation is a separate, credit-consuming step.
+- Target: Phase 4.
+
 ---
 
 ## 14. Admin & operations requirements

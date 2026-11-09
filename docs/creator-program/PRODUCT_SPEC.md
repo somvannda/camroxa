@@ -677,7 +677,40 @@ This document is the page-by-page, feature-by-feature specification for the Camx
 
 ---
 
-## 12. Copy and tone
+## 12. Sample data pack (deferred)
+
+A fictional sample catalog is specified in [SAMPLE_CREATORS.md](./SAMPLE_CREATORS.md). It is **not seeded at launch** and is not a launch dependency.
+
+**What it contains**
+
+- 8 fictional creators across Khmer pop, hip hop, R&B, ballad, EDM, traditional fusion, lo-fi, and rap.
+- 10 releases: 3 pop albums × 10 tracks, plus 7 EPs × 5 tracks = **65 tracks**.
+- Khmer-first lyrics (`language: km`), original per-album prompts, and a documented SLai avatar plan.
+
+**What it is for**
+
+- QA and design review once identity/publishing exist.
+- Demo and marketing pages (clearly labeled “Sample creator”).
+- Visual and content testing for creator pages, releases, and analytics.
+
+**Rules**
+
+- Never present sample creators as real people.
+- Tag every sample row and provide a one-command removal script.
+- Do not run the seed in production.
+- Replace placeholder avatars with SLai output only when a valid key is configured.
+- A native Khmer reviewer must approve public lyrics.
+
+**Why deferred**
+
+- The tables it seeds (`creator_profiles`, `creator_releases`, `stream_*`) do not exist yet.
+- The local SLAI key is invalid (`AUTH_002`), so real avatars cannot be generated now.
+- Real audio for 65 tracks costs credits and depends on the generation pipeline.
+- None of this blocks the program; it ships with Phase 4.
+
+---
+
+## 13. Copy and tone
 
 - Direct, warm, honest. No hype.
 - Never promise income.

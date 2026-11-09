@@ -1076,6 +1076,7 @@ Use the existing job queue/worker (`platform_api/worker.py`, `job_queue` migrati
 3. **Origin:** default `ai_generated` for desktop-batch tracks; `original` for uploaded tracks; creators can correct during claim.
 4. **Static artists:** remove `artist-data.ts`; 301 `/artist/kanya` → `/creators/kanya` only if a real profile exists; otherwise 404 with a "creator not found" page.
 5. **Stats:** seed `creator_daily_stats` from `stream_tracks.play_count` (clearly labeled "historical").
+6. **Sample pack:** keep `docs/creator-program/sample-creators/` as a fixture. When Phase 4 needs demo data, add a separate idempotent `seed_sample_creators.py` (not a migration) that tags every row and can be removed in one command. Never run it in production. See `SAMPLE_CREATORS.md`.
 
 ### 13.3 Launch sequence
 

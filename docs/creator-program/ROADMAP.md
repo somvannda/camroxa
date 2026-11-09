@@ -151,6 +151,7 @@
 | 4.6 | Creator charts + genre charts |
 | 4.7 | Partner tier + roster pilot |
 | 4.8 | Creator digest + annual statement |
+| 4.9 | Sample creator pack: seed 8 fictional creators + 65 Khmer-first tracks, replace placeholder avatars with SLai output, label as demo |
 
 **Exit criteria**
 
@@ -335,6 +336,7 @@ Decisions + legal ──► Migration 186 + RoyaltyPolicyService ──► Ident
 4. **Ship migration 186** and fix the admin catalog endpoint (B1–B4). This is a 1–2 day fix and unblocks everything.
 5. **Agree the Studio contract** with the other agent (§4 above).
 6. **Remove fictional artists** from public pages or label them demo.
+7. **Do not seed the sample creator pack yet.** It is a Phase 4 demo asset; the fixture lives in `docs/creator-program/sample-creators/` and is documented in [SAMPLE_CREATORS.md](./SAMPLE_CREATORS.md).
 7. **Pick 10 beta creators** and interview them with the BRD questions:
    - What would make you publish here instead of YouTube/SoundCloud?
    - What would you expect to earn in month 1?
