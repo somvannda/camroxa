@@ -33,7 +33,8 @@ functional controls the capture does not show (listed below).
 | Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink) | same |
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
-| Plugin dock | full-width band above the footer, slot cards on #141416 | same; EQ leads with the captured yellow curve (draggable) plus sliders |
+| Plugin dock | full-width band above the footer, slot cards on #141416 | same |
+| EQ card | 450 px card: Band selector + switch, six shape buttons, yellow curve with per-band handles, Freq/Q/Gain knobs | same; four bands, real cascaded biquads |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |
 | Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 14 px names, uppercase section label | same; preview art and Learn chips omitted (no assets/entries) |
 | Track head | 29 px strip with an all-controls toggle left and a panel-collapse control right | left wired, right disabled (not built) |
