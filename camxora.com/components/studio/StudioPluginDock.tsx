@@ -237,6 +237,7 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
               </button>
             </header>
 
+            <p className="sp-catalog-label">Audio effects</p>
             <div className="sp-catalog">
               {results.map((plugin) => (
                 <button

@@ -704,6 +704,40 @@ test("plugin dock sits above the footer on the captured surface", async ({ page 
   expect(info?.addHeight).toBe(36);
 });
 
+test("plugin catalog dialog matches the captured surface", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel catalog" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  const dialog = page.getByRole("dialog", { name: "Add a track plugin" });
+  await expect(dialog).toBeVisible();
+  const info = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const card = element.querySelector(".sp-card");
+    const label = element.querySelector(".sp-catalog-label");
+    return {
+      width: Math.round(rect.width),
+      radius: getComputedStyle(element).borderTopLeftRadius,
+      background: getComputedStyle(element).backgroundColor,
+      cardBackground: card ? getComputedStyle(card).backgroundColor : null,
+      cardRadius: card ? getComputedStyle(card).borderTopLeftRadius : null,
+      label: label?.textContent,
+      labelSize: label ? getComputedStyle(label).fontSize : null,
+    };
+  });
+  // S39: 760 px dialog on #171717, #1c1c1e cards, uppercase section label.
+  expect(info).toMatchObject({
+    width: 760,
+    radius: "16px",
+    background: "rgb(23, 23, 23)",
+    cardBackground: "rgb(28, 28, 30)",
+    cardRadius: "12px",
+    label: "Audio effects",
+    labelSize: "11px",
+  });
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
