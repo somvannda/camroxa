@@ -43,25 +43,39 @@ async def main() -> int:
                 existing["id"],
             )
             print(f"updated password for {email}")
-            return 0
+            user_id = existing["id"]
+        else:
+            payload = {
+                "id": uuid4(),
+                "email": email,
+                "password_hash": hashed,
+                "display_name": "Somvannda",
+                "email_confirmed": True,
+                "role": "user",
+                "status": "active",
+                "products": ["music_web", "studio"],
+            }
+            keys = [k for k in payload if k in cols]
+            placeholders = ", ".join(f"${i + 1}" for i in range(len(keys)))
+            await conn.execute(
+                f"insert into users ({', '.join(keys)}) values ({placeholders})",
+                *[payload[k] for k in keys],
+            )
+            print(f"created {email} in {url.rsplit('/', 1)[-1]} (password: {password})")
+            user_id = payload["id"]
 
-        payload = {
-            "id": uuid4(),
-            "email": email,
-            "password_hash": hashed,
-            "display_name": "Somvannda",
-            "email_confirmed": True,
-            "role": "user",
-            "status": "active",
-            "products": ["music_web", "studio"],
-        }
-        keys = [k for k in payload if k in cols]
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(keys)))
-        await conn.execute(
-            f"insert into users ({', '.join(keys)}) values ({placeholders})",
-            *[payload[k] for k in keys],
+        # The library filters songs by workspace; a fresh account needs a default one.
+        workspace_id = await conn.fetchval(
+            "select id from web_music_workspaces where user_id=$1 order by is_default desc limit 1",
+            user_id,
         )
-        print(f"created {email} in {url.rsplit('/', 1)[-1]} (password: {password})")
+        if not workspace_id:
+            workspace_id = await conn.fetchval(
+                "insert into web_music_workspaces (user_id, name, is_default) values ($1,$2,true) returning id",
+                user_id,
+                "My Workspace",
+            )
+            print("created default workspace")
         return 0
     finally:
         await conn.close()

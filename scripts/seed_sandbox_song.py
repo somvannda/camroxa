@@ -18,7 +18,9 @@ from uuid import uuid4
 
 import asyncpg
 
-DB = "postgresql://postgres:postgres@localhost:5432/camxora_pfm_sandbox"
+DB = os.environ.get(
+    "PLATFORM_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/camxora_pfm_sandbox"
+).replace("postgresql+asyncpg://", "postgresql://")
 EMAIL = "somvannda@gmail.com"
 WAV_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -27,7 +29,7 @@ WAV_PATH = os.path.join(
     "seed",
     "demo-loop.wav",
 )
-PUBLIC_URL = "http://localhost:3103/seed/demo-loop.wav"
+PUBLIC_URL = os.environ.get("STUDIO_SEED_PUBLIC_URL", "http://localhost:3103") + "/seed/demo-loop.wav"
 
 
 def write_wav(path: str, seconds: float = 4.0, rate: int = 22050) -> None:
