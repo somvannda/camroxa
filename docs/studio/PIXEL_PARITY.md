@@ -49,7 +49,7 @@ functional controls the capture does not show (listed below).
 | Add-track menu | 208 px, 50 px rows, 24 px colour icon squares | same |
 | Project menu | 212 px, 34 px icon rows, settings accelerator | same |
 | Clip menu | 158 px, 38 px icon rows, 11 px shortcuts, 13 captured rows; Clip Color opens the S28 flyout | same; unbuilt rows disabled |
-| Dialogs | 480 px, radius 24, padding 32, 24 px title, 44 px pills | same |
+| Dialogs | 480 px, radius 24, padding 32, centred 24 px title, bold lead, 44 px pills | same |
 | Export toast | bottom-left 888 px banner on #1c1c1e, radius 16 | same |
 | Selected track | tints the gutter row and its lane | same |
 | Selected clip | white outline only; trim/fade grips on hover | same |
