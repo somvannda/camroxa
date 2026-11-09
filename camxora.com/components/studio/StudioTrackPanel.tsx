@@ -25,6 +25,9 @@ export type StudioTrackPanelProps = {
   renameTrackId: string | null;
   renameValue: string;
   hiddenOpen: boolean;
+  /** The captured head chevrons collapse the panel to a thin rail. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 
   onSelectTrack: (trackId: string) => void;
   onToggleMenu: (trackId: string | null) => void;
@@ -64,6 +67,8 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     renameTrackId,
     renameValue,
     hiddenOpen,
+    collapsed,
+    onToggleCollapsed,
     onSelectTrack,
     onToggleMenu,
     onToggleFlag,
@@ -125,6 +130,22 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     };
   }, [addOpen]);
 
+  if (collapsed) {
+    return (
+      <aside className="se-tracks is-collapsed" aria-label="Tracks">
+        <button
+          type="button"
+          className="se-tracks-reopen"
+          aria-label="Expand track panel"
+          onClick={onToggleCollapsed}
+        >
+          <Icon name="fa-angles-right" />
+          <span className="se-tracks-reopen-label">Tracks</span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="se-tracks" aria-label="Tracks">
       <div className="se-tracks-head">
@@ -144,8 +165,8 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
           type="button"
           className="se-icon"
           aria-label="Collapse track panel"
-          title="Panel collapse is not built in this editor"
-          disabled
+          title="Collapse track panel"
+          onClick={onToggleCollapsed}
         >
           <Icon name="fa-angles-right" />
         </button>

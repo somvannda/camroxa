@@ -901,6 +901,8 @@ describe("StudioTrackPanel", () => {
       renameTrackId: null,
       renameValue: "",
       hiddenOpen: false,
+      collapsed: false,
+      onToggleCollapsed: noop,
       onSelectTrack: noop,
       onToggleMenu: noop,
       onToggleFlag: noop,

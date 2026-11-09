@@ -375,6 +375,7 @@ export function StudioEditorShell() {
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [tracksCollapsed, setTracksCollapsed] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [loop, setLoop] = useState(false);
@@ -2956,6 +2957,8 @@ export function StudioEditorShell() {
           renameTrackId={renameTrackId}
           renameValue={renameValue}
           hiddenOpen={hiddenOpen}
+          collapsed={tracksCollapsed}
+          onToggleCollapsed={() => setTracksCollapsed((value) => !value)}
           onSelectTrack={setSelectedTrack}
           onToggleMenu={setMenuTrackId}
           onToggleFlag={toggleTrackFlag}

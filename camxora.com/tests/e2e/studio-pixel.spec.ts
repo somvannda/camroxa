@@ -594,10 +594,16 @@ test("track panel head toggles every track's controls", async ({ page }) => {
   const sizes = await head.locator("button").evaluateAll((nodes) =>
     nodes.map((node) => Math.round(node.getBoundingClientRect().width))
   );
-  // S16: 24 px icons at each end of the 29 px head; the collapse-panel control is
-  // captured but not built, so it is disabled with a reason.
+  // S16: 24 px icons at each end of the 29 px head. The right control collapses the
+  // panel to a 44 px rail and brings it back.
   expect(sizes).toEqual([24, 24]);
-  await expect(head.getByRole("button", { name: "Collapse track panel" })).toBeDisabled();
+  await head.getByRole("button", { name: "Collapse track panel" }).click();
+  const panel = page.locator(".se-tracks");
+  await expect(panel).toHaveClass(/is-collapsed/);
+  await expect(panel).toHaveCSS("width", "44px");
+  await page.getByRole("button", { name: "Expand track panel" }).click();
+  await expect(panel).not.toHaveClass(/is-collapsed/);
+  await expect(panel).toHaveCSS("width", "260px");
   await head.getByRole("button", { name: "Collapse all track controls" }).click();
   await expect(page.locator(".se-track .se-track-slider")).toHaveCount(0);
   await head.getByRole("button", { name: "Expand all track controls" }).click();
