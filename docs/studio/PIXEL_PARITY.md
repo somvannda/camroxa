@@ -30,6 +30,13 @@ functional controls the capture does not show (listed below).
 | Library head | 34 px: panel icon + title left, magnifier right | same (close X kept) |
 | Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink) | same |
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same |
+| Master strip | Main + fader + mute pinned at the panel bottom | same |
+| Learn popover | 206 px, 44 px rows, 11 px hints | same |
+| Track options menu | 164 px, 33 px icon rows inside the panel | same (inline colour swatches) |
+| Add-track menu | 208 px, 50 px rows, 24 px colour icon squares | same |
+| Project menu | 212 px, 34 px icon rows, settings accelerator | same |
+| Clip menu | 158 px, 38 px icon rows, 11 px shortcuts | same (fewer rows, see below) |
+| Dialogs | 480 px, radius 24, padding 32, 24 px title, 44 px pills | same |
 
 ## Intentional divergences (recorded, not defects)
 
@@ -41,7 +48,7 @@ functional controls the capture does not show (listed below).
 | Library close `X` | explicit close affordance in addition to the header toggle |
 | Search collapses to the magnifier | matches the capture; it expands on focus/typing |
 | Add is an icon button in rows | D-016 keeps Add next to drag without widening the measured row |
-| Master fader lives in the footer | the capture's footer shows the FX chip only; the fader is wired (F-01) |
+| Clip menu omits Heal Edits / Get MIDI / Remove FX | those behaviours are not built; the captured rows we ship keep their order |
 | Clip label colour | dark on pastel fills, white on the saturated reference fills (contrast-safe; the capture only shows white on purple) |
 
 ## Still to measure
