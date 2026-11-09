@@ -152,7 +152,8 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
     .poll(
       async () =>
         (await library.locator(".se-lib-row").count()) +
-        (await library.locator(".se-lib-empty").count())
+        (await library.locator(".se-lib-empty").count()) +
+        (await library.locator(".se-lib-empty-state").count())
     )
     .toBeGreaterThan(0);
 

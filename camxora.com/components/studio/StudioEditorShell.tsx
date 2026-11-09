@@ -76,6 +76,18 @@ const ZOOM_LEVELS = [48, 64, 96, 144, 192];
 /** Clip Color swatches in the clip menu (same families as tracks). */
 const CLIP_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"];
 
+
+/** Retry a library read once: a fresh session can race the first authorised fetch. */
+async function fetchWithRetry<T>(run: () => Promise<T>, attempts = 2): Promise<T> {
+  try {
+    return await run();
+  } catch (cause) {
+    if (attempts <= 1) throw cause;
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    return fetchWithRetry(run, attempts - 1);
+  }
+}
+
 type ClipLike = {
   id: string;
   title?: string;
@@ -510,7 +522,7 @@ export function StudioEditorShell() {
     if (!libraryOpen || !user) return;
     let active = true;
     if (librarySongs === null) {
-      fetchGenerations(20, libraryWorkspaceId)
+      fetchWithRetry(() => fetchGenerations(20, libraryWorkspaceId))
         .then((items) => {
           if (active) setLibrarySongs(items);
         })
