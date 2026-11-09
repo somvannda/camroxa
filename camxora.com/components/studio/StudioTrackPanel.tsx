@@ -187,49 +187,49 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     {track.name}
                   </button>
                 )}
-
-                <span className="se-track-buttons">
-                  <button
-                    type="button"
-                    aria-label={`Mute ${track.name}`}
-                    aria-pressed={track.muted}
-                    className={track.muted ? "on" : undefined}
-                    onClick={() => onToggleFlag(track.id, "muted")}
-                    data-help="track-mute"
-                  >
-                    <Icon name="fa-volume-high" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Solo ${track.name}`}
-                    aria-pressed={track.solo}
-                    className={track.solo ? "on" : undefined}
-                    onClick={() => onToggleFlag(track.id, "solo")}
-                    data-help="track-solo"
-                  >
-                    S
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`${track.armed ? "Disarm" : "Arm"} ${track.name}`}
-                    aria-pressed={Boolean(track.armed)}
-                    className={track.armed ? "on" : undefined}
-                    onClick={() => onToggleArm(track.id)}
-                    data-help="track-arm"
-                  >
-                    A
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Options for ${track.name}`}
-                    aria-haspopup="menu"
-                    aria-expanded={menuTrackId === track.id}
-                    onClick={() => onToggleMenu(menuTrackId === track.id ? null : track.id)}
-                  >
-                    <Icon name="fa-chevron-down" />
-                  </button>
-                </span>
               </div>
+
+              <span className="se-track-buttons">
+                <button
+                  type="button"
+                  aria-label={`Mute ${track.name}`}
+                  aria-pressed={track.muted}
+                  className={track.muted ? "on" : undefined}
+                  onClick={() => onToggleFlag(track.id, "muted")}
+                  data-help="track-mute"
+                >
+                  <Icon name="fa-volume-high" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Solo ${track.name}`}
+                  aria-pressed={track.solo}
+                  className={track.solo ? "on" : undefined}
+                  onClick={() => onToggleFlag(track.id, "solo")}
+                  data-help="track-solo"
+                >
+                  S
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${track.armed ? "Disarm" : "Arm"} ${track.name}`}
+                  aria-pressed={Boolean(track.armed)}
+                  className={track.armed ? "on" : undefined}
+                  onClick={() => onToggleArm(track.id)}
+                  data-help="track-arm"
+                >
+                  A
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Options for ${track.name}`}
+                  aria-haspopup="menu"
+                  aria-expanded={menuTrackId === track.id}
+                  onClick={() => onToggleMenu(menuTrackId === track.id ? null : track.id)}
+                >
+                  <Icon name="fa-chevron-down" />
+                </button>
+              </span>
 
               {track.collapsed ? null : (
                 <div className="se-track-sliders">

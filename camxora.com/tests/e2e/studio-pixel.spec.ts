@@ -57,6 +57,30 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(frame.lane?.height).toBe(86);
   expect(frame.lane?.x).toBe(260);
 
+  // Track header internals: name at x48 / 11 px, controls 28×32 (extend 16×32).
+  const track = await page.evaluate(() => {
+    const name = document.querySelector(".se-track-name")?.getBoundingClientRect();
+    const buttons = Array.from(
+      document.querySelectorAll(".se-track-buttons button")
+    ).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: Math.round(rect.x), width: Math.round(rect.width), height: Math.round(rect.height) };
+    });
+    return {
+      nameX: name ? Math.round(name.x) : null,
+      nameFont: document.querySelector(".se-track-name")
+        ? getComputedStyle(document.querySelector(".se-track-name") as Element).fontSize
+        : null,
+      buttons,
+    };
+  });
+  expect(track.nameX).toBe(48);
+  expect(track.nameFont).toBe("11px");
+  expect(track.buttons.slice(0, 3).every((button) => button.height === 32)).toBe(true);
+  expect(track.buttons.slice(0, 3).every((button) => button.width === 28)).toBe(true);
+  expect(track.buttons[3]?.width).toBe(16);
+  expect(Math.abs((track.buttons[0]?.x ?? 0) - 150)).toBeLessThanOrEqual(2);
+
   // §44.3 ruler pitch: adjacent bar ticks are 96 px apart at the default zoom.
   const ticks = await page.locator(".se-bar-tick").evaluateAll((nodes) =>
     nodes.slice(0, 2).map((node) => Math.round(node.getBoundingClientRect().x))
