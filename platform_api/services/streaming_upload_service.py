@@ -2230,9 +2230,11 @@ class StreamingUploadService:
         return await self.run_backfill_sweep()
 
 
-async def run_streaming_auto_retry_loop(pool: Any) -> None:
+async def run_streaming_auto_retry_loop(pool: Any, *, startup_delay: float = 0.0) -> None:
     """Background loop (started by main startup) that auto-retries failed mp3
     uploads and keeps web-music companion assets (wav/lrc/srt/package) on B2."""
+    if startup_delay > 0:
+        await asyncio.sleep(startup_delay)
     service = StreamingUploadService(pool)
     while True:
         try:

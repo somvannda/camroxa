@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-09] - Startup maintenance waits for the restart burst
+
+### Changed
+
+- The studio sweeper, streaming auto-retry and credit-grant maintenance ran immediately at startup, competing with every reconnecting client; the pool looked saturated for 8 minutes after the 2026-11-08 restart. They now start after a 60s grace. See `docs/changelog/2026-11-09-startup-background-grace.md`.
+
 ## [2026-11-09] - LRC background tasks no longer log shutdown tracebacks
 
 ### Fixed

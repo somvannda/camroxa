@@ -78,8 +78,10 @@ async def _run_once(pool: Any) -> dict[str, int] | None:
                 pass
 
 
-async def run_grant_maintenance_loop(pool: Any) -> None:
-    """Background loop (started by main startup): run immediately, then every interval."""
+async def run_grant_maintenance_loop(pool: Any, *, startup_delay: float = 0.0) -> None:
+    """Background loop (started by main startup): run after a short startup grace, then every interval."""
+    if startup_delay > 0:
+        await asyncio.sleep(startup_delay)
     while True:
         try:
             stats = await _run_once(pool)
