@@ -179,6 +179,8 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Shift M / Shift S", action: "Mute / solo the focused track" },
   { keys: "Shift H", action: "Hide & mute the focused track" },
   { keys: "Shift F", action: "Toggle a short fade on the selected clip" },
+  { keys: "↑ / ↓", action: "Transpose the focused MIDI note a semitone" },
+  { keys: "Shift + ↑ / ↓", action: "Move the focused MIDI note an octave" },
   { keys: "Shift Alt H", action: "Show all hidden tracks" },
   { keys: "F2", action: "Rename the focused track" },
   { keys: "4", action: "Toggle the library drawer" },

@@ -58,6 +58,16 @@ test("a MIDI track opens the captured editor and edits notes", async ({ page }) 
     before ?? ""
   );
 
+  // Focused notes transpose with the keyboard: semitone, then octave.
+  const transposeNote = panel.locator(".se-midi-note").first();
+  await transposeNote.focus();
+  const beforePitch = await transposeNote.getAttribute("aria-label");
+  await page.keyboard.press("ArrowUp");
+  await expect(transposeNote).not.toHaveAttribute("aria-label", beforePitch ?? "");
+  const afterSemitone = await transposeNote.getAttribute("aria-label");
+  await page.keyboard.press("Shift+ArrowUp");
+  await expect(transposeNote).not.toHaveAttribute("aria-label", afterSemitone ?? "");
+
   // Key/scale are real: non-scale rows dim and new notes snap into C major.
   await panel.getByLabel("Scale").selectOption("major");
   await expect(panel.locator(".se-midi-row.out").first()).toBeAttached();

@@ -288,6 +288,19 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
               aria-label={`Note ${noteName(note.pitch)} at ${note.start.toFixed(2)}s, velocity ${note.velocity}`}
               data-velocity={note.velocity}
               onPointerDown={(event) => startDrag(event, note)}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                event.preventDefault();
+                const direction = event.key === "ArrowUp" ? 1 : -1;
+                const amount = event.shiftKey ? 12 : 1;
+                const pitch = Math.max(
+                  MIDI_MIN_PITCH,
+                  Math.min(MIDI_MAX_PITCH, note.pitch + direction * amount)
+                );
+                onChangeNotes(
+                  notes.map((item) => (item.id === note.id ? { ...item, pitch } : item))
+                );
+              }}
               onDoubleClick={(event) => {
                 event.stopPropagation();
                 onChangeNotes(notes.filter((item) => item.id !== note.id));
