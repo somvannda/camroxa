@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Icon } from "@/components/Icon";
 import { StudioLearn } from "@/components/studio/StudioLearn";
+import { getPlugin } from "@/lib/studio-plugins";
 
 /**
  * Editor footer: view tools (still stubs), the selected track's effect chain, and the
@@ -55,17 +56,18 @@ export function StudioFooter(props: StudioFooterProps) {
       <div className="se-chain">
         {hasTrack && chain.length > 0 ? (
           chain.map((pluginId) => (
-            <span key={pluginId} className="se-chain-chip">{pluginId}</span>
+            <span key={pluginId} className="se-chain-chip">{getPlugin(pluginId)?.name ?? pluginId}</span>
           ))
         ) : null}
         <button
           type="button"
-          className="se-chain-add"
+          className={`se-chain-add${chain.length > 0 ? " compact" : ""}`}
           disabled
           aria-label="Add Track Effects (use the dock above)"
           title="Effects are added in the dock above the footer"
         >
-          <Icon name="fa-plus" /> Add Track Effects
+          <Icon name="fa-plus" />
+          {chain.length === 0 ? "Add Track Effects" : null}
         </button>
       </div>
 
