@@ -53,6 +53,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const [quantize, setQuantize] = useState<"4" | "8" | "16">("8");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [preview, setPreview] = useState<MidiNote | null>(null);
+  const [velocityDrag, setVelocityDrag] = useState<{ id: string; notes: MidiNote[] } | null>(null);
+  const [velocityPreview, setVelocityPreview] = useState<number | null>(null);
   const rollRef = useRef<HTMLDivElement | null>(null);
 
   // Start around middle C, like the capture.
@@ -140,7 +142,43 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     };
   }, [drag, preview, width, duration, step, onChangeNotes]);
 
-  const shown = preview ? notes.map((note) => (note.id === preview.id ? preview : note)) : notes;
+  useEffect(() => {
+    if (!velocityDrag) return;
+    const onMove = (event: PointerEvent) => {
+      const lane = document.querySelector(".se-midi-velocity");
+      if (!(lane instanceof HTMLElement)) return;
+      const rect = lane.getBoundingClientRect();
+      const ratio = 1 - (event.clientY - rect.top) / rect.height;
+      setVelocityPreview(Math.max(1, Math.min(127, Math.round(ratio * 127))));
+    };
+    const onUp = () => {
+      setVelocityDrag((current) => {
+        if (current && velocityPreview !== null) {
+          onChangeNotes(
+            current.notes.map((note) =>
+              note.id === current.id ? { ...note, velocity: velocityPreview } : note
+            )
+          );
+        }
+        return null;
+      });
+      setVelocityPreview(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [velocityDrag, velocityPreview, onChangeNotes]);
+
+  const shown = preview
+    ? notes.map((note) => (note.id === preview.id ? preview : note))
+    : velocityPreview !== null && velocityDrag
+      ? notes.map((note) =>
+          note.id === velocityDrag.id ? { ...note, velocity: velocityPreview } : note
+        )
+      : notes;
 
   return (
     <section className="se-midi" aria-label="MIDI editor">
@@ -206,7 +244,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
                 width: Math.max(6, (note.length / duration) * width),
                 background: clip.color || "hsl(var(--accent))",
               }}
-              aria-label={`Note ${noteName(note.pitch)} at ${note.start.toFixed(2)}s`}
+              aria-label={`Note ${noteName(note.pitch)} at ${note.start.toFixed(2)}s, velocity ${note.velocity}`}
+              data-velocity={note.velocity}
               onPointerDown={(event) => startDrag(event, note)}
               onDoubleClick={(event) => {
                 event.stopPropagation();
@@ -217,12 +256,30 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         </div>
       </div>
 
-      <div className="se-midi-velocity" aria-hidden="true">
-        <span className="se-midi-velocity-baseline" />
-        {notes.map((note) => (
+      <div
+        className="se-midi-velocity"
+        role="group"
+        aria-label="Velocity lane"
+        onPointerDown={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const seconds = ((event.clientX - rect.left - 44) / width) * duration;
+          const nearest = notes.reduce<MidiNote | null>((best, note) => {
+            if (!best) return note;
+            return Math.abs(note.start - seconds) < Math.abs(best.start - seconds) ? note : best;
+          }, null);
+          if (!nearest) return;
+          setVelocityDrag({ id: nearest.id, notes });
+          const ratio = 1 - (event.clientY - rect.top) / rect.height;
+          setVelocityPreview(Math.max(1, Math.min(127, Math.round(ratio * 127))));
+        }}
+      >
+        <span className="se-midi-velocity-baseline" aria-hidden="true" />
+        {shown.map((note) => (
           <span
             key={note.id}
-            className="se-midi-velocity-bar"
+            className={`se-midi-velocity-bar${
+              velocityDrag?.id === note.id ? " is-active" : ""
+            }`}
             style={{
               left: 44 + (note.start / duration) * width,
               height: Math.max(2, (note.velocity / 127) * 52),

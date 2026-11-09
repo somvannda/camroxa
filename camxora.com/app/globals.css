@@ -4675,9 +4675,10 @@ html{color-scheme:dark}
 .se-midi-row.black{background:rgba(255,255,255,.02)}
 .se-midi-note{position:absolute;height:10px;padding:0;border:0;border-radius:3px;cursor:grab}
 .se-midi-note:hover{filter:brightness(1.15)}
-.se-midi-velocity{position:relative;height:64px;border-top:1px solid rgba(255,255,255,.06)}
+.se-midi-velocity{position:relative;height:64px;border-top:1px solid rgba(255,255,255,.06);cursor:ns-resize}
 .se-midi-velocity-baseline{position:absolute;left:0;right:0;bottom:8px;height:1px;background:rgba(96,165,250,.6)}
 .se-midi-velocity-bar{position:absolute;bottom:8px;width:2px;background:#3dafff}
+.se-midi-velocity-bar.is-active{background:#f7f4ef}
 .se-midi-controls{display:flex;align-items:center;gap:14px;height:36px;padding:0 12px;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:#c2c2c1}
 .se-midi-power{display:grid;place-items:center;width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#8b90a6;cursor:pointer}
 .se-midi-power.on{color:#f7f4ef}

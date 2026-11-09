@@ -58,6 +58,18 @@ test("a MIDI track opens the captured editor and edits notes", async ({ page }) 
     before ?? ""
   );
 
+  // Velocity lane drag lowers the selected note's velocity.
+  const velocityBefore = Number(await panel.locator(".se-midi-note").first().getAttribute("data-velocity"));
+  const bar = panel.locator(".se-midi-velocity-bar").first();
+  const barBox = await bar.boundingBox();
+  if (!barBox) throw new Error("no velocity bar");
+  await page.mouse.move(barBox.x + 1, barBox.y + 2);
+  await page.mouse.down();
+  await page.mouse.move(barBox.x + 1, barBox.y + 26, { steps: 5 });
+  await page.mouse.up();
+  const velocityAfter = Number(await panel.locator(".se-midi-note").first().getAttribute("data-velocity"));
+  expect(velocityAfter).toBeLessThan(velocityBefore);
+
   await panel.getByRole("button", { name: "Close MIDI editor" }).click();
   await expect(page.getByRole("region", { name: "MIDI editor" })).toHaveCount(0);
 });
