@@ -4448,6 +4448,8 @@ html{color-scheme:dark}
 .sp-add-inline{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 16px;border:0;border-radius:999px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:13px;cursor:pointer}
 .sp-add-inline:hover{background:#242427}
 .sp-slot{flex:0 0 auto;width:320px;padding:12px;border:1px solid rgba(255,255,255,.06);border-radius:12px;background:#141416}
+.sp-slot.is-popped{position:fixed;right:24px;bottom:88px;z-index:90;width:460px;max-height:calc(100dvh - 160px);overflow:auto;box-shadow:0 24px 64px rgba(0,0,0,.6)}
+.sp-slot.is-popped.sp-slot-eq{width:520px}
 .sp-slot.is-bypassed{opacity:.55}
 .sp-slot-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .sp-slot-head strong{font-size:13px;font-weight:600;color:#f7f4ef;white-space:nowrap}

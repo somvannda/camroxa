@@ -375,7 +375,7 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
               key={entry.entryId}
               className={`sp-slot${entry.bypassed ? " is-bypassed" : ""}${
                 plugin.id === "eq" ? " sp-slot-eq" : ""
-              }`}
+              }${entry.poppedOut ? " is-popped" : ""}`}
               aria-label={`${plugin.name} slot ${index + 1}`}
             >
               <header className="sp-slot-head">
@@ -425,7 +425,7 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                   </button>
                   <button
                     type="button"
-                    aria-label={`Pop out ${plugin.name}`}
+                    aria-label={`${entry.poppedOut ? "Dock" : "Pop out"} ${plugin.name}`}
                     aria-pressed={entry.poppedOut}
                     onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
                   >

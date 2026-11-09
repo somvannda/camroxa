@@ -875,6 +875,35 @@ test("history drawer sits under the header on the captured surface", async ({ pa
   });
 });
 
+test("popping a plugin out floats the captured card", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel popout" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^EQ\b/ })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Pop out EQ" }).click();
+  const slot = page.locator(".sp-slot.is-popped");
+  await expect(slot).toBeVisible();
+  const box = await slot.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      position: style.position,
+      width: Math.round(rect.width),
+      right: Math.round(window.innerWidth - rect.right),
+    };
+  });
+  expect(box.position).toBe("fixed");
+  expect(box.width).toBe(520);
+  expect(box.right).toBe(24);
+  await page.getByRole("button", { name: "Dock EQ" }).click();
+  await expect(page.locator(".sp-slot.is-popped")).toHaveCount(0);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
