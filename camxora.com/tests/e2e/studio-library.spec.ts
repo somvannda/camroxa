@@ -180,6 +180,9 @@ test("dragging a song onto a lane places a clip where it was dropped", async ({ 
 
   const before = await page.locator(".se-clip").count();
   await rows.first().dragTo(page.locator(".se-lane").first(), {
+    // Start over the artwork/title, not the row centre: an inner button would otherwise
+    // receive the pointer and the row's dragstart never fires.
+    sourcePosition: { x: 80, y: 24 },
     targetPosition: { x: 200, y: 40 },
   });
   await expect(page.locator(".se-clip")).toHaveCount(before + 1);

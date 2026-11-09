@@ -244,7 +244,11 @@ jobs:
       - name: Install core deps
         if: steps.changes.outputs.run == 'true'
         working-directory: musicapi
-        run: npm ci --no-audit --no-fund
+        shell: bash
+        run: |
+          # ffmpeg-static downloads a binary from GitHub Releases during install; retry
+          # once so a transient 504 does not fail a code gate.
+          npm ci --no-audit --no-fund || { echo "retrying npm ci after a transient failure"; sleep 10; npm ci --no-audit --no-fund; }
 
       - name: Apply migrations
         if: steps.changes.outputs.run == 'true'
