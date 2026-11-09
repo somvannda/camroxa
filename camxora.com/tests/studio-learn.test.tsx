@@ -37,7 +37,7 @@ describe("StudioLearn menu", () => {
     const items = screen.getAllByRole("menuitem");
     expect(items.map((node) => node.textContent?.replace(/\s+/g, " ").trim())).toEqual([
       "Keyboard Shortcuts shift ?",
-      "YouTube Tutorials ↗",
+      "YouTube Tutorials",
       "Learning Center",
     ]);
 

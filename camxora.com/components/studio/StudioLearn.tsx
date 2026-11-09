@@ -210,7 +210,10 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
             disabled
             title="No tutorial channel for this product yet"
           >
-            <Icon name="fa-circle-play" /> YouTube Tutorials <span>↗</span>
+            <Icon name="fa-circle-play" /> YouTube Tutorials{" "}
+            <span aria-hidden="true">
+              <Icon name="fa-arrow-up-right-from-square" />
+            </span>
           </button>
           <button type="button" role="menuitem" disabled title="No learning centre yet">
             <Icon name="fa-circle-info" /> Learning Center
