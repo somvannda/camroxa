@@ -7,6 +7,17 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **"Save diagnostics file" on the sign-in screen.** The upload path needs a
+  session, which is exactly what is gone after an "Unauthenticated" sign-out.
+  This writes the same redacted log snapshot to
+  `~/Downloads/Camxora-diagnostics-<timestamp>.txt` (and opens the folder) so
+  support can get evidence while signed out. See
+  `docs/changelog/2026-11-09-desktop-save-diagnostics.md`.
+
 ## [1.6.3] - 2026-11-08
 
 ### Fixed
