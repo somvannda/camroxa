@@ -540,9 +540,11 @@ export function StudioProjectMenu({
             ) : (
               <>
                 <h2>Share “{shareName}”</h2>
+                <p className="se-dialog-lead">
+                  Anyone with the link can view this project and make their own editable copy.
+                </p>
                 <p className="se-dialog-note">
-                  Anyone with the link can view this project and make their own editable copy. Your
-                  project stays as it is — they cannot edit or change your version.
+                  Your project stays as it is — they cannot edit or change your version.
                 </p>
                 {share ? (
                   <>
