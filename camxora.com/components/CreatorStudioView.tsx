@@ -168,6 +168,9 @@ export function CreatorStudioView() {
               <Icon name="fa-arrow-up-right-from-square" /> View public page
             </Link>
           ) : null}
+          <Link className="btn btn-ghost" href="/creator/verification">
+            <Icon name="fa-badge-check" /> Verification
+          </Link>
           <Link className="btn btn-ghost" href="/creators">Browse creators</Link>
         </div>
       </div>

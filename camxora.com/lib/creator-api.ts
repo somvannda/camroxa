@@ -163,3 +163,77 @@ export async function updateCreator(input: CreatorInput): Promise<CreatorStudioR
     body: JSON.stringify(input),
   });
 }
+
+export type CreatorApplication = {
+  id: string;
+  status: "draft" | "submitted" | "in_review" | "changes_requested" | "approved" | "rejected" | "withdrawn";
+  version: number;
+  requested_tier: string;
+  payload: Record<string, unknown>;
+  submitted_at?: string | null;
+  sla_due_at?: string | null;
+  reviewed_at?: string | null;
+  decision_reason?: string | null;
+};
+
+export type CreatorVerification = {
+  id: string;
+  kind: "identity" | "authenticity" | "business" | "voice_consent";
+  status: "pending" | "approved" | "rejected" | "expired";
+  evidence_ref?: string | null;
+  reason?: string | null;
+  reviewed_at?: string | null;
+  created_at?: string | null;
+};
+
+export type CreatorBadge = {
+  id: string;
+  badge: string;
+  granted_at?: string | null;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  reason?: string | null;
+};
+
+export type CreatorProgramStatus = {
+  profile: { handle: string; tier: string; status: string } | null;
+  application: CreatorApplication | null;
+  verifications: CreatorVerification[];
+  badges: CreatorBadge[];
+};
+
+export async function fetchProgramStatus(): Promise<CreatorProgramStatus> {
+  return studioJson<CreatorProgramStatus>("/api/v3/creator/application");
+}
+
+export async function submitApplication(input: {
+  pitch: string;
+  links: CreatorLink[];
+  track_ids?: string[];
+  rights_attested: boolean;
+  requested_tier?: "verified";
+  identity?: Record<string, unknown>;
+}): Promise<{ application: CreatorApplication }> {
+  return studioJson<{ application: CreatorApplication }>("/api/v3/creator/application", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function withdrawApplication(): Promise<{ application: CreatorApplication }> {
+  return studioJson<{ application: CreatorApplication }>("/api/v3/creator/application/withdraw", {
+    method: "POST",
+  });
+}
+
+export async function submitVerification(input: {
+  kind: CreatorVerification["kind"];
+  evidence_ref: string;
+}): Promise<{ verification: CreatorVerification }> {
+  return studioJson<{ verification: CreatorVerification }>("/api/v3/creator/verification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
