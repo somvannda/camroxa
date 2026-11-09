@@ -528,13 +528,11 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
 
-  # The Studio e2e specs need the real stack: Postgres + musicapi + platform_api + the web
-  # app. This job provisions all of it from scratch. It is NON-BLOCKING until someone can
-  # watch a green run end to end; flip `continue-on-error` then.
+  # The Studio e2e specs need the real stack: Postgres + Redis + musicapi + platform_api
+  # + the web app. This job provisions all of it and is a blocking gate.
   camxora-e2e:
-    name: camxora.com Playwright e2e (services, non-blocking until green)
+    name: camxora.com Playwright e2e (services)
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       postgres:
         image: postgres:16

@@ -42,9 +42,13 @@ python -m uvicorn platform_api.main:app --host 127.0.0.1 --port 8100 --log-level
 
 Helpers in `scripts/`:
 - `inspect_api_env.py <pid>` — find which DB a running API actually uses.
-- `seed_sandbox_user.py [email] [pw]` — create/reset a user in that DB.
-- `seed_sandbox_song.py` — writes `public/seed/demo-loop.wav` and inserts a completed
-  `suno_task`, so the library/provenance paths have real data. Note the three things
+- `seed_sandbox_user.py [email] [pw]` - create/reset a user in that DB **and ensure a
+  default workspace** (the library filters songs by workspace, so a fresh account with
+  no workspace lists nothing).
+- `seed_sandbox_song.py` - writes `public/seed/demo-loop.wav` and inserts a completed
+  `suno_task`, so the library/provenance paths have real data. Both scripts honour
+  `PLATFORM_DATABASE_URL` (async URLs accepted); the seed URL is overridable with
+  `STUDIO_SEED_PUBLIC_URL`. Note the three things
   the list endpoint filters on (`source='web_music'`, a `workspace_id`) and the two
   that make a clip playable (`stream_ready_*`, `package_status_*`).
 - `verify_studio_conflict.py` — proves the 409 path against the live API.
@@ -64,8 +68,8 @@ any PR touching `camxora.com`. The production build gate exists because a missin
 Suspense boundary once broke `/studio/editor/classic` at build time while typecheck and
 unit tests stayed green. A second job, `camxora-e2e`, provisions Postgres, **Redis**
 (platform_api's audit middleware needs it or logins 500), musicapi, platform_api and the
-web app, then runs the Playwright suite. It is non-blocking (`continue-on-error`) until a
-green run is observed; the specs build their own fixtures through the API
+web app, then runs the Playwright suite. It is a **blocking gate** (first green run on
+PR #483); the specs build their own fixtures through the API
 (`tests/e2e/studio-fixture.ts`) and leave those fixtures in the sandbox database, so the
 sandbox accumulates test projects by design; they never touch a non-sandbox account.
 
@@ -126,7 +130,7 @@ pane not being visible when the screenshot runs. What is left:
 3. **G21** - arm + microphone takes are implemented as a documented divergence (D-020); the reference take flow itself is still uncaptured.
 4. **§100 image + S60/S61** — an image of the detail rail when the pane is visible, and
    the two forced states (moderation, no credits). Neither blocks the build.
-5. **e2e in CI** - the service-backed `camxora-e2e` job provisions Postgres, **Redis** (platform_api's audit middleware needs it or every login is a 500), musicapi, platform_api, the web app and Playwright. Draft PR #483 exercises it. It is `continue-on-error` until a green run is observed, then flip that flag. The branch was reconciled with `origin/main` (billing-plan retirement conflicts) so checks can run at all.
+5. **e2e in CI** - the service-backed `camxora-e2e` job provisions Postgres, **Redis** (platform_api's audit middleware needs it or every login is a 500), musicapi, platform_api, the web app and Playwright, and seeds one user plus one playable song. It is now a **blocking gate** (green on PR #483).
 
 ## Modules added this session (each with a dev handle for measurement)
 
