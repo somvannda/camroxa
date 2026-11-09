@@ -66,6 +66,7 @@ Everything else (collaborator splits, marketplace, subscriptions, brand briefs, 
 |---|---|
 | [BRD.md](./BRD.md) | Why the program exists, who it serves, how it works, monetization policy, trust & safety, KPIs, risks, launch gates |
 | [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) | Every feature, page, state, notification, and edge case — page by page |
+| [USER_FLOWS.md](./USER_FLOWS.md) | End-to-end journeys, state machines, and how the program connects to every other Camxora feature |
 | [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md) | Current-state audit, data model, migrations, APIs, jobs, admin RBAC, security, test matrix |
 | [ROADMAP.md](./ROADMAP.md) | Phasing, dependencies on the Studio work, capacity, acceptance criteria, open decisions |
 
