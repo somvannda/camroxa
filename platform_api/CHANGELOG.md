@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-09] - Progress reports the real stage, export, merge, and YouTube state
+
+### Fixed
+
+- Progress mixed a `(batch, profile, role)` upload slot with a **batch-wide** YouTube aggregate, so one channel's successful upload marked its sibling Published and forced the stage to `Done`. Each slot now collapses to its newest attempt, a stale success URL is cleared on a later failure, and the batch fallback is limited to legacy rows with no slot. Terminal rows (`Done`/`Completed`) report Export and Merge as `Completed` instead of `Waiting for image assets`/`—`, and a failed upload becomes stage `YouTube` / status `Failed`. `record_upload_result` never downgrades a published slot. See `docs/changelog/2026-11-09-progress-status-truth.md`.
+
 ## [2026-11-09] - Startup maintenance waits for the restart burst
 
 ### Changed
