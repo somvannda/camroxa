@@ -4725,6 +4725,12 @@ html{color-scheme:dark}
 .se-history-head strong{font-size:15px;font-weight:600}
 .se-history-note{margin:0;padding:10px 14px 4px;font-size:13px;color:#8b90a6}
 .se-history .se-dialog-note{padding:0 14px 10px;font-size:13px;color:#8b90a6}
+.se-history-stepper{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 8px}
+.se-history-stepper span{font-size:13px;color:#f7f4ef}
+.se-history-stepper button{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:#8b90a6;cursor:pointer}
+.se-history-stepper button:disabled{opacity:.35;cursor:not-allowed}
+.se-history-stepper button:not(:disabled):hover{background:rgba(255,255,255,.06);color:#f7f4ef}
+.se-history-stepper .icon{width:12px;height:12px}
 .se-history-list{display:flex;flex-direction:column;gap:14px;padding:8px 10px;overflow-y:auto}
 .se-history-day{margin:0 0 6px;padding:0 6px;font-size:13px;font-weight:600;color:#f7f4ef}
 .se-history-list ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}

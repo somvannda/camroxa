@@ -269,6 +269,11 @@ export function StudioProjectMenu({
   }
 
   /** Version list grouped under a date heading, like the captured History panel. */
+  const [historyDay, setHistoryDay] = useState(0);
+  useEffect(() => {
+    if (dialog !== "versions") setHistoryDay(0);
+  }, [dialog]);
+
   const groupedVersions = useMemo(() => {
     const map = new Map<string, StudioProjectVersion[]>();
     for (const version of versions ?? []) {
@@ -378,10 +383,31 @@ export function StudioProjectMenu({
             </p>
           ) : (
             <div className="se-history-list">
-              {groupedVersions.map(([day, items]) => (
-                <section key={day}>
-                  <h3 className="se-history-day">{day}</h3>
-                  <ul>
+              {(() => {
+                const dayIndex = Math.min(historyDay, groupedVersions.length - 1);
+                const [day, items] = groupedVersions[dayIndex];
+                return (
+                  <section key={day}>
+                    <div className="se-history-stepper">
+                      <button
+                        type="button"
+                        aria-label="Previous day"
+                        disabled={dayIndex === 0}
+                        onClick={() => setHistoryDay(dayIndex - 1)}
+                      >
+                        <Icon name="fa-chevron-left" />
+                      </button>
+                      <span>{day}</span>
+                      <button
+                        type="button"
+                        aria-label="Next day"
+                        disabled={dayIndex >= groupedVersions.length - 1}
+                        onClick={() => setHistoryDay(dayIndex + 1)}
+                      >
+                        <Icon name="fa-chevron-right" />
+                      </button>
+                    </div>
+                    <ul>
                     {items.map((version) => {
                       const at = version.created_at ? new Date(version.created_at) : null;
                       const time =
@@ -402,10 +428,11 @@ export function StudioProjectMenu({
                           </button>
                         </li>
                       );
-                    })}
-                  </ul>
-                </section>
-              ))}
+                      })}
+                    </ul>
+                  </section>
+                );
+              })()}
             </div>
           )}
           <p className="se-history-note">
