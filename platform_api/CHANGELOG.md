@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-09] - Suno polls remember the owning key
+
+### Changed
+
+- Suno's record-info endpoint is account-scoped, so every poll used to try all 3 active keys (two guaranteed 403s). Polls now read `suno_tasks.suno_key_id` (migration `185`) and try that key first, falling back to a scan and re-pinning if it was rotated. Best-effort: lookup/update failures fall back to the old scan. See `docs/changelog/2026-11-09-suno-owner-key-pinning.md`.
+
 ## [2026-11-08] - DB pool acquire timeout + saturation warnings
 
 ### Fixed
