@@ -119,6 +119,36 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(timeline.clip).toMatchObject({ y: 84, height: 82 });
   expect(timeline.radius).toBe("8px");
 
+  // §2 header: 36 px pills on a 52 px band; project chip at x≈115, undo/redo grouped.
+  const header = await page.evaluate(() => {
+    const measure = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        height: Math.round(box.height),
+        radius: style.borderTopLeftRadius,
+        background: style.backgroundColor,
+      };
+    };
+    return {
+      chip: measure(".se-chip"),
+      group: measure(".se-head-group"),
+      icon: measure(".se-head .se-icon"),
+      transport: measure(".se-transport"),
+      tempo: measure(".se-tempo"),
+    };
+  });
+  expect(header.chip).toMatchObject({ y: 8, height: 36, radius: "999px", background: "rgb(28, 28, 30)" });
+  expect(Math.abs((header.chip?.x ?? 0) - 115)).toBeLessThanOrEqual(6);
+  expect(header.group).toMatchObject({ y: 8, height: 36, radius: "999px" });
+  expect(header.icon?.height).toBe(36);
+  expect(header.transport?.height).toBe(36);
+  expect(header.tempo?.height).toBe(36);
+
   // §44.3 ruler pitch: adjacent bar ticks are 96 px apart at the default zoom.
   const ticks = await page.locator(".se-bar-tick").evaluateAll((nodes) =>
     nodes.slice(0, 2).map((node) => Math.round(node.getBoundingClientRect().x))

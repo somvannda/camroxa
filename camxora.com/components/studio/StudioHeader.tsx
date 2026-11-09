@@ -155,15 +155,18 @@ export function StudioHeader(props: StudioHeaderProps) {
             <Icon name="fa-chevron-down" />
           </button>
         )}
-        <button type="button" className="se-icon" aria-label="Undo" disabled={!canUndo} onClick={onUndo} data-help="undo">
-          <Icon name="fa-rotate-left" />
-        </button>
-        <button type="button" className="se-icon" aria-label="Redo" disabled={!canRedo} onClick={onRedo} data-help="redo">
-          <Icon name="fa-rotate-right" />
-        </button>
+        <span className="se-head-group">
+          <button type="button" className="se-icon" aria-label="Undo" disabled={!canUndo} onClick={onUndo} data-help="undo">
+            <Icon name="fa-rotate-left" />
+          </button>
+          <button type="button" className="se-icon" aria-label="Redo" disabled={!canRedo} onClick={onRedo} data-help="redo">
+            <Icon name="fa-rotate-right" />
+          </button>
+        </span>
       </div>
 
       <div className="se-head-center">
+        <span className="se-head-group se-transport">
         <button type="button" className="se-icon" onClick={onBackToStart} aria-label="Back to start" data-help="back-to-start">
           <Icon name="fa-backward-step" />
         </button>
@@ -271,39 +274,44 @@ export function StudioHeader(props: StudioHeaderProps) {
         >
           <Icon name="fa-bell" />
         </button>
-        <span className="se-readout" aria-label="Time">{clock}</span>
-        <span className="se-readout" aria-label="Bar and beat">{barBeat}</span>
+        </span>
+        <span className="se-head-group se-time">
+          <span className="se-readout" aria-label="Time">{clock}</span>
+          <span className="se-readout" aria-label="Bar and beat">{barBeat}</span>
+        </span>
       </div>
 
       <div className="se-head-right">
-        <input
-          className="se-pill se-bpm"
-          value={bpm}
-          inputMode="numeric"
-          aria-label="Tempo in BPM"
-          data-help="tempo"
-          onChange={(event) => {
-            const next = Number(event.target.value.replace(/\D/g, ""));
-            if (Number.isFinite(next)) onBpmChange(Math.min(300, Math.max(20, next || 20)));
-          }}
-          onBlur={onBpmCommit}
-        />
-        <select
-          className="se-pill se-signature"
-          value={timeSignature}
-          aria-label="Time signature"
-          data-help="time-signature"
-          onChange={(event) => onTimeSignature(event.target.value)}
-        >
-          {(STUDIO_SIGNATURES.includes(timeSignature as (typeof STUDIO_SIGNATURES)[number])
-            ? STUDIO_SIGNATURES
-            : [timeSignature, ...STUDIO_SIGNATURES]
-          ).map((signature) => (
-            <option key={signature} value={signature}>
-              {signature}
-            </option>
-          ))}
-        </select>
+        <span className="se-head-group se-tempo">
+          <input
+            className="se-pill se-bpm"
+            value={bpm}
+            inputMode="numeric"
+            aria-label="Tempo in BPM"
+            data-help="tempo"
+            onChange={(event) => {
+              const next = Number(event.target.value.replace(/\D/g, ""));
+              if (Number.isFinite(next)) onBpmChange(Math.min(300, Math.max(20, next || 20)));
+            }}
+            onBlur={onBpmCommit}
+          />
+          <select
+            className="se-pill se-signature"
+            value={timeSignature}
+            aria-label="Time signature"
+            data-help="time-signature"
+            onChange={(event) => onTimeSignature(event.target.value)}
+          >
+            {(STUDIO_SIGNATURES.includes(timeSignature as (typeof STUDIO_SIGNATURES)[number])
+              ? STUDIO_SIGNATURES
+              : [timeSignature, ...STUDIO_SIGNATURES]
+            ).map((signature) => (
+              <option key={signature} value={signature}>
+                {signature}
+              </option>
+            ))}
+          </select>
+        </span>
         <StudioSaveStatus status={saveStatus} onRetry={onRetrySave} />
         <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output" data-help="meter">
           {formatMeter(meter)}

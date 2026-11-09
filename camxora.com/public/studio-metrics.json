@@ -52,26 +52,26 @@
     {
       "id": "pillHeight",
       "label": "Header pill height",
-      "selector": ".se-pill",
+      "selector": ".se-head .se-pill",
       "measure": "height",
-      "expected": 32,
+      "expected": 36,
       "tolerance": 0,
       "spec": "44.1",
       "feature": "Header controls",
       "functional": "wired",
-      "note": "save chip, speed, export, library"
+      "note": "captured header pills are 36 px tall"
     },
     {
       "id": "transportTarget",
       "label": "Transport button target",
       "selector": ".se-head-right button",
       "measure": "height",
-      "expected": 32,
+      "expected": 36,
       "tolerance": 0,
       "spec": "44.1",
       "feature": "Transport",
       "functional": "partial",
-      "note": "play / stop / loop wired, metronome is visual"
+      "note": "captured transport icons sit in a 36 px pill"
     },
     {
       "id": "footerHeight",

@@ -233,23 +233,42 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       <aside className="se-library" aria-label="Library" style={{ width }}>
         <div className="se-library-head">
           {view.kind === "root" ? (
-            <strong>Library</strong>
+            <>
+              <span className="se-lib-head-title">
+                <Icon name="fa-table-columns" />
+                <strong>Library</strong>
+              </span>
+              <label className="se-lib-search-wrap">
+                <Icon name="fa-magnifying-glass" />
+                <input
+                  ref={searchRef}
+                  className="se-lib-search"
+                  value={query}
+                  onChange={(event) => onQuery(event.target.value)}
+                  placeholder="Search library"
+                  aria-label="Search library"
+                />
+              </label>
+            </>
           ) : (
-            <button type="button" className="se-icon" aria-label="Back to library" onClick={onBack}>
-              <Icon name="fa-chevron-left" />
-            </button>
+            <>
+              <button type="button" className="se-icon" aria-label="Back to library" onClick={onBack}>
+                <Icon name="fa-chevron-left" />
+              </button>
+              <strong>{view.kind === "songs" ? view.title : "Uploads"}</strong>
+              <label className="se-lib-search-wrap">
+                <Icon name="fa-magnifying-glass" />
+                <input
+                  ref={searchRef}
+                  className="se-lib-search"
+                  value={query}
+                  onChange={(event) => onQuery(event.target.value)}
+                  placeholder="Search library"
+                  aria-label="Search library"
+                />
+              </label>
+            </>
           )}
-          {view.kind !== "root" ? (
-            <strong>{view.kind === "songs" ? view.title : "Uploads"}</strong>
-          ) : null}
-          <input
-            ref={searchRef}
-            className="se-lib-search"
-            value={query}
-            onChange={(event) => onQuery(event.target.value)}
-            placeholder="Search library"
-            aria-label="Search library"
-          />
           <button type="button" className="se-icon" onClick={onClose} aria-label="Close library">
             <Icon name="fa-xmark" />
           </button>
