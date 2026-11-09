@@ -583,11 +583,13 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                               </button>
                               <button
                                 type="button"
-                                className="se-pill"
+                                className="se-lib-icon"
                                 onClick={() => onAddSong(song)}
                                 disabled={!clip?.audio_url}
+                                aria-label={`Add ${song.title || "song"} to the project`}
+                                title="Add to the project"
                               >
-                                Add
+                                <Icon name="fa-plus" />
                               </button>
                             </span>
                           </li>
@@ -639,12 +641,14 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                       <ul>
                         {group.items.map((upload) => (
                           <li key={upload.id} className="se-lib-row se-lib-upload">
-                            <span className="se-lib-thumb se-lib-thumb-upload" aria-hidden="true">
+                            <span className="se-lib-art se-lib-thumb-upload" aria-hidden="true">
                               <Icon name="fa-file-audio" />
                             </span>
-                            <span className="se-lib-title">{upload.filename}</span>
-                            <span className="se-lib-meta">
-                              {formatUploadLength(upload.duration_seconds)}
+                            <span className="se-lib-song-body">
+                              <span className="se-lib-title">{upload.filename}</span>
+                              <span className="se-lib-meta">
+                                {formatUploadLength(upload.duration_seconds)}
+                              </span>
                             </span>
                             <span className="se-lib-song-actions">
                               <button
@@ -662,12 +666,13 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                               </button>
                               <button
                                 type="button"
-                                className="se-pill"
+                                className="se-lib-icon"
                                 onClick={() => onAddUpload(upload)}
                                 disabled={!upload.url}
                                 aria-label={`Add ${upload.filename}`}
+                                title="Add to the project"
                               >
-                                Add
+                                <Icon name="fa-plus" />
                               </button>
                             </span>
                           </li>

@@ -4578,7 +4578,7 @@ html{color-scheme:dark}
 .se-chain{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;overflow:hidden}
 .se-chain-chip{padding:4px 9px;border-radius:999px;background:rgba(168,85,247,.16);border:1px solid rgba(168,85,247,.35);color:#efe9ff;font-size:11px}
 .se-chain-add{display:grid;place-items:center;width:26px;height:26px;border:1px dashed rgba(255,255,255,.18);border-radius:50%;background:transparent;color:#8b90a6;cursor:not-allowed}
-.se-foot-note{font-size:12px;color:#c9cde0}
+.se-foot-note{font-size:12px;color:#c2c2c1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .se-foot-link{font-size:12px;color:#c9cde0;text-decoration:none;border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:6px 10px}
 .se-foot-link:hover{color:#fff;border-color:rgba(168,85,247,.5)}
 .se-error{position:fixed;left:50%;top:64px;transform:translateX(-50%);padding:8px 14px;border-radius:8px;background:#b91c1c;color:#fff;font-size:12px}
@@ -4587,6 +4587,14 @@ html{color-scheme:dark}
 .se-gate h1{margin:0;font-size:24px}
 .se-gate p{margin:0;color:#8b90a6;font-size:13px}
 .se-shell.is-loading{background:#101012}
+/* Narrow windows carry only the captured header controls (D-022): save state, master
+   meter, audition speed and the redundant library toggle step aside first. */
+@media (max-width:1600px){
+  .se-head .se-save,.se-head .se-meter,.se-head [data-help="speed"]{display:none}
+}
+@media (max-width:1400px){
+  .se-shell.has-rail .se-head [data-help="library"]{display:none}
+}
 @media (max-width:900px){.se-tracks{width:200px}.se-head{grid-template-columns:1fr auto;height:auto;padding:8px 10px}.se-head-center{grid-column:1 / -1;order:3;justify-content:center}.se-head-right{justify-content:flex-end}}
 
 .studio-start-songs{margin-top:44px;display:flex;flex-direction:column;gap:16px}
@@ -4677,13 +4685,13 @@ html{color-scheme:dark}
 .se-lib-section{display:flex;flex-direction:column;gap:6px}
 .se-lib-section-head{display:flex;align-items:center;justify-content:space-between}
 .se-lib-section-head strong{font-size:13px;font-weight:600;opacity:.9}
-.se-lib-tools{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid hsl(var(--border))}
-.se-lib-tool{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:inherit;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.se-lib-tools{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
+.se-lib-tool{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:0;background:#1c1c1e;color:inherit;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .se-lib-tool:hover:not(:disabled){border-color:hsl(var(--accent))}
 .se-lib-tool:disabled{opacity:.55;cursor:not-allowed}
-.se-lib-chip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:999px;border:1px solid hsl(var(--border));background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
-.se-lib-chip:hover:not(:disabled){border-color:hsl(var(--accent))}
-.se-lib-chip.on{background:rgba(168,85,247,.16);border-color:rgba(168,85,247,.5);color:#efe9ff}
+.se-lib-chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:0;background:#1c1c1e;color:inherit;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.se-lib-chip:hover:not(:disabled){background:#242427}
+.se-lib-chip.on{background:#2b2b30;color:#f7f4ef}
 .se-lib-chip:disabled{opacity:.45;cursor:not-allowed}
 .se-lib-seeall{border:0;background:transparent;color:inherit;font:inherit;font-size:12px;opacity:.7;cursor:pointer}
 .se-lib-seeall:hover{opacity:1}
@@ -4729,15 +4737,18 @@ html{color-scheme:dark}
 .se-lib-thumb-3{background:linear-gradient(135deg,#faed87,#fd429c)}
 .se-lib-thumb-project{background:linear-gradient(135deg,#1c1c1f,#3a3a40);color:#c9cde0;font-size:12px}
 .se-lib-thumb-upload{background:linear-gradient(135deg,#181f36,#3a3a40);color:#8b90a6;font-size:12px}
-.se-lib-song{grid-template-columns:44px minmax(0,1fr) auto;align-items:center;column-gap:10px;row-gap:0}
+.se-lib-song,.se-lib-upload{grid-template-columns:56px minmax(0,1fr) auto;align-items:center;column-gap:14px;row-gap:0;padding:10px 12px;border-radius:12px;background:#1c1c1e}
+.se-lib-upload .se-lib-art{background:linear-gradient(135deg,#181f36,#3a3a40);color:#c2c2c1}
 .se-lib-song:focus-visible{outline:2px solid hsl(var(--accent));outline-offset:2px}
 .se-lib-song-actions{grid-column:3;display:flex;align-items:center;gap:4px}
-.se-lib-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:inherit;cursor:pointer}
+.se-lib-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:0;background:rgba(255,255,255,.06);color:inherit;cursor:pointer}
 .se-lib-icon:hover{border-color:hsl(var(--accent))}
 .se-lib-icon.on{color:#fd429c;border-color:rgba(253,66,156,.5)}
-.se-lib-art{display:grid;place-items:center;width:44px;height:44px;border-radius:8px;overflow:hidden;background:linear-gradient(135deg,#181f36,#3a3a40);color:#c9cde0;font-weight:700}
+.se-lib-art{display:grid;place-items:center;width:56px;height:56px;border-radius:10px;overflow:hidden;background:linear-gradient(135deg,#181f36,#3a3a40);color:#c9cde0;font-weight:700}
 .se-lib-art img{width:100%;height:100%;object-fit:cover;display:block}
-.se-lib-song-body{display:flex;flex-direction:column;gap:1px;min-width:0}
+.se-lib-song-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.se-lib-song-body .se-lib-title{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.se-lib-song-body .se-lib-meta{font-size:13px;color:#c2c2c1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .se-lib-song-body .se-lib-meta{font-size:12px}
 .se-lib-tags{display:flex;flex-wrap:nowrap;gap:4px;margin-top:3px;overflow:hidden}
 .se-lib-tags span{flex:0 0 auto;max-width:12ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.07);font-size:11px;letter-spacing:.02em;text-transform:uppercase;opacity:.8}

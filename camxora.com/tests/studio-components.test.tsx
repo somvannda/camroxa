@@ -405,7 +405,7 @@ describe("StudioLibrary", () => {
     fireEvent.keyDown(row, { key: "Enter" });
     expect(onOpenSong).toHaveBeenCalledOnce();
     // Enter on a control inside the row must act on that control, not open the rail.
-    fireEvent.keyDown(screen.getByRole("button", { name: "Add" }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Add Song one to the project" }), { key: "Enter" });
     expect(onOpenSong).toHaveBeenCalledOnce();
   });
 

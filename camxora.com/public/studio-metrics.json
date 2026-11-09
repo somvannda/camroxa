@@ -64,7 +64,7 @@
     {
       "id": "transportTarget",
       "label": "Transport button target",
-      "selector": ".se-head-right button",
+      "selector": ".se-transport .se-icon",
       "measure": "height",
       "expected": 36,
       "tolerance": 0,

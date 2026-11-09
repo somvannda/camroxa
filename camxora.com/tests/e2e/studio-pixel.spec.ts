@@ -157,6 +157,33 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(ticks[1] - ticks[0]).toBe(96);
 });
 
+test("library song rows use the captured anatomy", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel rows" });
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await page.getByRole("button", { name: /All Songs/ }).click();
+  const row = page.locator(".se-lib-song").first();
+  await expect(row).toBeVisible();
+  const anatomy = await row.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const art = element.querySelector(".se-lib-art")?.getBoundingClientRect();
+    const title = element.querySelector(".se-lib-title");
+    const chip = document.querySelector(".se-lib-tool, .se-lib-chip")?.getBoundingClientRect();
+    return {
+      rowHeight: Math.round(rect.height),
+      art: art ? Math.round(art.width) : null,
+      titleFont: title ? getComputedStyle(title).fontSize : null,
+      chipHeight: chip ? Math.round(chip.height) : null,
+    };
+  });
+  // Captured level-2 rows: 56 px art, 15 px title, 30 px filter chips.
+  expect(anatomy.art).toBe(56);
+  expect(anatomy.titleFont).toBe("15px");
+  expect(anatomy.chipHeight).toBe(30);
+  expect(anatomy.rowHeight).toBeGreaterThanOrEqual(76);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
