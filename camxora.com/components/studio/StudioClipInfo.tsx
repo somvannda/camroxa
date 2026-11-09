@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 
 import { Icon } from "@/components/Icon";
@@ -14,6 +12,9 @@ import type { WebMusicGeneration } from "@/lib/library-api";
  * plus the source generation (model, style, lyrics) and a real decoded waveform. The
  * Stems tab exposes the same request the provenance strip does; comments and the Magic
  * Bar chip have no captured contract here, so they are absent rather than mocked.
+ *
+ * Anatomy follows S27: header, artwork hero, Remix affordance, waveform player,
+ * Info/Stems tabs, then quiet section cards.
  */
 
 export type StudioClipInfoProps = {
@@ -43,6 +44,13 @@ function mmss(seconds: number | undefined): string {
   return `${m}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
+function sourceDate(source: WebMusicGeneration | null): string | null {
+  if (!source?.created_at) return null;
+  const value = new Date(source.created_at);
+  if (Number.isNaN(value.getTime())) return null;
+  return value.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function StudioClipInfo(props: StudioClipInfoProps) {
   const { width, clip, trackName, source, stems, onRequestStems, onClose } = props;
   // Ready assets reject the raw stream URL (encrypted-player guard); the download
@@ -51,6 +59,7 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
     source?.clips?.find((candidate) => candidate.audio_url === clip.audioUrl)?.download_url ??
     clip.audioUrl;
   const [tab, setTab] = useState<"info" | "stems">("info");
+  const date = sourceDate(source);
 
   return (
     <aside className="se-inspector" aria-label="Clip info" style={{ width }}>
@@ -59,41 +68,40 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
           <Icon name="fa-chevron-left" />
         </button>
         <strong>{clip.title || "Clip"}</strong>
-        <span className="se-inspector-dot" style={{ background: clip.color || "hsl(var(--accent))" }} />
       </div>
 
       <div className="se-inspector-body">
-        <dl className="se-inspector-facts">
-          <div>
-            <dt>Track</dt>
-            <dd>{trackName || "—"}</dd>
+        <div className="se-clip-hero">
+          <span
+            className="se-clip-art"
+            style={{ background: clip.color || "hsl(var(--accent))" }}
+            aria-hidden="true"
+          />
+          <div className="se-clip-hero-text">
+            <p className="se-clip-title">{source?.title || clip.title || "Clip"}</p>
+            {date ? <p className="se-clip-date">{date}</p> : null}
           </div>
-          <div>
-            <dt>Start</dt>
-            <dd>{mmss(clip.start)}</dd>
-          </div>
-          <div>
-            <dt>Length</dt>
-            <dd>{mmss(clip.duration)}</dd>
-          </div>
-          <div>
-            <dt>Fade in</dt>
-            <dd>{clip.fadeIn ? mmss(clip.fadeIn) : "None"}</dd>
-          </div>
-          <div>
-            <dt>Trim offset</dt>
-            <dd>{clip.offset ? mmss(clip.offset) : "None"}</dd>
-          </div>
-        </dl>
+        </div>
 
-        <Waveform
-          url={waveformUrl}
-          width={320}
-          height={56}
-          className="se-inspector-wave"
-          label="Clip waveform"
-          color="#4ade80"
-        />
+        <button
+          type="button"
+          className="se-clip-remix"
+          disabled
+          title="Remix is not built in this editor"
+        >
+          <Icon name="fa-rotate" /> Remix
+        </button>
+
+        <div className="se-clip-player">
+          <Waveform
+            url={waveformUrl}
+            width={width - 32}
+            height={44}
+            className="se-inspector-wave"
+            label="Clip waveform"
+            color="#4ade80"
+          />
+        </div>
 
         <div className="se-lib-tabs" role="tablist" aria-label="Clip sections">
           {(["info", "stems"] as const).map((value) => (
@@ -111,25 +119,60 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
         </div>
 
         {tab === "info" ? (
-          source ? (
-            <div className="se-inspector-source">
-              <p className="se-inspector-label">Source generation</p>
-              <p className="se-inspector-title">{source.title || "Untitled"}</p>
-              <p className="se-inspector-meta">
-                {source.model_label || source.model || "model"} ·{" "}
-                {source.created_at ? new Date(source.created_at).toLocaleDateString() : "unknown date"}
-              </p>
-              <p className="se-inspector-label">Style</p>
-              <p className="se-inspector-meta">{source.style || "No style recorded"}</p>
-              <p className="se-inspector-label">Lyrics</p>
-              <pre className="se-inspector-lyrics">{source.lyrics?.trim() || "No lyrics"}</pre>
-            </div>
-          ) : (
-            <p className="se-lib-empty">
-              This clip has no source generation. Library uploads and recorded takes will show
-              their own details here.
-            </p>
-          )
+          <div className="se-clip-cards">
+            <section className="se-clip-card" aria-label="Source">
+              <p className="se-clip-card-label">Source</p>
+              {source ? (
+                <>
+                  <p className="se-clip-card-value">{source.title || "Untitled"}</p>
+                  <p className="se-clip-card-meta">
+                    {source.model_label || source.model || "model"}
+                  </p>
+                </>
+              ) : (
+                <p className="se-clip-card-meta">
+                  This clip has no source generation. Uploads and recorded takes keep their own
+                  details.
+                </p>
+              )}
+            </section>
+
+            <section className="se-clip-card" aria-label="Styles">
+              <p className="se-clip-card-label">Styles</p>
+              <p className="se-clip-card-meta">{source?.style?.trim() || "No styles"}</p>
+            </section>
+
+            <section className="se-clip-card" aria-label="Lyrics">
+              <p className="se-clip-card-label">Lyrics</p>
+              <pre className="se-clip-lyrics">{source?.lyrics?.trim() || "No lyrics"}</pre>
+            </section>
+
+            <section className="se-clip-card" aria-label="Details">
+              <p className="se-clip-card-label">Details</p>
+              <dl className="se-clip-facts">
+                <div>
+                  <dt>Track</dt>
+                  <dd>{trackName || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Start</dt>
+                  <dd>{mmss(clip.start)}</dd>
+                </div>
+                <div>
+                  <dt>Length</dt>
+                  <dd>{mmss(clip.duration)}</dd>
+                </div>
+                <div>
+                  <dt>Fade in</dt>
+                  <dd>{clip.fadeIn ? mmss(clip.fadeIn) : "None"}</dd>
+                </div>
+                <div>
+                  <dt>Trim offset</dt>
+                  <dd>{clip.offset ? mmss(clip.offset) : "None"}</dd>
+                </div>
+              </dl>
+            </section>
+          </div>
         ) : (
           <div className="se-inspector-stems">
             <p className="se-inspector-meta">

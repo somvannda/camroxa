@@ -588,6 +588,44 @@ test("track panel head toggles every track's controls", async ({ page }) => {
   await expect(page.locator(".se-track .se-track-slider")).toHaveCount(2);
 });
 
+test("clip info rail follows the captured anatomy", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel inspector" });
+  await page.locator(".se-clip").first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Clip Info/ }).click();
+  const panel = page.getByRole("complementary", { name: "Clip info" });
+  await expect(panel).toBeVisible();
+  const info = await panel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const art = element.querySelector(".se-clip-art")?.getBoundingClientRect();
+    const tab = element.querySelector(".se-lib-tab")?.getBoundingClientRect();
+    const card = element.querySelector(".se-clip-card");
+    return {
+      x: Math.round(rect.x),
+      width: Math.round(rect.width),
+      radius: getComputedStyle(element).borderTopLeftRadius,
+      background: getComputedStyle(element).backgroundColor,
+      art: art ? Math.round(art.width) : null,
+      tabHeight: tab ? Math.round(tab.height) : null,
+      cardRadius: card ? getComputedStyle(card).borderTopLeftRadius : null,
+      cardBackground: card ? getComputedStyle(card).backgroundColor : null,
+    };
+  });
+  // S27: the inspector is the same floating 360 px rail, with a 48 px hero tile,
+  // 38 px tabs and quiet #141416 section cards.
+  expect(info).toMatchObject({
+    x: REFERENCE_VIEWPORT.width - 368,
+    width: 360,
+    radius: "12px",
+    background: "rgb(16, 16, 18)",
+    art: 48,
+    tabHeight: 38,
+    cardRadius: "12px",
+    cardBackground: "rgb(20, 20, 22)",
+  });
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
