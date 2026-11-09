@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Icon } from "@/components/Icon";
+import {
+  CreatorButton,
+  CreatorButtonLink,
+  CreatorField,
+  CreatorHeader,
+  CreatorPage,
+  CreatorPanel,
+} from "@/components/CreatorUI";
+import styles from "@/components/creator-ui.module.css";
 import {
   checkHandle,
   claimCreator,
@@ -34,6 +42,17 @@ const EMPTY_FORM: FormState = {
   avatar_url: "",
   ai_disclosure: "none",
 };
+
+const CHECKLIST_LABELS: Array<[string, string]> = [
+  ["handle", "Handle"],
+  ["display_name", "Name"],
+  ["bio", "Bio"],
+  ["avatar", "Avatar"],
+  ["genre", "Genre"],
+  ["first_release", "First release"],
+  ["verified", "Verified"],
+  ["payout_ready", "Payout ready"],
+];
 
 function formFromProfile(profile: CreatorStudioProfile): FormState {
   return {
@@ -131,73 +150,65 @@ export function CreatorStudioView() {
   }
 
   if (loading) {
-    return <div className="page"><p className="fine" style={{ textAlign: "left" }}>Loading Creator Studio…</p></div>;
+    return (
+      <CreatorPage>
+        <p className={styles.hint}>Loading Creator Studio…</p>
+      </CreatorPage>
+    );
   }
 
   if (unauthorized) {
     return (
-      <div className="page">
-        <div className="invite-signin panel">
-          <span className="invite-hero-icon"><Icon name="fa-microphone-lines" /></span>
-          <h1>Creator Studio</h1>
-          <p>Sign in to claim your creator page, edit your profile, and track your progress.</p>
-          <Link className="btn btn-primary" href="/login?next=/creator">Sign in</Link>
-        </div>
-      </div>
+      <CreatorPage>
+        <CreatorHeader meta="Creator Studio" title="Creator Studio" />
+        <CreatorPanel>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>Sign in to continue</p>
+            <p className={styles.emptyBody}>Claim your creator page, edit your profile, and track readiness.</p>
+            <div>
+              <CreatorButtonLink href="/login?next=/creator" variant="primary">Sign in</CreatorButtonLink>
+            </div>
+          </div>
+        </CreatorPanel>
+      </CreatorPage>
     );
   }
 
   const profile = studio?.profile ?? null;
   const checklist = studio?.checklist ?? {};
+  const completed = Object.values(checklist).filter(Boolean).length;
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <p className="fine" style={{ margin: 0 }}>Creator Studio</p>
-          <h1>{profile ? profile.display_name : "Claim your creator page"}</h1>
-          <p>
-            {profile
-              ? `@${profile.handle} · ${profile.tier} · ${profile.status}`
-              : "Pick a handle, add a short bio, and publish your public creator page."}
-          </p>
-        </div>
-        <div className="page-actions">
-          {profile ? (
-            <Link className="btn btn-primary" href={`/creators/${profile.handle}`}>
-              <Icon name="fa-arrow-up-right-from-square" /> View public page
-            </Link>
-          ) : null}
-          <Link className="btn btn-ghost" href="/creator/releases">
-            <Icon name="fa-record-vinyl" /> Releases
-          </Link>
-          <Link className="btn btn-ghost" href="/creator/verification">
-            <Icon name="fa-badge-check" /> Verification
-          </Link>
-          <Link className="btn btn-ghost" href="/creators">Browse creators</Link>
-        </div>
-      </div>
+    <CreatorPage>
+      <CreatorHeader
+        meta="Creator Studio"
+        title={profile ? profile.display_name : "Claim your creator page"}
+        description={
+          profile
+            ? `@${profile.handle} · ${profile.tier} · ${profile.status}`
+            : "Pick a handle, add a short bio, and publish your public creator page."
+        }
+        actions={
+          <>
+            {profile ? (
+              <CreatorButtonLink href={`/creators/${profile.handle}`} variant="secondary">
+                View public page
+              </CreatorButtonLink>
+            ) : null}
+            <CreatorButtonLink href="/creator/releases" variant="ghost">Releases</CreatorButtonLink>
+            <CreatorButtonLink href="/creator/verification" variant="ghost">Verification</CreatorButtonLink>
+            <CreatorButtonLink href="/creators" variant="ghost">Browse creators</CreatorButtonLink>
+          </>
+        }
+      />
 
-      {error ? <p className="fine" style={{ color: "#f87171" }} role="alert">{error}</p> : null}
-      {success ? <p className="fine" style={{ color: "#4ade80" }} role="status">{success}</p> : null}
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {success ? <p className={styles.success} role="status">{success}</p> : null}
 
       {profile ? (
-        <section className="panel" style={{ marginBottom: 16 }}>
-          <div className="sec-head">
-            <h2>Profile readiness</h2>
-            <span className="fine">{Object.values(checklist).filter(Boolean).length} of 8 complete</span>
-          </div>
+        <CreatorPanel title="Profile readiness" meta={`${completed} of 8 complete`}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 24px" }}>
-            {[
-              ["handle", "Handle"],
-              ["display_name", "Name"],
-              ["bio", "Bio"],
-              ["avatar", "Avatar"],
-              ["genre", "Genre"],
-              ["first_release", "First release"],
-              ["verified", "Verified"],
-              ["payout_ready", "Payout ready"],
-            ].map(([key, label]) => (
+            {CHECKLIST_LABELS.map(([key, label]) => (
               <div
                 key={key}
                 style={{
@@ -208,29 +219,27 @@ export function CreatorStudioView() {
                   borderBottom: "1px solid rgba(255,255,255,0.06)",
                 }}
               >
-                <span className="fine">{label}</span>
-                <span style={{ color: checklist[key] ? "#a7f3d0" : "rgba(255,255,255,0.4)", fontSize: 12 }}>
+                <span className={styles.hint}>{label}</span>
+                <span style={{ color: checklist[key] ? "#74c69d" : "#7d818b", fontSize: 12 }}>
                   {checklist[key] ? "Done" : "Missing"}
                 </span>
               </div>
             ))}
           </div>
-        </section>
+        </CreatorPanel>
       ) : null}
 
-      <section className="panel">
-        <div className="sec-head">
-          <h2>{profile ? "Edit profile" : "Create your profile"}</h2>
-          {profile ? <span className="fine">Changes appear on your public page.</span> : null}
-        </div>
-
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
-          <div className="auth-field">
-            <label htmlFor="creator-handle">Handle</label>
+      <CreatorPanel
+        title={profile ? "Edit profile" : "Create your profile"}
+        meta={profile ? "Changes appear on your public page." : undefined}
+        className={profile ? styles.sectionGap : ""}
+      >
+        <form className={styles.form} onSubmit={onSubmit}>
+          <CreatorField label="Handle" htmlFor="creator-handle">
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 id="creator-handle"
-                className="auth-input"
+                className={styles.input}
                 value={form.handle}
                 onChange={(event) => setForm({ ...form, handle: event.target.value.toLowerCase() })}
                 placeholder="sokha"
@@ -239,98 +248,90 @@ export function CreatorStudioView() {
                 required
               />
               {!profile ? (
-                <button className="btn btn-ghost" type="button" onClick={onCheckHandle} disabled={checking}>
+                <CreatorButton variant="secondary" type="button" onClick={onCheckHandle} disabled={checking}>
                   {checking ? "Checking…" : "Check"}
-                </button>
+                </CreatorButton>
               ) : null}
             </div>
             {handleCheck ? (
-              <span className="fine" style={{ color: handleCheck.available ? "#4ade80" : "#f87171" }}>
+              <span className={handleCheck.available ? styles.success : styles.error}>
                 {handleCheck.available
                   ? "Available"
                   : `Unavailable (${handleCheck.reason}). Try: ${handleCheck.suggestions.join(", ") || "another name"}`}
               </span>
             ) : null}
-          </div>
+          </CreatorField>
 
-          <div className="auth-field">
-            <label htmlFor="creator-name">Display name</label>
+          <CreatorField label="Display name" htmlFor="creator-name">
             <input
               id="creator-name"
-              className="auth-input"
+              className={styles.input}
               value={form.display_name}
               onChange={(event) => setForm({ ...form, display_name: event.target.value })}
               placeholder="Sokha Chan"
               maxLength={50}
               required
             />
-          </div>
+          </CreatorField>
 
-          <div className="auth-field">
-            <label htmlFor="creator-tagline">Tagline</label>
+          <CreatorField label="Tagline" htmlFor="creator-tagline">
             <input
               id="creator-tagline"
-              className="auth-input"
+              className={styles.input}
               value={form.tagline}
               onChange={(event) => setForm({ ...form, tagline: event.target.value })}
               placeholder="Khmer pop for the ride home."
               maxLength={120}
             />
-          </div>
+          </CreatorField>
 
-          <div className="auth-field">
-            <label htmlFor="creator-bio">Bio</label>
+          <CreatorField label="Bio" htmlFor="creator-bio">
             <textarea
               id="creator-bio"
-              className="auth-input"
+              className={styles.textarea}
               value={form.bio}
               onChange={(event) => setForm({ ...form, bio: event.target.value })}
               placeholder="Tell listeners who you are and what you make."
               maxLength={2000}
               rows={4}
-              style={{ minHeight: 110, resize: "vertical" }}
             />
-          </div>
+          </CreatorField>
 
-          <div className="auth-field">
-            <label htmlFor="creator-city">City</label>
+          <CreatorField label="City" htmlFor="creator-city">
             <input
               id="creator-city"
-              className="auth-input"
+              className={styles.input}
               value={form.city}
               onChange={(event) => setForm({ ...form, city: event.target.value })}
               placeholder="Phnom Penh"
               maxLength={80}
             />
-          </div>
+          </CreatorField>
 
-          <div className="auth-field">
-            <label htmlFor="creator-genres">Genres (comma-separated, max 3)</label>
+          <CreatorField label="Genres (comma-separated, max 3)" htmlFor="creator-genres">
             <input
               id="creator-genres"
-              className="auth-input"
+              className={styles.input}
               value={form.genres}
               onChange={(event) => setForm({ ...form, genres: event.target.value })}
               placeholder="Khmer Pop, Synth Pop"
             />
-          </div>
+          </CreatorField>
 
-          <div className="auth-field">
-            <label htmlFor="creator-avatar">Avatar URL</label>
+          <CreatorField label="Avatar URL" htmlFor="creator-avatar">
             <input
               id="creator-avatar"
-              className="auth-input"
+              className={styles.input}
               value={form.avatar_url}
               onChange={(event) => setForm({ ...form, avatar_url: event.target.value })}
               placeholder="https://..."
             />
-          </div>
+          </CreatorField>
 
-          <div className="auth-field">
-            <label htmlFor="creator-ai">AI disclosure</label>
+          <CreatorField label="AI disclosure" htmlFor="creator-ai">
             <select
               id="creator-ai"
-              className="auth-input"
+              className={styles.select}
               value={form.ai_disclosure}
               onChange={(event) => setForm({ ...form, ai_disclosure: event.target.value as FormState["ai_disclosure"] })}
             >
@@ -338,23 +339,26 @@ export function CreatorStudioView() {
               <option value="ai_assisted">AI-assisted</option>
               <option value="ai_artist">AI artist</option>
             </select>
-          </div>
+          </CreatorField>
 
-          <div className="page-actions">
-            <button className="btn btn-primary" type="submit" disabled={saving}>
+          <div>
+            <CreatorButton type="submit" disabled={saving}>
               {saving ? "Saving…" : profile ? "Save profile" : "Create creator page"}
-            </button>
+            </CreatorButton>
           </div>
         </form>
-      </section>
+      </CreatorPanel>
 
-      <section className="panel" style={{ marginTop: 16 }}>
-        <div className="sec-head"><h2>Next steps</h2></div>
-        <p className="fine" style={{ textAlign: "left" }}>
-          Verification, releases, analytics, and payouts are the next phases. For now this page proves
-          the identity flow: claim a handle, save a profile, and view the public creator page.
+      <CreatorPanel title="Next steps" className={styles.sectionGap}>
+        <p className={styles.emptyBody}>
+          Verification, releases, analytics, and payouts are the next phases. Identity is live now:
+          claim a handle, save a profile, and open your public creator page.
         </p>
-      </section>
-    </div>
+        <div className={styles.actions} style={{ marginTop: 16 }}>
+          <CreatorButtonLink href="/creator/releases" variant="secondary">Open releases</CreatorButtonLink>
+          <CreatorButtonLink href="/creator/verification" variant="ghost">Apply for verification</CreatorButtonLink>
+        </div>
+      </CreatorPanel>
+    </CreatorPage>
   );
 }

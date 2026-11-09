@@ -1,9 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { CreatorMetrics } from "@/components/CreatorMetrics";
+import {
+  CreatorButton,
+  CreatorButtonLink,
+  CreatorField,
+  CreatorHeader,
+  CreatorPage,
+  CreatorPanel,
+} from "@/components/CreatorUI";
+import styles from "@/components/creator-ui.module.css";
 import {
   createRelease,
   CreatorApiError,
@@ -33,38 +41,39 @@ function stage(status: string): number {
   return 2;
 }
 
+function Status({ status }: { status: string }) {
+  const dot =
+    status === "published"
+      ? `${styles.dot} ${styles.dotLive}`
+      : stage(status) === 1
+        ? `${styles.dot} ${styles.dotReview}`
+        : styles.dot;
+  return (
+    <span className={styles.status}>
+      <span className={dot} aria-hidden="true" />
+      {STATUS_LABEL[status] || status}
+    </span>
+  );
+}
+
 function ReleaseFlow({ status }: { status: string }) {
   const current = stage(status);
   const steps = ["Draft", "Review", "Live"];
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+    <div className={styles.flow}>
       {steps.map((step, index) => (
-        <div key={step} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className={styles.flowStep} key={step}>
           <span
             aria-hidden="true"
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 999,
-              background: index <= current ? "var(--accent, #8b7cf6)" : "rgba(255,255,255,0.18)",
-            }}
+            className={`${styles.flowDot} ${index <= current ? styles.flowDotActive : ""}`}
           />
-          <span
-            style={{
-              fontSize: 11,
-              color: index <= current ? "rgba(255,255,255,0.78)" : "rgba(255,255,255,0.38)",
-            }}
-          >
+          <span className={`${styles.flowLabel} ${index <= current ? styles.flowLabelActive : ""}`}>
             {step}
           </span>
           {index < steps.length - 1 ? (
             <span
               aria-hidden="true"
-              style={{
-                width: 18,
-                height: 1,
-                background: index < current ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.1)",
-              }}
+              className={`${styles.flowLine} ${index < current ? styles.flowLineActive : ""}`}
             />
           ) : null}
         </div>
@@ -203,19 +212,29 @@ export function CreatorReleasesView() {
   }
 
   if (loading) {
-    return <div className="page"><p className="fine" style={{ textAlign: "left" }}>Loading releases…</p></div>;
+    return (
+      <CreatorPage>
+        <p className={styles.hint}>Loading releases…</p>
+      </CreatorPage>
+    );
   }
 
   if (unauthorized) {
     return (
-      <div className="page">
-        <div className="invite-signin panel">
-          <span className="invite-hero-icon"><Icon name="fa-record-vinyl" /></span>
-          <h1>Releases</h1>
-          <p>Sign in to move a generation from draft to live.</p>
-          <Link className="btn btn-primary" href="/login?next=/creator/releases">Sign in</Link>
-        </div>
-      </div>
+      <CreatorPage>
+        <CreatorHeader meta="Creator Studio" title="Releases" />
+        <CreatorPanel>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>Sign in to manage releases</p>
+            <p className={styles.emptyBody}>Move a finished generation from draft to live.</p>
+            <div>
+              <CreatorButtonLink href="/login?next=/creator/releases" variant="primary">
+                Sign in
+              </CreatorButtonLink>
+            </div>
+          </div>
+        </CreatorPanel>
+      </CreatorPage>
     );
   }
 
@@ -224,21 +243,21 @@ export function CreatorReleasesView() {
   const live = releases.filter((item) => item.status === "published").length;
 
   return (
-    <div className="page">
-      <header style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginBottom: 24 }}>
-        <div>
-          <p className="fine" style={{ margin: 0 }}>Creator Studio</p>
-          <h1 style={{ margin: "4px 0 8px" }}>Releases</h1>
-          <p style={{ margin: 0 }}>Move a finished generation from draft to live on Camxora.</p>
-        </div>
-        <div className="page-actions">
-          <Link className="btn btn-ghost" href="/creator">Back to Studio</Link>
-          <Link className="btn btn-ghost" href="/create">Create music</Link>
-        </div>
-      </header>
+    <CreatorPage>
+      <CreatorHeader
+        meta="Creator Studio"
+        title="Releases"
+        description="Move a finished generation from draft to live on Camxora."
+        actions={
+          <>
+            <CreatorButtonLink href="/creator" variant="ghost">Back to Studio</CreatorButtonLink>
+            <CreatorButtonLink href="/create" variant="ghost">Create music</CreatorButtonLink>
+          </>
+        }
+      />
 
-      {error ? <p className="fine" style={{ color: "#f87171" }} role="alert">{error}</p> : null}
-      {success ? <p className="fine" style={{ color: "#4ade80" }} role="status">{success}</p> : null}
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {success ? <p className={styles.success} role="status">{success}</p> : null}
 
       <CreatorMetrics
         items={[
@@ -249,22 +268,22 @@ export function CreatorReleasesView() {
         ]}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, alignItems: "start" }}>
-        <section className="panel">
-          <div className="sec-head"><h2>New release</h2></div>
+      <div className={styles.split}>
+        <CreatorPanel title="New release">
           {readyOptions.length === 0 ? (
-            <div>
-              <p style={{ marginTop: 0 }}>No finished generations yet.</p>
-              <p className="fine" style={{ textAlign: "left" }}>Create a track, wait for it to finish, then come back here.</p>
-              <Link className="btn btn-ghost" href="/create">Create music</Link>
+            <div className={styles.empty}>
+              <p className={styles.emptyTitle}>No finished generations yet</p>
+              <p className={styles.emptyBody}>Create a track, wait for it to finish, then come back here.</p>
+              <div>
+                <CreatorButtonLink href="/create" variant="secondary">Create music</CreatorButtonLink>
+              </div>
             </div>
           ) : (
-            <form onSubmit={onCreate} style={{ display: "grid", gap: 16 }}>
-              <div className="auth-field">
-                <label htmlFor="release-generation">Finished generation</label>
+            <form className={styles.form} onSubmit={onCreate}>
+              <CreatorField label="Finished generation" htmlFor="release-generation">
                 <select
                   id="release-generation"
-                  className="auth-input"
+                  className={styles.select}
                   value={selected}
                   onChange={(event) => onSelect(event.target.value)}
                   required
@@ -274,99 +293,87 @@ export function CreatorReleasesView() {
                     <option value={option.value} key={option.value}>{option.label}</option>
                   ))}
                 </select>
-              </div>
-              <div className="auth-field">
-                <label htmlFor="release-title">Title</label>
+              </CreatorField>
+              <CreatorField label="Title" htmlFor="release-title">
                 <input
                   id="release-title"
-                  className="auth-input"
+                  className={styles.input}
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   maxLength={100}
                   required
                 />
-              </div>
-              <div className="auth-field">
-                <label htmlFor="release-genre">Genre</label>
+              </CreatorField>
+              <CreatorField label="Genre" htmlFor="release-genre">
                 <input
                   id="release-genre"
-                  className="auth-input"
+                  className={styles.input}
                   value={genre}
                   onChange={(event) => setGenre(event.target.value)}
                   maxLength={120}
                   required
                 />
-              </div>
-              <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              </CreatorField>
+              <label className={styles.checkRow}>
                 <input
                   type="checkbox"
+                  className={styles.check}
                   checked={rights}
                   onChange={(event) => setRights(event.target.checked)}
                   required
                 />
-                <span className="fine">I own or have cleared the rights to this track.</span>
+                <span>I own or have cleared the rights to this track.</span>
               </label>
               <div>
-                <button className="btn btn-primary" type="submit" disabled={saving || !selected || !rights}>
+                <CreatorButton type="submit" disabled={saving || !selected || !rights}>
                   {saving ? "Creating…" : "Create draft"}
-                </button>
+                </CreatorButton>
               </div>
             </form>
           )}
-        </section>
+        </CreatorPanel>
 
-        <section className="panel">
-          <div className="sec-head">
-            <h2>Your releases</h2>
-            <span className="fine">{releases.length} total</span>
-          </div>
+        <CreatorPanel title="Your releases" meta={`${releases.length} total`}>
           {releases.length === 0 ? (
-            <p className="fine" style={{ textAlign: "left" }}>No releases yet. Create a draft to start.</p>
+            <div className={styles.empty}>
+              <p className={styles.emptyTitle}>No releases yet</p>
+              <p className={styles.emptyBody}>Create a draft to start the review flow.</p>
+            </div>
           ) : (
-            <div>
-              {releases.map((release, index) => {
+            <div className={styles.list}>
+              {releases.map((release) => {
                 const metadata = release.metadata || {};
                 const canSubmit = ["draft", "changes_requested"].includes(release.status);
                 const canWithdraw = ["submitted", "in_review"].includes(release.status);
                 const canUnpublish = release.status === "published";
                 return (
-                  <article
-                    key={release.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) auto",
-                      gap: 16,
-                      padding: "16px 0",
-                      borderTop: index === 0 ? "none" : "1px solid rgba(255,255,255,0.06)",
-                      alignItems: "start",
-                    }}
-                  >
+                  <article className={styles.row} key={release.id}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 10 }}>
-                        <strong style={{ fontSize: 15 }}>{metadata.title || "Untitled"}</strong>
-                        <span className="fine" style={{ margin: 0 }}>{STATUS_LABEL[release.status] || release.status}</span>
+                        <p className={styles.rowTitle}>{metadata.title || "Untitled"}</p>
+                        <Status status={release.status} />
                       </div>
-                      <p className="fine" style={{ margin: "4px 0 0", textAlign: "left" }}>
+                      <p className={styles.rowMeta}>
                         {metadata.genre || "No genre"} · {metadata.release_type || "single"}
                         {release.submitted_at ? ` · submitted ${formatDate(release.submitted_at)}` : ""}
                       </p>
                       <ReleaseFlow status={release.status} />
                     </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <div className={styles.rowActions}>
                       {canSubmit ? (
-                        <button className="btn btn-ghost" type="button" onClick={() => onAction(release)} disabled={saving}>
+                        <CreatorButton variant="secondary" type="button" onClick={() => onAction(release)} disabled={saving}>
                           Submit
-                        </button>
+                        </CreatorButton>
                       ) : null}
                       {canWithdraw ? (
-                        <button className="btn btn-ghost" type="button" onClick={() => onAction(release)} disabled={saving}>
+                        <CreatorButton variant="secondary" type="button" onClick={() => onAction(release)} disabled={saving}>
                           Withdraw
-                        </button>
+                        </CreatorButton>
                       ) : null}
                       {canUnpublish ? (
-                        <button className="btn btn-ghost" type="button" onClick={() => onAction(release)} disabled={saving}>
+                        <CreatorButton variant="secondary" type="button" onClick={() => onAction(release)} disabled={saving}>
                           Unpublish
-                        </button>
+                        </CreatorButton>
                       ) : null}
                     </div>
                   </article>
@@ -374,32 +381,28 @@ export function CreatorReleasesView() {
               })}
             </div>
           )}
-        </section>
+        </CreatorPanel>
       </div>
 
-      <section className="panel" style={{ marginTop: 24 }}>
-        <div className="sec-head">
-          <h2>How releases work</h2>
-          <span className="fine">Review takes up to 3 business days</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24 }}>
-          <div>
-            <p className="fine" style={{ margin: 0 }}>01</p>
-            <strong style={{ display: "block", margin: "4px 0" }}>Pick a finished generation</strong>
-            <p className="fine" style={{ margin: 0, textAlign: "left" }}>Only tracks with stored audio can be submitted.</p>
+      <CreatorPanel title="How releases work" meta="Review takes up to 3 business days" className={styles.sectionGap}>
+        <div className={styles.guideGrid}>
+          <div className={styles.guideStep}>
+            <p className={styles.guideNumber}>01</p>
+            <p className={styles.guideTitle}>Pick a finished generation</p>
+            <p className={styles.guideBody}>Only tracks with stored audio can be submitted.</p>
           </div>
-          <div>
-            <p className="fine" style={{ margin: 0 }}>02</p>
-            <strong style={{ display: "block", margin: "4px 0" }}>Send it to review</strong>
-            <p className="fine" style={{ margin: 0, textAlign: "left" }}>We check rights, metadata, and audio readiness.</p>
+          <div className={styles.guideStep}>
+            <p className={styles.guideNumber}>02</p>
+            <p className={styles.guideTitle}>Send it to review</p>
+            <p className={styles.guideBody}>We check rights, metadata, and audio readiness.</p>
           </div>
-          <div>
-            <p className="fine" style={{ margin: 0 }}>03</p>
-            <strong style={{ display: "block", margin: "4px 0" }}>Go live</strong>
-            <p className="fine" style={{ margin: 0, textAlign: "left" }}>Approved releases appear on your creator page and in the catalog.</p>
+          <div className={styles.guideStep}>
+            <p className={styles.guideNumber}>03</p>
+            <p className={styles.guideTitle}>Go live</p>
+            <p className={styles.guideBody}>Approved releases appear on your creator page and in the catalog.</p>
           </div>
         </div>
-      </section>
-    </div>
+      </CreatorPanel>
+    </CreatorPage>
   );
 }

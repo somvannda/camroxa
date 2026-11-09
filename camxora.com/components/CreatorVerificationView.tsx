@@ -190,7 +190,7 @@ export function CreatorVerificationView() {
       />
 
       {application ? (
-        <section className="panel">
+        <section className="panel" style={{ padding: 24 }}>
           <div className="sec-head">
             <h2>Application status</h2>
             <span className="fine">Version {application.version}</span>
@@ -214,7 +214,7 @@ export function CreatorVerificationView() {
       ) : null}
 
       {canApply ? (
-        <section className="panel" style={{ marginTop: 16 }}>
+        <section className="panel" style={{ marginTop: 16, padding: 24 }}>
           <div className="sec-head">
             <h2>{application?.status === "changes_requested" ? "Update and resubmit" : "Apply for verification"}</h2>
           </div>
@@ -266,7 +266,7 @@ export function CreatorVerificationView() {
         </section>
       ) : null}
 
-      <section className="panel" style={{ marginTop: 16 }}>
+      <section className="panel" style={{ marginTop: 16, padding: 24 }}>
         <div className="sec-head">
           <h2>Identity evidence</h2>
           <span className="fine">Encrypted and reviewed by a human.</span>
@@ -305,7 +305,7 @@ export function CreatorVerificationView() {
         </form>
       </section>
 
-      <section className="panel" style={{ marginTop: 16 }}>
+      <section className="panel" style={{ marginTop: 16, padding: 24 }}>
         <div className="sec-head"><h2>Evidence history</h2></div>
         {status.verifications.length === 0 ? (
           <p className="fine" style={{ textAlign: "left" }}>No evidence submitted yet.</p>

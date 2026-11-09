@@ -46,6 +46,15 @@ The data itself is honest: real creator records, real statuses, no fake counters
 - Withdraw returns it to draft.
 - No console errors.
 
+## What changed in the third pass
+
+- **Root cause fixed:** the global `.panel` class has no padding, so raw forms touched card edges. Creator pages now compose from `CreatorPage`, `CreatorHeader`, `CreatorPanel`, `CreatorField`, `CreatorButton`, and `CreatorMetrics`; padding, gaps, and control heights are owned by the primitives.
+- **Primary buttons** are now off-white with dark text instead of purple gradients; secondary/ghost actions are quiet.
+- **Forms** use a 20px field rhythm, 44px controls, 10px radii, and a visible focus ring.
+- **Every panel** gets 24px padding.
+- **Studio** was rebuilt on the primitives; Verification and the public page had their panels padded.
+- The rules are documented in [UI_SYSTEM.md](./UI_SYSTEM.md) and enforced by `AGENTS.md`.
+
 ## Follow-ups
 
 ### Applied in the second pass

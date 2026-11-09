@@ -56,6 +56,7 @@ Every UI change in `camxora.com/`, `admin_portal/`, and any future creator/admin
 4. Do not add purple/violet hue gradients on chrome, gradient text, glows, colored shadows, emoji labels, uppercase tracked labels, looping motion, or `transition-all`.
 5. One accent, one bright content moment, quiet chrome. Use the product's real data, never `[X]` or `123,456`.
 6. Report the audit, direction, and what changed. If the screen is already good, say so and make only small refinements.
+7. **Creator screens must use the primitives in `camxora.com/components/CreatorUI.tsx` and the rules in `docs/creator-program/UI_SYSTEM.md`.** Never place content directly inside `className="panel"` (it has no padding), and never use bare `.btn` / `.auth-input` / `.auth-field` in creator screens. `CreatorPanel`, `CreatorField`, `CreatorButton`, and `styles.form` own the padding, gaps, and control heights.
 
 Skill source: `https://github.com/heydamir/unslop` — CC BY 4.0, created by Damir Sokolovsky ([@heydamir](https://x.com/heydamir)). Keep the credit in copies/adaptations.
 

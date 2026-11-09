@@ -147,7 +147,7 @@ export function CreatorPublicView({ handle }: { handle: string }) {
         ]}
       />
 
-      <section className="panel">
+      <section className="panel" style={{ padding: 24 }}>
         <div className="sec-head"><h2>About</h2></div>
         <p>{creator.bio || "This creator has not added a bio yet."}</p>
         <div className="chip-row" style={{ marginTop: 12 }}>
@@ -168,7 +168,7 @@ export function CreatorPublicView({ handle }: { handle: string }) {
         ) : null}
       </section>
 
-      <section className="panel">
+      <section className="panel" style={{ padding: 24 }}>
         <div className="sec-head"><h2>Releases</h2></div>
         <p className="fine" style={{ textAlign: "left" }}>
           Release management ships in Phase 2. This creator has no published releases in the preview.
