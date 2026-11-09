@@ -810,6 +810,24 @@ test("EQ card matches the captured band editor and drags", async ({ page }) => {
   await expect(card.locator(".sp-eq-shapes button.on")).toHaveCount(1);
 });
 
+test("clip trim handles stay hidden until hover", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel trim" });
+  const clip = page.locator(".se-clip").first();
+  await clip.click();
+  await page.mouse.move(600, 400);
+  const opacity = () =>
+    page.evaluate(() => {
+      const trim = document.querySelector(".se-trim");
+      return trim ? getComputedStyle(trim).opacity : null;
+    });
+  // S25: a selected clip is outlined; trim grips appear on hover, not before.
+  await expect.poll(opacity).toBe("0");
+  await clip.hover();
+  await expect.poll(opacity).toBe("1");
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
