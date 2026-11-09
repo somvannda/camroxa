@@ -169,11 +169,13 @@ jobs:
             musicapi/web-user/package-lock.json
             musicapi/web-admin/package-lock.json
 
-      - name: Core — npm ci, typecheck, build
+      - name: Core - npm ci, typecheck, build
         if: steps.changes.outputs.run == 'true'
         working-directory: musicapi
         run: |
-          npm ci --no-audit --no-fund
+          # ffmpeg-static downloads a binary from GitHub Releases on install; this job
+          # only typechecks/builds/unit-tests, so skip postinstall scripts (flaky 504s).
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run typecheck
           npm run build
           npm run test:unit
@@ -246,9 +248,9 @@ jobs:
         working-directory: musicapi
         shell: bash
         run: |
-          # ffmpeg-static downloads a binary from GitHub Releases during install; retry
-          # once so a transient 504 does not fail a code gate.
-          npm ci --no-audit --no-fund || { echo "retrying npm ci after a transient failure"; sleep 10; npm ci --no-audit --no-fund; }
+          # The smoke gate boots the API but never transcodes; skipping install scripts
+          # avoids ffmpeg-static's flaky GitHub Releases download.
+          npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Apply migrations
         if: steps.changes.outputs.run == 'true'
@@ -609,8 +611,8 @@ jobs:
         working-directory: musicapi
         shell: bash
         run: |
-          # ffmpeg-static downloads a binary from GitHub Releases; retry once on a 504.
-          npm ci --no-audit --no-fund || { echo "retrying npm ci after a transient failure"; sleep 10; npm ci --no-audit --no-fund; }
+          # The Studio e2e stack never transcodes; skip ffmpeg-static's install download.
+          npm ci --ignore-scripts --no-audit --no-fund
           ./node_modules/.bin/tsx scripts/migrate.ts
 
       - name: Start musicapi
