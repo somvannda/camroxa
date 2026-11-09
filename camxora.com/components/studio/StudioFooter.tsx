@@ -56,7 +56,7 @@ export function StudioFooter(props: StudioFooterProps) {
       <div className="se-chain">
         {hasTrack && chain.length > 0 ? (
           chain.map((pluginId) => (
-            <span key={pluginId} className="se-chain-chip">{getPlugin(pluginId)?.name ?? pluginId}</span>
+            <span key={pluginId} className="se-chain-chip" data-plugin={pluginId}>{getPlugin(pluginId)?.name ?? pluginId}</span>
           ))
         ) : null}
         <button
