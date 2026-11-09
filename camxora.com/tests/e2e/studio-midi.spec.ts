@@ -101,6 +101,10 @@ test("a MIDI track opens the captured editor and edits notes", async ({ page }) 
   const midiClip = page.locator(".se-clip", { hasText: "MIDI clip" }).first();
   await expect(midiClip.locator(".se-clip-midi span").first()).toBeVisible();
 
+  // Selecting an audio clip leaves the editor; the MIDI clip reopens it.
+  await page.locator(".se-clip", { hasText: "Fixture clip" }).first().click();
+  await expect(page.getByRole("region", { name: "MIDI editor" })).toHaveCount(0);
+  await page.locator(".se-clip", { hasText: "MIDI clip" }).first().click();
   await panel.getByRole("button", { name: "Close MIDI editor" }).click();
   await expect(page.getByRole("region", { name: "MIDI editor" })).toHaveCount(0);
 });

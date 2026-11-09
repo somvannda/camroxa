@@ -355,7 +355,8 @@ export function StudioEditorShell() {
     event.stopPropagation();
     setSelectedTrack(trackId);
     setSelectedClip(clip.id);
-    if ((clip as { midi?: unknown }).midi) setMidiClipId(clip.id);
+    // Selecting an audio clip leaves the MIDI editor; a MIDI clip opens it.
+    setMidiClipId((clip as { midi?: unknown }).midi ? clip.id : null);
     const group = selectedIds.includes(clip.id) ? selectedIds : [clip.id];
     setSelectedIds(group);
     const origins: Record<string, number> = {};
