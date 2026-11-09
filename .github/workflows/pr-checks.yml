@@ -639,6 +639,11 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: python scripts/seed_sandbox_user.py
 
+      # Library drag/detail and clip provenance need at least one real playable song.
+      - name: Seed one library song
+        if: steps.changes.outputs.run == 'true'
+        run: python scripts/seed_sandbox_song.py
+
       - name: camxora.com dependencies
         if: steps.changes.outputs.run == 'true'
         working-directory: camxora.com

@@ -62,18 +62,16 @@ Helpers in `scripts/`:
 CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` + `npm run build` on
 any PR touching `camxora.com`. The production build gate exists because a missing
 Suspense boundary once broke `/studio/editor/classic` at build time while typecheck and
-unit tests stayed green. The e2e specs are not in CI yet — they need the app plus
-the platform API and a database, which the workflow does not provision. They build their
-own fixtures through the API (`tests/e2e/studio-fixture.ts`) and leave those fixture
-projects in the sandbox database, so the sandbox accumulates test projects by design;
-they never touch a non-sandbox account.
+unit tests stayed green. A second job, `camxora-e2e`, provisions Postgres, **Redis**
+(platform_api's audit middleware needs it or logins 500), musicapi, platform_api and the
+web app, then runs the Playwright suite. It is non-blocking (`continue-on-error`) until a
+green run is observed; the specs build their own fixtures through the API
+(`tests/e2e/studio-fixture.ts`) and leave those fixtures in the sandbox database, so the
+sandbox accumulates test projects by design; they never touch a non-sandbox account.
 
-**Backend suite:** `python -m pytest platform_api/tests -q` → **3167 passed, 0 failed**
-at `3215e3d1`. Two tests that still asserted the retired plan machinery were rewritten to
-the credits-only contract: `test_user_spend_service` now expects every spender to be
-reported Free (no plan meters, over-allowance from soft overages), and
-`test_web_music_batch_access` asserts `usage_today` never reads the legacy v2 ledger even
-with the v3 flag off. The suite is green, so a new failure is a real one.
+**Backend suite:** `python -m pytest platform_api/tests -q` → **3304 passed, 0 failed**
+after the `origin/main` reconciliation. The plan-era tests were rewritten to the
+credits-only contract, so the suite is green and a new failure is a real one.
 
 `beforeunload` note: when a save is pending the editor blocks navigation, so a
 Playwright `page.goto` can hang on the confirmation dialog. Close the save first, or open
@@ -128,7 +126,7 @@ pane not being visible when the screenshot runs. What is left:
 3. **G21** - arm + microphone takes are implemented as a documented divergence (D-020); the reference take flow itself is still uncaptured.
 4. **§100 image + S60/S61** — an image of the detail rail when the pane is visible, and
    the two forced states (moderation, no credits). Neither blocks the build.
-5. **e2e in CI** - a service-backed job (`camxora-e2e`) now provisions Postgres, musicapi, platform_api, the web app and Playwright. It is `continue-on-error` until a green run is observed, then flip that flag.
+5. **e2e in CI** - the service-backed `camxora-e2e` job provisions Postgres, **Redis** (platform_api's audit middleware needs it or every login is a 500), musicapi, platform_api, the web app and Playwright. Draft PR #483 exercises it. It is `continue-on-error` until a green run is observed, then flip that flag. The branch was reconciled with `origin/main` (billing-plan retirement conflicts) so checks can run at all.
 
 ## Modules added this session (each with a dev handle for measurement)
 
