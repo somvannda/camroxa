@@ -656,3 +656,14 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         working-directory: camxora.com
         run: npx playwright test
+
+      # Keep the service logs visible when the suite fails; without them a 500 from
+      # the web proxy is indistinguishable from a model/API failure.
+      - name: Service logs
+        if: always()
+        shell: bash
+        run: |
+          for f in /tmp/platform.log /tmp/musicapi.log /tmp/web.log; do
+            echo "--- $f"
+            tail -n 120 "$f" 2>/dev/null || true
+          done
