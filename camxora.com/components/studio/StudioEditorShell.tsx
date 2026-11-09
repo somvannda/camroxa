@@ -2860,7 +2860,28 @@ export function StudioEditorShell() {
   const railOpen = libraryOpen || inspectorOpen;
 
   return (
-    <div className={`se-shell${touchMode ? " is-touch" : ""}${railOpen ? " has-rail" : ""}`}>
+    <>
+      {/* The reference gates Studio below 768 px (S65): desktop-only notice. */}
+      <div className="se-desktop-gate">
+        <div className="se-gate-card">
+          <div className="se-gate-art" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="se-gate-body">
+            <h1>CAMXORA Studio</h1>
+            <p>
+              Studio is desktop-only. Open CAMXORA on a larger screen to keep working on this
+              project.
+            </p>
+            <Link className="se-gate-link" href="/create">
+              Back to Create
+            </Link>
+          </div>
+        </div>
+      </div>
+      <div className={`se-shell${touchMode ? " is-touch" : ""}${railOpen ? " has-rail" : ""}`}>
       <StudioHeader
         title={project?.title || "Untitled project"}
         projectId={projectId}
@@ -3432,5 +3453,6 @@ export function StudioEditorShell() {
       ) : null}
       {loading ? <div className="se-loading" aria-live="polite">Loading project…</div> : null}
     </div>
+    </>
   );
 }

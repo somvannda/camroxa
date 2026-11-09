@@ -924,6 +924,29 @@ test("song row actions stay hidden until hover", async ({ page }) => {
   await expect.poll(opacity).toBe("1");
 });
 
+test("studio gates below 768 with the desktop notice", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel gate" });
+  await page.setViewportSize({ width: 767, height: 900 });
+  const gate = page.locator(".se-desktop-gate");
+  await expect(gate).toBeVisible();
+  await expect(page.locator(".se-shell")).toBeHidden();
+  const info = await gate.evaluate((element) => {
+    const card = element.querySelector(".se-gate-card")?.getBoundingClientRect();
+    const link = element.querySelector(".se-gate-link");
+    return {
+      card: card ? Math.round(card.width) : null,
+      radius: card ? getComputedStyle(element.querySelector(".se-gate-card") as Element).borderTopLeftRadius : null,
+      href: link?.getAttribute("href"),
+    };
+  });
+  // S65: a 360 px card with the desktop-only notice and Back to Create.
+  expect(info.card).toBe(360);
+  expect(info.radius).toBe("24px");
+  expect(info.href).toBe("/create");
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
