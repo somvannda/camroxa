@@ -38,7 +38,7 @@ functional controls the capture does not show (listed below).
 | Track options menu | 164 px, 33 px icon rows inside the panel | same (inline colour swatches) |
 | Add-track menu | 208 px, 50 px rows, 24 px colour icon squares | same |
 | Project menu | 212 px, 34 px icon rows, settings accelerator | same |
-| Clip menu | 158 px, 38 px icon rows, 11 px shortcuts | same (fewer rows, see below) |
+| Clip menu | 158 px, 38 px icon rows, 11 px shortcuts, 13 captured rows | same; unbuilt rows disabled |
 | Dialogs | 480 px, radius 24, padding 32, 24 px title, 44 px pills | same |
 | Export toast | bottom-left 888 px banner on #1c1c1e, radius 16 | same |
 | Selected track | tints the gutter row and its lane | same |
@@ -56,7 +56,7 @@ functional controls the capture does not show (listed below).
 | Library close `X` | explicit close affordance in addition to the header toggle |
 | Search collapses to the magnifier | matches the capture; it expands on focus/typing |
 | Add is an icon button in rows | D-016 keeps Add next to drag without widening the measured row |
-| Clip menu omits Heal Edits / Get MIDI / Remove FX | those behaviours are not built; the captured rows we ship keep their order |
+| Heal Edits / Get MIDI / Remove FX | present in the captured order but disabled with reasons; the behaviours are not built |
 | Clip label colour | dark on pastel fills, white on the saturated reference fills (contrast-safe; the capture only shows white on purple) |
 
 ## Still to measure
