@@ -4591,9 +4591,10 @@ html{color-scheme:dark}
 /* Narrow windows carry only the captured header controls (D-022): save state, master
    meter, audition speed and the redundant library toggle step aside first. */
 @media (max-width:1600px){
-  .se-head .se-save,.se-head .se-meter,.se-head [data-help="speed"]{display:none}
+  .se-head .se-meter,.se-head [data-help="speed"]{display:none}
 }
 @media (max-width:1400px){
+  .se-head .se-save{display:none}
   .se-shell.has-rail .se-head [data-help="library"]{display:none}
 }
 @media (max-width:900px){.se-tracks{width:200px}.se-head{grid-template-columns:1fr auto;height:auto;padding:8px 10px}.se-head-center{grid-column:1 / -1;order:3;justify-content:center}.se-head-right{justify-content:flex-end}}
@@ -4780,8 +4781,10 @@ html{color-scheme:dark}
 .se-export-menu button:hover:not(:disabled){background:rgba(255,255,255,.06)}
 
 .se-project{position:relative}
-.se-project-menu{position:absolute;top:38px;left:0;display:flex;flex-direction:column;min-width:228px;padding:6px;border-radius:10px;background:hsl(var(--card));border:1px solid hsl(var(--border));z-index:55}
-.se-project-menu button{text-align:left;padding:8px 10px;border-radius:8px}
+.se-project-menu{position:absolute;top:44px;left:0;display:flex;flex-direction:column;min-width:212px;padding:6px;border-radius:12px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:55}
+.se-project-menu button{display:flex;align-items:center;gap:10px;height:34px;padding:0 12px;border-radius:8px;text-align:left;font-size:13px}
+.se-project-menu button:hover:not(:disabled){background:rgba(255,255,255,.06)}
+.se-project-hint{margin-left:auto;font-size:11px;opacity:.5}
 .se-project-menu button:disabled{opacity:.5}
 
 .se-dialog-backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:hsl(var(--card));opacity:.97;z-index:60;padding:24px}

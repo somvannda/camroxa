@@ -299,16 +299,16 @@ export function StudioProjectMenu({
       {open ? (
         <div className="se-project-menu" role="menu" aria-label="Project options">
           <button type="button" role="menuitem" onClick={startNewProject} disabled={busy}>
-            New Project
+            <Icon name="fa-plus" /> New Project
           </button>
           <button type="button" role="menuitem" onClick={() => openDialog("open")} disabled={busy}>
-            Open Project
+            <Icon name="fa-folder-open" /> Open Project
           </button>
           <button type="button" role="menuitem" onClick={() => openDialog("rename")} disabled={busy}>
-            Rename
+            <Icon name="fa-pen" /> Rename
           </button>
           <button type="button" role="menuitem" onClick={duplicate} disabled={busy}>
-            Duplicate Project
+            <Icon name="fa-copy" /> Duplicate Project
           </button>
           <button
             type="button"
@@ -316,10 +316,10 @@ export function StudioProjectMenu({
             onClick={() => openDialog("versions")}
             disabled={busy}
           >
-            Version History
+            <Icon name="fa-clock-rotate-left" /> Version History
           </button>
           <button type="button" role="menuitem" onClick={startSharing} disabled={busy}>
-            Share Project
+            <Icon name="fa-arrow-up-from-bracket" /> Share Project
           </button>
           <button
             type="button"
@@ -327,7 +327,7 @@ export function StudioProjectMenu({
             disabled
             title="There is no v1 Studio in this product"
           >
-            Open a copy in v1
+            <Icon name="fa-box-archive" /> Open a copy in v1
           </button>
           <button
             type="button"
@@ -335,7 +335,8 @@ export function StudioProjectMenu({
             onClick={() => openDialog("settings")}
             disabled={busy}
           >
-            Studio Settings
+            <Icon name="fa-gear" /> Studio Settings{" "}
+            <span className="se-project-hint">ctrl shift ,</span>
           </button>
           <button
             type="button"
@@ -345,7 +346,7 @@ export function StudioProjectMenu({
               onShowQuickStart();
             }}
           >
-            Show Quick Start again
+            <Icon name="fa-wand-magic-sparkles" /> Show Quick Start again
           </button>
         </div>
       ) : null}

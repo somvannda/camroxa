@@ -64,7 +64,7 @@ describe("StudioProjectMenu", () => {
       "Version History",
       "Share Project",
       "Open a copy in v1",
-      "Studio Settings",
+      "Studio Settings ctrl shift ,",
       "Show Quick Start again",
     ]);
 
@@ -80,7 +80,7 @@ describe("StudioProjectMenu", () => {
     const { onSettingsChange } = renderMenu();
 
     await user.click(screen.getByRole("button", { name: /Demo/ }));
-    await user.click(screen.getByRole("menuitem", { name: "Studio Settings" }));
+    await user.click(screen.getByRole("menuitem", { name: /Studio Settings/ }));
 
     const dialog = await screen.findByRole("dialog", { name: "Studio settings" });
     expect(dialog).toBeTruthy();

@@ -110,6 +110,9 @@ test("new and duplicate open a different project", async ({ page }) => {
 
 test("versions are captured automatically, and throttled within 20 seconds", async ({ page }) => {
   test.setTimeout(120_000);
+  // The save-state pill is part of the wide reference header (D-022); narrow
+  // windows drop it, so this test renders at the captured viewport.
+  await page.setViewportSize({ width: 1689, height: 1277 });
 
   const tag = Math.random().toString(36).slice(2, 8);
   const projectId = await createStudioProject(page, { title: `Versions ${tag}` });
