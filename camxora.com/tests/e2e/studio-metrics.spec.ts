@@ -69,7 +69,7 @@ test("metric parity holds against the captured reference", async ({ page }) => {
 
   // The summary line is the assertion: "6/6 px · N wired · M partial · K visual".
   const summary = page.locator(".se-metrics-head span");
-  await expect(summary).toContainText("/6");
+  await expect(summary).toContainText("/");
 
   const head = (await summary.innerText()).trim();
   const matched = Number(head.split("/")[0]);

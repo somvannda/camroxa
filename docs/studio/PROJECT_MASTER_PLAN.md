@@ -11,7 +11,7 @@ UX and implementation.
 - Copying reference branding, copy, or assets.
 - Depending on the reference platform's private API in any product path.
 - UI automation of the reference site.
-- Pixel-for-pixel replication (we match interaction quality and density).
+- ~~Pixel-for-pixel replication~~ **superseded by D-022 (2026-11-09): layout, spacing, palette and type scale now match pixels; branding/copy stay ours.**
 
 ## Milestones and gates
 

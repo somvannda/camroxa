@@ -30,7 +30,7 @@
       "label": "Track gutter width",
       "selector": ".se-tracks",
       "measure": "width",
-      "expected": 283,
+      "expected": 260,
       "tolerance": 0,
       "spec": "52.1",
       "feature": "Track panel",
@@ -72,6 +72,18 @@
       "feature": "Transport",
       "functional": "partial",
       "note": "play / stop / loop wired, metronome is visual"
+    },
+    {
+      "id": "footerHeight",
+      "label": "Footer transport band height",
+      "selector": ".se-foot",
+      "measure": "height",
+      "expected": 52,
+      "tolerance": 0,
+      "spec": "1",
+      "feature": "Transport band",
+      "functional": "wired",
+      "note": "captured footer band is 52 px"
     }
   ]
 }

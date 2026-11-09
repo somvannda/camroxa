@@ -549,3 +549,32 @@ expects an instant take.
 wait (`60/bpm` seconds per beat). Monitoring, take lanes, punch and comping are still not
 implemented; when the reference's Options menu is captured, align the labels and defaults
 rather than layering a second mechanism.
+
+---
+
+## D-022 — Pixel-level parity supersedes the density-only rule
+
+**Date:** 2026-11-09 **Status:** accepted (new requirement)
+
+**Decision.** The Studio is now built to **pixel-level visual parity** with the captured
+reference for **layout, spacing, control geometry, palette and type scale**. The CAMXORA
+wordmark/logo and our own copy stay ours; the reference wordmark, marketing copy and
+artwork are **not** reproduced.
+
+This supersedes the earlier rule in `PROJECT_MASTER_PLAN.md` / `SPEC_TO_CODE.md` /
+`SUNO_STUDIO_GAP_ANALYSIS.md` (“match interaction quality and density, not pixels”).
+
+**Method.**
+
+1. Every target is taken from the measurement tables and `reference/METRICS.json`,
+   never guessed; new targets are added there with selector + measure + exact expected.
+2. A Playwright audit renders the editor at the captured viewport and dumps computed
+   boxes/styles for those selectors; the delta report is the work queue.
+3. Deltas are closed region by region (header, track panel, timeline, footer, rails,
+   menus), with the audit green before each commit.
+4. Branding and copy are the only intentional deviations; anything else that differs is
+   a defect, not a style choice.
+
+**Consequences.** Existing `.s-*`/`.se-*` tokens may be replaced by reference values.
+Visual regression becomes a hard gate: the audit runs in CI. Functional state stays
+separate — a pixel match never implies a wired feature.

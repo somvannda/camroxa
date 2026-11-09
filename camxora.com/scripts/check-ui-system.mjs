@@ -39,7 +39,7 @@ body.split("\n").forEach((line, index) => {
 });
 
 const hexes = [...body.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]);
-const allowedHexes = new Set(["#070a13", "#0f1322", "#181f36", "#222a45", "#a855f7", "#7c3aed", "#b91c1c", "#fb9b85", "#faed87", "#aefc76", "#91c6ff", "#101012", "#fd429c", "#f4f5fb", "#c9cde0", "#8b90a6", "#6f748a", "#52d17c", "#60a5fa", "#1c1c1f", "#dc2626", "#ded5ff", "#efe9ff", "#fecaca", "#0a0d18", "#0a0d18", "#ffffff", "#fff", "#000", "#0b0716", "#3a3a40", "#2e2e33"]);
+const allowedHexes = new Set(["#070a13", "#0f1322", "#181f36", "#222a45", "#a855f7", "#7c3aed", "#b91c1c", "#fb9b85", "#faed87", "#aefc76", "#91c6ff", "#101012", "#fd429c", "#f4f5fb", "#c9cde0", "#8b90a6", "#6f748a", "#52d17c", "#60a5fa", "#1c1c1f", "#dc2626", "#ded5ff", "#efe9ff", "#fecaca", "#0a0d18", "#0a0d18", "#ffffff", "#fff", "#000", "#0b0716", "#3a3a40", "#2e2e33", "#0a0a0a", "#111111", "#1c1c1e", "#f7f4ef", "#c2c2c1"]);
 const strayHexes = [...new Set(hexes.filter((hex) => !allowedHexes.has(hex)))];
 if (strayHexes.length) {
   problems.push(`${file}  raw hex outside the token palette: ${strayHexes.join(", ")}`);

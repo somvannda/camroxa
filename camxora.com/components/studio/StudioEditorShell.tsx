@@ -69,7 +69,7 @@ const ROW_STEP = 86;
 /** How many documents the undo stack keeps. */
 const HISTORY_LIMIT = 50;
 const PANEL_W = 260;
-const LIBRARY_W = 368;
+const LIBRARY_W = 360;
 const ZOOM_LEVELS = [48, 64, 96, 144, 192];
 /** Clip Color swatches in the clip menu (same families as tracks). */
 const CLIP_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"];

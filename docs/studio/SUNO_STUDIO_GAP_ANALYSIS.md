@@ -117,7 +117,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | Branding, logo, copy, artwork | Must be original (mission rule, D-004) |
 | Provider-specific model names and marketing labels | We surface our own models and let the provider adapter map them |
 | Reference private API usage | Forbidden as a product dependency (D-002) |
-| Reproducing the reference's exact pixel metrics | We match interaction quality and density, not pixels; our tokens are ours |
+| Reproducing the reference's exact pixel metrics | ~~Not copied~~ **Now required by D-022** for layout/spacing/palette/type; branding and copy remain ours |
 
 ## 4. What we have that the reference does not (or does not obviously expose)
 
