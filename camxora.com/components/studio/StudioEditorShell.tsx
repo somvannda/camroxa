@@ -59,7 +59,7 @@ import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSav
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
 import { StudioMidiEditor } from "@/components/studio/StudioMidiEditor";
-import { sanitizeNotes, scheduleMidiNote, type MidiNote } from "@/lib/studio-midi";
+import { sanitizeNotes, sanitizePoints, scheduleMidiNote, valueAt, type MidiNote } from "@/lib/studio-midi";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -91,7 +91,7 @@ type ClipLike = {
   songId?: string;
   offset?: number;
   fadeIn?: number;
-  midi?: { notes?: MidiNote[] };
+  midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
 };
 
 function clock(seconds: number): string {
@@ -1638,6 +1638,23 @@ export function StudioEditorShell() {
     setMidiClipId(clipId);
   }
 
+/** Replace a MIDI automation lane (pitch bend or modulation). */
+  function setMidiLanes(clipId: string, lane: "bend" | "mod", points: { at: number; value: number }[]) {
+    const data = currentData() as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      {
+        ...data,
+        lanes: lanes.map((clip) =>
+          clip.id === clipId
+            ? { ...clip, midi: { ...(clip.midi ?? { notes: [] }), [lane]: points } }
+            : clip
+        ),
+      },
+      "MIDI automation"
+    );
+  }
+
   /** Replace a MIDI clip's notes through the same document writer as every edit. */
   function setMidiNotes(clipId: string, notes: MidiNote[]) {
     const data = currentData() as Record<string, unknown>;
@@ -2510,8 +2527,11 @@ export function StudioEditorShell() {
         const absolute = start + note.start;
         if (absolute + note.length <= from) continue;
         const when = now + Math.max(0, absolute - from) / playbackRate;
+        const clipMidi = (clip as ClipLike).midi;
+        const bend = valueAt(sanitizePoints(clipMidi?.bend, -1, 1), note.start, 0);
+        const mod = valueAt(sanitizePoints(clipMidi?.mod, 0, 1), note.start, 0);
         audioRef.current?.sources.push(
-          scheduleMidiNote(context, destination, note, when, playbackRate)
+          ...scheduleMidiNote(context, destination, note, when, playbackRate, { bend, mod })
         );
       }
     }
@@ -2948,7 +2968,14 @@ export function StudioEditorShell() {
 
   const midiClipSource = midiClipId ? clips.find((clip) => clip.id === midiClipId) : undefined;
   const midiClip = midiClipSource
-    ? { ...midiClipSource, midi: { notes: sanitizeNotes(midiClipSource.midi?.notes) } }
+    ? {
+        ...midiClipSource,
+        midi: {
+          notes: sanitizeNotes(midiClipSource.midi?.notes),
+          bend: sanitizePoints(midiClipSource.midi?.bend, -1, 1),
+          mod: sanitizePoints(midiClipSource.midi?.mod, 0, 1),
+        },
+      }
     : undefined;
 
   return (
@@ -3481,6 +3508,7 @@ export function StudioEditorShell() {
           }}
           onToggleLoop={() => setLoop((value) => !value)}
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
+          onChangeLanes={(lane, points) => setMidiLanes(midiClip.id, lane, points)}
           onClose={() => setMidiClipId(null)}
         />
       ) : selectedTrack ? (

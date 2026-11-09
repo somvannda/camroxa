@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { midiToFreq, noteName, quantizeNotes, sanitizeNotes, type MidiNote } from "@/lib/studio-midi";
+import {
+  midiToFreq,
+  noteName,
+  quantizeNotes,
+  sanitizeNotes,
+  sanitizePoints,
+  valueAt,
+  type MidiNote,
+} from "@/lib/studio-midi";
 
 describe("studio MIDI model", () => {
   it("maps pitch to frequency and names", () => {
@@ -27,5 +35,25 @@ describe("studio MIDI model", () => {
       { id: "b", pitch: 62, start: 0.61, length: 0.4, velocity: 100 },
     ];
     expect(quantizeNotes(notes, 0.5).map((note) => note.start)).toEqual([0.5, 0.5]);
+  });
+
+  it("sanitises and reads automation lanes", () => {
+    const points = sanitizePoints(
+      [
+        { at: 2, value: 5 },
+        { at: 0, value: -9 },
+        { at: "x", value: 1 },
+      ],
+      -1,
+      1
+    );
+    expect(points).toEqual([
+      { at: 0, value: -1 },
+      { at: 2, value: 1 },
+    ]);
+    expect(valueAt(points, -5, 0)).toBe(-1);
+    expect(valueAt(points, 1, 0)).toBe(-1);
+    expect(valueAt(points, 3, 0)).toBe(1);
+    expect(valueAt(undefined, 1, 0.5)).toBe(0.5);
   });
 });

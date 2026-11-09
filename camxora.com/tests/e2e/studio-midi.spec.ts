@@ -18,7 +18,17 @@ test("a MIDI track opens the captured editor and edits notes", async ({ page }) 
     "aria-selected",
     "true"
   );
-  await expect(panel.getByRole("tab", { name: "Pitch Bend" })).toBeDisabled();
+  await panel.getByRole("tab", { name: "Pitch Bend" }).click();
+  const bendLane = panel.getByRole("group", { name: "Pitch bend lane" });
+  await bendLane.click({ position: { x: 100, y: 40 } });
+  await expect(bendLane.locator("circle")).toHaveCount(1);
+  await bendLane.locator("circle").first().dblclick();
+  await expect(bendLane.locator("circle")).toHaveCount(0);
+  await panel.getByRole("tab", { name: "Modulation" }).click();
+  const modLane = panel.getByRole("group", { name: "Modulation lane" });
+  await modLane.click({ position: { x: 160, y: 30 } });
+  await expect(modLane.locator("circle")).toHaveCount(1);
+  await panel.getByRole("tab", { name: "Velocity" }).click();
   await expect(panel.getByText("Quantize")).toBeVisible();
 
   // S31/S64 geometry: 44 px keys, 34 px tab strip, 36 px control bar.

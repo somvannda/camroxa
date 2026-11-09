@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import {
+  sanitizePoints,
   MIDI_MAX_PITCH,
   MIDI_MIN_PITCH,
   MIDI_PITCHES,
@@ -11,6 +12,7 @@ import {
   isBlackKey,
   noteName,
   type MidiNote,
+  type MidiPoint,
 } from "@/lib/studio-midi";
 
 /**
@@ -26,7 +28,11 @@ export type StudioMidiEditorProps = {
     title?: string;
     duration?: number;
     color?: string;
-    midi?: { notes?: MidiNote[] };
+    midi?: {
+      notes?: MidiNote[];
+      bend?: MidiPoint[];
+      mod?: MidiPoint[];
+    };
   };
   barWidth: number;
   secondsPerBar: number;
@@ -37,6 +43,7 @@ export type StudioMidiEditorProps = {
   onScaleChange: (scale: string) => void;
   onToggleLoop: () => void;
   onChangeNotes: (notes: MidiNote[]) => void;
+  onChangeLanes: (lane: "bend" | "mod", points: MidiPoint[]) => void;
   onClose: () => void;
 };
 
@@ -83,6 +90,7 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     onScaleChange,
     onToggleLoop,
     onChangeNotes,
+    onChangeLanes,
     onClose,
   } = props;
   const notes = clip.midi?.notes ?? [];
@@ -90,6 +98,7 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const width = Math.max(96, (duration / secondsPerBar) * barWidth);
   const rollHeight = MIDI_PITCHES * MIDI_ROW;
   const [quantize, setQuantize] = useState<"4" | "8" | "16">("8");
+  const [lane, setLane] = useState<"velocity" | "bend" | "mod">("velocity");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [preview, setPreview] = useState<MidiNote | null>(null);
   const [velocityDrag, setVelocityDrag] = useState<{ id: string; notes: MidiNote[] } | null>(null);
@@ -229,15 +238,24 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
       </header>
 
       <div className="se-midi-tabs" role="tablist" aria-label="MIDI lanes">
-        <button type="button" role="tab" aria-selected className="on">
-          Velocity
-        </button>
-        <button type="button" role="tab" aria-selected={false} disabled title="Pitch bend has no model yet">
-          Pitch Bend
-        </button>
-        <button type="button" role="tab" aria-selected={false} disabled title="Modulation has no model yet">
-          Modulation
-        </button>
+        {(
+          [
+            ["velocity", "Velocity"],
+            ["bend", "Pitch Bend"],
+            ["mod", "Modulation"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={lane === value}
+            className={lane === value ? "on" : ""}
+            onClick={() => setLane(value)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="se-midi-roll" ref={rollRef}>
@@ -313,33 +331,110 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
       <div
         className="se-midi-velocity"
         role="group"
-        aria-label="Velocity lane"
+        aria-label={lane === "velocity" ? "Velocity lane" : `${lane === "bend" ? "Pitch bend" : "Modulation"} lane`}
         onPointerDown={(event) => {
+          if (lane === "velocity") {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const seconds = ((event.clientX - rect.left - 44) / width) * duration;
+            const nearest = notes.reduce<MidiNote | null>((best, note) => {
+              if (!best) return note;
+              return Math.abs(note.start - seconds) < Math.abs(best.start - seconds) ? note : best;
+            }, null);
+            if (!nearest) return;
+            setVelocityDrag({ id: nearest.id, notes });
+            const ratio = 1 - (event.clientY - rect.top) / rect.height;
+            setVelocityPreview(Math.max(1, Math.min(127, Math.round(ratio * 127))));
+            return;
+          }
           const rect = event.currentTarget.getBoundingClientRect();
-          const seconds = ((event.clientX - rect.left - 44) / width) * duration;
-          const nearest = notes.reduce<MidiNote | null>((best, note) => {
-            if (!best) return note;
-            return Math.abs(note.start - seconds) < Math.abs(best.start - seconds) ? note : best;
-          }, null);
-          if (!nearest) return;
-          setVelocityDrag({ id: nearest.id, notes });
+          const at = Math.min(
+            duration,
+            Math.max(0, ((event.clientX - rect.left - 44) / width) * duration)
+          );
           const ratio = 1 - (event.clientY - rect.top) / rect.height;
-          setVelocityPreview(Math.max(1, Math.min(127, Math.round(ratio * 127))));
+          const value = lane === "bend" ? ratio * 2 - 1 : ratio;
+          const points =
+            lane === "bend"
+              ? sanitizePoints(clip.midi?.bend, -1, 1)
+              : sanitizePoints(clip.midi?.mod, 0, 1);
+          const rounded = {
+            at: Math.round(at * 100) / 100,
+            value: Math.round(value * 100) / 100,
+          };
+          onChangeLanes(
+            lane,
+            [...points, rounded].sort((a, b) => a.at - b.at)
+          );
         }}
       >
-        <span className="se-midi-velocity-baseline" aria-hidden="true" />
-        {shown.map((note) => (
-          <span
-            key={note.id}
-            className={`se-midi-velocity-bar${
-              velocityDrag?.id === note.id ? " is-active" : ""
-            }`}
-            style={{
-              left: 44 + (note.start / duration) * width,
-              height: Math.max(2, (note.velocity / 127) * 52),
-            }}
-          />
-        ))}
+        {lane === "velocity" ? (
+          <>
+            <span className="se-midi-velocity-baseline" aria-hidden="true" />
+            {shown.map((note) => (
+              <span
+                key={note.id}
+                className={`se-midi-velocity-bar${
+                  velocityDrag?.id === note.id ? " is-active" : ""
+                }`}
+                style={{
+                  left: 44 + (note.start / duration) * width,
+                  height: Math.max(2, (note.velocity / 127) * 52),
+                }}
+              />
+            ))}
+          </>
+        ) : (
+          <svg
+            className="se-midi-lane-svg"
+            viewBox={`0 0 ${44 + width} 64`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <line
+              x1={44}
+              x2={44 + width}
+              y1={lane === "bend" ? 32 : 60}
+              y2={lane === "bend" ? 32 : 60}
+              className="se-midi-lane-base"
+            />
+            {(() => {
+              const points =
+                lane === "bend"
+                  ? sanitizePoints(clip.midi?.bend, -1, 1)
+                  : sanitizePoints(clip.midi?.mod, 0, 1);
+              const px = (point: { at: number }) => 44 + (point.at / duration) * width;
+              const py = (point: { value: number }) =>
+                lane === "bend" ? 32 - point.value * 28 : 60 - point.value * 52;
+              return (
+                <>
+                  {points.length > 1 ? (
+                    <polyline
+                      className="se-midi-lane-line"
+                      points={points.map((point) => `${px(point)},${py(point)}`).join(" ")}
+                    />
+                  ) : null}
+                  {points.map((point, index) => (
+                    <circle
+                      key={`${point.at}-${index}`}
+                      className="se-midi-lane-point"
+                      cx={px(point)}
+                      cy={py(point)}
+                      r={3}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        onChangeLanes(
+                          lane,
+                          points.filter((_, item) => item !== index)
+                        );
+                      }}
+                    />
+                  ))}
+                </>
+              );
+            })()}
+          </svg>
+        )}
       </div>
 
       <div className="se-midi-controls">

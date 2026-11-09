@@ -22,7 +22,8 @@ Evidence: `reference/screens/S31-midi-clip-editor.jpeg` (3200×560, 2× DPR),
 
 Velocity editing and key/scale are built too: dragging the lane sets the nearest note velocity,
 and Key/Scale dim out-of-scale rows and snap new notes into the selected scale. Focused notes transpose with ↑/↓ (semitone) and Shift+↑/↓ (octave), documented in the shortcut
-map. Still open: the pitch-bend/modulation lanes (tabs disabled with reasons) and MIDI file
+map. Pitch bend and modulation lanes are built too (click adds a point, double-click removes;
+bend detunes the note at its start and modulation applies a tremolo). Still open: MIDI file
 import/export.
 
 ## What the capture shows

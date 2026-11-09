@@ -14,6 +14,8 @@ export type MidiNote = {
   velocity: number;
 };
 
+export type MidiPoint = { at: number; value: number };
+
 export const MIDI_MIN_PITCH = 36; // C2
 export const MIDI_MAX_PITCH = 84; // C6
 export const MIDI_ROW = 12;
@@ -58,6 +60,32 @@ export function sanitizeNotes(input: unknown): MidiNote[] {
   return notes;
 }
 
+/** Coerce an automation lane (pitch bend -1..1, modulation 0..1). */
+export function sanitizePoints(input: unknown, min: number, max: number): MidiPoint[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((raw) => {
+      const point = raw as Record<string, unknown>;
+      const at = Number(point?.at);
+      const value = Number(point?.value);
+      if (!Number.isFinite(at) || !Number.isFinite(value)) return null;
+      return { at: Math.max(0, at), value: Math.min(max, Math.max(min, value)) };
+    })
+    .filter((point): point is MidiPoint => point !== null)
+    .sort((a, b) => a.at - b.at);
+}
+
+/** Value of a lane at a time; holds the nearest point (before, else first). */
+export function valueAt(points: MidiPoint[] | undefined, at: number, fallback: number): number {
+  if (!points || points.length === 0) return fallback;
+  let current = points[0].value;
+  for (const point of points) {
+    if (point.at > at) break;
+    current = point.value;
+  }
+  return current;
+}
+
 export function quantizeNotes(notes: MidiNote[], step: number): MidiNote[] {
   if (!(step > 0)) return notes;
   return notes.map((note) => ({
@@ -72,12 +100,15 @@ export function scheduleMidiNote(
   destination: AudioNode,
   note: MidiNote,
   when: number,
-  rate = 1
-): OscillatorNode {
+  rate = 1,
+  automation?: { bend?: number; mod?: number }
+): AudioScheduledSourceNode[] {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
   oscillator.type = "triangle";
   oscillator.frequency.value = midiToFreq(note.pitch);
+  // Pitch bend is applied as detune at the note's start (captured lane, simplified).
+  oscillator.detune.value = (automation?.bend ?? 0) * 200;
   const peak = Math.max(0.01, Math.min(1, note.velocity / 127)) * 0.22;
   const length = Math.max(0.03, note.length / Math.max(0.1, rate));
   gain.gain.setValueAtTime(0, when);
@@ -85,8 +116,29 @@ export function scheduleMidiNote(
   gain.gain.setValueAtTime(peak, when + length * 0.7);
   gain.gain.linearRampToValueAtTime(0, when + length);
   oscillator.connect(gain);
-  gain.connect(destination);
+
+  const sources: AudioScheduledSourceNode[] = [oscillator];
+  const mod = automation?.mod ?? 0;
+  if (mod > 0) {
+    // Modulation is tremolo: an LFO on a gain stage, depth from the lane at start.
+    const tremolo = context.createGain();
+    tremolo.gain.value = 1;
+    const lfo = context.createOscillator();
+    const depth = context.createGain();
+    lfo.frequency.value = 5;
+    depth.gain.value = mod * 0.35;
+    lfo.connect(depth);
+    depth.connect(tremolo.gain);
+    gain.connect(tremolo);
+    tremolo.connect(destination);
+    lfo.start(when);
+    lfo.stop(when + length + 0.02);
+    sources.push(lfo);
+  } else {
+    gain.connect(destination);
+  }
+
   oscillator.start(when);
   oscillator.stop(when + length + 0.02);
-  return oscillator;
+  return sources;
 }

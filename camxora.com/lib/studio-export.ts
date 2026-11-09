@@ -12,7 +12,7 @@
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { normaliseChannels } from "@/lib/studio-normalise";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
-import { scheduleMidiNote, type MidiNote } from "@/lib/studio-midi";
+import { sanitizePoints, scheduleMidiNote, valueAt, type MidiNote } from "@/lib/studio-midi";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
 export type ExportClip = {
@@ -24,7 +24,11 @@ export type ExportClip = {
   /** Fade-in length in seconds (S25). */
   fadeIn?: number;
   audioUrl?: string | null;
-  midi?: { notes?: MidiNote[] };
+  midi?: {
+    notes?: MidiNote[];
+    bend?: { at: number; value: number }[];
+    mod?: { at: number; value: number }[];
+  };
 };
 
 export type ExportTrack = {
@@ -192,10 +196,15 @@ export async function renderMix(
     const audible = track ? !track.muted && (!anySolo || track.solo) : true;
     if (!audible) continue;
     const destination = trackInput(track?.id ?? clip.id, track?.volume ?? 80);
+    const bend = sanitizePoints(clip.midi?.bend, -1, 1);
+    const mod = sanitizePoints(clip.midi?.mod, 0, 1);
     for (const note of notes) {
       const absolute = (clip.start ?? 0) + note.start;
       if (absolute < from - 0.001 || absolute >= to) continue;
-      scheduleMidiNote(context, destination, note, Math.max(0, absolute - from));
+      scheduleMidiNote(context, destination, note, Math.max(0, absolute - from), 1, {
+        bend: valueAt(bend, note.start, 0),
+        mod: valueAt(mod, note.start, 0),
+      });
     }
   }
 
