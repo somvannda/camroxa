@@ -904,6 +904,26 @@ test("popping a plugin out floats the captured card", async ({ page }) => {
   await expect(page.locator(".sp-slot.is-popped")).toHaveCount(0);
 });
 
+test("song row actions stay hidden until hover", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel rows" });
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await page.getByRole("button", { name: /All Songs/ }).click();
+  const row = page.locator(".se-lib-song").first();
+  await expect(row).toBeVisible();
+  const opacity = () =>
+    row.evaluate((element) => {
+      const actions = element.querySelector(".se-lib-song-actions");
+      return actions ? getComputedStyle(actions).opacity : null;
+    });
+  await page.mouse.move(600, 600);
+  // S53: rows show art, title, style and tags only; play/like/add arrive on hover.
+  await expect.poll(opacity).toBe("0");
+  await row.hover();
+  await expect.poll(opacity).toBe("1");
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
