@@ -153,10 +153,19 @@ export function StudioTimeline(props: StudioTimelineProps) {
       >
         <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
           {Array.from({ length: barCount }).map((_, bar) => (
-            <span key={bar} className="se-bar-tick" style={{ left: bar * barWidth }}>
-              {bar + 1}
-            </span>
+            <span key={`line-${bar}`} className="se-bar-line" style={{ left: bar * barWidth }} />
           ))}
+          {Array.from({ length: barCount }).map((_, bar) => {
+            // Labels thin out as the zoom drops so numbers never collide (S05/S19 show
+            // every second bar at the captured zoom).
+            const step = barWidth >= 80 ? 1 : barWidth >= 44 ? 2 : barWidth >= 24 ? 4 : 8;
+            if (bar % step !== 0) return null;
+            return (
+              <span key={bar} className="se-bar-tick" style={{ left: bar * barWidth }}>
+                {bar + 1}
+              </span>
+            );
+          })}
         </div>
       </div>
 
