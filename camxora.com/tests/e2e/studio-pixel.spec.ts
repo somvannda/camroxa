@@ -740,6 +740,38 @@ test("plugin catalog dialog matches the captured surface", async ({ page }) => {
   });
 });
 
+test("clip colour opens the captured submenu", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel colour" });
+  await page.locator(".se-clip").first().click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "Clip options" });
+  await menu.getByRole("menuitem", { name: "Clip Color" }).click();
+  const flyout = menu.locator(".se-clip-menu-colors");
+  await expect(flyout).toBeVisible();
+  const info = await flyout.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const menuBox = element.closest(".se-clip-menu")?.getBoundingClientRect();
+    return {
+      width: Math.round(rect.width),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+      leftOfMenu: menuBox ? Math.round(rect.left - menuBox.right) : null,
+      auto: element.querySelector(".se-color-auto")?.textContent?.replace(/\s+/g, " ").trim(),
+      swatches: element.querySelectorAll(".se-color-grid button").length,
+    };
+  });
+  // S28: a 196 px card to the right of the row, Auto + five swatches.
+  expect(info.width).toBe(196);
+  expect(info.radius).toBe("12px");
+  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.leftOfMenu).toBeGreaterThanOrEqual(3);
+  expect(info.leftOfMenu).toBeLessThanOrEqual(16);
+  expect(info.auto).toBe("Auto");
+  expect(info.swatches).toBe(5);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
