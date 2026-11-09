@@ -66,7 +66,7 @@ Create in the admin portal: **Users → New user**
 - Profile: `Review Channel` with Publication defaults (unlisted, Category Music, AI use = Yes)
 
 Then verify the login works from a **clean browser profile** and that the desktop build on
-`https://camxora.com/download` (1.6.1) accepts it. If Cloudflare Turnstile challenges the login,
+`https://camxora.com/download` (current build) accepts it. If Cloudflare Turnstile challenges the login,
 tell me before replying — Google must not hit a bot wall.
 
 ## 3. Reply email
