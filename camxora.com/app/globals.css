@@ -4515,6 +4515,8 @@ html{color-scheme:dark}
 .sp-card:hover{border-color:rgba(255,255,255,.1);background:#242427}
 .sp-card-name{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#f7f4ef}
 .sp-card-name em{font-style:normal;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#faed87}
+.sp-card-learn{display:inline-flex;align-items:center;gap:4px;margin-left:auto;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.1);font-size:11px;font-weight:400;color:#c2c2c1}
+.sp-card-learn .icon{width:10px;height:10px}
 .sp-card-desc{font-size:12px;line-height:1.45;color:#8b90a6}
 .sp-none{font-size:12px;color:#8b90a6}
 @media (max-width:900px){.sp-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-slot{width:260px}.sp-slot.sp-slot-eq{width:300px}}

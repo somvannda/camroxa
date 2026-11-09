@@ -738,6 +738,16 @@ test("plugin catalog dialog matches the captured surface", async ({ page }) => {
     label: "Audio effects",
     labelSize: "11px",
   });
+
+  // S39: each card carries a Learn chip that explains the effect; it must not add it.
+  const learn = dialog.locator(".sp-card-learn").first();
+  await learn.hover();
+  const tip = page.getByRole("tooltip");
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText("Compressor");
+  await learn.click();
+  await expect(dialog).toBeVisible();
+  await expect(page.locator(".sp-slot")).toHaveCount(0);
 });
 
 test("clip colour opens the captured submenu", async ({ page }) => {

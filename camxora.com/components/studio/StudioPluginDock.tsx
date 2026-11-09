@@ -553,7 +553,19 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                 >
                   <span className="sp-card-name">
                     {plugin.name}
-                    {plugin.unverified ? <em title="Not yet confirmed against the reference">unverified</em> : null}
+                    {plugin.unverified ? (
+                      <em title="Not yet confirmed against the reference">unverified</em>
+                    ) : null}
+                    <span
+                      className="sp-card-learn"
+                      data-help={`plugin-${plugin.id}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      <Icon name="fa-circle-play" /> Learn
+                    </span>
                   </span>
                   <span className="sp-card-desc">{plugin.description}</span>
                 </button>

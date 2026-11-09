@@ -69,6 +69,42 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
     title: "Project",
     body: "Project menu: new, open, rename, duplicate, versions, sharing, settings and the quick-start overlay.",
   },
+  "plugin-compressor": {
+    title: "Compressor",
+    body: "Evens out dynamics: threshold, ratio and knee set how hard peaks are reduced, then makeup gain restores level.",
+  },
+  "plugin-convolution": {
+    title: "Convolution",
+    body: "Places the signal in a sampled room: an impulse response shapes the result, and the mix blends it back.",
+  },
+  "plugin-delay": {
+    title: "Delay",
+    body: "Echo with feedback and mix; free-running in milliseconds or synced to the beat.",
+  },
+  "plugin-distortion": {
+    title: "Distortion",
+    body: "Waveshaping drive into a tone stage; tilt, bias and fold shape the character.",
+  },
+  "plugin-eq": {
+    title: "EQ",
+    body: "Four bands of parametric shaping: pick a band, choose its shape, then set frequency, Q and gain on the curve or the knobs.",
+  },
+  "plugin-gate": {
+    title: "Gate",
+    body: "Silences the signal below the threshold, with floor, attack and hold controlling how the gate closes and reopens.",
+  },
+  "plugin-limiter": {
+    title: "Limiter",
+    body: "Brickwall lookahead limiter: drives the signal into a fixed ceiling so peaks never pass it.",
+  },
+  "plugin-reverb": {
+    title: "Reverb",
+    body: "Algorithmic reverb with decay, mix, width, damping, predelay and low/high cut.",
+  },
+  "plugin-chorus": {
+    title: "Chorus",
+    body: "Modulated short delay that thickens the signal; this catalog card is not yet verified against the reference.",
+  },
   clip: {
     title: "Clip",
     body: "Drag to move the clip, double-click to open its editor, or right-click for split, rename, colour, stems and download.",
