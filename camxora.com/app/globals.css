@@ -4506,7 +4506,7 @@ html{color-scheme:dark}
 .se-head-group.se-tempo{gap:4px;padding:0 10px}
 .se-head-group.se-tempo .se-pill{background:transparent}
 .se-bpm-unit{font-size:11px;color:#c2c2c1}
-.se-logo{font-size:13px;font-weight:800;letter-spacing:.14em;color:#fff;margin-right:6px}
+.se-logo{font-size:13px;font-weight:800;letter-spacing:.14em;color:#fff;margin-left:8px;margin-right:6px}
 .se-chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border:0;border-radius:999px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .se-icon{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:7px;background:transparent;color:#c9cde0;cursor:pointer}
 .se-icon:hover:not(:disabled){background:rgba(255,255,255,.06);color:#fff}
@@ -4567,6 +4567,8 @@ html{color-scheme:dark}
 .se-ruler-inner{position:relative;height:100%}
 .se-bar-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.06)}
 .se-bar-tick,.se-time-tick{position:absolute;top:0;padding:9px 0 0 4px;font-size:11px;color:#8b90a6;font-variant-numeric:tabular-nums;white-space:nowrap}
+.se-bar-tick{padding-left:12px}
+.se-time-tick{padding-left:6px}
 .se-lanes{position:relative;min-height:100%}
 .se-lanes-inner{position:relative}
 .se-lane{position:relative;border-bottom:1px solid rgba(255,255,255,.04)}
