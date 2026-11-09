@@ -491,8 +491,8 @@ test("master strip is pinned to the captured track panel bottom", async ({ page 
   expect(info).not.toBeNull();
   expect(info?.right).toBe(259);
   expect(info?.label).toBe("Main");
-  expect(info?.faderX).toBe(28);
-  expect(info?.faderWidth).toBe(223);
+  expect(info?.faderX).toBe(12);
+  expect(info?.faderWidth).toBe(239);
   expect(info?.footerMaster).toBe(0);
 });
 

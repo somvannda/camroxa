@@ -4586,8 +4586,8 @@ html{color-scheme:dark}
 .se-lib-error{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:8px 12px;border-bottom:1px solid hsl(var(--border));font-size:12px}
 .se-foot{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;height:52px;flex:none;padding:0 12px;border-top:1px solid rgba(255,255,255,.08);background:#0a0a0a}
 .se-foot-tools{display:flex;align-items:center;gap:14px}
-.se-master-strip{flex:none;display:flex;flex-direction:column;gap:6px;padding:10px 8px 12px 28px;border-top:1px solid rgba(255,255,255,.06)}
-.se-master-head{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#f7f4ef}
+.se-master-strip{flex:none;display:flex;flex-direction:column;gap:6px;padding:10px 8px 12px 12px;border-top:1px solid rgba(255,255,255,.06)}
+.se-master-head{display:flex;align-items:center;justify-content:space-between;padding-left:16px;font-size:12px;color:#f7f4ef}
 .se-master-head .se-icon{width:24px;height:24px}
 .se-foot-group{display:flex;align-items:center;gap:8px;height:36px;padding:0 7px;border-radius:10px;background:rgba(255,255,255,.04)}
 .se-foot-group .se-icon{width:24px;height:32px}
