@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-09] - YouTube quota counts retries on the day they happen
+
+### Fixed
+
+- `quota_status()` counted upload jobs by `created_at` only. Each `(batch, profile, role)` slot keeps one row (`record_upload_result` updates it), so re-uploading an older slot did not count toward the daily cap and Google rejected the transfer with `uploadLimitExceeded`. The query now counts a row when either its creation or its latest attempt (`updated_at`) falls inside the Pacific quota day. No schema change.
+
 ## [2026-11-09] - Progress reports the real stage, export, merge, and YouTube state
 
 ### Fixed
