@@ -393,6 +393,42 @@ test("clip context menu matches the captured popover", async ({ page }) => {
   expect(info.rows.every((row) => row.height === 38)).toBe(true);
 });
 
+test("share dialog matches the captured surface", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel share" });
+  await page.locator(".se-chip").click();
+  await page.getByRole("menuitem", { name: /Share Project/ }).click();
+  const dialog = page.locator(".se-dialog");
+  await expect(dialog).toBeVisible();
+  const info = await dialog.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const title = element.querySelector("h2");
+    const button = element.querySelector(".se-dialog-foot .se-pill.on");
+    return {
+      width: Math.round(rect.width),
+      radius: style.borderTopLeftRadius,
+      padding: style.paddingTop,
+      background: style.backgroundColor,
+      titleSize: title ? getComputedStyle(title).fontSize : null,
+      titleWeight: title ? getComputedStyle(title).fontWeight : null,
+      actionHeight: button ? Math.round(button.getBoundingClientRect().height) : null,
+      backdrop: getComputedStyle(element.parentElement as Element).backgroundColor,
+    };
+  });
+  // S12: 480 px dialog on #1c1c1e, radius 24, padding 32, 24 px/700 title,
+  // 44 px pill actions over a dimmed editor.
+  expect(info.width).toBe(480);
+  expect(info.radius).toBe("24px");
+  expect(info.padding).toBe("32px");
+  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.titleSize).toBe("24px");
+  expect(info.titleWeight).toBe("700");
+  expect(info.actionHeight).toBe(44);
+  expect(info.backdrop).toBe("rgba(0, 0, 0, 0.72)");
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
