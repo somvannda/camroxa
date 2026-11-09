@@ -7,6 +7,18 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Progress now reports the real YouTube, Export, Merge and completion state.**
+  A single channel upload no longer marks its sibling row Published, quota
+  failures are recorded as Failed instead of disappearing, finished rows report
+  Export/Merge as Completed, Completed rows report 100%, and Active Runs no
+  longer counts finished pipelines. The API side is live; the desktop label,
+  failure-reporting and Active-count changes ship with the next installer. See
+  `docs/changelog/2026-11-09-progress-status-truth.md`.
+
 ## [1.6.4] - 2026-11-09
 
 ### Added
