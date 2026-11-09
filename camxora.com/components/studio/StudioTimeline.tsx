@@ -41,6 +41,13 @@ export type TimelineMarquee = { x1: number; y1: number; x2: number; y2: number }
  * palette) need dark text to stay readable; the saturated reference colours keep
  * white. Keeps the captured look without failing contrast (axe color-contrast).
  */
+/** Bottom-ruler label step: the smallest captured interval that keeps labels ~150 px apart. */
+function timeTickStep(barWidth: number, secondsPerBar: number): number {
+  const pxPerSecond = barWidth / Math.max(0.001, secondsPerBar);
+  const steps = [5, 10, 15, 30, 60, 120, 300];
+  return steps.find((step) => step * pxPerSecond >= 150) ?? 600;
+}
+
 function labelOn(fill: string): string {
   const value = fill.replace("#", "");
   if (value.length !== 6) return "#ffffff";
@@ -355,15 +362,22 @@ export function StudioTimeline(props: StudioTimelineProps) {
 
       <div className="se-ruler-time" aria-hidden="true">
         <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
-          {Array.from({ length: Math.ceil(duration / 30) }).map((_, index) => (
-            <span
-              key={index}
-              className="se-time-tick"
-              style={{ left: ((index * 30) / secondsPerBar) * barWidth }}
-            >
-              {clock(index * 30).slice(0, 5)}
-            </span>
-          ))}
+          {Array.from({
+            length: Math.ceil(duration / timeTickStep(barWidth, secondsPerBar)) + 1,
+          }).map((_, index) => {
+            const step = timeTickStep(barWidth, secondsPerBar);
+            const at = index * step;
+            if (at > duration) return null;
+            return (
+              <span
+                key={index}
+                className="se-time-tick"
+                style={{ left: (at / secondsPerBar) * barWidth }}
+              >
+                {clock(at).slice(0, 5)}
+              </span>
+            );
+          })}
         </div>
       </div>
     </div>

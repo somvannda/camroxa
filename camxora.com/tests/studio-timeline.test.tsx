@@ -63,8 +63,10 @@ describe("StudioTimeline", () => {
     const { container } = render(<StudioTimeline {...props()} />);
     const bars = [...container.querySelectorAll(".se-bar-tick")].map((node) => node.textContent);
     expect(bars).toEqual(["1", "2", "3", "4"]);
-    // duration 8s at 30s per time tick means exactly one label.
-    expect(container.querySelectorAll(".se-time-tick")).toHaveLength(1);
+    // 8 s at 96 px per 2 s bar: the adaptive bottom ruler ticks every 5 s.
+    expect(
+      [...container.querySelectorAll(".se-time-tick")].map((node) => node.textContent)
+    ).toEqual(["00:00", "00:05"]);
   });
 
   it("renders a clip at its start position and width", () => {
