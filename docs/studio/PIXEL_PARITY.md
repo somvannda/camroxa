@@ -37,6 +37,9 @@ functional controls the capture does not show (listed below).
 | Project menu | 212 px, 34 px icon rows, settings accelerator | same |
 | Clip menu | 158 px, 38 px icon rows, 11 px shortcuts | same (fewer rows, see below) |
 | Dialogs | 480 px, radius 24, padding 32, 24 px title, 44 px pills | same |
+| Export toast | bottom-left 888 px banner on #1c1c1e, radius 16 | same |
+| Selected track | tints the gutter row and its lane | same |
+| Clip hover card | light 256 px card explaining drag/double-click/right-click | same |
 
 ## Intentional divergences (recorded, not defects)
 
@@ -55,4 +58,6 @@ functional controls the capture does not show (listed below).
 
 - Track panel head icons (sort left, expand right) — captured, not wired.
 - Song row subtitle copy (the capture shows a description line; we show tags).
-- Menus, dialogs and the export sheet geometry (not yet re-measured after D-022).
+- Generation prompt bar, history drawer and plugin dock cards — reference surfaces
+  whose behaviour is not built, so they stay out of the chrome pass.
+- Track panel head icons (sort / expand) — captured, behaviour unknown.
