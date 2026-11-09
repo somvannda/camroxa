@@ -12,6 +12,7 @@ from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.routers.creators_public import CreatorLink, CreatorPublicProfile
 from platform_api.services.creator_profile_service import CreatorProfileService
 from platform_api.services.creator_program_service import CreatorProgramService
+from platform_api.services.creator_release_service import CreatorReleaseService
 
 router = APIRouter(prefix="/creator", tags=["creator-studio"])
 
@@ -24,8 +25,13 @@ async def _get_program_service() -> CreatorProgramService:
     raise NotImplementedError("CreatorProgramService dependency not configured.")
 
 
+async def _get_release_service() -> CreatorReleaseService:
+    raise NotImplementedError("CreatorReleaseService dependency not configured.")
+
+
 CreatorServiceDep = Annotated[CreatorProfileService, Depends(_get_creator_service)]
 ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
+ReleaseServiceDep = Annotated[CreatorReleaseService, Depends(_get_release_service)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -110,6 +116,16 @@ class VerificationRequest(BaseModel):
     evidence_ref: str = Field(..., min_length=1, max_length=1000)
 
 
+class ReleaseCreateRequest(BaseModel):
+    source_task_id: str
+    variant: Literal["ok", "alt"] = "ok"
+    metadata: dict = Field(default_factory=dict)
+
+
+class ReleaseUpdateRequest(BaseModel):
+    metadata: dict = Field(default_factory=dict)
+
+
 @router.get("/me", response_model=CreatorStudioResponse)
 async def get_my_creator_profile(
     ctx: CurrentUserDep, service: CreatorServiceDep
@@ -185,3 +201,64 @@ async def submit_verification(
     return await service.submit_verification(
         ctx.user_id, kind=body.kind, evidence_ref=body.evidence_ref
     )
+
+
+@router.get("/releases")
+async def list_releases(ctx: CurrentUserDep, service: ReleaseServiceDep) -> dict:
+    return {"items": await service.list_for_creator(ctx.user_id)}
+
+
+@router.post("/releases", status_code=201)
+async def create_release(
+    body: ReleaseCreateRequest,
+    ctx: CurrentUserDep,
+    service: ReleaseServiceDep,
+) -> dict:
+    return {
+        "release": await service.create_draft(
+            ctx.user_id,
+            source_task_id=body.source_task_id,
+            variant=body.variant,
+            metadata=body.metadata,
+        )
+    }
+
+
+@router.get("/releases/{release_id}")
+async def get_release(
+    release_id: str, ctx: CurrentUserDep, service: ReleaseServiceDep
+) -> dict:
+    return {"release": await service.get_for_creator(ctx.user_id, release_id)}
+
+
+@router.patch("/releases/{release_id}")
+async def update_release(
+    release_id: str,
+    body: ReleaseUpdateRequest,
+    ctx: CurrentUserDep,
+    service: ReleaseServiceDep,
+) -> dict:
+    return {
+        "release": await service.update_draft(ctx.user_id, release_id, body.metadata)
+    }
+
+
+@router.post("/releases/{release_id}/submit")
+async def submit_release(
+    release_id: str, ctx: CurrentUserDep, service: ReleaseServiceDep
+) -> dict:
+    return {"release": await service.submit(ctx.user_id, release_id)}
+
+
+@router.post("/releases/{release_id}/withdraw")
+async def withdraw_release(
+    release_id: str, ctx: CurrentUserDep, service: ReleaseServiceDep
+) -> dict:
+    return {"release": await service.withdraw(ctx.user_id, release_id)}
+
+
+@router.post("/releases/{release_id}/unpublish")
+async def unpublish_release(
+    release_id: str, ctx: CurrentUserDep, service: ReleaseServiceDep
+) -> dict:
+    return {"release": await service.unpublish(ctx.user_id, release_id)}

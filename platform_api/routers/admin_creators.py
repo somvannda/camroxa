@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.services.creator_program_service import CreatorProgramService
+from platform_api.services.creator_release_service import CreatorReleaseService
 
 router = APIRouter(prefix="/admin/creators", tags=["creator-admin"])
 
@@ -20,7 +21,12 @@ async def _get_program_service() -> CreatorProgramService:
     raise NotImplementedError("CreatorProgramService dependency not configured.")
 
 
+async def _get_release_service() -> CreatorReleaseService:
+    raise NotImplementedError("CreatorReleaseService dependency not configured.")
+
+
 ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
+ReleaseServiceDep = Annotated[CreatorReleaseService, Depends(_get_release_service)]
 
 
 class ApplicationDecisionRequest(BaseModel):
@@ -45,6 +51,11 @@ class BadgeGrantRequest(BaseModel):
         "staff",
     ]
     expires_at: datetime | None = None
+    reason: str | None = None
+
+
+class ReleaseDecisionRequest(BaseModel):
+    decision: Literal["approve", "request_changes", "reject"]
     reason: str | None = None
 
 
@@ -95,6 +106,33 @@ async def decide_verification(
 ) -> dict:
     return await service.decide_verification(
         verification_id,
+        decision=body.decision,
+        reviewer_id=ctx.user_id,
+        reason=body.reason,
+    )
+
+
+@router.get("/releases")
+async def list_releases(
+    ctx: AdminDep,
+    service: ReleaseServiceDep,
+    status: str | None = Query(default=None, max_length=30),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    del ctx
+    return await service.list_admin(status=status, limit=limit, offset=offset)
+
+
+@router.post("/releases/{release_id}/decision")
+async def decide_release(
+    release_id: str,
+    body: ReleaseDecisionRequest,
+    ctx: AdminDep,
+    service: ReleaseServiceDep,
+) -> dict:
+    return await service.decide(
+        release_id,
         decision=body.decision,
         reviewer_id=ctx.user_id,
         reason=body.reason,

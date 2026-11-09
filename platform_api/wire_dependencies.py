@@ -589,10 +589,13 @@ def wire_all_dependencies(app: FastAPI) -> None:
     # --- creators_public.py / creator_studio.py ---
     from platform_api.routers.creator_studio import _get_creator_service as studio_creator_service
     from platform_api.routers.creator_studio import _get_program_service as studio_program_service
+    from platform_api.routers.creator_studio import _get_release_service as studio_release_service
     from platform_api.routers.creators_public import _get_creator_service as public_creator_service
     from platform_api.routers.admin_creators import _get_program_service as admin_program_service
+    from platform_api.routers.admin_creators import _get_release_service as admin_release_service
     from platform_api.services.creator_profile_service import CreatorProfileService
     from platform_api.services.creator_program_service import CreatorProgramService
+    from platform_api.services.creator_release_service import CreatorReleaseService
 
     async def real_creator_profile_service() -> CreatorProfileService:
         from platform_api.dependencies import get_db_pool
@@ -604,10 +607,17 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
         return CreatorProgramService(get_db_pool())
 
+    async def real_creator_release_service() -> CreatorReleaseService:
+        from platform_api.dependencies import get_db_pool
+
+        return CreatorReleaseService(get_db_pool())
+
     app.dependency_overrides[public_creator_service] = real_creator_profile_service
     app.dependency_overrides[studio_creator_service] = real_creator_profile_service
     app.dependency_overrides[studio_program_service] = real_creator_program_service
     app.dependency_overrides[admin_program_service] = real_creator_program_service
+    app.dependency_overrides[studio_release_service] = real_creator_release_service
+    app.dependency_overrides[admin_release_service] = real_creator_release_service
 
     from platform_api.routers.web_music import _get_web_music_service as web_music_get_svc
     from platform_api.services.web_music_service import WebMusicService
