@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-09] - LRC background tasks no longer log shutdown tracebacks
+
+### Fixed
+
+- Restarts logged `Task exception was never retrieved` / `InterfaceError('pool is closing')` from the fire-and-forget `_upload_web_music_lrc` task. A done-callback now consumes cancelled/successful tasks and downgrades the expected pool-closing case to debug, while still warning on real failures. See `docs/changelog/2026-11-09-lrc-task-hygiene.md`.
+
 ## [2026-11-09] - Suno polls remember the owning key
 
 ### Changed
