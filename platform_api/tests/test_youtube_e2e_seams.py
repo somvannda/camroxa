@@ -179,3 +179,31 @@ async def test_quota_exhausted_reports_zero_remaining() -> None:
     )
 
     assert (await service.quota_status(user_id=uuid4()))["remaining"] == 0
+
+
+class _RecordingQuotaDb:
+    def __init__(self) -> None:
+        self.query = ""
+        self.args: tuple[Any, ...] = ()
+
+    async def fetchval(self, query: str, *args: Any) -> int:
+        self.query = query
+        self.args = args
+        return 0
+
+
+@pytest.mark.asyncio
+async def test_quota_counts_a_retry_by_its_latest_attempt() -> None:
+    """A re-uploaded old slot must count today, not only on its created_at day."""
+    from platform_api.services.youtube_connection_service import YouTubeConnectionService
+
+    db = _RecordingQuotaDb()
+    service = YouTubeConnectionService(
+        db=db, oauth_app_repo=None, connection_repo=None, encryption=None  # type: ignore[arg-type]
+    )
+
+    await service.quota_status(user_id=uuid4())
+
+    assert "created_at" in db.query
+    assert "updated_at" in db.query
+    assert len(db.args) == 3  # user id + quota day start/end
