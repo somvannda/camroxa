@@ -3112,7 +3112,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  Copy <span>Ctrl C</span>
+                  <Icon name="fa-copy" /> Copy <span>Ctrl C</span>
                 </button>
                 <button
                   type="button"
@@ -3123,7 +3123,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  Paste <span>Ctrl V</span>
+                  <Icon name="fa-paste" /> Paste <span>Ctrl V</span>
                 </button>
                 <button
                   type="button"
@@ -3133,7 +3133,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  Duplicate <span>Ctrl D</span>
+                  <Icon name="fa-clone" /> Duplicate <span>Ctrl D</span>
                 </button>
                 <button
                   type="button"
@@ -3143,7 +3143,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  Delete <span>Backspace</span>
+                  <Icon name="fa-trash" /> Delete <span>Backspace</span>
                 </button>
                 <div className="se-clip-menu-sep" />
                 <button
@@ -3155,7 +3155,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  Split <span>Ctrl E</span>
+                  <Icon name="fa-scissors" /> Split <span>Ctrl E</span>
                 </button>
                 <div className="se-clip-menu-sep" />
                 <button
@@ -3166,7 +3166,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  Rename
+                  <Icon name="fa-pen" /> Rename
                 </button>
                 <button
                   type="button"
@@ -3175,7 +3175,7 @@ export function StudioEditorShell() {
                   aria-expanded={clipColorOpen}
                   onClick={() => setClipColorOpen((open) => !open)}
                 >
-                  Clip Color <span>▸</span>
+                  <Icon name="fa-circle" /> Clip Color <Icon name="fa-chevron-right" />
                 </button>
                 {clipColorOpen ? (
                   <div className="se-clip-menu-colors" role="group" aria-label="Clip colour">
@@ -3203,7 +3203,7 @@ export function StudioEditorShell() {
                     setInspectorOpen(true);
                   }}
                 >
-                  Clip Info
+                  <Icon name="fa-info-circle" /> Clip Info
                 </button>
                 <div className="se-clip-menu-sep" />
                 <button
@@ -3216,7 +3216,7 @@ export function StudioEditorShell() {
                     void requestStems();
                   }}
                 >
-                  Get Stems
+                  <Icon name="fa-wand-magic-sparkles" /> Get Stems
                 </button>
                 <button
                   type="button"
@@ -3224,7 +3224,7 @@ export function StudioEditorShell() {
                   disabled={!clip.audioUrl}
                   onClick={() => void downloadClipWav(clip.id)}
                 >
-                  Download .WAV
+                  <Icon name="fa-download" /> Download .WAV
                 </button>
               </div>
             );

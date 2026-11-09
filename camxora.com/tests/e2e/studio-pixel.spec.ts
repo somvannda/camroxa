@@ -358,6 +358,41 @@ test("project menu matches the captured popover", async ({ page }) => {
   expect(info.rows.every((row) => row.height === 34)).toBe(true);
 });
 
+test("clip context menu matches the captured popover", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel clip menu" });
+  await page.locator(".se-clip").first().click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "Clip options" });
+  await expect(menu).toBeVisible();
+  const info = await menu.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const rows = Array.from(element.querySelectorAll(":scope > button")).map((row) => {
+      const box = row.getBoundingClientRect();
+      const hint = row.querySelector("span");
+      return {
+        text: (row.textContent ?? "").replace(/\s+/g, " ").trim(),
+        height: Math.round(box.height),
+        hintSize: hint ? getComputedStyle(hint).fontSize : null,
+      };
+    });
+    return {
+      width: Math.round(rect.width),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+      rows,
+    };
+  });
+  // S26: 158 px card on #1c1c1e, 12 px radius, 38 px icon rows, 11 px hints.
+  expect(info.width).toBe(158);
+  expect(info.radius).toBe("12px");
+  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.rows[0]?.text).toBe("Copy Ctrl C");
+  expect(info.rows[0]?.hintSize).toBe("11px");
+  expect(info.rows.every((row) => row.height === 38)).toBe(true);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
