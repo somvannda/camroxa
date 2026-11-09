@@ -38,10 +38,10 @@ functional controls the capture does not show (listed below).
 | Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 14 px names, uppercase section label | same; preview art and Learn chips omitted (no assets/entries) |
 | Track head | 29 px strip with an all-controls toggle left and a panel-collapse control right | left wired, right disabled (not built) |
 | Learn popover | 206 px, 44 px rows, 11 px hints | same |
-| Track options menu | 164 px, 33 px icon rows inside the panel | same (inline colour swatches) |
+| Track options menu | 164 px, 33 px icon rows inside the panel; Color opens a flyout | same |
 | Add-track menu | 208 px, 50 px rows, 24 px colour icon squares | same |
 | Project menu | 212 px, 34 px icon rows, settings accelerator | same |
-| Clip menu | 158 px, 38 px icon rows, 11 px shortcuts, 13 captured rows | same; unbuilt rows disabled |
+| Clip menu | 158 px, 38 px icon rows, 11 px shortcuts, 13 captured rows; Clip Color opens the S28 flyout | same; unbuilt rows disabled |
 | Dialogs | 480 px, radius 24, padding 32, 24 px title, 44 px pills | same |
 | Export toast | bottom-left 888 px banner on #1c1c1e, radius 16 | same |
 | Selected track | tints the gutter row and its lane | same |
