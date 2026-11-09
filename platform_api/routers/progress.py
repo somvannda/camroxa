@@ -356,9 +356,11 @@ def _build_row(
         status = "Failed"
         notes = "One or more generation steps failed. Right-click this row for recovery actions."
     elif youtube_success > 0 or youtube_url:
-        stage = "Done"
-        status = "Done"
-        notes = "Completed"
+        # Publishing is the delivery step, not a second pipeline stage: keep
+        # the row at Completed and let the YouTube column say Published.
+        stage = "Completed"
+        status = "Completed"
+        notes = "Published to YouTube."
     elif pipeline_complete:
         stage = "Completed"
         status = "Completed"
