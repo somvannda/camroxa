@@ -32,6 +32,7 @@ import {
 import { StudioClipInfo } from "@/components/studio/StudioClipInfo";
 import { StudioSongDetail } from "@/components/studio/StudioSongDetail";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
+import { fetchGeneration, generateSong } from "@/lib/create-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
@@ -370,6 +371,7 @@ export function StudioEditorShell() {
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [midiClipId, setMidiClipId] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState("");
+  const [promptBusy, setPromptBusy] = useState(false);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -2974,6 +2976,40 @@ export function StudioEditorShell() {
     );
   }
 
+  /** Prompt bar (S16): generate inline, then place the result at the playhead. */
+  async function submitPrompt(raw: string) {
+    const prompt = raw.trim();
+    if (!prompt || promptBusy) return;
+    setPromptBusy(true);
+    try {
+      const created = await generateSong({ mode: "simple", prompt });
+      const deadline = Date.now() + 180_000;
+      let generation: WebMusicGeneration | null = null;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const current = await fetchGeneration(created.task_id);
+        if (current.status === "complete" || current.status === "ready") {
+          generation = current;
+          break;
+        }
+        if (current.status === "error" || current.status === "failed") {
+          throw new Error(current.error_message || "Generation failed.");
+        }
+      }
+      if (!generation) throw new Error("Generation timed out.");
+      setLibrarySongs((previous) =>
+        previous ? [generation as WebMusicGeneration, ...previous] : [generation as WebMusicGeneration]
+      );
+      addSongToTimeline(generation);
+      setPromptValue("");
+      setExportToast("Generated and added to the track at the playhead.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Generation failed.");
+    } finally {
+      setPromptBusy(false);
+    }
+  }
+
   const railOpen = libraryOpen || inspectorOpen;
 
   /** The MIDI clip open in the bottom editor, if any (notes coerced to the model). */
@@ -3277,25 +3313,24 @@ export function StudioEditorShell() {
           className="se-prompt"
           onSubmit={(event) => {
             event.preventDefault();
-            const prompt = promptValue.trim();
-            if (!prompt) return;
-            window.open(`/create?prompt=${encodeURIComponent(prompt)}`, "_blank", "noopener");
-            setPromptValue("");
+            void submitPrompt(promptValue);
           }}
         >
           <span className="se-prompt-badge">BETA</span>
           <input
             className="se-prompt-input"
             value={promptValue}
+            disabled={promptBusy}
             onChange={(event) => setPromptValue(event.target.value)}
-            placeholder="Describe a part to generate"
+            placeholder={promptBusy ? "Generating…" : "Describe a part to generate"}
             aria-label="Describe a part to generate"
           />
           <button
             type="submit"
             className="se-prompt-send"
-            aria-label="Open the generator with this prompt"
-            disabled={!promptValue.trim()}
+            aria-label="Generate this part"
+            title="Generates with your account credits"
+            disabled={!promptValue.trim() || promptBusy}
           >
             <Icon name="fa-arrow-up" />
           </button>

@@ -24,6 +24,7 @@ functional controls the capture does not show (listed below).
 | Colour strip | x8, 10 px wide | same |
 | Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom, labels thin 1/2/4/8 bars as it drops | same |
 | Time ruler | 22 px `#1e1e20` band with dim labels (labels kept at AA contrast) | same |
+| Prompt bar | 645×56 floating bar 16 px above the shell body, BETA badge, send | same; sends generate inline and place the result at the playhead (spends credits) |
 | Playhead | 1 px `#4c4c4c` line with a cyan `#3dafff` ruler flag | same |
 | Lane | 86 px, starts y82 | same |
 | Clip | starts y84, 82 px tall, radius 10, label at +17 | same; waveform painted from the decoded clip audio (peaks cached per URL) |

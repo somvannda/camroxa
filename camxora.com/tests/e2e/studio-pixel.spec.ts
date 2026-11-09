@@ -1063,7 +1063,7 @@ test("My Projects modal matches the captured layout", async ({ page }) => {
   expect(info.newCard).toBe(true);
 });
 
-test("prompt bar matches the capture and opens the generator", async ({ page }) => {
+test("prompt bar matches the capture and generates inline", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
   await createStudioProject(page, { title: "Pixel prompt" });
@@ -1094,12 +1094,43 @@ test("prompt bar matches the capture and opens the generator", async ({ page }) 
     radius: "16px",
     background: "rgb(28, 28, 30)",
   });
-  await expect(page.getByRole("button", { name: "Open the generator with this prompt" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Generate this part" })).toBeDisabled();
+
+  // Generation is inline: mock the API, then the result lands on the track.
+  await page.route("**/api/v3/web-music/generate", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ task_id: "gen-test", status: "queued", title: "Generated demo", style: "pop" }),
+    })
+  );
+  await page.route("**/api/v3/web-music/generations/gen-test", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "gen-test",
+        title: "Generated demo",
+        style: "pop",
+        status: "complete",
+        clips: [
+          {
+            variant: "v1",
+            title: "Generated demo",
+            audio_url: "/seed/demo-loop.wav",
+            download_url: "/seed/demo-loop.wav",
+            duration_seconds: 4,
+          },
+        ],
+      }),
+    })
+  );
   await prompt.fill("A warm eight-bar drum loop");
-  const popup = page.waitForEvent("popup");
-  await page.getByRole("button", { name: "Open the generator with this prompt" }).click();
-  const opened = await popup;
-  expect(opened.url()).toContain("/create?prompt=");
+  await page.getByRole("button", { name: "Generate this part" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Generated and added" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(1);
 });
 
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
