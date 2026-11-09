@@ -247,6 +247,42 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
           </p>
         </div>
       )}
+
+      {/* Captured sticky mini-player (EXTRA detail): the song stays playable while reading. */}
+      <div className="se-song-mini" aria-label="Now playing">
+        <span className="se-song-mini-art" aria-hidden="true">
+          {clip?.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={clip.image_url} alt="" loading="lazy" />
+          ) : (
+            (title.trim()[0] || "S").toUpperCase()
+          )}
+        </span>
+        <span className="se-song-mini-text">
+          <strong>{title}</strong>
+          <small>
+            {[song.model_label || song.model, duration(clip?.duration_seconds)]
+              .filter(Boolean)
+              .join(" · ")}
+          </small>
+        </span>
+        <Waveform
+          url={clip?.download_url ?? clip?.audio_url}
+          width={96}
+          height={24}
+          className="se-song-mini-wave"
+          label={`${title} mini waveform`}
+        />
+        <button
+          type="button"
+          className="se-song-mini-play"
+          aria-label={`${playing ? "Pause" : "Play"} ${title}`}
+          onClick={() => onTogglePlay(song)}
+          disabled={!clip?.audio_url}
+        >
+          <Icon name={playing ? "fa-pause" : "fa-play"} />
+        </button>
+      </div>
     </aside>
   );
 }

@@ -794,7 +794,7 @@ describe("StudioSongDetail", () => {
   it("shows the song's info, styles and lyrics", () => {
     render(<StudioSongDetail {...detailProps()} />);
     expect(screen.getAllByText("Sunlit One").length).toBeGreaterThan(0);
-    expect(screen.getByText(/3:04/)).toBeTruthy();
+    expect(screen.getAllByText(/3:04/).length).toBeGreaterThan(0);
     expect(screen.getByText("EDM, electronic dance music")).toBeTruthy();
     expect(screen.getByText(/Tonight/)).toBeTruthy();
     expect(screen.getByRole("img", { name: "Song waveform" })).toBeTruthy();
@@ -815,7 +815,7 @@ describe("StudioSongDetail", () => {
     expect(onToggleLike).toHaveBeenCalledWith(detailSong, true);
     await user.click(screen.getByRole("button", { name: "Dislike Sunlit One" }));
     expect(onToggleDislike).toHaveBeenCalledWith(detailSong, true);
-    await user.click(screen.getByRole("button", { name: "Play Sunlit One" }));
+    await user.click(screen.getAllByRole("button", { name: "Play Sunlit One" })[0]);
     expect(onTogglePlay).toHaveBeenCalledWith(detailSong);
   });
 

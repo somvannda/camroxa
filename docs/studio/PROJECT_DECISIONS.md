@@ -578,3 +578,18 @@ This supersedes the earlier rule in `PROJECT_MASTER_PLAN.md` / `SPEC_TO_CODE.md`
 **Consequences.** Existing `.s-*`/`.se-*` tokens may be replaced by reference values.
 Visual regression becomes a hard gate: the audit runs in CI. Functional state stays
 separate — a pixel match never implies a wired feature.
+
+
+---
+
+## D-023 â€” Song detail keeps the captured sticky mini-player
+
+**Date:** 2026-11-09 **Status:** accepted (supersedes the omission in D-018)
+
+**Decision.** The song detail rail renders the captured bottom mini-player (art, title,
+model - duration, a small waveform and play/pause). D-018 omitted it because the rail
+content fits, but the capture shows it in every detail state and the user asked for a
+1:1 clone.
+
+**Consequences.** The rail keeps a fixed strip above its bottom edge; the body scrolls
+above it. Playback and like state stay the same single-preview source.

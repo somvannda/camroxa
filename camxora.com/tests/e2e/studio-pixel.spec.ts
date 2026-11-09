@@ -672,6 +672,10 @@ test("song detail rail follows the captured anatomy", async ({ page }) => {
       cardRadius: card ? getComputedStyle(card).borderTopLeftRadius : null,
     };
   });
+  const mini = panel.locator(".se-song-mini");
+  await expect(mini).toBeVisible();
+  expect(await mini.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(40);
+
   // S27/EXTRA detail: floating 360 px rail, 52 px hero, 38 px tabs, #141416 cards.
   expect(info).toMatchObject({
     x: REFERENCE_VIEWPORT.width - 368,
@@ -1057,6 +1061,45 @@ test("My Projects modal matches the captured layout", async ({ page }) => {
   expect(info.searchHeight).toBe(40);
   expect(info.tabs).toEqual(["Projects", "Recently Deleted"]);
   expect(info.newCard).toBe(true);
+});
+
+test("prompt bar matches the capture and opens the generator", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel prompt" });
+  const bar = page.getByRole("form");
+  const prompt = page.getByLabel("Describe a part to generate");
+  await expect(prompt).toBeVisible();
+  const info = await page.evaluate(() => {
+    const element = document.querySelector(".se-prompt");
+    const body = document.querySelector(".se-body");
+    if (!element || !body) return null;
+    const rect = element.getBoundingClientRect();
+    const bodyBox = body.getBoundingClientRect();
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      centered: Math.round(rect.x + rect.width / 2 - (bodyBox.x + bodyBox.width / 2)),
+      bottomGap: Math.round(bodyBox.bottom - rect.bottom),
+      radius: getComputedStyle(element).borderTopLeftRadius,
+      background: getComputedStyle(element).backgroundColor,
+    };
+  });
+  // S16/S52: a 645 x 56 floating bar 16 px above the shell body bottom.
+  expect(info).toMatchObject({
+    width: 645,
+    height: 56,
+    centered: 0,
+    bottomGap: 16,
+    radius: "16px",
+    background: "rgb(28, 28, 30)",
+  });
+  await expect(page.getByRole("button", { name: "Open the generator with this prompt" })).toBeDisabled();
+  await prompt.fill("A warm eight-bar drum loop");
+  const popup = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Open the generator with this prompt" }).click();
+  const opened = await popup;
+  expect(opened.url()).toContain("/create?prompt=");
 });
 
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {

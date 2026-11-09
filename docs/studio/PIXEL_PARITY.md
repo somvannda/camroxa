@@ -56,7 +56,7 @@ functional controls the capture does not show (listed below).
 | Selected clip | white outline only; trim/fade grips on hover | same |
 | Clip hover card | light 256 px card explaining drag/double-click/right-click | same |
 | Clip info rail | 360 px card: hero, Remix, waveform, underlined tabs, section cards | same (facts kept in a Details card) |
-| Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards | same (sticky mini-player still omitted, D-018) |
+| Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards, sticky mini-player | same (mini-player now built; D-023) |
 
 ## Intentional divergences (recorded, not defects)
 

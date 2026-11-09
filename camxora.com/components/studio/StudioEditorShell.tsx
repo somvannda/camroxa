@@ -369,6 +369,7 @@ export function StudioEditorShell() {
   const [exporting, setExporting] = useState(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [midiClipId, setMidiClipId] = useState<string | null>(null);
+  const [promptValue, setPromptValue] = useState("");
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -3270,6 +3271,35 @@ export function StudioEditorShell() {
             />
           );
         })()}
+
+        {/* Captured prompt bar (S16/S52): opens the generator with the prompt. */}
+        <form
+          className="se-prompt"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const prompt = promptValue.trim();
+            if (!prompt) return;
+            window.open(`/create?prompt=${encodeURIComponent(prompt)}`, "_blank", "noopener");
+            setPromptValue("");
+          }}
+        >
+          <span className="se-prompt-badge">BETA</span>
+          <input
+            className="se-prompt-input"
+            value={promptValue}
+            onChange={(event) => setPromptValue(event.target.value)}
+            placeholder="Describe a part to generate"
+            aria-label="Describe a part to generate"
+          />
+          <button
+            type="submit"
+            className="se-prompt-send"
+            aria-label="Open the generator with this prompt"
+            disabled={!promptValue.trim()}
+          >
+            <Icon name="fa-arrow-up" />
+          </button>
+        </form>
       </div>
 
       <StudioOnboarding
