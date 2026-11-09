@@ -4720,13 +4720,17 @@ html{color-scheme:dark}
 .se-lib-day-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;opacity:.6;cursor:pointer;text-align:left}
 .se-lib-day-head:hover{opacity:.9}
 .se-lib-day ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
-.se-history{position:fixed;left:8px;top:8px;bottom:8px;width:300px;z-index:60;display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:10px;border:1px solid hsl(var(--border));background:hsl(var(--card));overflow:auto}
-.se-history-head{display:flex;align-items:center;justify-content:space-between}
-.se-history-note{margin:0;opacity:.7}
-.se-history-list{display:flex;flex-direction:column;gap:12px}
-.se-history-day{margin:0 0 4px;font-weight:600;opacity:.8}
-.se-history-list ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
-.se-history-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+.se-history{position:fixed;left:8px;top:52px;bottom:8px;width:300px;z-index:60;display:flex;flex-direction:column;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:#101012;box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
+.se-history-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
+.se-history-head strong{font-size:15px;font-weight:600}
+.se-history-note{margin:0;padding:10px 14px 4px;font-size:13px;color:#8b90a6}
+.se-history .se-dialog-note{padding:0 14px 10px;font-size:13px;color:#8b90a6}
+.se-history-list{display:flex;flex-direction:column;gap:14px;padding:8px 10px;overflow-y:auto}
+.se-history-day{margin:0 0 6px;padding:0 6px;font-size:13px;font-weight:600;color:#f7f4ef}
+.se-history-list ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.se-history-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px;border-radius:8px;font-size:13px;color:#c2c2c1;font-variant-numeric:tabular-nums}
+.se-history-row:hover{background:rgba(255,255,255,.05)}
+.se-history-row .se-pill{height:26px;padding:0 10px;font-size:11px}
 .se-snap-line{position:absolute;top:0;bottom:0;width:1px;background:hsl(var(--accent));opacity:.7;pointer-events:none;z-index:2}
 .se-record-dot{display:block;width:10px;height:10px;border-radius:50%;background:#dc2626}
 .se-record.on .se-record-dot{border-radius:2px}

@@ -844,6 +844,37 @@ test("clip trim handles stay hidden until hover", async ({ page }) => {
   await expect.poll(opacity).toBe("1");
 });
 
+test("history drawer sits under the header on the captured surface", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel history" });
+  await page.locator(".se-chip").click();
+  await page.getByRole("menuitem", { name: "Version History" }).click();
+  const drawer = page.getByRole("dialog", { name: "Version history" });
+  await expect(drawer).toBeVisible();
+  const info = await drawer.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      bottom: Math.round(window.innerHeight - rect.bottom),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+    };
+  });
+  // S13: a 300 px drawer under the 52 px header, inset 8 px, on #101012.
+  expect(info).toMatchObject({
+    x: 8,
+    y: 52,
+    width: 300,
+    bottom: 8,
+    radius: "12px",
+    background: "rgb(16, 16, 18)",
+  });
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
