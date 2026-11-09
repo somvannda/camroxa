@@ -18,7 +18,7 @@
   margin: 0 0 8px;
   font-size: 12px;
   line-height: 1.4;
-  color: #8f93a0;
+  color: var(--muted);
 }
 
 .title {
@@ -27,7 +27,7 @@
   line-height: 1.15;
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: #f2f1ed;
+  color: var(--text);
 }
 
 .subtitle {
@@ -35,7 +35,7 @@
   margin: 8px 0 0;
   font-size: 14px;
   line-height: 1.6;
-  color: #9a9da8;
+  color: var(--muted);
 }
 
 .actions {
@@ -46,8 +46,8 @@
 }
 
 .panel {
-  background: #101119;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 24px;
 }
@@ -66,26 +66,26 @@
   line-height: 1.3;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: #f2f1ed;
+  color: var(--text);
 }
 
 .panelMeta {
   margin: 0;
   font-size: 12px;
   line-height: 1.4;
-  color: #8f93a0;
+  color: var(--muted);
 }
 
 .metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin: 0 0 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--line);
 }
 
 .metric {
   padding: 12px 16px 12px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--line);
 }
 
 .metricValue {
@@ -95,14 +95,14 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  color: #f2f1ed;
+  color: var(--text);
 }
 
 .metricLabel {
   margin: 4px 0 0;
   font-size: 12px;
   line-height: 1.4;
-  color: #8f93a0;
+  color: var(--muted);
 }
 
 .primary,
@@ -128,18 +128,18 @@
 }
 
 .primary {
-  background: #efede6;
-  color: #0b0c10;
+  background: var(--violet);
+  color: #ffffff;
 }
 
 .primary:hover {
-  background: #fffdf7;
+  background: #6d28d9;
 }
 
 .secondary {
   background: transparent;
   border-color: rgba(255, 255, 255, 0.14);
-  color: #e8e6e1;
+  color: var(--text);
 }
 
 .secondary:hover {
@@ -148,18 +148,18 @@
 
 .ghost {
   background: transparent;
-  color: #a7abb5;
+  color: var(--muted);
 }
 
 .ghost:hover {
   background: rgba(255, 255, 255, 0.04);
-  color: #f2f1ed;
+  color: var(--text);
 }
 
 .primary:focus-visible,
 .secondary:focus-visible,
 .ghost:focus-visible {
-  outline: 2px solid #8b7cf6;
+  outline: 2px solid var(--lav);
   outline-offset: 2px;
 }
 
@@ -183,7 +183,7 @@
 .label {
   font-size: 12px;
   line-height: 1.4;
-  color: #a7abb5;
+  color: var(--muted);
 }
 
 .input,
@@ -192,10 +192,10 @@
   width: 100%;
   min-height: 44px;
   padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line2);
   border-radius: 10px;
-  background: #0b0c10;
-  color: #f2f1ed;
+  background: var(--bg);
+  color: var(--text);
   font: inherit;
   font-size: 14px;
   line-height: 1.4;
@@ -214,14 +214,14 @@
 
 .input::placeholder,
 .textarea::placeholder {
-  color: #6f737d;
+  color: var(--muted2);
 }
 
 .input:focus,
 .textarea:focus,
 .select:focus {
   outline: none;
-  border-color: #8b7cf6;
+  border-color: var(--lav);
   box-shadow: 0 0 0 3px rgba(139, 124, 246, 0.15);
 }
 
@@ -231,21 +231,21 @@
   gap: 10px;
   font-size: 13px;
   line-height: 1.5;
-  color: #a7abb5;
+  color: var(--muted);
 }
 
 .check {
   width: 16px;
   height: 16px;
   margin-top: 2px;
-  accent-color: #8b7cf6;
+  accent-color: var(--lav);
   flex: 0 0 auto;
 }
 
 .hint {
   font-size: 12px;
   line-height: 1.5;
-  color: #7d818b;
+  color: var(--muted2);
 }
 
 .error {
@@ -285,14 +285,14 @@
   font-size: 15px;
   line-height: 1.4;
   font-weight: 600;
-  color: #f2f1ed;
+  color: var(--text);
 }
 
 .rowMeta {
   margin: 4px 0 0;
   font-size: 12px;
   line-height: 1.5;
-  color: #8f93a0;
+  color: var(--muted);
 }
 
 .rowActions {
@@ -308,7 +308,7 @@
   gap: 6px;
   font-size: 12px;
   line-height: 1.4;
-  color: #a7abb5;
+  color: var(--muted);
   white-space: nowrap;
 }
 
@@ -316,7 +316,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #7d818b;
+  background: var(--muted2);
   flex: 0 0 auto;
 }
 
@@ -349,7 +349,7 @@
 }
 
 .flowDotActive {
-  background: #8b7cf6;
+  background: var(--lav);
 }
 
 .flowLabel {
@@ -383,7 +383,7 @@
   font-size: 14px;
   line-height: 1.4;
   font-weight: 500;
-  color: #f2f1ed;
+  color: var(--text);
 }
 
 .emptyBody {
@@ -391,7 +391,7 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #8f93a0;
+  color: var(--muted);
 }
 
 .guideGrid {
@@ -409,7 +409,7 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.4;
-  color: #7d818b;
+  color: var(--muted2);
 }
 
 .guideTitle {
@@ -417,14 +417,14 @@
   font-size: 14px;
   line-height: 1.4;
   font-weight: 600;
-  color: #f2f1ed;
+  color: var(--text);
 }
 
 .guideBody {
   margin: 0;
   font-size: 13px;
   line-height: 1.55;
-  color: #8f93a0;
+  color: var(--muted);
 }
 
 .split {
@@ -436,6 +436,93 @@
 
 .sectionGap {
   margin-top: 24px;
+}
+
+.selectTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.selectTrigger:focus-visible {
+  outline: none;
+  border-color: var(--lav);
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.18);
+}
+
+.selectTrigger[data-placeholder] {
+  color: var(--muted2);
+}
+
+.selectContent {
+  z-index: 60;
+  overflow: hidden;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.selectViewport {
+  padding: 4px;
+}
+
+.selectItem {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.selectItem[data-highlighted] {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.selectChevron {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.checkboxRoot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  background: var(--bg);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.checkboxRoot[data-state="checked"] {
+  background: var(--violet);
+  border-color: var(--violet);
+}
+
+.checkboxIndicator {
+  display: inline-flex;
 }
 
 .stack {

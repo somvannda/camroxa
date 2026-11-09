@@ -25,6 +25,9 @@
 | `CreatorHeader` | Page title block | meta, title, description, actions; 32px bottom gap |
 | `CreatorPanel` | Any content card | 24px padding, hairline border, 14px radius, header row |
 | `CreatorField` | Label + control | 8px label gap, 12px label type |
+| `CreatorInput` / `CreatorTextarea` | Text controls | 44px height, 10px radius, theme background |
+| `CreatorSelect` | Dropdown | Radix Select, keyboard support, styled trigger/content |
+| `CreatorCheckbox` | Consent / toggles | Radix Checkbox, 18px box, brand fill when checked |
 | `CreatorButton` | Button | 44px height, 18px horizontal padding, variants |
 | `CreatorButtonLink` | Navigation action | Same sizing as a button |
 | `CreatorMetrics` | Stat strip | Hairline rules, tabular figures, 28px value |
@@ -47,16 +50,13 @@
 | Control radius | 10px |
 | Panel radius | 14px |
 | Section gap | 24px |
-| Text primary | `#f2f1ed` |
-| Text secondary | `#9a9da8` |
-| Text muted | `#7d818b` |
-| Surface | `#101119` |
-| Input surface | `#0b0c10` |
-| Hairline | `rgba(255,255,255,0.08)` |
-| Accent | `#8b7cf6` (small use only) |
-| Amber status | `#d9a55a` |
-| Live status | `#74c69d` |
-| Primary button | `#efede6` on `#0b0c10` text |
+| Surface | `var(--panel)` / `var(--panel2)` gradient, same as the app shell |
+| Input surface | `var(--bg)` |
+| Hairline | `var(--line)` / `var(--line2)` |
+| Text primary | `var(--text)` |
+| Text secondary | `var(--muted)` |
+| Text muted | `var(--muted2)` |
+| Accent | `var(--violet)` for primary actions; `var(--lav)` for focus/selection |
 
 ## 4. New screen skeleton
 

@@ -6,10 +6,13 @@ import { CreatorMetrics } from "@/components/CreatorMetrics";
 import {
   CreatorButton,
   CreatorButtonLink,
+  CreatorCheckbox,
   CreatorField,
   CreatorHeader,
+  CreatorInput,
   CreatorPage,
   CreatorPanel,
+  CreatorSelect,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -281,23 +284,21 @@ export function CreatorReleasesView() {
           ) : (
             <form className={styles.form} onSubmit={onCreate}>
               <CreatorField label="Finished generation" htmlFor="release-generation">
-                <select
+                <CreatorSelect
                   id="release-generation"
-                  className={styles.select}
                   value={selected}
-                  onChange={(event) => onSelect(event.target.value)}
-                  required
-                >
-                  <option value="">Choose a generation</option>
-                  {readyOptions.map((option) => (
-                    <option value={option.value} key={option.value}>{option.label}</option>
-                  ))}
-                </select>
+                  onValueChange={onSelect}
+                  options={readyOptions.map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                  }))}
+                  placeholder="Choose a generation"
+                  ariaLabel="Finished generation"
+                />
               </CreatorField>
               <CreatorField label="Title" htmlFor="release-title">
-                <input
+                <CreatorInput
                   id="release-title"
-                  className={styles.input}
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   maxLength={100}
@@ -305,25 +306,20 @@ export function CreatorReleasesView() {
                 />
               </CreatorField>
               <CreatorField label="Genre" htmlFor="release-genre">
-                <input
+                <CreatorInput
                   id="release-genre"
-                  className={styles.input}
                   value={genre}
                   onChange={(event) => setGenre(event.target.value)}
                   maxLength={120}
                   required
                 />
               </CreatorField>
-              <label className={styles.checkRow}>
-                <input
-                  type="checkbox"
-                  className={styles.check}
-                  checked={rights}
-                  onChange={(event) => setRights(event.target.checked)}
-                  required
-                />
-                <span>I own or have cleared the rights to this track.</span>
-              </label>
+              <CreatorCheckbox
+                id="release-rights"
+                checked={rights}
+                onCheckedChange={setRights}
+                label="I own or have cleared the rights to this track."
+              />
               <div>
                 <CreatorButton type="submit" disabled={saving || !selected || !rights}>
                   {saving ? "Creating…" : "Create draft"}

@@ -5,6 +5,15 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { CreatorMetrics } from "@/components/CreatorMetrics";
 import {
+  CreatorButton,
+  CreatorCheckbox,
+  CreatorField,
+  CreatorInput,
+  CreatorSelect,
+  CreatorTextarea,
+} from "@/components/CreatorUI";
+import styles from "@/components/creator-ui.module.css";
+import {
   CreatorApiError,
   fetchProgramStatus,
   submitApplication,
@@ -218,12 +227,14 @@ export function CreatorVerificationView() {
           <div className="sec-head">
             <h2>{application?.status === "changes_requested" ? "Update and resubmit" : "Apply for verification"}</h2>
           </div>
-          <form onSubmit={onApply} style={{ display: "grid", gap: 16 }}>
-            <div className="auth-field">
-              <label htmlFor="app-pitch">Why should we verify you? (50–500 characters)</label>
-              <textarea
+          <form className={styles.form} onSubmit={onApply}>
+            <CreatorField
+              label="Why should we verify you? (50–500 characters)"
+              htmlFor="app-pitch"
+              hint={`${pitch.length}/500`}
+            >
+              <CreatorTextarea
                 id="app-pitch"
-                className="auth-input"
                 value={pitch}
                 onChange={(event) => setPitch(event.target.value)}
                 minLength={50}
@@ -231,36 +242,27 @@ export function CreatorVerificationView() {
                 rows={4}
                 required
                 placeholder="Tell us about your music, your audience, and what you are building."
-                style={{ minHeight: 110, resize: "vertical" }}
               />
-              <span className="fine">{pitch.length}/500</span>
-            </div>
-            <div className="auth-field">
-              <label htmlFor="app-link">External link</label>
-              <input
+            </CreatorField>
+            <CreatorField label="External link" htmlFor="app-link">
+              <CreatorInput
                 id="app-link"
-                className="auth-input"
                 value={link}
                 onChange={(event) => setLink(event.target.value)}
                 placeholder="https://youtube.com/@yourchannel"
                 required
               />
-            </div>
-            <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <input
-                type="checkbox"
-                checked={rights}
-                onChange={(event) => setRights(event.target.checked)}
-                required
-              />
-              <span className="fine">
-                I own or have cleared the rights to my tracks, samples, vocals, lyrics, and artwork.
-              </span>
-            </label>
-            <div className="page-actions">
-              <button className="btn btn-primary" type="submit" disabled={saving || !rights}>
+            </CreatorField>
+            <CreatorCheckbox
+              id="app-rights"
+              checked={rights}
+              onCheckedChange={setRights}
+              label="I own or have cleared the rights to my tracks, samples, vocals, lyrics, and artwork."
+            />
+            <div>
+              <CreatorButton type="submit" disabled={saving || !rights}>
                 {saving ? "Submitting…" : "Submit application"}
-              </button>
+              </CreatorButton>
             </div>
           </form>
         </section>
@@ -271,36 +273,36 @@ export function CreatorVerificationView() {
           <h2>Identity evidence</h2>
           <span className="fine">Encrypted and reviewed by a human.</span>
         </div>
-        <form onSubmit={onVerification} style={{ display: "grid", gap: 16 }}>
-          <div className="auth-field">
-            <label htmlFor="evidence-kind">Evidence type</label>
-            <select
+        <form className={styles.form} onSubmit={onVerification}>
+          <CreatorField label="Evidence type" htmlFor="evidence-kind">
+            <CreatorSelect
               id="evidence-kind"
-              className="auth-input"
               value={evidenceKind}
-              onChange={(event) => setEvidenceKind(event.target.value as CreatorVerification["kind"])}
-            >
-              <option value="identity">Identity document</option>
-              <option value="authenticity">Authenticity / social proof</option>
-              <option value="business">Business registration</option>
-              <option value="voice_consent">Voice consent</option>
-            </select>
-          </div>
-          <div className="auth-field">
-            <label htmlFor="evidence-ref">Evidence reference</label>
-            <input
+              onValueChange={(value) =>
+                setEvidenceKind(value as CreatorVerification["kind"])
+              }
+              options={[
+                { value: "identity", label: "Identity document" },
+                { value: "authenticity", label: "Authenticity / social proof" },
+                { value: "business", label: "Business registration" },
+                { value: "voice_consent", label: "Voice consent" },
+              ]}
+              ariaLabel="Evidence type"
+            />
+          </CreatorField>
+          <CreatorField label="Evidence reference" htmlFor="evidence-ref">
+            <CreatorInput
               id="evidence-ref"
-              className="auth-input"
               value={evidenceRef}
               onChange={(event) => setEvidenceRef(event.target.value)}
               placeholder="Secure upload reference or https:// link"
               required
             />
-          </div>
-          <div className="page-actions">
-            <button className="btn btn-ghost" type="submit" disabled={saving || !evidenceRef.trim()}>
+          </CreatorField>
+          <div>
+            <CreatorButton variant="secondary" type="submit" disabled={saving || !evidenceRef.trim()}>
               Submit evidence
-            </button>
+            </CreatorButton>
           </div>
         </form>
       </section>

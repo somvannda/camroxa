@@ -7,8 +7,11 @@ import {
   CreatorButtonLink,
   CreatorField,
   CreatorHeader,
+  CreatorInput,
   CreatorPage,
   CreatorPanel,
+  CreatorSelect,
+  CreatorTextarea,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -237,9 +240,8 @@ export function CreatorStudioView() {
         <form className={styles.form} onSubmit={onSubmit}>
           <CreatorField label="Handle" htmlFor="creator-handle">
             <div style={{ display: "flex", gap: 8 }}>
-              <input
+              <CreatorInput
                 id="creator-handle"
-                className={styles.input}
                 value={form.handle}
                 onChange={(event) => setForm({ ...form, handle: event.target.value.toLowerCase() })}
                 placeholder="sokha"
@@ -263,9 +265,8 @@ export function CreatorStudioView() {
           </CreatorField>
 
           <CreatorField label="Display name" htmlFor="creator-name">
-            <input
+            <CreatorInput
               id="creator-name"
-              className={styles.input}
               value={form.display_name}
               onChange={(event) => setForm({ ...form, display_name: event.target.value })}
               placeholder="Sokha Chan"
@@ -275,9 +276,8 @@ export function CreatorStudioView() {
           </CreatorField>
 
           <CreatorField label="Tagline" htmlFor="creator-tagline">
-            <input
+            <CreatorInput
               id="creator-tagline"
-              className={styles.input}
               value={form.tagline}
               onChange={(event) => setForm({ ...form, tagline: event.target.value })}
               placeholder="Khmer pop for the ride home."
@@ -286,9 +286,8 @@ export function CreatorStudioView() {
           </CreatorField>
 
           <CreatorField label="Bio" htmlFor="creator-bio">
-            <textarea
+            <CreatorTextarea
               id="creator-bio"
-              className={styles.textarea}
               value={form.bio}
               onChange={(event) => setForm({ ...form, bio: event.target.value })}
               placeholder="Tell listeners who you are and what you make."
@@ -298,9 +297,8 @@ export function CreatorStudioView() {
           </CreatorField>
 
           <CreatorField label="City" htmlFor="creator-city">
-            <input
+            <CreatorInput
               id="creator-city"
-              className={styles.input}
               value={form.city}
               onChange={(event) => setForm({ ...form, city: event.target.value })}
               placeholder="Phnom Penh"
@@ -309,9 +307,8 @@ export function CreatorStudioView() {
           </CreatorField>
 
           <CreatorField label="Genres (comma-separated, max 3)" htmlFor="creator-genres">
-            <input
+            <CreatorInput
               id="creator-genres"
-              className={styles.input}
               value={form.genres}
               onChange={(event) => setForm({ ...form, genres: event.target.value })}
               placeholder="Khmer Pop, Synth Pop"
@@ -319,9 +316,8 @@ export function CreatorStudioView() {
           </CreatorField>
 
           <CreatorField label="Avatar URL" htmlFor="creator-avatar">
-            <input
+            <CreatorInput
               id="creator-avatar"
-              className={styles.input}
               value={form.avatar_url}
               onChange={(event) => setForm({ ...form, avatar_url: event.target.value })}
               placeholder="https://..."
@@ -329,16 +325,19 @@ export function CreatorStudioView() {
           </CreatorField>
 
           <CreatorField label="AI disclosure" htmlFor="creator-ai">
-            <select
+            <CreatorSelect
               id="creator-ai"
-              className={styles.select}
               value={form.ai_disclosure}
-              onChange={(event) => setForm({ ...form, ai_disclosure: event.target.value as FormState["ai_disclosure"] })}
-            >
-              <option value="none">None (human-led)</option>
-              <option value="ai_assisted">AI-assisted</option>
-              <option value="ai_artist">AI artist</option>
-            </select>
+              onValueChange={(value) =>
+                setForm({ ...form, ai_disclosure: value as FormState["ai_disclosure"] })
+              }
+              options={[
+                { value: "none", label: "None (human-led)" },
+                { value: "ai_assisted", label: "AI-assisted" },
+                { value: "ai_artist", label: "AI artist" },
+              ]}
+              ariaLabel="AI disclosure"
+            />
           </CreatorField>
 
           <div>

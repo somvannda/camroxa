@@ -1,5 +1,14 @@
+"use client";
+
+import * as Checkbox from "@radix-ui/react-checkbox";
+import * as Select from "@radix-ui/react-select";
 import Link from "next/link";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from "react";
 import styles from "./creator-ui.module.css";
 
 type ButtonVariant = "primary" | "secondary" | "ghost";
@@ -105,5 +114,116 @@ export function CreatorButtonLink({
     <Link href={href} className={creatorButtonClass(variant)}>
       {children}
     </Link>
+  );
+}
+
+export function CreatorInput({
+  className = "",
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={`${styles.input} ${className}`.trim()} {...props} />;
+}
+
+export function CreatorTextarea({
+  className = "",
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={`${styles.textarea} ${className}`.trim()} {...props} />;
+}
+
+export function CreatorSelect({
+  id,
+  value,
+  onValueChange,
+  options,
+  placeholder = "Select",
+  ariaLabel,
+}: {
+  id?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <Select.Root value={value || undefined} onValueChange={onValueChange}>
+      <Select.Trigger
+        id={id}
+        className={styles.selectTrigger}
+        aria-label={ariaLabel}
+      >
+        <Select.Value placeholder={placeholder} />
+        <Select.Icon className={styles.selectChevron}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path
+              d="M3 4.5 6 7.5 9 4.5"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Content
+          className={styles.selectContent}
+          position="popper"
+          sideOffset={6}
+        >
+          <Select.Viewport className={styles.selectViewport}>
+            {options.map((option) => (
+              <Select.Item
+                key={option.value}
+                value={option.value}
+                className={styles.selectItem}
+              >
+                <Select.ItemText>{option.label}</Select.ItemText>
+              </Select.Item>
+            ))}
+          </Select.Viewport>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  );
+}
+
+export function CreatorCheckbox({
+  id,
+  checked,
+  onCheckedChange,
+  label,
+  disabled = false,
+}: {
+  id: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  label: ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <label className={styles.checkRow} htmlFor={id}>
+      <Checkbox.Root
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+        className={styles.checkboxRoot}
+      >
+        <Checkbox.Indicator className={styles.checkboxIndicator}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path
+              d="M2.5 6.2 4.8 8.5 9.5 3.5"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </Checkbox.Indicator>
+      </Checkbox.Root>
+      <span>{label}</span>
+    </label>
   );
 }
