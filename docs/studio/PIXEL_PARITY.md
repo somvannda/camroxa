@@ -38,7 +38,7 @@ functional controls the capture does not show (listed below).
 | EQ card | 450 px card: Band selector + switch, six shape buttons, yellow curve with per-band handles, Freq/Q/Gain knobs | same; four bands, real cascaded biquads |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |
 | Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 14 px names, Learn chips, uppercase section label | same; preview art omitted (no assets) |
-| Track head | 29 px strip with an all-controls toggle left and a panel-collapse control right | left wired, right disabled (not built) |
+| Track head | 29 px strip with an all-controls toggle left and a panel-collapse control right | both wired; collapse folds the panel to a 44 px rail (own layout, never captured) |
 | Learn popover | 206 px, 44 px rows, 11 px hints | same |
 | Track options menu | 164 px, 33 px icon rows inside the panel; Color opens a flyout | same |
 | Add-track menu | 208 px, 50 px rows, 24 px colour icon squares | same |
@@ -70,4 +70,3 @@ functional controls the capture does not show (listed below).
 - Song row subtitle copy (the capture shows a description line; we show tags).
 - Generation prompt bar, history drawer and plugin dock cards — reference surfaces
   whose behaviour is not built, so they stay out of the chrome pass.
-- Track panel panel-collapse control — captured, its collapsed layout is not.
