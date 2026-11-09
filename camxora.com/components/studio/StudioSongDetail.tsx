@@ -79,6 +79,24 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
         </button>
       </div>
 
+      <div className="se-clip-hero se-song-hero">
+        <span
+          className="se-clip-art"
+          style={
+            clip?.image_url
+              ? { backgroundImage: `url(${clip.image_url})`, backgroundSize: "cover", backgroundPosition: "center" }
+              : undefined
+          }
+          aria-hidden="true"
+        />
+        <div className="se-clip-hero-text">
+          <p className="se-clip-title">{title}</p>
+          <p className="se-clip-date">
+            {[duration(clip?.duration_seconds), dateLabel(song.created_at)].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+      </div>
+
       <div className="se-song-actions">
         <button
           type="button"
@@ -88,6 +106,7 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
         >
           Remix
         </button>
+        <span className="se-song-icons">
         <button
           type="button"
           className={`se-lib-icon${liked ? " on" : ""}`}
@@ -115,6 +134,7 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
         >
           <Icon name="fa-ellipsis" />
         </button>
+        </span>
       </div>
 
       <div className="se-song-player">
@@ -159,14 +179,6 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
 
       {tab === "info" ? (
         <div className="se-song-body">
-          <h2 className="se-song-title">{title}</h2>
-          <p className="se-song-facts">
-            {[
-              duration(clip?.duration_seconds),
-              dateLabel(song.created_at),
-            ].join(" · ")}
-          </p>
-
           <section className="se-song-section" aria-label="Styles">
             <header>
               <span>Styles</span>
