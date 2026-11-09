@@ -1019,6 +1019,38 @@ test("library tiles sit on the captured grid", async ({ page }) => {
   expect(tiles[2].y).toBe(121);
 });
 
+test("My Projects modal matches the captured layout", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel projects" });
+  await page.locator(".se-chip").click();
+  await page.getByRole("menuitem", { name: "Open Project" }).click();
+  const dialog = page.getByRole("dialog", { name: "Open project" });
+  await expect(dialog).toBeVisible();
+  const info = await dialog.locator(".se-dialog").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const search = element.querySelector(".se-projects-search")?.getBoundingClientRect();
+    return {
+      width: Math.round(rect.width),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+      searchHeight: search ? Math.round(search.height) : null,
+      newCard: Boolean(element.querySelector(".se-project-card.is-new")),
+      tabs: Array.from(element.querySelectorAll(".se-projects-tabs [role=tab]")).map((tab) =>
+        tab.textContent?.trim()
+      ),
+    };
+  });
+  // S04: 786 px modal, pill search, Projects/Recently Deleted tabs, New Project first.
+  expect(info.width).toBe(786);
+  expect(info.radius).toBe("24px");
+  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.searchHeight).toBe(40);
+  expect(info.tabs).toEqual(["Projects", "Recently Deleted"]);
+  expect(info.newCard).toBe(true);
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

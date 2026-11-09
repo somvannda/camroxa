@@ -52,6 +52,8 @@ export type StudioProjectMenuProps = {
 
 const UNTITLED = "Untitled project";
 
+const initialOf = (value: string) => (value.trim()[0] || "P").toUpperCase();
+
 function isUnnamed(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.length === 0 || trimmed.toLowerCase() === UNTITLED.toLowerCase();
@@ -81,6 +83,9 @@ export function StudioProjectMenu({
 }: StudioProjectMenuProps) {
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [projectTab, setProjectTab] = useState<"projects" | "deleted">("projects");
+  const [projectQuery, setProjectQuery] = useState("");
+  const [projectSort, setProjectSort] = useState<"newest" | "oldest">("newest");
   const [projects, setProjects] = useState<StudioProject[] | null>(null);
   const [versions, setVersions] = useState<StudioProjectVersion[] | null>(null);
   const [renameValue, setRenameValue] = useState(title);
@@ -456,30 +461,130 @@ export function StudioProjectMenu({
                     : "Studio settings"
           }
         >
-          <div className="se-dialog">
+          <div className={`se-dialog${dialog === "open" ? " se-projects-dialog" : ""}`}>
             {dialog === "open" ? (
               <>
-                <h2>Open project</h2>
-                {projects === null ? (
-                  <p className="se-dialog-note">Loading projects…</p>
-                ) : projects.length === 0 ? (
-                  <p className="se-dialog-note">No other projects yet.</p>
+                <header className="se-projects-head">
+                  <h2>My Projects</h2>
+                  <button
+                    type="button"
+                    className="se-icon"
+                    aria-label="Close projects"
+                    onClick={() => setDialog(null)}
+                  >
+                    <Icon name="fa-xmark" />
+                  </button>
+                </header>
+
+                <div className="se-projects-tabs" role="tablist" aria-label="Project lists">
+                  {(["projects", "deleted"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      role="tab"
+                      aria-selected={projectTab === tab}
+                      className={projectTab === tab ? "on" : ""}
+                      onClick={() => setProjectTab(tab)}
+                    >
+                      {tab === "projects" ? "Projects" : "Recently Deleted"}
+                    </button>
+                  ))}
+                </div>
+
+                {projectTab === "deleted" ? (
+                  <p className="se-dialog-note">
+                    Deleted projects are not kept in this build, so there is nothing to restore.
+                  </p>
                 ) : (
-                  <ul className="se-dialog-list">
-                    {projects.map((item) => (
-                      <li key={item.id} className="se-dialog-row">
-                        <span className="se-dialog-title">{item.title || UNTITLED}</span>
-                        <button
-                          type="button"
-                          className="se-pill"
-                          onClick={() => navigate(item.id)}
-                          aria-label={`Open ${item.title || UNTITLED}`}
-                        >
-                          Open
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <div className="se-projects-tools">
+                      <label className="se-projects-search">
+                        <Icon name="fa-magnifying-glass" />
+                        <input
+                          value={projectQuery}
+                          onChange={(event) => setProjectQuery(event.target.value)}
+                          placeholder="Search for Project"
+                          aria-label="Search projects"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="se-projects-sort"
+                        disabled
+                        title="Project filters are not built"
+                      >
+                        <Icon name="fa-filter" /> Filters
+                      </button>
+                      <select
+                        className="se-projects-sort"
+                        aria-label="Sort projects"
+                        value={projectSort}
+                        onChange={(event) =>
+                          setProjectSort(event.target.value === "oldest" ? "oldest" : "newest")
+                        }
+                      >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                      </select>
+                    </div>
+
+                    {(() => {
+                      if (projects === null) {
+                        return <p className="se-dialog-note">Loading projects</p>;
+                      }
+                      const needle = projectQuery.trim().toLowerCase();
+                      const visible = projects
+                        .filter((item) => !needle || item.title?.toLowerCase().includes(needle))
+                        .slice()
+                        .sort((a, b) => {
+                          const at = new Date(a.updated_at || a.created_at || 0).getTime();
+                          const bt = new Date(b.updated_at || b.created_at || 0).getTime();
+                          return projectSort === "newest" ? bt - at : at - bt;
+                        });
+                      return (
+                        <div className="se-projects-grid">
+                          <button
+                            type="button"
+                            className="se-project-card is-new"
+                            onClick={startNewProject}
+                            disabled={busy}
+                          >
+                            <Icon name="fa-plus" />
+                            <span>New Project</span>
+                          </button>
+                          {visible.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className="se-project-card"
+                              onClick={() => navigate(item.id)}
+                              aria-label={`Open ${item.title || UNTITLED}`}
+                            >
+                              <span className="se-project-preview" aria-hidden="true">
+                                <span />
+                              </span>
+                              <span className="se-project-meta">
+                                <span className="se-project-thumb" aria-hidden="true">
+                                  {initialOf(item.title || UNTITLED)}
+                                </span>
+                                <span className="se-project-text">
+                                  <strong>{item.title || UNTITLED}</strong>
+                                  <small>
+                                    {item.updated_at
+                                      ? new Date(item.updated_at).toLocaleDateString()
+                                      : "No date"}
+                                  </small>
+                                </span>
+                              </span>
+                            </button>
+                          ))}
+                          {visible.length === 0 ? (
+                            <p className="se-dialog-note">No projects match that search.</p>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </>
             ) : dialog === "rename" ? (
@@ -612,7 +717,7 @@ export function StudioProjectMenu({
                   </button>
                 </>
               ) : null}
-              {dialog === "open" || dialog === "settings" ? (
+              {dialog === "settings" ? (
                 <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>
                   Close
                 </button>
