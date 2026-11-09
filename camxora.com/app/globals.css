@@ -4466,10 +4466,16 @@ html{color-scheme:dark}
 .sp-modes button{height:24px;padding:0 10px;border:0;border-radius:999px;background:#1c1c1e;color:#c2c2c1;font:inherit;font-size:11px;cursor:pointer}
 .sp-modes button.on{border-color:rgba(168,85,247,.6);background:rgba(168,85,247,.16);color:#efe9ff}
 .sp-asset{margin-bottom:8px;padding:6px 8px;border:1px dashed rgba(255,255,255,.12);border-radius:8px;color:#8b90a6;font-size:11px}
+.sp-eq{display:block;width:100%;height:120px;margin:0 0 8px;border-radius:8px;background:#101012;cursor:crosshair;touch-action:none}
+.sp-eq-axis{stroke:rgba(255,255,255,.12);stroke-width:1}
+.sp-eq-grid{stroke:rgba(255,255,255,.05);stroke-width:1}
+.sp-eq-fill{fill:rgba(214,189,18,.16)}
+.sp-eq-line{fill:none;stroke:#d6bd12;stroke-width:1.5}
+.sp-eq-handle{fill:#d6bd12;stroke:#101012;stroke-width:1.5}
 .sp-params{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .sp-param{display:flex;flex-direction:column;gap:3px;min-width:0}
 .sp-param-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8b90a6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sp-param input{width:100%;accent-color:#a855f7;height:14px}
+.sp-param input{width:100%;accent-color:#d6bd12;height:14px}
 .sp-param-value{font-size:11px;font-variant-numeric:tabular-nums;color:#c2c2c1}
 .sp-add{flex:0 0 auto;align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 16px;border:0;border-radius:999px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:13px;cursor:pointer}
 .sp-add:hover{background:#242427}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { Icon } from "@/components/Icon";
 import {
@@ -38,6 +38,77 @@ type Props = {
  * Behaviour is preserved (value, range, unit, primary/secondary tier); only the
  * visual affordance differs.
  */
+
+/**
+ * EQ curve for the dock card (S42): a log-frequency bell drawn from the band's
+ * freq/Q/gain, with a handle that drags frequency horizontally and gain vertically.
+ * The sliders stay below, so both input styles reach the same params.
+ */
+function EqCurve({
+  freq,
+  q,
+  gain,
+  onChange,
+}: {
+  freq: number;
+  q: number;
+  gain: number;
+  onChange: (patch: { freq?: number; gain?: number }) => void;
+}) {
+  const W = 290;
+  const H = 120;
+  const PAD = 8;
+  const F_MIN = 20;
+  const F_MAX = 20000;
+  const DB = 24;
+
+  const xFor = (value: number) => {
+    const t = (Math.log10(value) - Math.log10(F_MIN)) / (Math.log10(F_MAX) - Math.log10(F_MIN));
+    return PAD + Math.min(1, Math.max(0, t)) * (W - PAD * 2);
+  };
+  const yFor = (db: number) => H / 2 - (db / DB) * (H / 2 - PAD);
+
+  const points: string[] = [];
+  for (let px = PAD; px <= W - PAD; px += 3) {
+    const t = (px - PAD) / (W - PAD * 2);
+    const f = Math.pow(10, Math.log10(F_MIN) + t * (Math.log10(F_MAX) - Math.log10(F_MIN)));
+    const octaves = Math.log2(f / Math.max(1, freq));
+    const width = Math.max(0.35, 2.2 / Math.max(0.1, q));
+    const db = gain * Math.exp(-Math.pow(octaves / width, 2));
+    points.push(`${px.toFixed(1)},${yFor(db).toFixed(1)}`);
+  }
+  const stroke = `M ${PAD},${H / 2} L ${points.join(" L ")} L ${W - PAD},${H / 2}`;
+
+  const drag = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.buttons !== 1 && event.type === "pointermove") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const tx = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const ty = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    const nextFreq = Math.round(F_MIN * Math.pow(F_MAX / F_MIN, tx));
+    const nextGain = Math.round(((0.5 - ty) * 2 * DB) * 10) / 10;
+    onChange({ freq: nextFreq, gain: nextGain });
+  };
+
+  return (
+    <svg
+      className="sp-eq"
+      viewBox={`0 0 ${W} ${H}`}
+      role="img"
+      aria-label="EQ curve: drag to set frequency and gain"
+      onPointerDown={drag}
+      onPointerMove={drag}
+    >
+      <line x1={PAD} x2={W - PAD} y1={H / 2} y2={H / 2} className="sp-eq-axis" />
+      <line x1={xFor(100)} x2={xFor(100)} y1={PAD} y2={H - PAD} className="sp-eq-grid" />
+      <line x1={xFor(1000)} x2={xFor(1000)} y1={PAD} y2={H - PAD} className="sp-eq-grid" />
+      <line x1={xFor(10000)} x2={xFor(10000)} y1={PAD} y2={H - PAD} className="sp-eq-grid" />
+      <path d={`${stroke} Z`} className="sp-eq-fill" />
+      <path d={stroke} className="sp-eq-line" />
+      <circle cx={xFor(freq)} cy={yFor(gain)} r={4} className="sp-eq-handle" />
+    </svg>
+  );
+}
+
 export function StudioPluginDock({ chain, onChange, trackName }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -165,6 +236,24 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                 <div className="sp-asset" aria-label={plugin.assetSlot.label}>
                   {entry.assetId ? entry.assetId : plugin.assetSlot.emptyLabel}
                 </div>
+              ) : null}
+
+              {plugin.id === "eq" ? (
+                <EqCurve
+                  freq={entry.params["band1.freq"] ?? 1000}
+                  q={entry.params["band1.q"] ?? 1}
+                  gain={entry.params["band1.gain"] ?? 0}
+                  onChange={(patch) => {
+                    let next = chain;
+                    if (patch.freq !== undefined) {
+                      next = setParam(next, entry.entryId, "band1.freq", patch.freq);
+                    }
+                    if (patch.gain !== undefined) {
+                      next = setParam(next, entry.entryId, "band1.gain", patch.gain);
+                    }
+                    onChange(next);
+                  }}
+                />
               ) : null}
 
               <div className="sp-params">
