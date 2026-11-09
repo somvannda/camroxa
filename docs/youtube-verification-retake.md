@@ -20,7 +20,7 @@ Record full screen, 1280×720 or better, mic on, **one unedited take**, 5–7 mi
 
 ## 1. Recording script
 
-**0:00 — intro.** “This is a live demonstration of CAMXORA 1.6.1 publishing to YouTube through
+**0:00 — intro.** “This is a live demonstration of CAMXORA (latest build) publishing to YouTube through
 project 2647196562. I will show each requested scope and its effect on the account.”
 
 **0:20 — `youtube.readonly` (read only at connect).**
@@ -88,7 +88,7 @@ Thank you for the review. A new demonstration video addresses each point:
 Demo video: <UNLISTED LINK>
 
 Test credentials:
-  App: https://camxora.com/download (desktop 1.6.1)
+  App: https://camxora.com/download (latest desktop build)
   Email: review@camxora.com
   Password: <PASSWORD>
 
