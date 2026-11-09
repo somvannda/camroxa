@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -12,7 +11,6 @@ from platform_api.repositories.creator_repo import CreatorRepository
 from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.streaming_slug import slugify
 
-RELEASE_SLA_DAYS = 3
 VARIANTS = {"ok", "alt"}
 RELEASE_TYPES = {"single", "ep", "album"}
 
@@ -237,7 +235,7 @@ class CreatorReleaseService:
         release = await self.get_for_creator(user_id, release_id)
         if release["status"] not in {"draft", "changes_requested"}:
             raise ValidationError(
-                "This release is already in review or published.",
+                "This release is already published or in a locked state.",
                 details={"fields": {"status": "invalid"}},
             )
         task = await self._task_for_user(str(release["source_task_id"]), user_id)
@@ -248,25 +246,17 @@ class CreatorReleaseService:
                 details={"fields": {"audio": "not ready"}},
             )
         cleaned = _validate_metadata(release.get("metadata") or {})
-        sla_due = datetime.now(timezone.utc) + timedelta(days=RELEASE_SLA_DAYS)
-        row = await self._pool.fetchrow(
-            """
-            UPDATE creator_releases
-            SET metadata = $2::jsonb,
-                status = 'submitted',
-                submitted_at = NOW(),
-                sla_due_at = $3,
-                reviewed_by = NULL,
-                reviewed_at = NULL,
-                updated_at = NOW()
-            WHERE id = $1
-            RETURNING *
-            """,
+        await self._pool.execute(
+            "UPDATE creator_releases SET metadata = $2::jsonb, updated_at = NOW() WHERE id = $1",
             release_id,
             json.dumps(cleaned),
-            sla_due,
         )
-        return _row(row)
+        # Publish-first: automated checks passed, so go live immediately.
+        # Post-publication reports, spot checks, and takedowns replace pre-review.
+        result = await self.decide(
+            release_id, decision="approve", reviewer_id=user_id
+        )
+        return result["release"]
 
     async def withdraw(self, user_id: str, release_id: str) -> dict[str, Any]:
         release = await self.get_for_creator(user_id, release_id)

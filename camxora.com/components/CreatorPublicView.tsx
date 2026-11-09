@@ -73,7 +73,9 @@ export function CreatorPublicView({ handle }: { handle: string }) {
             <p className={styles.emptyTitle}>This creator is not available</p>
             <p className={styles.emptyBody}>The page may have been removed, renamed, or unpublished.</p>
             <div>
-              <CreatorButtonLink href="/creators" variant="primary">Browse creators</CreatorButtonLink>
+              <CreatorButtonLink href="/creators" variant="primary">
+                <Icon name="fa-users" /> Browse creators
+              </CreatorButtonLink>
             </div>
           </div>
         </CreatorPanel>
@@ -88,7 +90,9 @@ export function CreatorPublicView({ handle }: { handle: string }) {
         <CreatorPanel>
           <p className={styles.error} role="alert">{error || "Creator unavailable"}</p>
           <div className={styles.actions} style={{ marginTop: 16 }}>
-            <CreatorButtonLink href="/creators" variant="secondary">Back to creators</CreatorButtonLink>
+            <CreatorButtonLink href="/creators" variant="secondary">
+              <Icon name="fa-arrow-left" /> Back to creators
+            </CreatorButtonLink>
           </div>
         </CreatorPanel>
       </CreatorPage>

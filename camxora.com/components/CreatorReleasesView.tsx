@@ -41,8 +41,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 function stage(status: string): number {
   if (["draft", "changes_requested", "rejected", "taken_down"].includes(status)) return 0;
-  if (["submitted", "in_review", "approved", "scheduled"].includes(status)) return 1;
-  return 2;
+  return 1;
 }
 
 function statusTone(status: string): "neutral" | "review" | "live" | "danger" {
@@ -54,7 +53,7 @@ function statusTone(status: string): "neutral" | "review" | "live" | "danger" {
 
 function ReleaseFlow({ status }: { status: string }) {
   const current = stage(status);
-  const steps = ["Draft", "Review", "Live"];
+  const steps = ["Draft", "Live"];
   return (
     <div className={styles.flow}>
       {steps.map((step, index) => (
@@ -191,7 +190,7 @@ export function CreatorReleasesView() {
     try {
       if (["draft", "changes_requested"].includes(release.status)) {
         await submitRelease(release.id);
-        setSuccess("Release submitted for review.");
+        setSuccess("Published. Your release is live on Camxora.");
       } else if (["submitted", "in_review"].includes(release.status)) {
         await withdrawRelease(release.id);
         setSuccess("Release returned to draft.");
@@ -230,7 +229,7 @@ export function CreatorReleasesView() {
             <p className={styles.emptyBody}>Move a finished generation from draft to live.</p>
             <div>
               <CreatorButtonLink href="/login?next=/creator/releases" variant="primary">
-                Sign in
+                <Icon name="fa-right-to-bracket" /> Sign in
               </CreatorButtonLink>
             </div>
           </div>
@@ -280,7 +279,9 @@ export function CreatorReleasesView() {
               <p className={styles.emptyTitle}>No finished generations yet</p>
               <p className={styles.emptyBody}>Create a track, wait for it to finish, then come back here.</p>
               <div>
-                <CreatorButtonLink href="/create" variant="secondary">Create music</CreatorButtonLink>
+                <CreatorButtonLink href="/create" variant="secondary">
+                  <Icon name="fa-plus" /> Create music
+                </CreatorButtonLink>
               </div>
             </div>
           ) : (
@@ -324,7 +325,7 @@ export function CreatorReleasesView() {
               />
               <div>
                 <CreatorButton type="submit" disabled={saving || !selected || !rights}>
-                  {saving ? "Creating…" : "Create draft"}
+                  <Icon name="fa-plus" /> {saving ? "Creating…" : "Create draft"}
                 </CreatorButton>
               </div>
             </form>
@@ -363,17 +364,17 @@ export function CreatorReleasesView() {
                     <div className={styles.rowActions}>
                       {canSubmit ? (
                         <CreatorButton variant="secondary" type="button" onClick={() => onAction(release)} disabled={saving}>
-                          Submit
+                          <Icon name="fa-paper-plane" /> Publish
                         </CreatorButton>
                       ) : null}
                       {canWithdraw ? (
                         <CreatorButton variant="secondary" type="button" onClick={() => onAction(release)} disabled={saving}>
-                          Withdraw
+                          <Icon name="fa-rotate-left" /> Withdraw
                         </CreatorButton>
                       ) : null}
                       {canUnpublish ? (
                         <CreatorButton variant="secondary" type="button" onClick={() => onAction(release)} disabled={saving}>
-                          Unpublish
+                          <Icon name="fa-eye-slash" /> Unpublish
                         </CreatorButton>
                       ) : null}
                     </div>
@@ -385,22 +386,22 @@ export function CreatorReleasesView() {
         </CreatorPanel>
       </div>
 
-      <CreatorPanel title="How releases work" meta="Review takes up to 3 business days" className={styles.sectionGap}>
+      <CreatorPanel title="How releases work" meta="Published instantly · reviewed after" className={styles.sectionGap}>
         <div className={styles.guideGrid}>
           <div className={styles.guideStep}>
             <p className={styles.guideNumber}>01</p>
             <p className={styles.guideTitle}>Pick a finished generation</p>
-            <p className={styles.guideBody}>Only tracks with stored audio can be submitted.</p>
+            <p className={styles.guideBody}>Only tracks with stored audio can be published.</p>
           </div>
           <div className={styles.guideStep}>
             <p className={styles.guideNumber}>02</p>
-            <p className={styles.guideTitle}>Send it to review</p>
-            <p className={styles.guideBody}>We check rights, metadata, and audio readiness.</p>
+            <p className={styles.guideTitle}>Publish instantly</p>
+            <p className={styles.guideBody}>Automated checks cover rights, metadata, and audio readiness.</p>
           </div>
           <div className={styles.guideStep}>
             <p className={styles.guideNumber}>03</p>
-            <p className={styles.guideTitle}>Go live</p>
-            <p className={styles.guideBody}>Approved releases appear on your creator page and in the catalog.</p>
+            <p className={styles.guideTitle}>Review after publish</p>
+            <p className={styles.guideBody}>Reports and spot checks can take a release down later.</p>
           </div>
         </div>
       </CreatorPanel>

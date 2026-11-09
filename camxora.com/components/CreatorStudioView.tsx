@@ -175,7 +175,9 @@ export function CreatorStudioView() {
             <p className={styles.emptyTitle}>Sign in to continue</p>
             <p className={styles.emptyBody}>Claim your creator page, edit your profile, and track readiness.</p>
             <div>
-              <CreatorButtonLink href="/login?next=/creator" variant="primary">Sign in</CreatorButtonLink>
+              <CreatorButtonLink href="/login?next=/creator" variant="primary">
+                <Icon name="fa-right-to-bracket" /> Sign in
+              </CreatorButtonLink>
             </div>
           </div>
         </CreatorPanel>
@@ -263,7 +265,7 @@ export function CreatorStudioView() {
               />
               {!profile ? (
                 <CreatorButton variant="secondary" type="button" onClick={onCheckHandle} disabled={checking}>
-                  {checking ? "Checking…" : "Check"}
+                  <Icon name="fa-check" /> {checking ? "Checking…" : "Check"}
                 </CreatorButton>
               ) : null}
             </div>
@@ -354,6 +356,7 @@ export function CreatorStudioView() {
 
           <div>
             <CreatorButton type="submit" disabled={saving}>
+              <Icon name={profile ? "fa-floppy-disk" : "fa-user-plus"} />
               {saving ? "Saving…" : profile ? "Save profile" : "Create creator page"}
             </CreatorButton>
           </div>
@@ -362,12 +365,16 @@ export function CreatorStudioView() {
 
       <CreatorPanel title="Next steps" className={styles.sectionGap}>
         <p className={styles.emptyBody}>
-          Verification, releases, analytics, and payouts are the next phases. Identity is live now:
-          claim a handle, save a profile, and open your public creator page.
+          Verification is optional. You can claim a page and publish without it. Payout identity
+          verification is separate and only required when you request a payout.
         </p>
         <div className={styles.actions} style={{ marginTop: 16 }}>
-          <CreatorButtonLink href="/creator/releases" variant="secondary">Open releases</CreatorButtonLink>
-          <CreatorButtonLink href="/creator/verification" variant="ghost">Apply for verification</CreatorButtonLink>
+          <CreatorButtonLink href="/creator/releases" variant="secondary">
+            <Icon name="fa-record-vinyl" /> Open releases
+          </CreatorButtonLink>
+          <CreatorButtonLink href="/creator/verification" variant="ghost">
+            <Icon name="fa-circle-check" /> Request the badge
+          </CreatorButtonLink>
         </div>
       </CreatorPanel>
     </CreatorPage>

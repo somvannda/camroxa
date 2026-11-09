@@ -117,6 +117,25 @@ async def test_submit_requires_rights_attestation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_submit_publishes_immediately() -> None:
+    user_id = uuid4()
+    release = _release(user_id)
+    task = _task(user_id)
+    service = CreatorReleaseService(AsyncMock())
+    service._pool = AsyncMock()
+    service._pool.fetchrow = AsyncMock(side_effect=[release, task])
+    service._pool.execute = AsyncMock()
+    service.decide = AsyncMock(return_value={"release": {**release, "status": "published"}})
+
+    result = await service.submit(str(user_id), str(release["id"]))
+
+    assert result["status"] == "published"
+    service.decide.assert_awaited_once_with(
+        str(release["id"]), decision="approve", reviewer_id=str(user_id)
+    )
+
+
+@pytest.mark.asyncio
 async def test_approving_a_release_publishes_to_the_catalog() -> None:
     user_id = uuid4()
     task = _task(user_id)

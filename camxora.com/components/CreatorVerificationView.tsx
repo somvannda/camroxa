@@ -104,7 +104,7 @@ export function CreatorVerificationView() {
         rights_attested: rights,
         requested_tier: "verified",
       });
-      setSuccess("Application submitted. We review within 3 business days.");
+      setSuccess("Badge request submitted. You can keep publishing while we review.");
       setPitch("");
       setLink("");
       setRights(false);
@@ -167,11 +167,11 @@ export function CreatorVerificationView() {
         <CreatorHeader meta="Creator Studio" title="Verification" />
         <CreatorPanel>
           <div className={styles.empty}>
-            <p className={styles.emptyTitle}>Sign in to apply</p>
-            <p className={styles.emptyBody}>Apply for Verified Creator status and track your review.</p>
+            <p className={styles.emptyTitle}>Sign in to continue</p>
+            <p className={styles.emptyBody}>Request the badge or complete payout identity verification.</p>
             <div>
               <CreatorButtonLink href="/login?next=/creator/verification" variant="primary">
-                Sign in
+                <Icon name="fa-right-to-bracket" /> Sign in
               </CreatorButtonLink>
             </div>
           </div>
@@ -187,9 +187,11 @@ export function CreatorVerificationView() {
         <CreatorPanel>
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>Claim a creator page first</p>
-            <p className={styles.emptyBody}>You need a creator profile before you can apply for verification.</p>
+            <p className={styles.emptyBody}>You need a creator profile before you can request the badge.</p>
             <div>
-              <CreatorButtonLink href="/creator" variant="primary">Open Creator Studio</CreatorButtonLink>
+              <CreatorButtonLink href="/creator" variant="primary">
+                <Icon name="fa-microphone-lines" /> Open Creator Studio
+              </CreatorButtonLink>
             </div>
           </div>
         </CreatorPanel>
@@ -206,7 +208,7 @@ export function CreatorVerificationView() {
       <CreatorHeader
         meta="Creator Studio"
         title="Verification"
-        description="Apply for the Verified Creator badge and track your review."
+        description="Optional: request the Verified Creator badge. You can publish without it."
         actions={
           <>
             <CreatorButtonLink href="/creator" variant="ghost">
@@ -225,14 +227,14 @@ export function CreatorVerificationView() {
       <CreatorMetrics
         items={[
           { label: "Current tier", value: status.profile.tier },
-          { label: "Application", value: application ? STATUS_LABELS[application.status] ?? application.status : "Not applied" },
+          { label: "Badge request", value: application ? STATUS_LABELS[application.status] ?? application.status : "Not requested" },
           { label: "Active badges", value: status.badges.length },
           { label: "Evidence items", value: status.verifications.length },
         ]}
       />
 
       {application ? (
-        <CreatorPanel title="Application status" meta={`Version ${application.version}`}>
+        <CreatorPanel title="Badge request" meta={`Version ${application.version}`}>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
             <div>
               <CreatorStatus
@@ -246,7 +248,7 @@ export function CreatorVerificationView() {
             </div>
             {["submitted", "in_review", "changes_requested"].includes(application.status) ? (
               <CreatorButton variant="secondary" type="button" onClick={onWithdraw} disabled={saving}>
-                Withdraw application
+                <Icon name="fa-rotate-left" /> Withdraw request
               </CreatorButton>
             ) : null}
           </div>
@@ -258,7 +260,7 @@ export function CreatorVerificationView() {
 
       {canApply ? (
         <CreatorPanel
-          title={application?.status === "changes_requested" ? "Update and resubmit" : "Apply for verification"}
+          title={application?.status === "changes_requested" ? "Update and resubmit" : "Request the Verified badge"}
           className={styles.sectionGap}
         >
           <form className={styles.form} onSubmit={onApply}>
@@ -295,7 +297,7 @@ export function CreatorVerificationView() {
             />
             <div>
               <CreatorButton type="submit" disabled={saving || !rights}>
-                {saving ? "Submitting…" : "Submit application"}
+                <Icon name="fa-paper-plane" /> {saving ? "Submitting…" : "Request badge"}
               </CreatorButton>
             </div>
           </form>
@@ -303,10 +305,13 @@ export function CreatorVerificationView() {
       ) : null}
 
       <CreatorPanel
-        title="Identity evidence"
-        meta="Encrypted and reviewed by a human"
+        title="Payout identity verification"
+        meta="Separate from the badge · encrypted"
         className={styles.sectionGap}
       >
+        <p className={styles.emptyBody} style={{ marginBottom: 20 }}>
+          Only required when you request a payout. You can publish, grow an audience, and request the badge without it.
+        </p>
         <form className={styles.form} onSubmit={onVerification}>
           <CreatorField label="Evidence type" htmlFor="evidence-kind">
             <CreatorSelect
@@ -333,7 +338,7 @@ export function CreatorVerificationView() {
           </CreatorField>
           <div>
             <CreatorButton variant="secondary" type="submit" disabled={saving || !evidenceRef.trim()}>
-              Submit evidence
+              <Icon name="fa-upload" /> Submit evidence
             </CreatorButton>
           </div>
         </form>

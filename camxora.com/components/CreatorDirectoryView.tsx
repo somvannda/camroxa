@@ -89,7 +89,9 @@ export function CreatorDirectoryView() {
             <p className={styles.emptyTitle}>No creators match “{query}”</p>
             <p className={styles.emptyBody}>Try another name, or claim your own creator page.</p>
             <div>
-              <CreatorButtonLink href="/creator" variant="secondary">Claim a creator page</CreatorButtonLink>
+              <CreatorButtonLink href="/creator" variant="secondary">
+                <Icon name="fa-user-plus" /> Claim a creator page
+              </CreatorButtonLink>
             </div>
           </div>
         </CreatorPanel>
