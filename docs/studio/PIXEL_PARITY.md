@@ -32,6 +32,7 @@ functional controls the capture does not show (listed below).
 | Library head | 34 px: panel icon + title left, magnifier right | same (close X kept) |
 | Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink) | same |
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same |
+| Uploads level | Filter / New / liked / In Project / Stems chips | same; Filter and Stems disabled |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
 | Plugin dock | full-width band above the footer, slot cards on #141416 | same |
 | EQ card | 450 px card: Band selector + switch, six shape buttons, yellow curve with per-band handles, Freq/Q/Gain knobs | same; four bands, real cascaded biquads |
@@ -46,6 +47,7 @@ functional controls the capture does not show (listed below).
 | Dialogs | 480 px, radius 24, padding 32, 24 px title, 44 px pills | same |
 | Export toast | bottom-left 888 px banner on #1c1c1e, radius 16 | same |
 | Selected track | tints the gutter row and its lane | same |
+| Selected clip | white outline only; trim/fade grips on hover | same |
 | Clip hover card | light 256 px card explaining drag/double-click/right-click | same |
 | Clip info rail | 360 px card: hero, Remix, waveform, underlined tabs, section cards | same (facts kept in a Details card) |
 | Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards | same (sticky mini-player still omitted, D-018) |
