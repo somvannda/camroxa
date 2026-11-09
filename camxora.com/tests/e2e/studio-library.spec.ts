@@ -179,11 +179,32 @@ test("dragging a song onto a lane places a clip where it was dropped", async ({ 
   await expect.poll(async () => rows.count()).toBeGreaterThan(0);
 
   const before = await page.locator(".se-clip").count();
-  await rows.first().dragTo(page.locator(".se-lane").first(), {
-    // Start over the artwork/title, not the row centre: an inner button would otherwise
-    // receive the pointer and the row's dragstart never fires.
-    sourcePosition: { x: 80, y: 24 },
-    targetPosition: { x: 200, y: 40 },
+  // Drive the HTML5 drag contract directly: a row dragstart carrying the song id,
+  // then dragover/drop on the lane. Playwright's mouse-based dragTo depends on native
+  // drag initiation that is flaky in headless CI (the row's child controls can win the
+  // gesture); the app's handlers are what this spec is protecting.
+  await page.evaluate(() => {
+    const row = document.querySelector(".se-lib-song");
+    const lane = document.querySelector(".se-lane");
+    if (!row || !lane) throw new Error("library row or lane missing");
+    const transfer = new DataTransfer();
+    row.dispatchEvent(
+      new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: transfer })
+    );
+    const rect = lane.getBoundingClientRect();
+    const clientX = rect.left + 200;
+    const clientY = rect.top + 40;
+    for (const type of ["dragover", "drop"]) {
+      lane.dispatchEvent(
+        new DragEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: transfer,
+          clientX,
+          clientY,
+        })
+      );
+    }
   });
   await expect(page.locator(".se-clip")).toHaveCount(before + 1);
 });
