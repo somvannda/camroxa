@@ -1066,6 +1066,8 @@ test("My Projects modal matches the captured layout", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Open Project" }).click();
   const dialog = page.getByRole("dialog", { name: "Open project" });
   await expect(dialog).toBeVisible();
+  // The list loads after the dialog shell; wait for the New Project card.
+  await expect(dialog.locator(".se-project-card.is-new")).toBeVisible();
   const info = await dialog.locator(".se-dialog").evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
@@ -1196,7 +1198,7 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
     await page.locator(".se-prompt").evaluate((element) => Math.round(element.getBoundingClientRect().x))
   ).toBe(24);
   await expect(assistant.getByText(/Created Generated demo/)).toBeVisible({ timeout: 20_000 });
-  expect(captured.model).toBe("v6-mini");
+  expect(captured.model).toBe("V6_MINI");
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(0);
   await expect(assistant.getByText("Take 1")).toBeVisible();
   await expect(assistant.getByText("Take 2")).toBeVisible();

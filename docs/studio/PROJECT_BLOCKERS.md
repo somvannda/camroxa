@@ -24,15 +24,13 @@ decision (vitest vs. node:test vs. Playwright only).
 
 **Interim:** manual journeys W-A…W-H recorded in `PROJECT_PROGRESS.md`.
 
-## B-003 — Local services not running
+## B-003 — Local services not running (RESOLVED 2026-11-10)
 
-**Blocks:** end-to-end manual verification right now.
-
-**State:** at session start only the web dev server was up (3103); `musicapi` (4003)
-and `platform_api` (8100) were stopped. PostgreSQL (5432) is up.
-
-**Unblock:** start the two services (see `README.md` / `musicapi/README.md`), ensure
-`camxora.com/.env.local` points at `PLATFORM_API_URL=http://localhost:8100`.
+**State:** the Studio stack now runs from this worktree: musicapi `:4003` (after adding
+`musicapi/.env` with the canonical `COOKIE_ENCRYPTION_KEY`, which must match the rows in
+`sunoapi`), platform API `:8100` with the sandbox DB, Redis, moto S3 `:9000`, and the
+web dev server `:3103`. Real generation and stems are verified end to end — see B-005
+for the exact environment and the callback tunnel.
 
 ## B-004 — Stems tab needs a listing API
 
@@ -47,20 +45,56 @@ written against real data.
 **Unblock:** finish B-005, capture one successful stems result, then project it as a
 typed list endpoint. Not on the critical path.
 
-## B-005 — Studio ops need one genuinely generated clip
+## B-005 — Studio ops need one genuinely generated clip (RESOLVED LOCALLY 2026-11-10)
 
 **Blocks:** the last step of W4.2 (receiving an actual stem set) and the stems half of
-W4.3.
+W4.3. **Unblocked:** a real generation plus a real stems job both completed locally, so
+B-004 can now be written against a real `studio_operations.result_json`.
 
-**State:** the credit path is fixed and verified (D-009). The forward now reaches
-musicapi, which answers `409 "The source clip's Suno account is not recorded."` because
-`findAssetAccountAny` finds nothing for the seeded `sandbox-clip-ok`: it reads
-`asset_owners` / `jobs.result_json` in the `sunoapi` database, and the seeded clip never
-came from a Suno account.
+**Was:** the forward reached musicapi, which answered `409 "The source clip's Suno
+account is not recorded."` because the seeded clip never came from a Suno account, and
+the platform reported `suno_callback_base_url: false` because Suno refuses to call back
+to localhost.
 
-**Unblock:** generate one real clip in the sandbox (needs a public
-`PLATFORM_SUNO_CALLBACK_BASE_URL` — Suno refuses to call back to localhost, which the
-readiness endpoint reports as `suno_callback_base_url: false`), then request stems on it.
+**Local recipe that works (2026-11-10).** Three processes, all from the repo root:
+
+```powershell
+# 1. musicapi, with the canonical worktree key (COOKIE_ENCRYPTION_KEY must match
+#    the rows in the sunoapi database) and the B2/S3 storage env.
+cd musicapi && npm run build && npm start        # http://127.0.0.1:4003
+
+# 2. a public callback tunnel (Suno rejects localhost callbacks)
+cloudflared tunnel --url http://127.0.0.1:8100 --no-autoupdate
+#    take the https://<name>.trycloudflare.com it prints
+
+# 3. platform API (+ worker for queued generation), sandbox DB, tunnel callback,
+#    v3 credit charging, and the platform-prefixed internal token.
+$token = ((Get-Content musicapi/.env | Where-Object { $_ -match '^STUDIO_INTERNAL_TOKEN=' }) -split '=',2)[1]
+$env:PLATFORM_DATABASE_URL='postgresql+asyncpg://postgres:postgres@localhost:5432/camxora_pfm_sandbox'
+$env:PLATFORM_STUDIO_INTERNAL_TOKEN=$token
+$env:PLATFORM_SUNO_CALLBACK_BASE_URL='https://<name>.trycloudflare.com'
+$env:PLATFORM_CREDITS_ONLY_V3_CHARGE='true'
+python -m uvicorn platform_api.main:app --host 127.0.0.1 --port 8100 `
+  --env-file "G:\Developments\Projects\Camxora\platform_api\.env"
+python -m platform_api.worker
+```
+
+Notes learned the hard way:
+
+- `STUDIO_INTERNAL_TOKEN` in `.env` is ignored (settings use the `PLATFORM_` prefix);
+  set `PLATFORM_STUDIO_INTERNAL_TOKEN` or Studio stems answer
+  `502 studio_internal_token_missing`.
+- The sandbox has no key-pool rows, so generation there stops at
+  `NO_AVAILABLE_KEYS`; run against the checkout's `platform_db` (which has keys) to
+  exercise the real provider, then restore the sandbox for tests.
+- The worker needs the same env as the API (`PLATFORM_ENCRYPTION_MASTER_KEY`), otherwise
+  it cannot load the key pool.
+- Sandbox DBs with `credits_only_v3_charge` off hit the legacy reserve path whose credit
+  service is not wired (`credit_service=None`); set `PLATFORM_CREDITS_ONLY_V3_CHARGE=true`.
+
+**Verified:** `POST /web-music/generate` → 202, callback → `SUCCESS`, both clips
+packaged and uploaded to B2; `POST /studio/generations/{id}/stems` → 202, then
+`GET /studio/operations/{id}` → `complete` with four stem clips (Vocals/Instrumental ×2).
 
 **Do not** point a seeded task at another user's real asset id: it would run a paid
 Studio operation against someone else's Suno asset.

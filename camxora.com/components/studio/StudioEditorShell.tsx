@@ -85,6 +85,12 @@ const HISTORY_LIMIT = 50;
 const PANEL_W = 260;
 const LIBRARY_W = 360;
 const ZOOM_LEVELS = [48, 64, 96, 144, 192];
+/** Display labels stay lowercase; the API expects its enum values. */
+const STUDIO_MODEL_API: Record<string, string> = {
+  v6: "V6",
+  "v6-wild": "V6_WILD",
+  "v6-mini": "V6_MINI",
+};
 /** Clip Color swatches in the clip menu (same families as tracks). */
 const CLIP_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"];
 
@@ -3190,7 +3196,11 @@ export function StudioEditorShell() {
       { id: statusId, role: "status", text: "Generating…" },
     ]);
     try {
-      const created = await generateSong({ mode: "simple", prompt, model: promptModel });
+      const created = await generateSong({
+        mode: "simple",
+        prompt,
+        model: STUDIO_MODEL_API[promptModel] ?? "V6",
+      });
       const deadline = Date.now() + 180_000;
       let generation: WebMusicGeneration | null = null;
       while (Date.now() < deadline) {
