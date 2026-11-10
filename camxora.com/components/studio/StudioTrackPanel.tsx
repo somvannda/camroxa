@@ -360,7 +360,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   onClick={() => onToggleFlag(track.id, "muted")}
                   data-help="track-mute"
                 >
-                  <Icon name="fa-volume-high" />
+                  <Icon name={track.muted ? "fa-volume-xmark" : "fa-volume-high"} />
                 </button>
                 <button
                   type="button"

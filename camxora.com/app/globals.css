@@ -4787,7 +4787,7 @@ html{color-scheme:dark}
 .se-midi-control strong{font-weight:600;color:#f7f4ef}
 .se-midi-control select{height:26px;padding:0 8px;border:0;border-radius:6px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:12px}
 .se-midi-apply{height:26px;padding:0 10px;border:0;border-radius:6px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:12px;cursor:pointer}
-.se-error{position:fixed;left:50%;top:64px;transform:translateX(-50%);padding:8px 14px;border-radius:8px;background:#b91c1c;color:#fff;font-size:12px}
+.se-error{position:fixed;left:50%;top:94px;transform:translateX(-50%);z-index:90;max-width:min(640px,calc(100vw - 32px));padding:8px 14px;border-radius:8px;background:#b91c1c;color:#fff;font-size:12px;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,.45)}
 .se-loading{position:fixed;right:16px;bottom:56px;padding:6px 12px;border-radius:8px;background:#1c1c1f;color:#c9cde0;font-size:12px}
 .se-gate{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100dvh;background:#101012;color:#f4f5fb;text-align:center}
 .se-gate h1{margin:0;font-size:24px}

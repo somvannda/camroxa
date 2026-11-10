@@ -1268,6 +1268,50 @@ test("prompt dock matches S36 and toggles the conversation", async ({ page }) =>
   await expect(page.locator(".se-prompt-context")).toHaveCount(0);
 });
 
+test("muting a track swaps the speaker icon, not just the hover colour", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel mute" });
+
+  const mute = page.getByRole("button", { name: "Mute Track 1" });
+  await expect(mute.locator(".icon")).toHaveClass(/fa-volume-high/);
+  await mute.click();
+  await expect(mute).toHaveAttribute("aria-pressed", "true");
+  await expect(mute.locator(".icon")).toHaveClass(/fa-volume-xmark/);
+  await mute.click();
+  await expect(mute.locator(".icon")).toHaveClass(/fa-volume-high/);
+});
+
+test("save errors float below the ruler instead of being clipped", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel error" });
+  await page.route("**/api/v3/web-music/studio/projects/*", (route) =>
+    route.request().method() === "PATCH"
+      ? route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "nope" } }),
+        })
+      : route.continue()
+  );
+
+  await page.getByRole("button", { name: "Mute Track 1" }).click();
+  const alert = page.locator(".se-error");
+  await expect(alert).toBeVisible();
+  const info = await alert.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const ruler = document.querySelector(".se-ruler-bars")?.getBoundingClientRect();
+    return {
+      top: Math.round(rect.top),
+      zIndex: getComputedStyle(element).zIndex,
+      rulerBottom: ruler ? Math.round(ruler.bottom) : null,
+    };
+  });
+  expect(info.top).toBeGreaterThanOrEqual(info.rulerBottom ?? 0);
+  expect(info.zIndex).toBe("90");
+});
+
 test("plugin cards offer the captured preset menu", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
