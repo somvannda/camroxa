@@ -134,19 +134,29 @@ The script reads `platform_api/.env`, decrypts an active `slai` key from `api_ke
 
 ---
 
-## 7. Seeding plan (deferred)
+## 7. Seeding
 
-When Phase 1–2 are live, add a **separate, idempotent seed script** (not a migration):
+The catalog pack ships as an idempotent script, not a migration:
 
-1. Insert 8 `creator_profiles` rows with `status='active'`, `is_sample=true`.
-2. Insert 10 `creator_releases` rows with `status='published'`.
-3. Insert 65 `stream_tracks` rows + 10 `stream_albums` rows.
-4. Attach placeholder or generated audio (`storage_key`) only in non-production.
-5. Insert `creator_track_credits` for each track.
-6. Mark all rows with a `sample` flag or a dedicated `sample_creator_pack` namespace so they can be removed in one command.
-7. Do **not** run this seed in production.
+```bash
+python scripts/creator-program/seed_sample_releases.py
+python scripts/creator-program/seed_sample_releases.py --remove
+```
 
-**Removal:** one script that deletes everything tagged as sample, in dependency order, without touching real creators.
+1. Reads `discography.json`.
+2. Upserts one `stream_albums` row per release, keyed on `(user_id, album_slug)`.
+3. Replaces the album's `stream_tracks` rows; every `storage_key` starts with
+   `sample-creators/audio/<handle>/<slug>/`.
+4. Upserts one `creator_releases` row per album with `status='published'`,
+   `metadata.sample = "creator-program"` and `metadata.sample_id = <album id>`.
+5. Skips any handle whose `creator_profiles` row is missing or not `is_sample`.
+
+`--remove` deletes releases by `metadata.sample`, tracks by the `sample-creators/`
+prefix, then any track-less albums owned by a sample creator. Real creators are
+never touched.
+
+Do **not** run this seed in production. It only writes catalog rows; no audio is
+uploaded, so the sample tracks have metadata but no playable asset.
 
 ---
 
