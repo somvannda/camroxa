@@ -93,6 +93,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Release Moderation', path: '/creators/releases', icon: Radio },
       { label: 'Royalty Periods', path: '/creators/royalties', icon: Coins },
       { label: 'Creator Payouts', path: '/creators/payouts', icon: Wallet },
+      { label: 'Money Audit', path: '/creators/audit', icon: ScrollText },
     ],
   },
   {

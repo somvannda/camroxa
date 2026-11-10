@@ -341,6 +341,27 @@ export function useReleaseReserve() {
   });
 }
 
+export function useMoneyAudit(limit = 100) {
+  return useQuery({
+    queryKey: ['creator-money-audit', limit],
+    queryFn: () =>
+      httpClient.get<{
+        items: Array<{
+          id: string;
+          action: string;
+          subject_type: string;
+          subject_id?: string | null;
+          creator_id?: string | null;
+          amount_micros?: number | null;
+          detail?: Record<string, unknown> | null;
+          created_at: string;
+          actor_email?: string | null;
+          creator_email?: string | null;
+        }>;
+      }>('/api/v3/admin/creators/audit', { limit }),
+  });
+}
+
 export function usePayoutReconciliation() {
   return useQuery({
     queryKey: ['payout-reconciliation'],
