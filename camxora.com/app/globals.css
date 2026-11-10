@@ -4690,6 +4690,16 @@ html{color-scheme:dark}
 .se-model-menu button.on{background:hsl(var(--accent) / .14)}
 .se-model-menu strong{font-size:12px;font-weight:600}
 .se-model-menu small{font-size:11px;color:#8b90a6}
+.se-assistant{position:fixed;left:8px;top:8px;bottom:8px;z-index:75;display:flex;flex-direction:column;width:370px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
+.se-assistant-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
+.se-assistant-head strong{font-size:13px;font-weight:600}
+.se-assistant-note{margin:0;padding:10px 14px 4px;font-size:11px;color:#8b90a6}
+.se-assistant-log{display:flex;flex-direction:column;gap:10px;padding:10px 14px;overflow-y:auto}
+.se-assistant-msg{margin:0;font-size:13px;line-height:1.45}
+.se-assistant-msg.user{color:hsl(var(--foreground));font-weight:600}
+.se-assistant-msg.status{color:#8b90a6}
+.se-assistant-msg.result{color:hsl(var(--foreground))}
+.se-assistant-actions{display:flex;gap:8px;padding-top:4px}
 .se-prompt{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;width:min(645px,calc(100% - 48px));height:56px;padding:0 12px 0 16px;border-radius:16px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:6}
 .se-prompt-badge{padding:2px 7px;border-radius:999px;background:hsl(var(--accent));color:hsl(var(--accent-foreground));font-size:11px;font-weight:600;letter-spacing:.04em}
 .se-prompt-input{flex:1;min-width:0;border:0;background:transparent;color:#f7f4ef;font:inherit;font-size:13px;outline:none}

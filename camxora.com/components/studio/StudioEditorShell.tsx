@@ -373,6 +373,11 @@ export function StudioEditorShell() {
   const [promptValue, setPromptValue] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
   const [promptModel, setPromptModel] = useState("v6");
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantMessages, setAssistantMessages] = useState<
+    Array<{ id: string; role: "user" | "status" | "result"; text: string }>
+  >([]);
+  const [pendingSong, setPendingSong] = useState<WebMusicGeneration | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const promptRef = useRef<HTMLFormElement | null>(null);
 
@@ -3041,6 +3046,14 @@ export function StudioEditorShell() {
     const prompt = raw.trim();
     if (!prompt || promptBusy) return;
     setPromptBusy(true);
+    setAssistantOpen(true);
+    setPendingSong(null);
+    setAssistantMessages([{ id: `u-${Date.now()}`, role: "user", text: prompt }]);
+    const statusId = `s-${Date.now()}`;
+    setAssistantMessages((current) => [
+      ...current,
+      { id: statusId, role: "status", text: "Generating…" },
+    ]);
     try {
       const created = await generateSong({ mode: "simple", prompt, model: promptModel });
       const deadline = Date.now() + 180_000;
@@ -3057,17 +3070,43 @@ export function StudioEditorShell() {
         }
       }
       if (!generation) throw new Error("Generation timed out.");
-      setLibrarySongs((previous) =>
-        previous ? [generation as WebMusicGeneration, ...previous] : [generation as WebMusicGeneration]
+      const finished = generation;
+      setLibrarySongs((previous) => (previous ? [finished, ...previous] : [finished]));
+      setPendingSong(finished);
+      setAssistantMessages((current) =>
+        current.map((message) =>
+          message.id === statusId
+            ? {
+                ...message,
+                role: "result",
+                text: `Created ${finished.title || "a new part"}. Audition it or commit it to the track.`,
+              }
+            : message
+        )
       );
-      addSongToTimeline(generation);
       setPromptValue("");
-      setExportToast("Generated and added to the track at the playhead.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Generation failed.");
+      setAssistantMessages((current) =>
+        current.map((message) =>
+          message.id === statusId
+            ? {
+                ...message,
+                role: "status",
+                text: cause instanceof Error ? cause.message : "Generation failed.",
+              }
+            : message
+        )
+      );
     } finally {
       setPromptBusy(false);
     }
+  }
+
+  /** Commit the pending generation to the selected (or first) track at the playhead. */
+  function commitPendingSong() {
+    if (!pendingSong) return;
+    addSongToTimeline(pendingSong);
+    setExportToast("Generated part added to the track at the playhead.");
   }
 
   const railOpen = libraryOpen || inspectorOpen;
@@ -3442,6 +3481,49 @@ export function StudioEditorShell() {
           </button>
         </form>
       </div>
+
+      {assistantOpen ? (
+        <aside className="se-assistant" aria-label="Studio assistant">
+          <header className="se-assistant-head">
+            <strong>Studio assistant</strong>
+            <button
+              type="button"
+              className="se-icon"
+              aria-label="Close assistant"
+              onClick={() => setAssistantOpen(false)}
+            >
+              <Icon name="fa-xmark" />
+            </button>
+          </header>
+          <p className="se-assistant-note">Chat is powered by AI and can make mistakes.</p>
+          <div className="se-assistant-log">
+            {assistantMessages.map((message) => (
+              <p key={message.id} className={`se-assistant-msg ${message.role}`}>
+                {message.text}
+              </p>
+            ))}
+            {pendingSong ? (
+              <div className="se-assistant-actions">
+                <button
+                  type="button"
+                  className="se-pill on"
+                  onClick={commitPendingSong}
+                  disabled={tracks.length === 0}
+                >
+                  Commit to track
+                </button>
+                <button
+                  type="button"
+                  className="se-pill"
+                  onClick={() => toggleSongPreview(pendingSong)}
+                >
+                  {playingSongId === pendingSong.id ? "Pause" : "Audition"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </aside>
+      ) : null}
 
       <StudioOnboarding
         projectId={projectId}

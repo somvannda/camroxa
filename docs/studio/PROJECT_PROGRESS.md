@@ -23,7 +23,7 @@ Playwright gate at the capture viewport (1689×1277). Targets live in
 | **Menus** | Learn popover, track/add-track/project/clip menus, export menu and toast, share dialog, the My Projects modal and the prompt bar (inline generation) on the captured surfaces |
 | **Remix** | Song-detail Remix generates a style variation through the generation API, adds it to the library and confirms with a toast (D-024) |
 | **Comments** | “Comments and notes” loads and posts project comments from the song rail (owner-only POST endpoint, replies supported by the model) |
-| **Prompt bar** | 645x56 floating bar above the timeline that generates inline (credits) and drops the result at the playhead; the song detail keeps the captured sticky mini-player (D-023) |
+| **Prompt bar + assistant** | 645x56 floating bar that generates through the model picker into a left assistant panel; the take can be auditioned or committed to the playhead track (S37). The song detail keeps the sticky mini-player (D-023) |
 | **MIDI** | Add-track MIDI creates a four-bar clip and opens the bottom piano-roll editor (grid, velocity lane, tabs, quantize); notes are editable, persisted, synthesised in playback and included in exports |
 | **Plugins** | dock band + slot cards, catalog with Learn chips, shared knob controls on every card, preset menus, and a working **four-band EQ card** backed by four cascaded biquads |
 

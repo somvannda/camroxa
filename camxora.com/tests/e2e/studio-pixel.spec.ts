@@ -1150,10 +1150,16 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   );
   await prompt.fill("A warm eight-bar drum loop");
   await page.getByRole("button", { name: "Generate this part" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Generated and added" })).toBeVisible({
-    timeout: 20_000,
-  });
+
+  // S37: the take arrives in the assistant panel; commit places it on the track.
+  const assistant = page.getByRole("complementary", { name: "Studio assistant" });
+  await expect(assistant).toBeVisible();
+  await expect(assistant.getByText(/Created Generated demo/)).toBeVisible({ timeout: 20_000 });
   expect(captured.model).toBe("v6-mini");
+  await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(0);
+  await expect(assistant.getByRole("button", { name: "Audition" })).toBeVisible();
+  await assistant.getByRole("button", { name: "Commit to track" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "added to the track" })).toBeVisible();
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(1);
 });
 
