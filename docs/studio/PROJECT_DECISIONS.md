@@ -623,6 +623,34 @@ spacing, control geometry and type scale stay at the captured values.
 **Consequences.** The pixel gate asserts the brand token colours (e.g. body `#0b0f19`,
 cards `#131826`, accent `#ad77f8`). Any future colour change must go through the tokens.
 
+## D-027 - Song "More" menu actions are ours (menu contents never captured)
+
+**Date:** 2026-11-10 **Status:** accepted
+
+**Decision.** The song-detail ellipsis opens a real menu: **Add to project**,
+**Download WAV**, **Move to trash**. The reference's menu contents were never captured
+(the button was disabled with a reason), so these three are our own picks, each backed
+by an existing endpoint rather than a placeholder. Trash is recoverable
+(`taskId:variant` into `trashed_variants`), and the rail closes once the row leaves the
+list.
+
+**Consequences.** If a capture of the real menu appears, reconcile the list; the
+actions themselves stay the same. No download or trash action runs without an explicit
+click.
+
+## D-028 - Comments are threaded (backend already models replies)
+
+**Date:** 2026-11-10 **Status:** accepted
+
+**Decision.** "Comments and notes" renders a reply tree instead of a flat list: every
+comment has a **Reply** action, the composer shows a "Replying to X" chip, and posting
+sends `parent_id`. Replies indent one step per level inside the same card. The backend
+already validates that a parent belongs to the project.
+
+**Consequences.** The rail's comment model matches `clip_comments.parent_id`; no schema
+change. The captured flat thread is a subset of this UI (top-level comments look the
+same).
+
 ## D-026 — Plugin designer is deterministic, local, and never auto-inserts
 
 **Date:** 2026-11-10 **Status:** accepted

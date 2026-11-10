@@ -67,7 +67,7 @@ functional controls the capture does not show (listed below).
 | Selected clip | white outline only; trim/fade grips on hover | same |
 | Clip hover card | light 256 px card explaining drag/double-click/right-click | same |
 | Clip info rail | 360 px card: hero, Remix, waveform, underlined tabs, section cards | same (facts kept in a Details card) |
-| Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards, sticky mini-player | same (mini-player now built; D-023) |
+| Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards, sticky mini-player | same (mini-player built per D-023; the More menu is ours, D-027) |
 | Comments | collapsible “Comments and notes” card with a list and send arrow | same; posts project comments (new POST endpoint) |
 | Remix | header pill that starts a variation generation | same; generates from the song style, adds the result to the library, disabled while running |
 

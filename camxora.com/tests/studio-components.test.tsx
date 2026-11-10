@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { StudioHeader } from "@/components/studio/StudioHeader";
@@ -882,7 +882,74 @@ describe("StudioSongDetail", () => {
     expect(addStudioProjectComment).toHaveBeenCalledWith("p1", {
       authorName: "me",
       body: "New note",
+      parentId: null,
     });
+  });
+
+  it("nests replies and posts with the parent id", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listStudioProjectComments).mockResolvedValue({
+      items: [
+        {
+          id: "c1",
+          parent_id: null,
+          author_name: "Sam",
+          body: "Root note",
+          created_at: "2026-11-10T00:00:00.000Z",
+        },
+        {
+          id: "c2",
+          parent_id: "c1",
+          author_name: "Ana",
+          body: "Nested reply",
+          created_at: "2026-11-10T00:01:00.000Z",
+        },
+      ],
+    });
+    vi.mocked(addStudioProjectComment).mockResolvedValue({
+      id: "c3",
+      parent_id: "c1",
+      author_name: "me",
+      body: "Threaded note",
+      created_at: "2026-11-10T00:02:00.000Z",
+    });
+    render(<StudioSongDetail {...detailProps({ projectId: "p1", commentAuthor: "me" })} />);
+
+    expect(await screen.findByText("Root note")).toBeTruthy();
+    expect(screen.getByText("Nested reply")).toBeTruthy();
+    expect(document.querySelector(".se-song-comment-replies")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Reply to Sam" }));
+    expect(screen.getByText("Replying to Sam")).toBeTruthy();
+    await user.type(screen.getByLabelText("Comment"), "Threaded note");
+    await user.click(screen.getByLabelText("Send comment"));
+    expect(addStudioProjectComment).toHaveBeenCalledWith("p1", {
+      authorName: "me",
+      body: "Threaded note",
+      parentId: "c1",
+    });
+  });
+
+  it("opens the More menu and fires the real actions", async () => {
+    const user = userEvent.setup();
+    const onAddToProject = vi.fn();
+    const onDownloadWav = vi.fn();
+    const onTrash = vi.fn();
+    render(
+      <StudioSongDetail
+        {...detailProps({ onAddToProject, onDownloadWav, onTrash })}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "More song options" }));
+    const menu = screen.getByRole("menu", { name: "Song options" });
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(3);
+
+    await user.click(within(menu).getByRole("menuitem", { name: /Download WAV/ }));
+    expect(onDownloadWav).toHaveBeenCalledWith(detailSong);
+
+    await user.click(screen.getByRole("button", { name: "More song options" }));
+    await user.click(screen.getByRole("menuitem", { name: /Move to trash/ }));
+    expect(onTrash).toHaveBeenCalledWith(detailSong);
   });
 
   it("explains the blocked Stems tab instead of pretending", async () => {

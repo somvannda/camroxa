@@ -19,6 +19,8 @@ import {
 import {
   createWebMusicWorkspace,
   dislikeWebMusicGeneration,
+  downloadWebMusicClipWav,
+  setWebMusicTrash,
   fetchWebMusicDislikedKeys,
   fetchWebMusicLikedKeys,
   likeWebMusicGeneration,
@@ -1022,6 +1024,35 @@ export function StudioEditorShell() {
       },
     ]);
     setExportToast(`${label} added to the track at the playhead.`);
+  }
+
+  /** More menu (D-027): download the primary clip as WAV. */
+  async function downloadSongWav(song: WebMusicGeneration) {
+    const clip = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
+    if (!clip?.variant) {
+      setExportToast("No WAV is available for this song yet.");
+      return;
+    }
+    try {
+      const filename = `${(song.title || "song").replace(/[^a-zA-Z0-9._-]+/g, "_")}.wav`;
+      await downloadWebMusicClipWav(song.id, clip.variant, filename);
+    } catch (cause) {
+      setExportToast(cause instanceof Error ? cause.message : "Could not download the WAV.");
+    }
+  }
+
+  /** More menu (D-027): move the primary clip to the trash and leave the rail. */
+  async function trashSong(song: WebMusicGeneration) {
+    const clip = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
+    if (!clip?.variant) return;
+    try {
+      await setWebMusicTrash([`${song.id}:${clip.variant}`], true);
+      setLibrarySongs((previous) => (previous ?? []).filter((item) => item.id !== song.id));
+      setDetailSong(null);
+      setExportToast("Song moved to trash.");
+    } catch {
+      setExportToast("Could not move the song to trash.");
+    }
   }
 
   /** Like/unlike the row's primary clip, updating the Liked filter optimistically. */
@@ -3618,6 +3649,9 @@ export function StudioEditorShell() {
                 commentAuthor={user?.email?.split("@")[0] || "You"}
                 remixing={remixingSongId === detailSong.id}
                 onRemix={(song) => void remixSong(song)}
+              onAddToProject={addSongToTimeline}
+              onDownloadWav={(song) => void downloadSongWav(song)}
+              onTrash={(song) => void trashSong(song)}
               />
             );
           }

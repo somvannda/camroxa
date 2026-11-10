@@ -210,6 +210,14 @@ test("double-clicking a song opens its detail rail and Back returns to the list"
   );
   await expect(detail.getByRole("tab", { name: "Stems" })).toBeVisible();
 
+  // More is a real menu now (D-027), not a disabled placeholder.
+  await detail.getByRole("button", { name: "More song options" }).click();
+  const menu = detail.getByRole("menu", { name: "Song options" });
+  await expect(menu.getByRole("menuitem")).toHaveCount(3);
+  await expect(menu.getByRole("menuitem", { name: /Download WAV/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+
   await detail.getByLabel("Back to library").click();
   await expect(page.getByRole("complementary", { name: "Library" })).toBeVisible();
 });
