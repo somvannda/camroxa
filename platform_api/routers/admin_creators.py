@@ -80,6 +80,10 @@ class MarkPaidRequest(BaseModel):
     reference: str = Field(..., min_length=1, max_length=120)
 
 
+class TakedownRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+
 @router.get("/applications")
 async def list_applications(
     ctx: AdminDep,
@@ -158,6 +162,20 @@ async def decide_release(
         reviewer_id=ctx.user_id,
         reason=body.reason,
     )
+
+
+@router.post("/releases/{release_id}/takedown")
+async def takedown_release(
+    release_id: str,
+    body: TakedownRequest,
+    ctx: AdminDep,
+    service: ReleaseServiceDep,
+) -> dict:
+    return {
+        "release": await service.admin_takedown(
+            release_id, reviewer_id=ctx.user_id, reason=body.reason
+        )
+    }
 
 
 @router.post("/eligibility/refresh")

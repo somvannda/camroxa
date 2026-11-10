@@ -26,6 +26,23 @@ def _row(row: Any) -> dict[str, Any]:
     return data
 
 
+async def _notify(
+    pool: Any,
+    user_id: Any,
+    event_type: str,
+    payload: dict[str, Any],
+) -> None:
+    await pool.execute(
+        """
+        INSERT INTO notification_queue (user_id, event_type, payload, expires_at)
+        VALUES ($1, $2, $3::jsonb, NOW() + INTERVAL '30 days')
+        """,
+        user_id,
+        event_type,
+        json.dumps(payload),
+    )
+
+
 def _storage_key(task: dict[str, Any], variant: str) -> str | None:
     for column in (
         f"b2_storage_key_{variant}",
@@ -434,6 +451,60 @@ class CreatorReleaseService:
             reviewer_id,
         )
         return {"release": _row(row)}
+
+    async def admin_takedown(
+        self,
+        release_id: str,
+        *,
+        reviewer_id: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        if not str(reason or "").strip():
+            raise ValidationError(
+                "A takedown reason is required.",
+                details={"fields": {"reason": "required"}},
+            )
+        release = await self._pool.fetchrow(
+            "SELECT * FROM creator_releases WHERE id = $1", release_id
+        )
+        if release is None:
+            raise NotFoundError("Release not found.")
+        release = _row(release)
+        if release.get("track_id"):
+            await self._streaming.set_track_publish_status(
+                release["track_id"], "unpublished"
+            )
+        if release.get("album_id"):
+            await self._streaming.set_album_publish_status(
+                release["album_id"], "unpublished"
+            )
+        row = await self._pool.fetchrow(
+            """
+            UPDATE creator_releases
+            SET status = 'taken_down',
+                takedown_reason = $2,
+                reviewed_by = $3,
+                reviewed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            """,
+            release_id,
+            reason.strip(),
+            reviewer_id,
+        )
+        metadata = release.get("metadata") or {}
+        await _notify(
+            self._pool,
+            release["creator_id"],
+            "creator_release_taken_down",
+            {
+                "release_id": str(release["id"]),
+                "title": metadata.get("title") or "Your release",
+                "reason": reason.strip(),
+            },
+        )
+        return _row(row)
 
     async def unpublish(self, user_id: str, release_id: str) -> dict[str, Any]:
         release = await self.get_for_creator(user_id, release_id)

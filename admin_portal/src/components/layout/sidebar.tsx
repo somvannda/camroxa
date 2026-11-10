@@ -33,6 +33,7 @@ import {
   Wallet,
   AlertTriangle,
   ShieldCheck,
+  BadgeCheck,
 } from 'lucide-react';
 import { Mail } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -88,6 +89,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Creators',
     items: [
       { label: 'Payout Verification', path: '/creators/kyc', icon: ShieldCheck },
+      { label: 'Badge Requests', path: '/creators/applications', icon: BadgeCheck },
+      { label: 'Release Moderation', path: '/creators/releases', icon: Radio },
       { label: 'Creator Payouts', path: '/creators/payouts', icon: Wallet },
     ],
   },

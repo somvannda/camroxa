@@ -132,6 +132,13 @@ def _notification_copy(event_type: str, payload: dict[str, Any]) -> tuple[str, s
             f"{title} is eligible to earn",
             "Complete payout verification to unlock your earnings.",
         )
+    if normalized == "creator_release_taken_down":
+        title = str(payload.get("title") or "Your release")
+        reason = str(payload.get("reason") or "Policy review")
+        return (
+            "Release taken down",
+            f"{title} was unpublished: {reason}.",
+        )
     if normalized == "suno_task_completed":
         status = str(payload.get("status") or "completed").replace("_", " ")
         task_id = str(payload.get("task_id") or "")[:8]

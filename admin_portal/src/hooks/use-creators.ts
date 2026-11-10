@@ -114,3 +114,108 @@ export function useMarkPayoutPaid() {
     },
   });
 }
+
+export type CreatorApplicationRecord = {
+  id: string;
+  user_id: string;
+  version: number;
+  requested_tier: string;
+  status: 'submitted' | 'in_review' | 'changes_requested' | 'approved' | 'rejected' | 'withdrawn';
+  payload: {
+    pitch?: string;
+    links?: Array<{ label: string; url: string }>;
+  };
+  submitted_at?: string | null;
+  sla_due_at?: string | null;
+  reviewed_at?: string | null;
+  decision_reason?: string | null;
+  email?: string | null;
+  user_display_name?: string | null;
+  handle?: string | null;
+  creator_tier?: string | null;
+};
+
+export type CreatorReleaseRecord = {
+  id: string;
+  creator_id: string;
+  source_variant: string;
+  status: string;
+  metadata: {
+    title?: string;
+    genre?: string;
+    release_type?: string;
+  };
+  published_at?: string | null;
+  takedown_reason?: string | null;
+  email?: string | null;
+  user_display_name?: string | null;
+  handle?: string | null;
+};
+
+export function useCreatorApplications(status?: string) {
+  return useQuery({
+    queryKey: ['creator-applications', status],
+    queryFn: async () => {
+      return httpClient.get<PagedResponse<CreatorApplicationRecord>>(
+        '/api/v3/admin/creators/applications',
+        {
+          params: {
+            status: status && status !== 'all' ? status : undefined,
+            limit: 100,
+          },
+        },
+      );
+    },
+  });
+}
+
+export function useDecideApplication() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      applicationId: string;
+      decision: 'approve' | 'request_changes' | 'reject';
+      reason?: string;
+    }) => {
+      return httpClient.post(
+        `/api/v3/admin/creators/applications/${encodeURIComponent(input.applicationId)}/decision`,
+        { decision: input.decision, reason: input.reason },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creator-applications'] });
+    },
+  });
+}
+
+export function useCreatorReleases(status?: string) {
+  return useQuery({
+    queryKey: ['creator-releases', status],
+    queryFn: async () => {
+      return httpClient.get<PagedResponse<CreatorReleaseRecord>>(
+        '/api/v3/admin/creators/releases',
+        {
+          params: {
+            status: status && status !== 'all' ? status : undefined,
+            limit: 100,
+          },
+        },
+      );
+    },
+  });
+}
+
+export function useTakedownRelease() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { releaseId: string; reason: string }) => {
+      return httpClient.post(
+        `/api/v3/admin/creators/releases/${encodeURIComponent(input.releaseId)}/takedown`,
+        { reason: input.reason },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creator-releases'] });
+    },
+  });
+}
