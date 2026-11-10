@@ -5003,10 +5003,10 @@ html{color-scheme:dark}
 .se-song-comment-item strong{font-size:12px}
 .se-song-comment-item small{font-size:11px;color:#8b90a6}
 .se-song-comment-item p{margin:2px 0 0;font-size:13px;line-height:1.4}
-.se-song-comment-send{display:grid;place-items:center;width:32px;height:32px;flex:none;border:0;border-radius:50%;background:#f7f4ef;color:#111111;cursor:pointer}
+.se-song-comment-send{display:grid;place-items:center;width:32px;height:32px;flex:none;border:0;border-radius:50%;background:#1c1c1e;color:#c2c2c1;cursor:pointer}
 .se-song-comment-send:disabled{opacity:.35;cursor:not-allowed}
-.se-song-comment{display:flex;gap:6px}
-.se-song-comment input{flex:1;min-width:0;height:32px;padding:0 8px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:inherit;font:inherit;font-size:12px}
+.se-song-comment{display:flex;align-items:center;gap:4px;height:44px;padding:4px 4px 4px 14px;border:1px solid hsl(var(--border));border-radius:999px;background:hsl(var(--card))}
+.se-song-comment input{flex:1;min-width:0;height:100%;padding:0;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;font-size:12px;outline:none}
 .se-song-comment input:disabled{opacity:.6}
 .se-lib-list{list-style:none;margin:0;padding:0 8px;display:flex;flex-direction:column;gap:8px}
 .se-lib-section .se-lib-list{padding:0}

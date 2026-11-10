@@ -39,16 +39,16 @@ functional controls the capture does not show (listed below).
 | Footer band | 52 px `#0a0a0a`, control pills 36 px | same |
 | Footer groups | tools and view icons grouped in pills, white Learn pill | same |
 | Library rail | floating 360 px card, inset 8 px top/right/bottom, radius 12, `#101012` | same |
-| Shell shrink | header/footer/timeline stop at the rail edge (x1321 at 1689) | same |
-| Library head | 34 px: panel icon + title left, magnifier right | same (close X kept) |
-| Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink) | same |
+| Shell shrink | the arrangement body stops at the rail edge (x1321 at 1689); header/footer stay full width and paint above it | same |
+| Library head | 34 px: panel icon + title left, magnifier right | same: the title stays "Library" at every level, no close X (the header Library pill toggles the rail) |
+| Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink), first row at y=97 | same |
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same; the Stems view reuses the upload row with a layer glyph, Play and Add |
-| Uploads level | Filter / New / liked / In Project / Stems chips | same; Filter and Stems disabled |
+| Songs toolbar | Filter ▾ / New / thumbs-up / In Project / Stems | same; the funnel opens All/Liked/In project and Stems opens the list |
 | Empty library | centred “No songs found.” + 38 px Reset all filters pill | same (only when filters/search caused it) |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
 | History drawer | 300 px panel under the header, inset 8 px, on #101012, ‹ date › stepper | same; our version list/restore inside |
-| Plugin dock | full-width band above the footer, slot cards, preset pill | same; every card uses the shared knob control and the pill opens a preset menu (Default + starter sets) |
-| EQ card | 450 px card: Band selector + switch, six shape buttons, curve with per-band handles, Freq/Q/Gain knobs | same geometry; controls/curve use the CAMXORA accent instead of the captured pink/yellow (user request) |
+| Plugin dock | full-width band above the footer, 448 px slot cards, preset pill | same; the compressor card has the captured transfer curve beside six knobs, EQ puts its curve left of the band controls, and the pill opens a preset menu (Default + starter sets) |
+| EQ card | 450 px card: Band selector + switch, six shape buttons, curve with per-band handles, Freq/Q/Gain knobs | same two-column geometry (curve left, band controls right); controls/curve use the CAMXORA accent instead of the captured pink/yellow (user request) |
 | Popped-out plugin | large floating card from the external-link control | same: fixed 460 px (520 for EQ) at the bottom-right |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |
 | Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 88 px device previews, 14 px names, Learn chips, uppercase section label | same; previews are our own traces/knobs per plugin family, not copied art, with a MY PLUGINS section above Audio effects |
