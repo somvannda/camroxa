@@ -26,6 +26,9 @@ from platform_api.services.suno_status_messages import (
     is_suno_success_status,
     suno_task_failure_message,
 )
+from platform_api.services.web_music_refund import (
+    refund_web_music_generation_on_failure as _refund_web_music_generation_on_failure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,101 +63,6 @@ def _schedule_audio_ingest_after_success(
     if has_song:
         service.schedule_suno_streaming_upload(suno_task_id=task_id)
 
-
-async def _release_web_music_preview(
-    pool: Any,
-    *,
-    user_id: str,
-    task_id: UUID,
-) -> None:
-    """Free a preview slot when a preview generation fails upstream."""
-    from platform_api.services.billing_calendar import (
-        billing_month_start,
-        billing_usage_date,
-    )
-
-    try:
-        row = await pool.fetchrow(
-            """
-            UPDATE suno_tasks
-            SET preview_released = TRUE
-            WHERE id = $1 AND user_id = $2
-              AND is_preview = TRUE AND preview_released = FALSE
-            RETURNING model, created_at
-            """,
-            task_id,
-            UUID(user_id),
-        )
-        if row is None:
-            return
-        period = billing_month_start(billing_usage_date(row["created_at"]))
-        await pool.execute(
-            """
-            UPDATE web_music_preview_entitlements
-            SET used = GREATEST(0, used - 1)
-            WHERE user_id = $1 AND period_start = $2 AND model = $3
-            """,
-            UUID(user_id),
-            period,
-            str(row["model"] or "").strip().upper(),
-        )
-    except Exception as exc:
-        logger.warning(
-            "Web music preview slot release failed for task %s user=%s: %s",
-            task_id,
-            user_id,
-            exc,
-        )
-
-
-async def _refund_web_music_generation_on_failure(
-    pool: Any,
-    *,
-    user_id: str,
-    task_id: UUID,
-    prior_status: Any,
-) -> None:
-    """Return generation credits when a web music Suno task fails asynchronously."""
-    from platform_api.models.products import WEB_MUSIC_CREDITS_PER_SONG
-    from platform_api.repositories.credit_repo import CreditRepository
-    from platform_api.services.credit_units import CREDIT_SCALE
-
-    prior = str(
-        prior_status.value if hasattr(prior_status, "value") else prior_status or ""
-    ).upper()
-    if prior == TaskStatus.FAILED.value:
-        return
-
-    await _release_web_music_preview(pool, user_id=user_id, task_id=task_id)
-
-    from platform_api.services.tier_service import is_pro
-
-    pro = await is_pro(pool, UUID(user_id))
-    if pro:
-        return
-
-    try:
-        # One refund per (user, reason, task) — a duplicate callback is a no-op.
-        await CreditRepository(pool).refund_once(
-            UUID(user_id),
-            int(WEB_MUSIC_CREDITS_PER_SONG) * CREDIT_SCALE,
-            reason="web_music_generation_failed",
-            ref_id=str(task_id),
-            metadata={"source": "web_music", "op": "music", "billing": "v3"},
-        )
-        logger.info(
-            "Refunded %s web music credits for failed task %s user=%s",
-            WEB_MUSIC_CREDITS_PER_SONG,
-            task_id,
-            user_id,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Web music credit refund failed for task %s user=%s: %s",
-            task_id,
-            user_id,
-            exc,
-        )
 
 # ---------------------------------------------------------------------------
 # Router
