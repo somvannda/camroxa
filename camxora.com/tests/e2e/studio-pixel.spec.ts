@@ -821,6 +821,44 @@ test("the convolution card loads an impulse response from the library", async ({
   );
 });
 
+test("the assistant explains credit and moderation refusals", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel refusals" });
+
+  let mode: "credits" | "moderation" = "credits";
+  await page.route("**/api/v3/web-music/generate", (route) => {
+    if (mode === "credits") {
+      return route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { code: "QUOTA_EXCEEDED", message: "Insufficient credits." },
+        }),
+      });
+    }
+    return route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "MODERATION_BLOCKED", message: "Blocked by the content policy." },
+      }),
+    });
+  });
+
+  await page.getByLabel("Describe a part to generate").fill("A loop");
+  await page.getByRole("button", { name: "Generate this part" }).click();
+  const notice = page.locator(".se-assistant-notice");
+  await expect(notice).toContainText("Not enough credits");
+  await expect(notice.getByRole("link", { name: "View plans" })).toHaveAttribute("href", "/pricing");
+
+  mode = "moderation";
+  await page.getByLabel("Describe a part to generate").fill("A refused loop");
+  await page.getByRole("button", { name: "Generate this part" }).click();
+  await expect(notice).toContainText("That prompt was refused");
+  await expect(notice.getByRole("button", { name: "Edit prompt" })).toBeVisible();
+});
+
 test("the empty dock rail suggests the next three effects", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

@@ -4741,6 +4741,11 @@ html{color-scheme:dark}
 .se-assistant{position:fixed;left:8px;top:52px;bottom:8px;z-index:5;display:flex;flex-direction:column;width:360px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
 .se-assistant-head{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
 .se-assistant-note .se-icon{width:20px;height:20px;flex:none;color:inherit}
+.se-assistant-notice{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px;border-radius:10px;border:1px solid hsl(var(--accent) / .35);background:hsl(var(--accent) / .08)}
+.se-assistant-notice strong{font-size:13px}
+.se-assistant-notice span{font-size:12px;line-height:1.45;color:#c2c2c1}
+.se-assistant-notice small{font-size:11px;color:#8b90a6;word-break:break-word}
+.se-assistant-notice .se-pill{height:28px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center}
 .se-assistant-invite{margin:auto;max-width:240px;text-align:center;color:#8b90a6;font-size:12px;line-height:1.55}
 .se-assistant-note{display:flex;align-items:center;margin:0;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);font-size:11px;color:#c2c2c1}
 .se-assistant-log{display:flex;flex:1;min-height:0;flex-direction:column;gap:10px;padding:10px 14px 130px;overflow-y:auto}

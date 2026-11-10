@@ -418,6 +418,10 @@ export function StudioEditorShell() {
   /** Built plugin shown as a draggable card; saved to the library, never inserted. */
   const [designBuilt, setDesignBuilt] = useState<DesignResult | null>(null);
   const [pendingSong, setPendingSong] = useState<WebMusicGeneration | null>(null);
+  /** Refusal state for the assistant (own addition; S60/S61 have no capture). */
+  const [promptNotice, setPromptNotice] = useState<
+    { kind: "credits" | "moderation"; text: string } | null
+  >(null);
   const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -3374,6 +3378,7 @@ export function StudioEditorShell() {
     setPromptBusy(true);
     setAssistantOpen(true);
     setPendingSong(null);
+    setPromptNotice(null);
     setAssistantMessages([{ id: `u-${Date.now()}`, role: "user", text: prompt }]);
     const statusId = `s-${Date.now()}`;
     setAssistantMessages((current) => [
@@ -3416,15 +3421,15 @@ export function StudioEditorShell() {
       );
       setPromptValue("");
     } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Generation failed.";
+      if (/credit|quota|balance|insufficient/i.test(message)) {
+        setPromptNotice({ kind: "credits", text: message });
+      } else if (/moderat|policy|copyright|blocked|not allowed|sensitive|violat/i.test(message)) {
+        setPromptNotice({ kind: "moderation", text: message });
+      }
       setAssistantMessages((current) =>
-        current.map((message) =>
-          message.id === statusId
-            ? {
-                ...message,
-                role: "status",
-                text: cause instanceof Error ? cause.message : "Generation failed.",
-              }
-            : message
+        current.map((item) =>
+          item.id === statusId ? { ...item, role: "status", text: "Generation stopped." } : item
         )
       );
     } finally {
@@ -4063,6 +4068,32 @@ export function StudioEditorShell() {
             </p>
           </header>
           <div className="se-assistant-log">
+            {promptNotice ? (
+              <div className={`se-assistant-notice ${promptNotice.kind}`} role="alert">
+                <strong>
+                  {promptNotice.kind === "credits" ? "Not enough credits" : "That prompt was refused"}
+                </strong>
+                <span>
+                  {promptNotice.kind === "credits"
+                    ? "Your balance does not cover this generation. Top up or pick a lighter model."
+                    : "The content policy blocked this request. Try rewording the prompt."}
+                </span>
+                {promptNotice.kind === "credits" ? (
+                  <a className="se-pill on" href="/pricing">
+                    View plans
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="se-pill on"
+                    onClick={() => promptRef.current?.querySelector("input")?.focus()}
+                  >
+                    Edit prompt
+                  </button>
+                )}
+                <small>{promptNotice.text}</small>
+              </div>
+            ) : null}
             {assistantMessages.length === 0 && !pendingSong && !designRequest && !designBuilt ? (
               <p className="se-assistant-invite">
                 Describe a section or ask for ideas to start a conversation with the Studio Agent.
