@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, Protocol
 from uuid import UUID, uuid4
 
@@ -181,29 +181,37 @@ class CreditRepository:
         return into_lot, max(0, int(amount) - into_lot)
 
     async def _restore_lots(self, conn: Any, user_id: UUID, amount: int) -> None:
-        """Return refunded credits to the most relevant live lot.
+        """Return refunded credits to live lots, filling the ones with room.
 
-        Prefer a live pack lot (keeps Pro status), then any live lot. A lot is
-        capped at the amount it was granted, so anything that does not fit goes
-        into a fresh non-expiring grant lot instead of overflowing the old one.
+        Prefer live pack lots (keeps Pro status), then the newest expiry. A lot
+        may never hold more than it was granted, so a refund walks the live lots
+        until the amount is placed and only then mints a new one.
+
+        The old code looked at a single lot: once that one was full, every
+        refund minted another ``grant`` lot with ``expires_at = NULL``. That
+        produced 102 non-expiring lots (60 on one account), which never expire
+        and trip the "multiple live grant lots" invariant. Overflow now gets the
+        normal 30-day credit life instead.
         """
-        row = await conn.fetchrow(
+        rows = await conn.fetch(
             """
             SELECT id, amount_units, remaining_units
             FROM credit_wallet_lots
             WHERE user_id = $1
               AND remaining_units > 0
+              AND remaining_units < amount_units
               AND (expires_at IS NULL OR expires_at > NOW())
             ORDER BY (tag = 'pack') DESC, expires_at DESC NULLS LAST, created_at DESC
-            LIMIT 1
             FOR UPDATE
             """,
             user_id,
         )
         overflow = int(amount)
-        if row is not None:
+        for row in rows:
+            if overflow <= 0:
+                break
             into_lot, overflow = self._restore_split(
-                amount,
+                overflow,
                 int(row["remaining_units"] or 0),
                 int(row["amount_units"] or 0),
             )
@@ -223,11 +231,12 @@ class CreditRepository:
             """
             INSERT INTO credit_wallet_lots
                 (id, user_id, tag, amount_units, remaining_units, expires_at, period_start, created_at)
-            VALUES ($1, $2, 'grant', $3, $3, NULL, NULL, NOW())
+            VALUES ($1, $2, 'grant', $3, $3, $4, NULL, NOW())
             """,
             uuid4(),
             user_id,
             overflow,
+            datetime.now(timezone.utc) + timedelta(days=30),
         )
 
     async def atomic_deduct(
