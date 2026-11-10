@@ -366,6 +366,15 @@ async def decide_kyc(
     )
 
 
+@router.get("/reconciliation")
+async def payout_reconciliation(
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+) -> dict:
+    del ctx
+    return await service.reconciliation()
+
+
 @router.get("/tax/statements")
 async def list_tax_statements(
     ctx: AdminDep,

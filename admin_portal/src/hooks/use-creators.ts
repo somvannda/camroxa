@@ -336,6 +336,25 @@ export function useReleaseReserve() {
   });
 }
 
+export function usePayoutReconciliation() {
+  return useQuery({
+    queryKey: ['payout-reconciliation'],
+    queryFn: () =>
+      httpClient.get<{
+        items: Array<Record<string, unknown>>;
+        totals: {
+          earned_micros: number;
+          unpaid_micros: number;
+          settled_micros: number;
+          paid_micros: number;
+          in_flight_micros: number;
+          variance_micros: number;
+          balanced: boolean;
+        };
+      }>('/api/v3/admin/creators/reconciliation'),
+  });
+}
+
 export function useCreatePayoutRun() {
   const queryClient = useQueryClient();
   return useMutation({

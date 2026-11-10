@@ -310,3 +310,27 @@ async def test_generate_statements_rolls_up_paid_payouts() -> None:
     assert result == {"year": 2026, "creators": 1, "generated": 1}
     assert "creator_tax_statements" in service._pool.execute.await_args.args[0]
 
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_flags_drift_and_reports_totals() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "creator_id": uuid4(),
+                "earned_micros": 50_000_000,
+                "unpaid_micros": 20_000_000,
+                "settled_micros": 30_000_000,
+                "paid_micros": 29_000_000,
+                "in_flight_micros": 0,
+                "variance_micros": 1_000_000,
+            }
+        ]
+    )
+
+    result = await service.reconciliation()
+
+    assert result["totals"]["paid_micros"] == 29_000_000
+    assert result["totals"]["variance_micros"] == 1_000_000
+    assert result["totals"]["balanced"] is False

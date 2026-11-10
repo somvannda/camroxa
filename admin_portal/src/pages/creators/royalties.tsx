@@ -21,6 +21,7 @@ import {
   useCalculateRoyalty,
   useGenerateTaxStatements,
   useLockRoyaltyPeriod,
+  usePayoutReconciliation,
   useReleaseReserve,
   useRoyaltyPeriods,
   type RoyaltyPeriodRecord,
@@ -51,6 +52,7 @@ export default function CreatorRoyaltiesPage() {
   const lock = useLockRoyaltyPeriod();
   const generateStatements = useGenerateTaxStatements();
   const releaseReserve = useReleaseReserve();
+  const { data: reconciliation } = usePayoutReconciliation();
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [poolUsd, setPoolUsd] = useState('3000');
@@ -96,6 +98,40 @@ export default function CreatorRoyaltiesPage() {
         title="Royalty periods"
         description="Calculate the monthly pool, write accruals to the ledger, and create creator earnings."
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Payout reconciliation</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {reconciliation ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-4">
+                {[
+                  { label: 'Earned', value: reconciliation.totals.earned_micros },
+                  { label: 'Paid out', value: reconciliation.totals.paid_micros },
+                  { label: 'Awaiting payout', value: reconciliation.totals.unpaid_micros },
+                  { label: 'Variance', value: reconciliation.totals.variance_micros },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <div className="text-xs text-slate-500">{item.label}</div>
+                    <div className="text-lg font-medium tabular-nums text-slate-100">
+                      ${(item.value / 1_000_000).toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                {reconciliation.totals.balanced
+                  ? 'Ledger and payouts agree.'
+                  : 'Drift detected. Open the creator list sorted by variance.'}
+              </p>
+            </>
+          ) : (
+            <Skeleton className="h-16 w-full" />
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

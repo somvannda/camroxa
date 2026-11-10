@@ -637,6 +637,62 @@ class CreatorPayoutService:
         )
         return {"items": [dict(row) for row in rows]}
 
+    async def reconciliation(self) -> dict[str, Any]:
+        """Compare creator earnings against payouts and flag any drift."""
+        rows = await self._pool.fetch(
+            """
+            WITH earned AS (
+                SELECT creator_id,
+                       SUM(net_micros) FILTER (WHERE status IN ('available','paid'))::bigint AS earned_micros,
+                       SUM(net_micros) FILTER (WHERE status = 'available')::bigint AS unpaid_micros,
+                       SUM(net_micros) FILTER (WHERE status = 'paid')::bigint AS settled_micros
+                FROM creator_earnings
+                GROUP BY creator_id
+            ),
+            paid AS (
+                SELECT creator_id,
+                       SUM(amount_micros) FILTER (WHERE status = 'paid')::bigint AS paid_micros,
+                       SUM(amount_micros) FILTER (WHERE status IN ('requested','approved','processing'))::bigint AS in_flight_micros
+                FROM creator_payouts
+                GROUP BY creator_id
+            ),
+            creators AS (
+                SELECT creator_id FROM earned
+                UNION
+                SELECT creator_id FROM paid
+            )
+            SELECT c.creator_id,
+                   cp.handle,
+                   u.email,
+                   u.display_name AS user_display_name,
+                   COALESCE(e.earned_micros, 0) AS earned_micros,
+                   COALESCE(e.unpaid_micros, 0) AS unpaid_micros,
+                   COALESCE(e.settled_micros, 0) AS settled_micros,
+                   COALESCE(p.paid_micros, 0) AS paid_micros,
+                   COALESCE(p.in_flight_micros, 0) AS in_flight_micros,
+                   (COALESCE(e.settled_micros, 0) - COALESCE(p.paid_micros, 0)) AS variance_micros
+            FROM creators c
+            JOIN users u ON u.id = c.creator_id
+            LEFT JOIN creator_profiles cp ON cp.user_id = c.creator_id
+            LEFT JOIN earned e ON e.creator_id = c.creator_id
+            LEFT JOIN paid p ON p.creator_id = c.creator_id
+            ORDER BY ABS(COALESCE(e.settled_micros, 0) - COALESCE(p.paid_micros, 0)) DESC,
+                     u.display_name
+            LIMIT 200
+            """
+        )
+        items = [dict(row) for row in rows]
+        totals = {
+            "earned_micros": sum(int(row["earned_micros"] or 0) for row in items),
+            "unpaid_micros": sum(int(row["unpaid_micros"] or 0) for row in items),
+            "settled_micros": sum(int(row["settled_micros"] or 0) for row in items),
+            "paid_micros": sum(int(row["paid_micros"] or 0) for row in items),
+            "in_flight_micros": sum(int(row["in_flight_micros"] or 0) for row in items),
+            "variance_micros": sum(int(row["variance_micros"] or 0) for row in items),
+        }
+        totals["balanced"] = totals["variance_micros"] == 0
+        return {"items": items, "totals": totals}
+
     async def release_available_earnings(self) -> int:
         result = await self._pool.execute(
             """
