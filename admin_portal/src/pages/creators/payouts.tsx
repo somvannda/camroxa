@@ -236,6 +236,12 @@ export default function CreatorPayoutsPage() {
                     </TableCell>
                     <TableCell className="font-medium text-slate-100">
                       {usd(payout.amount_micros)}
+                      {payout.withheld_micros ? (
+                        <div className="text-xs font-normal text-slate-500">
+                          {usd(payout.gross_micros ?? payout.amount_micros)} gross ·{' '}
+                          {usd(payout.withheld_micros)} withheld
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell className="uppercase text-xs text-slate-400">{payout.method}</TableCell>
                     <TableCell>{formatDate(payout.requested_at)}</TableCell>

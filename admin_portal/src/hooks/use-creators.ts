@@ -34,6 +34,8 @@ export type CreatorPayoutRecord = {
   period_start: string;
   period_end: string;
   amount_micros: number;
+  gross_micros?: number;
+  withheld_micros?: number;
   currency: string;
   method: string;
   status: 'requested' | 'approved' | 'processing' | 'paid' | 'failed' | 'cancelled';
@@ -120,6 +122,30 @@ export function useKycDocumentLink() {
     mutationFn: async (input: { userId: string; kind: 'id' | 'selfie' }) =>
       httpClient.get<{ url: string; expires_in: number | null; signed: boolean }>(
         `/api/v3/admin/creators/kyc/${encodeURIComponent(input.userId)}/documents/${input.kind}`,
+      ),
+  });
+}
+
+export function useGenerateTaxStatements() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (year: number) =>
+      httpClient.post<{ year: number; creators: number; generated: number }>(
+        `/api/v3/admin/creators/tax/statements/generate?year=${year}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tax-statements'] });
+    },
+  });
+}
+
+export function useTaxStatements(year?: number) {
+  return useQuery({
+    queryKey: ['tax-statements', year ?? 'all'],
+    queryFn: () =>
+      httpClient.get<{ items: Array<Record<string, unknown>> }>(
+        '/api/v3/admin/creators/tax/statements',
+        year ? { year } : undefined,
       ),
   });
 }

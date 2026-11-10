@@ -504,12 +504,27 @@ export type CreatorPayoutAccount = {
 export type CreatorPayout = {
   id: string;
   amount_micros: number;
+  gross_micros?: number;
+  withheld_micros?: number;
   currency: string;
   method: string;
   status: "requested" | "approved" | "processing" | "paid" | "failed" | "cancelled";
   requested_at?: string | null;
   paid_at?: string | null;
   payment_ref?: string | null;
+};
+
+export type CreatorTaxStatement = {
+  id: string;
+  tax_year: number;
+  currency: string;
+  gross_micros: number;
+  withheld_micros: number;
+  net_micros: number;
+  payout_count: number;
+  tax_form?: string | null;
+  tax_country?: string | null;
+  generated_at?: string | null;
 };
 
 export type CreatorPayoutStatus = {
@@ -529,6 +544,10 @@ export async function fetchPayoutStatus(): Promise<CreatorPayoutStatus> {
   return studioJson<CreatorPayoutStatus>("/api/v3/creator/payouts");
 }
 
+export async function fetchTaxStatements(): Promise<{ items: CreatorTaxStatement[] }> {
+  return studioJson<{ items: CreatorTaxStatement[] }>("/api/v3/creator/tax/statements");
+}
+
 export async function submitKyc(input: {
   legal_name: string;
   date_of_birth: string;
@@ -538,6 +557,8 @@ export async function submitKyc(input: {
   id_document_ref: string;
   selfie_ref?: string;
   tax_id?: string;
+  tax_form?: "w9" | "w8ben";
+  tax_country?: string;
 }): Promise<{ kyc: CreatorKyc }> {
   return studioJson<{ kyc: CreatorKyc }>("/api/v3/creator/kyc", {
     method: "POST",

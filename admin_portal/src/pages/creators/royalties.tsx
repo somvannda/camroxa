@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calculator, Loader2, Lock } from 'lucide-react';
+import { Calculator, FileText, Loader2, Lock } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import {
   useCalculateRoyalty,
+  useGenerateTaxStatements,
   useLockRoyaltyPeriod,
   useRoyaltyPeriods,
   type RoyaltyPeriodRecord,
@@ -47,9 +48,11 @@ export default function CreatorRoyaltiesPage() {
   const { data, isLoading, isError, refetch } = useRoyaltyPeriods();
   const calculate = useCalculateRoyalty();
   const lock = useLockRoyaltyPeriod();
+  const generateStatements = useGenerateTaxStatements();
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [poolUsd, setPoolUsd] = useState('3000');
+  const [taxYear, setTaxYear] = useState(String(new Date().getFullYear()));
 
   const items = data?.items ?? [];
 
@@ -91,6 +94,57 @@ export default function CreatorRoyaltiesPage() {
         title="Royalty periods"
         description="Calculate the monthly pool, write accruals to the ledger, and create creator earnings."
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Annual tax statements</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="tax-year">Tax year</Label>
+              <Input
+                id="tax-year"
+                type="number"
+                min={2000}
+                max={2100}
+                value={taxYear}
+                onChange={(event) => setTaxYear(event.target.value)}
+                className="w-32"
+              />
+            </div>
+            <Button
+              variant="outline"
+              disabled={generateStatements.isPending}
+              onClick={() =>
+                generateStatements.mutate(Number(taxYear), {
+                  onSuccess: (result) =>
+                    toast({
+                      title: 'Statements generated',
+                      description: `${result.generated} of ${result.creators} creators for ${result.year}.`,
+                    }),
+                  onError: (error) =>
+                    toast({
+                      title: 'Could not generate statements',
+                      description: error instanceof Error ? error.message : 'Unknown error',
+                      variant: 'destructive',
+                    }),
+                })
+              }
+            >
+              {generateStatements.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="mr-1 h-4 w-4" />
+              )}
+              Generate statements
+            </Button>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Rolls up paid payouts into one statement per creator. Re-running replaces the year.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

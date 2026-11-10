@@ -147,6 +147,8 @@ class KycRequest(BaseModel):
     id_document_ref: str = Field(..., min_length=1, max_length=1000)
     selfie_ref: str | None = Field(default=None, max_length=1000)
     tax_id: str | None = Field(default=None, max_length=40)
+    tax_form: Literal["w9", "w8ben"] | None = None
+    tax_country: str | None = Field(default=None, min_length=2, max_length=2)
 
 
 class PayoutAccountRequest(BaseModel):

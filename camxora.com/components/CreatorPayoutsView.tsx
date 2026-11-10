@@ -23,11 +23,13 @@ import styles from "@/components/creator-ui.module.css";
 import {
   CreatorApiError,
   fetchPayoutStatus,
+  fetchTaxStatements,
   requestPayout,
   savePayoutAccount,
   submitKyc,
   uploadKycDocument,
   type CreatorPayoutStatus,
+  type CreatorTaxStatement,
 } from "@/lib/creator-api";
 
 function usd(micros: number): string {
@@ -68,6 +70,8 @@ export function CreatorPayoutsView() {
   const [docNames, setDocNames] = useState<{ id?: string; selfie?: string }>({});
   const [uploadingDoc, setUploadingDoc] = useState<"id" | "selfie" | null>(null);
   const [taxId, setTaxId] = useState("");
+  const [taxForm, setTaxForm] = useState<"w9" | "w8ben">("w8ben");
+  const [statements, setStatements] = useState<CreatorTaxStatement[]>([]);
 
   const [method, setMethod] = useState<"aba" | "wing" | "khqr" | "bank" | "paypal" | "wise">("aba");
   const [accountName, setAccountName] = useState("");
@@ -82,9 +86,11 @@ export function CreatorPayoutsView() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchPayoutStatus()
-      .then((payload) => {
-        if (active) setData(payload);
+    Promise.all([fetchPayoutStatus(), fetchTaxStatements().catch(() => ({ items: [] }))])
+      .then(([payload, statementData]) => {
+        if (!active) return;
+        setData(payload);
+        setStatements(statementData.items);
       })
       .catch((cause) => {
         if (!active) return;
@@ -138,6 +144,8 @@ export function CreatorPayoutsView() {
         id_document_ref: documentRef.trim(),
         selfie_ref: selfieRef.trim() || undefined,
         tax_id: taxId.trim() || undefined,
+        tax_form: taxForm,
+        tax_country: country.trim().toUpperCase(),
       });
       showToast("Payout verification submitted. We review it before your first payout.");
       await refresh();
@@ -285,6 +293,27 @@ export function CreatorPayoutsView() {
               </CreatorField>
               <CreatorField label="Country" htmlFor="kyc-country" error={fieldErrors.country_code}>
                 <CreatorInput id="kyc-country" value={country} onChange={(event) => setCountry(event.target.value)} maxLength={2} required />
+              </CreatorField>
+              <CreatorField
+                label="Tax form"
+                htmlFor="kyc-tax-form"
+                hint={
+                  taxForm === "w9"
+                    ? "US persons. No withholding when the country is US."
+                    : "Everyone else. 30% is withheld until a treaty rate is filed."
+                }
+                error={fieldErrors.tax_form}
+              >
+                <CreatorSelect
+                  id="kyc-tax-form"
+                  value={taxForm}
+                  onValueChange={(value) => setTaxForm(value as "w9" | "w8ben")}
+                  options={[
+                    { value: "w8ben", label: "W-8BEN — not a US person" },
+                    { value: "w9", label: "W-9 — US person" },
+                  ]}
+                  ariaLabel="Tax form"
+                />
               </CreatorField>
               <CreatorField label="ID type" htmlFor="kyc-id-type" error={fieldErrors.id_type}>
                 <CreatorSelect
@@ -461,11 +490,48 @@ export function CreatorPayoutsView() {
                     {payout.method.toUpperCase()} · requested {formatDate(payout.requested_at)}
                     {payout.paid_at ? ` · paid ${formatDate(payout.paid_at)}` : ""}
                   </p>
+                  {payout.withheld_micros ? (
+                    <p className={styles.rowMeta}>
+                      {usd(payout.gross_micros ?? payout.amount_micros)} gross ·{" "}
+                      {usd(payout.withheld_micros)} withheld
+                    </p>
+                  ) : null}
                 </div>
                 <CreatorStatus
                   label={payout.status}
                   tone={payout.status === "paid" ? "live" : payout.status === "failed" ? "danger" : "review"}
                 />
+              </div>
+            ))}
+          </div>
+        )}
+      </CreatorPanel>
+      <CreatorPanel title="Tax statements" meta={statements.length ? `${statements.length} year${statements.length === 1 ? "" : "s"}` : "None yet"} className={styles.sectionGap}>
+        {statements.length === 0 ? (
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>No statements yet</p>
+            <p className={styles.emptyBody}>
+              A statement is issued for each tax year after finance closes the year.
+            </p>
+          </div>
+        ) : (
+          <div className={styles.list}>
+            {statements.map((statement) => (
+              <div className={styles.row} key={statement.id}>
+                <div>
+                  <p className={styles.rowTitle}>{statement.tax_year}</p>
+                  <p className={styles.rowMeta}>
+                    {statement.payout_count} payout{statement.payout_count === 1 ? "" : "s"}
+                    {statement.tax_form ? ` · ${statement.tax_form.toUpperCase()}` : ""}
+                    {statement.tax_country ? ` · ${statement.tax_country}` : ""}
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <p className={styles.rowTitle}>{usd(statement.net_micros)}</p>
+                  <p className={styles.rowMeta}>
+                    {usd(statement.gross_micros)} gross · {usd(statement.withheld_micros)} withheld
+                  </p>
+                </div>
               </div>
             ))}
           </div>
