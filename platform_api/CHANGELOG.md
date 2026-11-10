@@ -6,6 +6,31 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-10] - Creator Program: publishing, royalties, payouts and tax
+
+### Added
+
+- `POST /api/v3/creator/releases/quick-publish` creates the artist profile on
+  first use and publishes a generation in one call. Publishing never requires an
+  application.
+- Royalty periods with a 10% reserve, creator earnings with a holdback that
+  releases hourly, and reserve release after a 90-day dispute window (daily job).
+- Payouts in KHR or USD with `gross_micros`, `withheld_micros`, `fx_rate` and
+  `payout_amount_minor`; the ledger stays in USD micros.
+- 30% US royalty withholding (Cambodia has no treaty), annual statements, and a
+  worker-checked `creator_money_audit` trail that rejects UPDATE and DELETE.
+- KYC documents encrypted at rest with a purpose-scoped key and served only
+  through an authenticated endpoint.
+
+### Fixed
+
+- Payout reconciliation compares earnings against payout gross, so withheld tax
+  is no longer reported as drift.
+- Reserve release uses the ledger's permitted `release` entry type; it previously
+  wrote an entry type the check constraint rejected, failing every release.
+
+See `docs/changelog/2026-11-10-creator-program.md`.
+
 ## [2026-11-09] - YouTube quota counts retries on the day they happen
 
 ### Fixed

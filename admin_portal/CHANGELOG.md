@@ -7,6 +7,26 @@ Internal operations UI — AI routing, sample packs, streaming catalog, marketpl
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-11-10] - Creator Program consoles
+
+### Added
+
+- **Payout verification** opens documents through an authenticated endpoint that
+  decrypts them; the raw storage key never reaches the browser.
+- **Creator payouts** shows gross and withheld per payout, sets the KHR rate for
+  a run, and exports a bank CSV that includes the payout currency and rate.
+- **Royalty periods** adds reserve release, annual tax statements and a
+  reconciliation card that reports whether the ledger agrees with payouts.
+- **Money audit** lists every money action with actor, creator and amount. The
+  trail is append-only in the database.
+
+### Changed
+
+- Sidebar and page headers use sentence case with no tracked labels; the active
+  item is a quiet surface step rather than a gradient.
+
+See `docs/changelog/2026-11-10-creator-program.md`.
+
 ## [Unreleased]
 
 ### Changed
