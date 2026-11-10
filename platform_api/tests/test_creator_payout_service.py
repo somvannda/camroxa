@@ -9,7 +9,11 @@ from uuid import uuid4
 import pytest
 
 from platform_api.exceptions import NotFoundError, ValidationError
-from platform_api.services.creator_payout_service import CreatorPayoutService
+from platform_api.services.creator_payout_service import (
+    CreatorPayoutService,
+    split_withholding,
+    withholding_bps_for,
+)
 
 
 def _kyc(status="pending"):
@@ -99,7 +103,12 @@ async def test_payout_request_creates_requested_payout() -> None:
     payout = _payout(user_id)
     service = CreatorPayoutService(AsyncMock())
     service._pool.fetchrow = AsyncMock(
-        side_effect=[_kyc("verified"), {"method": "aba"}, payout]
+        side_effect=[
+            _kyc("verified"),
+            {"method": "aba"},
+            {"withholding_rate_bps": 3000},
+            payout,
+        ]
     )
     service._pool.fetchval = AsyncMock(side_effect=[50_000_000, None])
 
@@ -255,3 +264,49 @@ async def test_kyc_document_upload_rejects_non_documents() -> None:
         )
 
     assert (exc.value.details or {}).get("fields", {}).get("file")
+
+def test_withholding_rate_follows_tax_status() -> None:
+    assert withholding_bps_for("w9", "US") == 0
+    assert withholding_bps_for("W9", "us") == 0
+    assert withholding_bps_for("w8ben", "KH") == 3000
+    assert withholding_bps_for(None, "KH") == 3000
+    assert withholding_bps_for("w9", "KH") == 3000
+
+
+def test_split_withholding_keeps_the_cent() -> None:
+    gross, withheld, net = split_withholding(30_000_000, 3000)
+    assert (gross, withheld, net) == (30_000_000, 9_000_000, 21_000_000)
+
+    gross, withheld, net = split_withholding(33_333_333, 3000)
+    assert gross - withheld == net
+    assert withheld == 9_999_999
+
+
+def test_split_withholding_with_no_rate_is_a_no_op() -> None:
+    assert split_withholding(20_000_000, 0) == (20_000_000, 0, 20_000_000)
+
+
+@pytest.mark.asyncio
+async def test_generate_statements_rolls_up_paid_payouts() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "creator_id": uuid4(),
+                "gross_micros": 40_000_000,
+                "withheld_micros": 12_000_000,
+                "net_micros": 28_000_000,
+                "payout_count": 2,
+            }
+        ]
+    )
+    service._pool.fetchrow = AsyncMock(
+        return_value={"tax_form": "w8ben", "tax_country": "KH"}
+    )
+    service._pool.execute = AsyncMock()
+
+    result = await service.generate_statements(2026)
+
+    assert result == {"year": 2026, "creators": 1, "generated": 1}
+    assert "creator_tax_statements" in service._pool.execute.await_args.args[0]
+

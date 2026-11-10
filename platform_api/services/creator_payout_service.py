@@ -23,6 +23,29 @@ PAYOUT_RELEASE_ENABLED = True
 KYC_ID_TYPES = {"passport", "national_id", "drivers_license"}
 PAYOUT_METHODS = {"aba", "wing", "khqr", "bank", "paypal", "wise"}
 CURRENCIES = {"USD", "KHR"}
+TAX_FORMS = {"w9", "w8ben"}
+DEFAULT_WITHHOLDING_BPS = 3000
+
+
+def withholding_bps_for(tax_form: str | None, tax_country: str | None) -> int:
+    """US royalties withholding rate, in basis points.
+
+    A US person on a W-9 pays nothing up front. Everyone else is withheld at
+    the statutory 30% until a treaty certificate is on file.
+    """
+    form = str(tax_form or "").strip().lower()
+    country = str(tax_country or "").strip().upper()
+    if form == "w9" and country == "US":
+        return 0
+    return DEFAULT_WITHHOLDING_BPS
+
+
+def split_withholding(gross_micros: int, bps: int) -> tuple[int, int, int]:
+    """Return ``(gross, withheld, net)`` micros for a withholding rate."""
+    gross = max(0, int(gross_micros or 0))
+    rate = max(0, min(DEFAULT_WITHHOLDING_BPS, int(bps or 0)))
+    withheld = (gross * rate) // 10_000
+    return gross, withheld, gross - withheld
 
 
 def _micros_to_usd(micros: int) -> float:
@@ -144,6 +167,14 @@ class CreatorPayoutService:
             )
         selfie_ref = str(data.get("selfie_ref") or "").strip() or None
         tax_id = str(data.get("tax_id") or "").strip()[:40] or None
+        tax_form = str(data.get("tax_form") or "").strip().lower() or None
+        if tax_form is not None and tax_form not in TAX_FORMS:
+            raise ValidationError(
+                "Tax form must be w9 or w8ben.",
+                details={"fields": {"tax_form": "invalid"}},
+            )
+        tax_country = str(data.get("tax_country") or country).strip().upper()[:2] or country
+        withholding_bps = withholding_bps_for(tax_form, tax_country)
 
         existing = await self._pool.fetchrow(
             "SELECT status FROM creator_kyc WHERE user_id = $1", user_id
@@ -156,8 +187,9 @@ class CreatorPayoutService:
             INSERT INTO creator_kyc (
                 user_id, legal_name, date_of_birth, country_code, id_type,
                 id_last4, id_document_ref, selfie_ref, tax_id, status,
+                tax_form, tax_country, withholding_rate_bps,
                 submitted_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',NOW(),NOW())
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10,$11,$12,NOW(),NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 legal_name = EXCLUDED.legal_name,
                 date_of_birth = EXCLUDED.date_of_birth,
@@ -167,6 +199,9 @@ class CreatorPayoutService:
                 id_document_ref = EXCLUDED.id_document_ref,
                 selfie_ref = EXCLUDED.selfie_ref,
                 tax_id = EXCLUDED.tax_id,
+                tax_form = EXCLUDED.tax_form,
+                tax_country = EXCLUDED.tax_country,
+                withholding_rate_bps = EXCLUDED.withholding_rate_bps,
                 status = 'pending',
                 submitted_at = NOW(),
                 reviewed_by = NULL,
@@ -184,6 +219,9 @@ class CreatorPayoutService:
             document_ref,
             selfie_ref,
             tax_id,
+            tax_form,
+            tax_country,
+            withholding_bps,
         )
         return {"kyc": dict(row)}
 
@@ -414,19 +452,27 @@ class CreatorPayoutService:
             raise DuplicateError("A payout is already in progress.")
 
         today = date.today()
+        kyc = await self._pool.fetchrow(
+            "SELECT withholding_rate_bps FROM creator_kyc WHERE user_id = $1", user_id
+        )
+        bps = int(kyc.get("withholding_rate_bps") or 0) if kyc else 0
+        gross, withheld, net = split_withholding(int(available), bps)
         row = await self._pool.fetchrow(
             """
             INSERT INTO creator_payouts (
                 creator_id, period_start, period_end, amount_micros,
-                currency, method, status, created_by
-            ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$1)
+                currency, method, status, created_by,
+                gross_micros, withheld_micros
+            ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$1,$6,$7)
             RETURNING *
             """,
             user_id,
             today.replace(day=1),
             today,
-            int(available),
+            net,
             account["method"],
+            gross,
+            withheld,
         )
         return {"payout": dict(row)}
 
@@ -442,7 +488,8 @@ class CreatorPayoutService:
             """
             SELECT e.creator_id,
                    SUM(e.net_micros)::bigint AS amount_micros,
-                   a.method
+                   a.method,
+                   COALESCE(k.withholding_rate_bps, 0) AS withholding_rate_bps
             FROM creator_earnings e
             JOIN creator_kyc k
               ON k.user_id = e.creator_id AND k.status = 'verified'
@@ -454,7 +501,7 @@ class CreatorPayoutService:
                   WHERE p.creator_id = e.creator_id
                     AND p.status IN ('requested','approved','processing')
               )
-            GROUP BY e.creator_id, a.method
+            GROUP BY e.creator_id, a.method, k.withholding_rate_bps
             HAVING SUM(e.net_micros) >= $1
             """,
             MIN_PAYOUT_MICROS,
@@ -462,21 +509,27 @@ class CreatorPayoutService:
         created = 0
         skipped = 0
         for row in rows:
+            gross, withheld, net = split_withholding(
+                int(row["amount_micros"]), int(row.get("withholding_rate_bps") or 0)
+            )
             payout_id = await self._pool.fetchval(
                 """
                 INSERT INTO creator_payouts (
                     creator_id, period_start, period_end, amount_micros,
-                    currency, method, status, created_by
-                ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$6)
+                    currency, method, status, created_by,
+                    gross_micros, withheld_micros
+                ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$6,$7,$8)
                 ON CONFLICT (creator_id, period_start, period_end) DO NOTHING
                 RETURNING id
                 """,
                 row["creator_id"],
                 period_start,
                 period_end,
-                int(row["amount_micros"]),
+                net,
                 row["method"],
                 created_by,
+                gross,
+                withheld,
             )
             if payout_id:
                 created += 1
@@ -503,6 +556,86 @@ class CreatorPayoutService:
             status,
         )
         return [dict(row) for row in rows]
+
+    async def generate_statements(self, year: int) -> dict[str, Any]:
+        """Roll every paid payout in a tax year into one statement per creator."""
+        if not 2000 <= int(year) <= 2100:
+            raise ValidationError(
+                "year is out of range.",
+                details={"fields": {"year": "invalid"}},
+            )
+        rows = await self._pool.fetch(
+            """
+            SELECT creator_id,
+                   SUM(gross_micros)::bigint AS gross_micros,
+                   SUM(withheld_micros)::bigint AS withheld_micros,
+                   SUM(amount_micros)::bigint AS net_micros,
+                   COUNT(*)::int AS payout_count
+            FROM creator_payouts
+            WHERE status = 'paid'
+              AND paid_at IS NOT NULL
+              AND EXTRACT(YEAR FROM paid_at) = $1
+            GROUP BY creator_id
+            """,
+            year,
+        )
+        generated = 0
+        for row in rows:
+            kyc = await self._pool.fetchrow(
+                "SELECT tax_form, tax_country FROM creator_kyc WHERE user_id = $1",
+                row["creator_id"],
+            )
+            await self._pool.execute(
+                """
+                INSERT INTO creator_tax_statements (
+                    creator_id, tax_year, currency,
+                    gross_micros, withheld_micros, net_micros,
+                    payout_count, tax_form, tax_country, generated_at
+                ) VALUES ($1,$2,'USD',$3,$4,$5,$6,$7,$8,NOW())
+                ON CONFLICT (creator_id, tax_year) DO UPDATE SET
+                    gross_micros = EXCLUDED.gross_micros,
+                    withheld_micros = EXCLUDED.withheld_micros,
+                    net_micros = EXCLUDED.net_micros,
+                    payout_count = EXCLUDED.payout_count,
+                    tax_form = EXCLUDED.tax_form,
+                    tax_country = EXCLUDED.tax_country,
+                    generated_at = NOW()
+                """,
+                row["creator_id"],
+                year,
+                int(row["gross_micros"] or 0),
+                int(row["withheld_micros"] or 0),
+                int(row["net_micros"] or 0),
+                int(row["payout_count"] or 0),
+                kyc["tax_form"] if kyc else None,
+                kyc["tax_country"] if kyc else None,
+            )
+            generated += 1
+        return {"year": year, "creators": len(rows), "generated": generated}
+
+    async def list_statements(
+        self,
+        *,
+        user_id: str | None = None,
+        year: int | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        rows = await self._pool.fetch(
+            """
+            SELECT s.*, u.email, u.display_name AS user_display_name, cp.handle
+            FROM creator_tax_statements s
+            JOIN users u ON u.id = s.creator_id
+            LEFT JOIN creator_profiles cp ON cp.user_id = s.creator_id
+            WHERE ($1::uuid IS NULL OR s.creator_id = $1::uuid)
+              AND ($2::int IS NULL OR s.tax_year = $2::int)
+            ORDER BY s.tax_year DESC, s.generated_at DESC
+            LIMIT $3
+            """,
+            user_id,
+            year,
+            max(1, min(limit, 200)),
+        )
+        return {"items": [dict(row) for row in rows]}
 
     async def release_available_earnings(self) -> int:
         result = await self._pool.execute(

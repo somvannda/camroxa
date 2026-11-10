@@ -354,6 +354,15 @@ async def get_payout_status(
     return await service.get_status(ctx.user_id)
 
 
+@router.get("/tax/statements")
+async def list_tax_statements(
+    ctx: CurrentUserDep,
+    service: PayoutServiceDep,
+    year: int | None = Query(default=None),
+) -> dict:
+    return await service.list_statements(user_id=ctx.user_id, year=year)
+
+
 @router.post("/kyc")
 async def submit_kyc(
     body: KycRequest,

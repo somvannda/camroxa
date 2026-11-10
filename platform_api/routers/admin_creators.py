@@ -356,6 +356,27 @@ async def decide_kyc(
     )
 
 
+@router.get("/tax/statements")
+async def list_tax_statements(
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+    year: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    del ctx
+    return await service.list_statements(year=year, limit=limit)
+
+
+@router.post("/tax/statements/generate")
+async def generate_tax_statements(
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+    year: int = Query(..., ge=2000, le=2100),
+) -> dict:
+    del ctx
+    return await service.generate_statements(year)
+
+
 @router.get("/payouts")
 async def list_payouts(
     ctx: AdminDep,
