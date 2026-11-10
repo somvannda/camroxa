@@ -3,6 +3,7 @@
 import * as Checkbox from "@radix-ui/react-checkbox";
 import * as Select from "@radix-ui/react-select";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -40,6 +41,31 @@ export function CreatorHeader({
       </div>
       {actions ? <div className={styles.actions}>{actions}</div> : null}
     </header>
+  );
+}
+
+export function CreatorSubnav({
+  items,
+}: {
+  items: Array<{ href: string; label: string }>;
+}) {
+  const pathname = usePathname();
+  return (
+    <nav className={styles.subnav} aria-label="Creator tools">
+      {items.map((item) => {
+        const active = pathname === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`${styles.subnavLink} ${active ? styles.subnavActive : ""}`.trim()}
+            aria-current={active ? "page" : undefined}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 

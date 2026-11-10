@@ -45,6 +45,35 @@
   gap: 8px;
 }
 
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: -8px 0 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.subnavLink {
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.subnavLink:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.subnavActive {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
 .panel {
   background: linear-gradient(180deg, var(--panel2), var(--panel));
   border: 1px solid var(--line);

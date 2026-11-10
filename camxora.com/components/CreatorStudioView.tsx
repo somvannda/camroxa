@@ -12,6 +12,7 @@ import {
   CreatorPage,
   CreatorPanel,
   CreatorSelect,
+  CreatorSubnav,
   CreatorTextarea,
   CreatorToast,
   creatorButtonClass,
@@ -230,29 +231,23 @@ export function CreatorStudioView() {
             : "Pick a handle, add a short bio, and publish your public creator page."
         }
         actions={
-          <>
-            {profile ? (
-              <CreatorButtonLink href={`/creators/${profile.handle}`} variant="secondary">
-                <Icon name="fa-arrow-up-right-from-square" /> View public page
-              </CreatorButtonLink>
-            ) : null}
-            <CreatorButtonLink href="/creator/releases" variant="ghost">
-              <Icon name="fa-record-vinyl" /> Releases
+          profile ? (
+            <CreatorButtonLink href={`/creators/${profile.handle}`} variant="secondary">
+              <Icon name="fa-arrow-up-right-from-square" /> View public page
             </CreatorButtonLink>
-            <CreatorButtonLink href="/creator/earnings" variant="ghost">
-              <Icon name="fa-chart-line" /> Earnings
-            </CreatorButtonLink>
-            <CreatorButtonLink href="/creator/payouts" variant="ghost">
-              <Icon name="fa-wallet" /> Payouts
-            </CreatorButtonLink>
-            <CreatorButtonLink href="/creator/verification" variant="ghost">
-              <Icon name="fa-circle-check" /> Verification
-            </CreatorButtonLink>
-            <CreatorButtonLink href="/creators" variant="ghost">
-              <Icon name="fa-users" /> Browse creators
-            </CreatorButtonLink>
-          </>
+          ) : undefined
         }
+      />
+
+      <CreatorSubnav
+        items={[
+          { href: "/creator", label: "Overview" },
+          { href: "/creator/releases", label: "Releases" },
+          { href: "/creator/earnings", label: "Earnings" },
+          { href: "/creator/payouts", label: "Payouts" },
+          { href: "/creator/verification", label: "Verification" },
+          { href: "/creators", label: "Directory" },
+        ]}
       />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
