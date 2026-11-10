@@ -40,7 +40,7 @@ functional controls the capture does not show (listed below).
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
 | History drawer | 300 px panel under the header, inset 8 px, on #101012, ‹ date › stepper | same; our version list/restore inside |
 | Plugin dock | full-width band above the footer, slot cards on #141416 | same |
-| EQ card | 450 px card: Band selector + switch, six shape buttons, yellow curve with per-band handles, Freq/Q/Gain knobs | same; four bands, real cascaded biquads |
+| EQ card | 450 px card: Band selector + switch, six shape buttons, curve with per-band handles, Freq/Q/Gain knobs | same geometry; controls/curve use the CAMXORA accent instead of the captured pink/yellow (user request) |
 | Popped-out plugin | large floating card from the external-link control | same: fixed 460 px (520 for EQ) at the bottom-right |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |
 | Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 88 px device previews, 14 px names, Learn chips, uppercase section label | same; previews are our own traces/knobs per plugin family, not copied art |
@@ -58,6 +58,7 @@ functional controls the capture does not show (listed below).
 | Clip hover card | light 256 px card explaining drag/double-click/right-click | same |
 | Clip info rail | 360 px card: hero, Remix, waveform, underlined tabs, section cards | same (facts kept in a Details card) |
 | Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards, sticky mini-player | same (mini-player now built; D-023) |
+| Comments | collapsible “Comments and notes” card with a list and send arrow | same; posts project comments (new POST endpoint) |
 
 ## Intentional divergences (recorded, not defects)
 
