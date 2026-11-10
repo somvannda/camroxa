@@ -35,6 +35,9 @@ export type StudioSongDetailProps = {
   /** Project the comments belong to (they are project notes, shown in this rail). */
   projectId?: string | null;
   commentAuthor?: string;
+  /** Remix generation state for this song (D-018 superseded for Remix). */
+  remixing?: boolean;
+  onRemix?: (song: WebMusicGeneration) => void;
 };
 
 function primaryClipOf(song: WebMusicGeneration) {
@@ -57,7 +60,8 @@ function dateLabel(iso: string | null | undefined): string {
 
 export function StudioSongDetail(props: StudioSongDetailProps) {
   const { width, song, liked, disliked, playing, onBack, onClose } = props;
-  const { onTogglePlay, onToggleLike, onToggleDislike, projectId, commentAuthor } = props;
+  const { onTogglePlay, onToggleLike, onToggleDislike, projectId, commentAuthor, remixing, onRemix } =
+    props;
   const [tab, setTab] = useState<"info" | "stems">("info");
   const [showStyles, setShowStyles] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
@@ -148,10 +152,15 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
         <button
           type="button"
           className="se-pill"
-          disabled
-          title="Remix is not wired in this editor yet"
+          disabled={!onRemix || remixing || !song.style?.trim()}
+          title={
+            song.style?.trim()
+              ? "Generate a new variation from this song's style"
+              : "This song has no style to remix from"
+          }
+          onClick={() => onRemix?.(song)}
         >
-          Remix
+          {remixing ? "Remixing…" : "Remix"}
         </button>
         <span className="se-song-icons">
         <button

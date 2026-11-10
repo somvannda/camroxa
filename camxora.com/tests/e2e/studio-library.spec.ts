@@ -245,3 +245,49 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
   }
 });
 
+test("remix generates a variation from the song style", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Remix ${Math.random().toString(36).slice(2, 6)}` });
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "Library" });
+  await library.getByRole("button", { name: "All Songs" }).click();
+  const first = library.locator(".se-lib-song").first();
+  await expect(first).toBeVisible();
+  await first.dblclick();
+
+  await page.route("**/api/v3/web-music/generate", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ task_id: "remix-test", status: "queued", title: "Remix", style: "pop" }),
+    })
+  );
+  await page.route("**/api/v3/web-music/generations/remix-test", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "remix-test",
+        title: "Remix result",
+        style: "pop",
+        status: "complete",
+        clips: [
+          {
+            variant: "v1",
+            title: "Remix result",
+            audio_url: "/seed/demo-loop.wav",
+            download_url: "/seed/demo-loop.wav",
+            duration_seconds: 4,
+          },
+        ],
+      }),
+    })
+  );
+
+  const detail = page.getByRole("complementary", { name: "Song details" });
+  await detail.getByRole("button", { name: "Remix" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Remix generated" })
+  ).toBeVisible({ timeout: 20_000 });
+});
+

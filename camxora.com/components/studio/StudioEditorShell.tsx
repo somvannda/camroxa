@@ -372,6 +372,7 @@ export function StudioEditorShell() {
   const [midiClipId, setMidiClipId] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
+  const [remixingSongId, setRemixingSongId] = useState<string | null>(null);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -2976,6 +2977,44 @@ export function StudioEditorShell() {
     );
   }
 
+  /** Remix (S37): generate a variation from the song's style and add it to the library. */
+  async function remixSong(song: WebMusicGeneration) {
+    if (remixingSongId) return;
+    if (!song.style?.trim()) return;
+    setRemixingSongId(song.id);
+    try {
+      const created = await generateSong({
+        mode: "advanced",
+        style: song.style,
+        prompt: song.style,
+        title: `${song.title || "Song"} remix`,
+        instrumental: song.instrumental,
+        model: song.model,
+      });
+      const deadline = Date.now() + 180_000;
+      let generation: WebMusicGeneration | null = null;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const current = await fetchGeneration(created.task_id);
+        if (current.status === "complete" || current.status === "ready") {
+          generation = current;
+          break;
+        }
+        if (current.status === "error" || current.status === "failed") {
+          throw new Error(current.error_message || "Remix failed.");
+        }
+      }
+      if (!generation) throw new Error("Remix timed out.");
+      const remix = generation;
+      setLibrarySongs((previous) => (previous ? [remix, ...previous] : [remix]));
+      setExportToast("Remix generated and added to the library.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Remix failed.");
+    } finally {
+      setRemixingSongId(null);
+    }
+  }
+
   /** Prompt bar (S16): generate inline, then place the result at the playhead. */
   async function submitPrompt(raw: string) {
     const prompt = raw.trim();
@@ -3263,6 +3302,8 @@ export function StudioEditorShell() {
                 onToggleDislike={(song, next) => void toggleSongDislike(song, next)}
                 projectId={projectId}
                 commentAuthor={user?.email?.split("@")[0] || "You"}
+                remixing={remixingSongId === detailSong.id}
+                onRemix={(song) => void remixSong(song)}
               />
             );
           }

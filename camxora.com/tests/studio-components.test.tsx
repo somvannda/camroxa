@@ -830,6 +830,19 @@ describe("StudioSongDetail", () => {
     expect(onTogglePlay).toHaveBeenCalledWith(detailSong);
   });
 
+  it("remixes from the header when the song has a style", async () => {
+    const user = userEvent.setup();
+    const onRemix = vi.fn();
+    render(<StudioSongDetail {...detailProps({ onRemix })} />);
+    await user.click(screen.getByRole("button", { name: "Remix" }));
+    expect(onRemix).toHaveBeenCalledWith(detailSong);
+  });
+
+  it("disables Remix while a remix is running", () => {
+    render(<StudioSongDetail {...detailProps({ onRemix: noop, remixing: true })} />);
+    expect((screen.getByRole("button", { name: /Remix/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("loads and posts project comments", async () => {
     const user = userEvent.setup();
     vi.mocked(listStudioProjectComments).mockResolvedValue({
