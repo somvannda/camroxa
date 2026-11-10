@@ -3622,6 +3622,9 @@ export function StudioEditorShell() {
               </span>
             ) : selectedTrack ? (
               <span className="se-prompt-context">
+                {attachedClipId === selectedClip && attachedClipId ? (
+                  <Icon name="fa-wave-square" />
+                ) : null}
                 {(attachedClipId === selectedClip &&
                   clips.find((clip) => clip.id === attachedClipId)?.title) ||
                   tracks.find((track) => track.id === selectedTrack)?.name ||
