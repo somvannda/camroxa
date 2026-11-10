@@ -465,6 +465,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             onChange={(event) => {
               const value = event.target.value as "4" | "8" | "16";
               setQuantize(value);
+              // S31 applies the grid as soon as it is chosen (no Apply control).
+              onChangeNotes(quantizeNotesLocal(notes, secondsPerBar / Number(value)));
             }}
           >
             <option value="4">1/4</option>
@@ -472,13 +474,6 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             <option value="16">1/16</option>
           </select>
         </label>
-        <button
-          type="button"
-          className="se-midi-apply"
-          onClick={() => onChangeNotes(quantizeNotesLocal(notes, step))}
-        >
-          Apply
-        </button>
         <label className="se-midi-control">
           Key
           <select aria-label="Key" value={keyName} onChange={(event) => onKeyChange(event.target.value)}>
