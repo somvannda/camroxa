@@ -502,7 +502,12 @@ class CreatorPayoutService:
         return {"payout": dict(row)}
 
     async def create_run(
-        self, *, period_start: date, period_end: date, created_by: str
+        self,
+        *,
+        period_start: date,
+        period_end: date,
+        created_by: str,
+        fx_rate: float | None = None,
     ) -> dict[str, Any]:
         if period_end <= period_start:
             raise ValidationError(
@@ -541,7 +546,7 @@ class CreatorPayoutService:
             currency = str(row.get("currency") or "USD").strip().upper()
             if currency not in CURRENCIES:
                 currency = "USD"
-            fx_rate = 1.0 if currency == "USD" else USD_KHR_RATE
+            rate = 1.0 if currency == "USD" else float(fx_rate or USD_KHR_RATE)
             payout_id = await self._pool.fetchval(
                 """
                 INSERT INTO creator_payouts (
@@ -561,8 +566,8 @@ class CreatorPayoutService:
                 created_by,
                 gross,
                 withheld,
-                fx_rate,
-                payout_minor_units(net, currency, fx_rate),
+                rate,
+                payout_minor_units(net, currency, rate),
             )
             if payout_id:
                 created += 1
@@ -571,6 +576,7 @@ class CreatorPayoutService:
         return {
             "period_start": period_start.isoformat(),
             "period_end": period_end.isoformat(),
+            "fx_rate": float(fx_rate or USD_KHR_RATE),
             "eligible_creators": len(rows),
             "created": created,
             "skipped": skipped,

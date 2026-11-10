@@ -70,6 +70,7 @@ export default function CreatorPayoutsPage() {
   const exportCsv = useExportPayoutsCsv();
   const [paying, setPaying] = useState<CreatorPayoutRecord | null>(null);
   const [reference, setReference] = useState('');
+  const [fxRate, setFxRate] = useState('4100');
 
   const items = data?.items ?? [];
 
@@ -77,14 +78,19 @@ export default function CreatorPayoutsPage() {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const iso = (date: Date) => date.toISOString().slice(0, 10);
+    const rate = Number(fxRate);
     createRun.mutate(
-      { period_start: iso(start), period_end: iso(now) },
+      {
+        period_start: iso(start),
+        period_end: iso(now),
+        fx_rate: Number.isFinite(rate) && rate > 0 ? rate : undefined,
+      },
       {
         onSuccess: (result) => {
-          const payload = result as { created?: number; skipped?: number; eligible_creators?: number };
+          const payload = result as { created?: number; skipped?: number; eligible_creators?: number; fx_rate?: number };
           toast({
             title: 'Payout run created',
-            description: `${payload.created ?? 0} payouts created · ${payload.skipped ?? 0} skipped · ${payload.eligible_creators ?? 0} eligible.`,
+            description: `${payload.created ?? 0} payouts created · ${payload.skipped ?? 0} skipped · ${payload.eligible_creators ?? 0} eligible · ${payload.fx_rate ?? 0} KHR/USD.`,
           });
         },
         onError: (error) =>
@@ -163,6 +169,17 @@ export default function CreatorPayoutsPage() {
         description="Review payout requests, record the bank reference, and mark each payout paid."
         actions={
           <>
+            <div className="flex items-center gap-1">
+              <Input
+                aria-label="KHR per USD"
+                type="number"
+                min={1}
+                value={fxRate}
+                onChange={(event) => setFxRate(event.target.value)}
+                className="w-24"
+              />
+              <span className="text-xs text-slate-500">៛/USD</span>
+            </div>
             <Button variant="outline" onClick={downloadCsv} disabled={exportCsv.isPending}>
               <Download className="mr-1 h-4 w-4" /> Export CSV
             </Button>

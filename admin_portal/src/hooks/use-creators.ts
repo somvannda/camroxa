@@ -360,7 +360,7 @@ export function usePayoutReconciliation() {
 export function useCreatePayoutRun() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { period_start: string; period_end: string }) => {
+    mutationFn: async (input: { period_start: string; period_end: string; fx_rate?: number }) => {
       return httpClient.post('/api/v3/admin/creators/payouts/run', input);
     },
     onSuccess: () => {

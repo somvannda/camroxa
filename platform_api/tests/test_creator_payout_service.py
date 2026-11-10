@@ -353,3 +353,32 @@ async def test_reconciliation_flags_drift_and_reports_totals() -> None:
     assert result["totals"]["paid_micros"] == 29_000_000
     assert result["totals"]["variance_micros"] == 1_000_000
     assert result["totals"]["balanced"] is False
+
+
+@pytest.mark.asyncio
+async def test_payout_run_uses_the_supplied_khr_rate() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "creator_id": uuid4(),
+                "amount_micros": 21_000_000,
+                "method": "wing",
+                "currency": "KHR",
+                "withholding_rate_bps": 0,
+            }
+        ]
+    )
+    service._pool.fetchval = AsyncMock(return_value=uuid4())
+
+    result = await service.create_run(
+        period_start=date(2026, 10, 1),
+        period_end=date(2026, 11, 1),
+        created_by=str(uuid4()),
+        fx_rate=4200,
+    )
+
+    args = service._pool.fetchval.await_args.args
+    assert args[10] == 4200          # fx_rate passed through
+    assert args[11] == 88_200        # 21.00 USD * 4200 KHR
+    assert result["fx_rate"] == 4200

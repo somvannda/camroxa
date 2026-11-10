@@ -101,6 +101,7 @@ class RoyaltyCalculateRequest(BaseModel):
 class PayoutRunRequest(BaseModel):
     period_start: date
     period_end: date
+    fx_rate: float | None = Field(default=None, gt=0, le=100_000)
 
 
 @router.get("/applications")
@@ -261,6 +262,7 @@ async def create_payout_run(
         period_start=body.period_start,
         period_end=body.period_end,
         created_by=ctx.user_id,
+        fx_rate=body.fx_rate,
     )
 
 
