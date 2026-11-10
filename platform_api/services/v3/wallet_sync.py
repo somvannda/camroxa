@@ -29,10 +29,10 @@ class WalletSyncService:
         self._credit_repo = credit_repo
 
     async def after_subscription_fulfill(self, user_id: UUID) -> dict[str, Any]:
-        result = await self._grant.ensure_period_grant(user_id)
-        if result.get("granted") or result.get("reason") == "already_granted":
-            await self._store.zero_web_monthly_remaining(user_id)
-        return result
+        # Plans are retired: ``ensure_period_grant`` answers ``plans_retired``.
+        # The v2 mirror this used to zero (``web_subscriptions``) was dropped in
+        # migration 174, so there is no monthly counter left to maintain.
+        return await self._grant.ensure_period_grant(user_id)
 
     async def after_topup_fulfill(
         self,
@@ -71,22 +71,24 @@ class WalletSyncService:
         # per-op credit is already granted above; stamping the lot only decides
         # when the balance burns.
         expires_at = datetime.now(timezone.utc) + PACK_CREDIT_VALIDITY
-        lot = await self._store.insert_lot(
+        lot = await self._store.insert_pack_lot_if_absent(
             user_id=user_id,
-            tag="pack",
             amount_units=units,
             expires_at=expires_at,
-            period_start=None,
+            ref_id=ref_id,
         )
         restamped_lots = await self._store.restamp_live_lots(user_id, expires_at)
-        await self._store.subtract_web_topup(user_id, amount)
+        # The retired v2 mirror (``web_subscriptions.topup_credits_balance``) was
+        # dropped in migration 174. Calling into it raised UndefinedTableError on
+        # every purchase, which made the webhook report failure -> provider
+        # retries -> concurrent settlements -> duplicate pack lots.
         return {
             "minted": True,
             "user_id": str(user_id),
             "credits": amount,
             "amount_units": units,
             "ref_id": ref_id,
-            "lot_id": str(lot["id"]),
+            "lot_id": str(lot["id"]) if lot is not None else None,
             "expires_at": expires_at.isoformat(),
             "restamped_lots": restamped_lots,
             "balance_credits": units_to_credits(int(await self._credit_repo.get_balance(user_id))),

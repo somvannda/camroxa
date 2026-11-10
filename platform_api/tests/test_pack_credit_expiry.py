@@ -63,6 +63,25 @@ class FakeStore:
         self.lots.append(lot)
         return lot
 
+    async def insert_pack_lot_if_absent(
+        self, *, user_id: UUID, amount_units: int, expires_at: datetime, ref_id: str
+    ) -> dict:
+        for lot in self.lots:
+            if lot.get("ref_id") == ref_id:
+                return lot
+        lot = {
+            "id": uuid4(),
+            "user_id": user_id,
+            "tag": "pack",
+            "amount_units": amount_units,
+            "remaining_units": amount_units,
+            "expires_at": expires_at,
+            "period_start": None,
+            "ref_id": ref_id,
+        }
+        self.lots.append(lot)
+        return lot
+
     async def restamp_live_lots(self, user_id: UUID, expires_at: datetime) -> int:
         self.restamped.append((user_id, expires_at))
         moved = 0
@@ -74,9 +93,6 @@ class FakeStore:
                 lot["expires_at"] = expires_at
                 moved += 1
         return moved
-
-    async def subtract_web_topup(self, user_id, credits: int) -> None:
-        return None
 
     async def expired_lots(self, user_id: UUID | None = None) -> list[dict]:
         return list(self.expired)

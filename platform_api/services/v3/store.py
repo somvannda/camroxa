@@ -379,6 +379,60 @@ class V3BillingStore:
         )
         return dict(row) if row is not None else None
 
+    async def insert_pack_lot_if_absent(
+        self,
+        *,
+        user_id: UUID,
+        amount_units: int,
+        expires_at: datetime | None,
+        ref_id: str,
+    ) -> dict[str, Any] | None:
+        """Insert the pack lot for one purchase, at most once per ``ref_id``.
+
+        Settlement runs more than once for the same top-up: the payment webhook
+        and the client's status poll race, and a provider retry adds more. The
+        credit grant is idempotent on ``(user, reason, ref)``, but the lot used
+        to be inserted unconditionally — so the wallet was credited once while
+        the lot ledger grew a duplicate each time, and every later expiry sweep
+        operated on money that was never granted.
+
+        ``uq_credit_wallet_lots_pack_ref`` (migration 186) is the single source
+        of truth. A losing caller gets the existing row back instead of minting
+        a second one.
+        """
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO credit_wallet_lots (
+                id, user_id, tag, amount_units, remaining_units,
+                expires_at, period_start, created_at, ref_id
+            )
+            VALUES ($1, $2, 'pack', $3, $3, $4, NULL, NOW(), $5)
+            ON CONFLICT (user_id, ref_id)
+                WHERE tag = 'pack' AND ref_id IS NOT NULL
+                DO NOTHING
+            RETURNING id, user_id, tag, amount_units, remaining_units,
+                      expires_at, period_start, created_at, ref_id
+            """,
+            uuid4(),
+            user_id,
+            amount_units,
+            expires_at,
+            ref_id,
+        )
+        if row is not None:
+            return dict(row)
+        existing = await self._pool.fetchrow(
+            """
+            SELECT id, user_id, tag, amount_units, remaining_units,
+                   expires_at, period_start, created_at, ref_id
+            FROM credit_wallet_lots
+            WHERE user_id = $1 AND tag = 'pack' AND ref_id = $2
+            """,
+            user_id,
+            ref_id,
+        )
+        return dict(existing) if existing is not None else None
+
     async def insert_referral_lot_if_absent(
         self,
         *,
