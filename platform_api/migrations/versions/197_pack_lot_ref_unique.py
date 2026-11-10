@@ -18,16 +18,16 @@ the ``topup_purchase`` ledger rows it writes, so it is dropped here.
 Existing rows are untouched (all current pack lots have a unique reference or
 NULL), so this migration does not move any wallet balance.
 
-Revision ID: 186
-Revises: 185
+Revision ID: 197
+Revises: 196
 """
 
 from __future__ import annotations
 
 from alembic import op
 
-revision = "186"
-down_revision = "185"
+revision = "197"
+down_revision = "196"
 branch_labels = None
 depends_on = None
 

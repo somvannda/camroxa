@@ -396,7 +396,7 @@ class V3BillingStore:
         the lot ledger grew a duplicate each time, and every later expiry sweep
         operated on money that was never granted.
 
-        ``uq_credit_wallet_lots_pack_ref`` (migration 186) is the single source
+        ``uq_credit_wallet_lots_pack_ref`` (migration 197) is the single source
         of truth. A losing caller gets the existing row back instead of minting
         a second one.
         """

@@ -660,7 +660,7 @@ class TopupService:
 
         Settlement (status flip + pack mint) is done by ``_fulfill_topup_payment``;
         the legacy migration-091 trigger that also granted credits was dropped in
-        186. Lookup is by the bound CutLuy payment id, not client-influenced
+        197. Lookup is by the bound CutLuy payment id, not client-influenced
         metadata.
         """
         try:

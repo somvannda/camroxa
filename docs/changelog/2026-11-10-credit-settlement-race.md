@@ -46,7 +46,7 @@ workers, and that user has exactly three pack lots for the purchase.
 - `V3BillingStore.insert_pack_lot_if_absent()` — writes
   `ref_id = 'v3_pack:<topup_id>'` and relies on the new partial unique index;
   a losing caller receives the existing row instead of minting a second lot.
-- Migration **186** — `uq_credit_wallet_lots_pack_ref` on
+- Migration **197** — `uq_credit_wallet_lots_pack_ref` on
   `(user_id, ref_id) WHERE tag='pack' AND ref_id IS NOT NULL`; drops the
   migration-091 trigger and function. No wallet balance is moved; existing pack
   lots already have unique references or `NULL`, so the index builds cleanly.
@@ -66,7 +66,7 @@ workers, and that user has exactly three pack lots for the purchase.
 - `platform_api/services/v2/topup_service.py`
 - `platform_api/services/v3/store.py`
 - `platform_api/services/v3/wallet_sync.py`
-- `platform_api/migrations/versions/186_pack_lot_ref_unique.py`
+- `platform_api/migrations/versions/197_pack_lot_ref_unique.py`
 - `platform_api/tests/test_wallet_sync.py`
 - `platform_api/tests/test_pack_credit_expiry.py`
 - `platform_api/tests/test_topup_chmaba_flow.py`
