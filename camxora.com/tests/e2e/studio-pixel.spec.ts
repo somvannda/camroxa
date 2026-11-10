@@ -764,6 +764,30 @@ test("the master chain shows the captured Limiter and remembers it", async ({ pa
   await expect(page.getByRole("region", { name: "Master chain" })).toHaveCount(0);
 });
 
+test("the compressor offers the captured sidechain routing", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel sidechain" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Compressor/ })
+    .first()
+    .click();
+
+  const slot = page.locator(".sp-slot").first();
+  const select = slot.getByLabel("Sidechain");
+  await expect(select).toHaveValue("none");
+  await select.selectOption({ label: "Track 1 — Post-fader" });
+  await expect(select).toHaveValue("fixture-track:post");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await expect(page.locator(".sp-slot").first().getByLabel("Sidechain")).toHaveValue(
+    "fixture-track:post"
+  );
+});
+
 test("the convolution card loads an impulse response from the library", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

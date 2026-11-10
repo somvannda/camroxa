@@ -31,6 +31,7 @@ import {
   removePlugin,
   setAsset,
   setMode,
+  setSidechain,
   setParam,
   toggleBypass,
   togglePoppedOut,
@@ -51,6 +52,8 @@ type Props = {
   customPlugins?: CustomPlugin[];
   /** Opens the prompt bar in design mode (S45 entry). */
   onDesignPlugin?: () => void;
+  /** Tracks available as a compressor sidechain key (S43). */
+  tracks?: Array<{ id: string; name: string }>;
 };
 
 /**
@@ -533,7 +536,14 @@ function PluginPreview({ id }: { id: string }) {
   );
 }
 
-export function StudioPluginDock({ chain, onChange, trackName, customPlugins = [], onDesignPlugin }: Props) {
+export function StudioPluginDock({
+  chain,
+  onChange,
+  trackName,
+  customPlugins = [],
+  onDesignPlugin,
+  tracks = [],
+}: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [presetMenu, setPresetMenu] = useState<string | null>(null);
@@ -769,6 +779,40 @@ export function StudioPluginDock({ chain, onChange, trackName, customPlugins = [
                   </div>
                 </div>
               )}
+              {plugin.id === "compressor" ? (
+                <label className="sp-sidechain">
+                  <span>Sidechain</span>
+                  <select
+                    aria-label="Sidechain"
+                    value={
+                      entry.sidechain ? `${entry.sidechain.trackId}:${entry.sidechain.tap}` : "none"
+                    }
+                    disabled={Boolean(entry.bypassed)}
+                    onChange={(event) => {
+                      const [trackId, tap] = event.target.value.split(":");
+                      onChange(
+                        setSidechain(
+                          chain,
+                          entry.entryId,
+                          trackId && (tap === "pre" || tap === "post")
+                            ? { trackId, tap }
+                            : null
+                        )
+                      );
+                    }}
+                  >
+                    <option value="none">None</option>
+                    {tracks.flatMap((track) => [
+                      <option key={`${track.id}:pre`} value={`${track.id}:pre`}>
+                        {track.name} — Pre-fx
+                      </option>,
+                      <option key={`${track.id}:post`} value={`${track.id}:post`}>
+                        {track.name} — Post-fader
+                      </option>,
+                    ])}
+                  </select>
+                </label>
+              ) : null}
             </article>
           );
         })}

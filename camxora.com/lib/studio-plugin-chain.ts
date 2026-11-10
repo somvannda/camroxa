@@ -121,6 +121,15 @@ export function setParamSet(
   );
 }
 
+/** Set the compressor's sidechain key (S43). */
+export function setSidechain(
+  chain: PluginChainEntry[],
+  entryId: string,
+  sidechain: { trackId: string; tap: "pre" | "post" } | null
+): PluginChainEntry[] {
+  return chain.map((entry) => (entry.entryId === entryId ? { ...entry, sidechain } : entry));
+}
+
 /** Load an impulse response into a convolution slot (S44). */
 export function setAsset(
   chain: PluginChainEntry[],
@@ -203,6 +212,16 @@ export function activeChain(chain: PluginChainEntry[]): PluginChainEntry[] {
  * Drop unknown plugin ids and unknown parameters from a persisted chain, so a
  * stale or hostile project document cannot reach the audio graph.
  */
+function sanitizeSidechain(
+  input: unknown
+): { trackId: string; tap: "pre" | "post" } | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as { trackId?: unknown; tap?: unknown };
+  if (typeof raw.trackId !== "string" || !raw.trackId) return null;
+  if (raw.tap !== "pre" && raw.tap !== "post") return null;
+  return { trackId: raw.trackId, tap: raw.tap };
+}
+
 export function sanitizeChain(input: unknown): PluginChainEntry[] {
   if (!Array.isArray(input)) return [];
   const out: PluginChainEntry[] = [];
@@ -228,6 +247,7 @@ export function sanitizeChain(input: unknown): PluginChainEntry[] {
         dirty: false,
         params: customParamMap(custom, candidate.params as Record<string, unknown> | undefined),
         assetId: null,
+        sidechain: sanitizeSidechain(candidate.sidechain),
         bypassed: Boolean(candidate.bypassed),
         poppedOut: Boolean(candidate.poppedOut),
       });
@@ -256,6 +276,7 @@ export function sanitizeChain(input: unknown): PluginChainEntry[] {
         candidate.params as Record<string, unknown> | undefined
       ),
       assetId: typeof candidate.assetId === "string" ? candidate.assetId : null,
+      sidechain: sanitizeSidechain(candidate.sidechain),
       bypassed: Boolean(candidate.bypassed),
       poppedOut: Boolean(candidate.poppedOut),
     });

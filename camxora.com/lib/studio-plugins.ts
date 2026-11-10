@@ -329,6 +329,8 @@ export type PluginChainEntry = {
   bypassed?: boolean;
   /** Reference: each plugin header has a popout control. */
   poppedOut?: boolean;
+  /** Compressor key input (S43): another track's pre-fx or post-fader signal. */
+  sidechain?: { trackId: string; tap: "pre" | "post" } | null;
 };
 
 /** Build a chain entry with reference defaults. */

@@ -2474,6 +2474,8 @@ export function StudioEditorShell() {
     sources: AudioScheduledSourceNode[];
     analyser?: AnalyserNode;
     disposeChains?: (() => void)[];
+    /** Sidechain ducking control loop (S43). */
+    duckTimer?: number;
   } | null>(null);
   /** Decoded buffers keyed by URL, so a restart (ghost-drag apply) does not refetch. */
   const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
@@ -2512,6 +2514,10 @@ export function StudioEditorShell() {
   async function stopAudio() {
     const engine = audioRef.current;
     if (!engine) return;
+    if (engine.duckTimer !== undefined) {
+      window.clearInterval(engine.duckTimer);
+      engine.duckTimer = undefined;
+    }
     engine.sources.forEach((source) => {
       try {
         source.stop();
@@ -2561,7 +2567,12 @@ export function StudioEditorShell() {
   /** Identity of a chain's *shape*; parameter values are not part of it. */
   function chainStructure(entries: PluginChainEntry[] | undefined): string {
     return (entries ?? [])
-      .map((entry) => `${entry.entryId}:${entry.pluginId}:${entry.bypassed ? 1 : 0}`)
+      .map(
+        (entry) =>
+          `${entry.entryId}:${entry.pluginId}:${entry.bypassed ? 1 : 0}:${
+            entry.sidechain ? `${entry.sidechain.trackId}/${entry.sidechain.tap}` : "-"
+          }`
+      )
       .join(">");
   }
 
@@ -2670,6 +2681,11 @@ export function StudioEditorShell() {
     // Per-track input: gain plus the track's plugin chain, shared by its clips so an
     // effect is heard once instead of being duplicated per clip.
     const trackInputs = new Map<string, AudioNode>();
+    /** Pre-fx tap per track, for a compressor keyed by another track (S43). */
+    const preTaps = new Map<string, GainNode>();
+    /** Per-track duck gain, between the plugin chain and the fader. */
+    const duckGains = new Map<string, GainNode>();
+    const duckSpecs: Array<{ target: string; source: string; tap: "pre" | "post" }> = [];
     function trackInput(trackId: string, volume: number): AudioNode {
       const existing = trackInputs.get(trackId);
       if (existing) return existing;
@@ -2677,17 +2693,32 @@ export function StudioEditorShell() {
       gain.gain.value = Math.max(0, volume) / 100;
       gain.connect(master);
       trackGainRef.current.set(trackId, gain);
+      const duckGain = context.createGain();
+      duckGain.connect(gain);
       const entries = chainsRef.current[trackId] ?? [];
+      let input: AudioNode = duckGain;
       if (entries.length > 0) {
         const chain = buildPluginChain(context, entries);
-        chain.output.connect(gain);
+        chain.output.connect(duckGain);
         audioRef.current?.disposeChains?.push(chain.dispose);
         chainRuntimeRef.current.set(trackId, { update: chain.update });
-        trackInputs.set(trackId, chain.input);
-        return chain.input;
+        input = chain.input;
+        for (const entry of entries) {
+          if (entry.sidechain) {
+            duckSpecs.push({
+              target: trackId,
+              source: entry.sidechain.trackId,
+              tap: entry.sidechain.tap,
+            });
+          }
+        }
       }
-      trackInputs.set(trackId, gain);
-      return gain;
+      const pre = context.createGain();
+      pre.connect(input);
+      preTaps.set(trackId, pre);
+      duckGains.set(trackId, duckGain);
+      trackInputs.set(trackId, pre);
+      return pre;
     }
 
     for (const clip of arrangement) {
@@ -2759,6 +2790,33 @@ export function StudioEditorShell() {
           ...scheduleMidiNote(context, destination, note, when, playbackRate, { bend, mod })
         );
       }
+    }
+
+    // S43: one control-rate analyser per sidechain route, ducking the target track.
+    const duckNodes: Array<{ gain: GainNode; analyser: AnalyserNode }> = [];
+    for (const spec of duckSpecs) {
+      const source =
+        spec.tap === "post" ? trackGainRef.current.get(spec.source) : preTaps.get(spec.source);
+      const target = duckGains.get(spec.target);
+      if (!source || !target || spec.source === spec.target) continue;
+      const keyAnalyser = context.createAnalyser();
+      keyAnalyser.fftSize = 256;
+      source.connect(keyAnalyser);
+      duckNodes.push({ gain: target, analyser: keyAnalyser });
+    }
+    if (duckNodes.length && audioRef.current) {
+      const frame = new Float32Array(256);
+      const timer = window.setInterval(() => {
+        for (const node of duckNodes) {
+          node.analyser.getFloatTimeDomainData(frame);
+          let sum = 0;
+          for (let index = 0; index < frame.length; index += 1) sum += frame[index] * frame[index];
+          const rms = Math.sqrt(sum / frame.length);
+          const duck = 1 - Math.min(0.8, Math.max(0, (rms - 0.01) * 3.5));
+          node.gain.gain.setTargetAtTime(duck, context.currentTime, 0.06);
+        }
+      }, 50);
+      audioRef.current.duckTimer = timer;
     }
   }
 
@@ -4358,6 +4416,7 @@ export function StudioEditorShell() {
           chain={chains[selectedTrack] ?? []}
           trackName={tracks.find((track) => track.id === selectedTrack)?.name}
           customPlugins={customPlugins}
+          tracks={tracks.map((track) => ({ id: track.id, name: track.name }))}
           onDesignPlugin={openPluginDesigner}
           onChange={(next) => commitChain(selectedTrack, next)}
         />
