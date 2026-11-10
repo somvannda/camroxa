@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from typing import Any
 from uuid import UUID
 
 from platform_api.exceptions import NotFoundError
 from platform_api.services.royalty_policy_service import RoyaltyPolicyService
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_THRESHOLD_STREAMS = 500
 DEFAULT_THRESHOLD_LISTENERS = 50
 HALFWAY_EVENT = "creator_earning_halfway"
 ELIGIBLE_EVENT = "creator_earning_eligible"
+_ELIGIBILITY_ENABLED = True
+_ELIGIBILITY_INTERVAL_SECONDS = 3600
 
 
 class CreatorEligibilityService:
@@ -54,7 +60,12 @@ class CreatorEligibilityService:
             json.dumps(payload),
         )
 
-    async def refresh_track(self, track_id: UUID | str) -> dict[str, Any]:
+    async def refresh_track(
+        self,
+        track_id: UUID | str,
+        *,
+        thresholds: tuple[int, int] | None = None,
+    ) -> dict[str, Any]:
         row = await self._pool.fetchrow(
             """
             SELECT t.id, t.user_id, t.title,
@@ -75,7 +86,7 @@ class CreatorEligibilityService:
         if row is None:
             raise NotFoundError("Track not found.")
 
-        threshold_streams, threshold_listeners = await self._thresholds()
+        threshold_streams, threshold_listeners = thresholds or await self._thresholds()
         valid_streams = int(row["valid_streams"] or 0)
         unique_listeners = int(row["unique_listeners"] or 0)
         eligible = (
@@ -182,8 +193,9 @@ class CreatorEligibilityService:
             max(1, min(limit, 500)),
         )
         count = 0
+        thresholds = await self._thresholds()
         for track in rows:
-            await self.refresh_track(track["id"])
+            await self.refresh_track(track["id"], thresholds=thresholds)
             count += 1
         return count
 
@@ -198,8 +210,9 @@ class CreatorEligibilityService:
             max(1, min(limit, 2000)),
         )
         count = 0
+        thresholds = await self._thresholds()
         for track in rows:
-            await self.refresh_track(track["id"])
+            await self.refresh_track(track["id"], thresholds=thresholds)
             count += 1
         return count
 
@@ -233,3 +246,24 @@ def _row(row: Any, title: str | None = None) -> dict[str, Any]:
     if title is not None:
         data["title"] = title
     return data
+
+
+async def run_creator_eligibility_loop(
+    pool: Any,
+    *,
+    interval_seconds: int = _ELIGIBILITY_INTERVAL_SECONDS,
+    startup_delay: float = 60.0,
+) -> None:
+    """Refresh track eligibility hourly and queue creator notifications."""
+    if startup_delay:
+        await asyncio.sleep(startup_delay)
+    service = CreatorEligibilityService(pool)
+    while True:
+        try:
+            refreshed = await service.refresh_all(limit=500)
+            logger.info("Creator eligibility refresh completed for %s tracks.", refreshed)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Creator eligibility refresh failed; retrying next interval.")
+        await asyncio.sleep(max(300, interval_seconds))

@@ -573,6 +573,24 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Credit grant maintenance not started (non-fatal): %s", exc)
 
+        # --- Creator earning eligibility (hourly) ---
+        try:
+            from platform_api.services import creator_eligibility_service as _creator_elig
+
+            if not getattr(_creator_elig, "_ELIGIBILITY_ENABLED", True):
+                logger.info("Creator eligibility loop is disabled.")
+            else:
+                asyncio.create_task(
+                    _creator_elig.run_creator_eligibility_loop(
+                        db_pool,
+                        startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                    ),
+                    name="creator-eligibility",
+                )
+                logger.info("Creator eligibility loop started.")
+        except Exception as exc:
+            logger.warning("Creator eligibility loop not started (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",
