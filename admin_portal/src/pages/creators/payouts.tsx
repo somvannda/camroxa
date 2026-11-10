@@ -236,6 +236,11 @@ export default function CreatorPayoutsPage() {
                     </TableCell>
                     <TableCell className="font-medium text-slate-100">
                       {usd(payout.amount_micros)}
+                      {payout.currency === 'KHR' && payout.payout_amount_minor ? (
+                        <div className="text-xs font-normal text-slate-400">
+                          {new Intl.NumberFormat('en-US').format(payout.payout_amount_minor)} ៛
+                        </div>
+                      ) : null}
                       {payout.withheld_micros ? (
                         <div className="text-xs font-normal text-slate-500">
                           {usd(payout.gross_micros ?? payout.amount_micros)} gross ·{' '}

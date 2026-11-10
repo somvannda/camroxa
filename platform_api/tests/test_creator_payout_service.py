@@ -11,6 +11,7 @@ import pytest
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.services.creator_payout_service import (
     CreatorPayoutService,
+    payout_minor_units,
     split_withholding,
     withholding_bps_for,
 )
@@ -277,12 +278,18 @@ def test_withholding_rate_follows_tax_status() -> None:
     assert withholding_bps_for(None, "US") == 3000
 
 
-def test_treaty_rates_apply_only_with_a_w8ben() -> None:
-    assert withholding_bps_for("w8ben", "GB") == 0
-    assert withholding_bps_for("w8ben", "TH") == 1500
-    assert withholding_bps_for("w8ben", "VN") == 1000
-    assert withholding_bps_for("w9", "GB") == 3000
-    assert withholding_bps_for("w8ben", "LA") == 3000
+def test_cambodia_is_always_withheld_at_the_statutory_rate() -> None:
+    assert withholding_bps_for("w8ben", "KH") == 3000
+    assert withholding_bps_for("w8ben", "US") == 3000
+    assert withholding_bps_for("w9", "KH") == 3000
+
+
+def test_payout_minor_units_for_usd_and_khr() -> None:
+    # USD pays in cents.
+    assert payout_minor_units(21_000_000, "USD", 1.0) == 2100
+    # KHR pays in whole riel at the recorded rate.
+    assert payout_minor_units(21_000_000, "KHR", 4100) == 86_100
+    assert payout_minor_units(0, "KHR", 4100) == 0
 
 
 def test_split_withholding_keeps_the_cent() -> None:

@@ -28,12 +28,22 @@ import {
   savePayoutAccount,
   submitKyc,
   uploadKycDocument,
+  type CreatorPayout,
   type CreatorPayoutStatus,
   type CreatorTaxStatement,
 } from "@/lib/creator-api";
 
 function usd(micros: number): string {
   return `$${(Number(micros || 0) / 1_000_000).toFixed(2)}`;
+}
+
+function sentAmount(payout: CreatorPayout): string | null {
+  const minor = payout.payout_amount_minor;
+  if (minor == null || minor <= 0) return null;
+  if (String(payout.currency).toUpperCase() === "KHR") {
+    return `${new Intl.NumberFormat("en-US").format(minor)} ៛`;
+  }
+  return `$${(minor / 100).toFixed(2)}`;
 }
 
 function formatDate(value?: string | null): string {
@@ -494,6 +504,14 @@ export function CreatorPayoutsView() {
                     <p className={styles.rowMeta}>
                       {usd(payout.gross_micros ?? payout.amount_micros)} gross ·{" "}
                       {usd(payout.withheld_micros)} withheld
+                    </p>
+                  ) : null}
+                  {sentAmount(payout) ? (
+                    <p className={styles.rowMeta}>
+                      Sends {sentAmount(payout)}
+                      {String(payout.currency).toUpperCase() === "KHR" && payout.fx_rate
+                        ? ` · ${Number(payout.fx_rate).toLocaleString()} ៛/USD`
+                        : ""}
                     </p>
                   ) : null}
                 </div>

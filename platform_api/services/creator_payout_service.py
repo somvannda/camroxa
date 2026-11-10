@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -26,56 +27,35 @@ CURRENCIES = {"USD", "KHR"}
 TAX_FORMS = {"w9", "w8ben"}
 DEFAULT_WITHHOLDING_BPS = 3000
 
-# US royalty withholding rates for treaty countries, in basis points, applied
-# only when a W-8BEN is on file. Any country not listed is withheld at the
-# statutory 30%. Verify against the current IRS treaty table before launch.
-TREATY_ROYALTY_BPS: dict[str, int] = {
-    "AT": 0,
-    "AU": 500,
-    "BE": 0,
-    "CA": 0,
-    "CH": 0,
-    "CN": 1000,
-    "DE": 0,
-    "DK": 0,
-    "ES": 0,
-    "FI": 0,
-    "FR": 0,
-    "GB": 0,
-    "ID": 1500,
-    "IE": 0,
-    "IN": 1500,
-    "IT": 0,
-    "JP": 1000,
-    "KR": 1000,
-    "MY": 1000,
-    "NL": 0,
-    "NO": 0,
-    "NZ": 500,
-    "PH": 2500,
-    "SE": 0,
-    "SG": 1000,
-    "TH": 1500,
-    "VN": 1000,
-}
+# Cambodia has no US tax treaty, so every Cambodian creator pays the statutory
+# 30% unless they are a US person filing a W-9. The product is Cambodia-only for
+# now, so there is no treaty table to maintain.
+USD_KHR_RATE = float(os.environ.get("CREATOR_USD_KHR_RATE", "4100"))
 
 
 def withholding_bps_for(tax_form: str | None, tax_country: str | None) -> int:
     """US royalties withholding rate, in basis points.
 
-    A US person on a W-9 pays nothing up front. A W-8BEN holder in a treaty
-    country pays that treaty's royalty rate. Everyone else pays the statutory
-    30%, which also covers US persons who never filed a W-9.
+    A US person on a W-9 pays nothing up front. Everyone else — including every
+    Cambodian creator — is withheld at the statutory 30%.
     """
     form = str(tax_form or "").strip().lower()
     country = str(tax_country or "").strip().upper()
     if form == "w9" and country == "US":
         return 0
-    if form == "w8ben":
-        rate = TREATY_ROYALTY_BPS.get(country)
-        if rate is not None:
-            return rate
     return DEFAULT_WITHHOLDING_BPS
+
+
+def payout_minor_units(amount_micros: int, currency: str, fx_rate: float) -> int:
+    """Amount to send, in the payout currency's smallest unit.
+
+    USD is paid in cents, KHR in whole riel. The ledger stays in USD micros, so
+    a KHR payout records the rate that was used alongside the amount.
+    """
+    micros = max(0, int(amount_micros or 0))
+    if str(currency).strip().upper() == "KHR":
+        return int(round((micros / 1_000_000) * float(fx_rate or 0)))
+    return int(round(micros / 10_000))
 
 
 def split_withholding(gross_micros: int, bps: int) -> tuple[int, int, int]:
@@ -454,7 +434,7 @@ class CreatorPayoutService:
             )
         account = await self._pool.fetchrow(
             """
-            SELECT method FROM creator_payout_accounts
+            SELECT method, currency FROM creator_payout_accounts
             WHERE user_id = $1 AND is_default AND status = 'verified'
             LIMIT 1
             """,
@@ -495,22 +475,29 @@ class CreatorPayoutService:
         )
         bps = int(kyc.get("withholding_rate_bps") or 0) if kyc else 0
         gross, withheld, net = split_withholding(int(available), bps)
+        currency = str(account.get("currency") or "USD").strip().upper()
+        if currency not in CURRENCIES:
+            currency = "USD"
+        fx_rate = 1.0 if currency == "USD" else USD_KHR_RATE
         row = await self._pool.fetchrow(
             """
             INSERT INTO creator_payouts (
                 creator_id, period_start, period_end, amount_micros,
                 currency, method, status, created_by,
-                gross_micros, withheld_micros
-            ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$1,$6,$7)
+                gross_micros, withheld_micros, fx_rate, payout_amount_minor
+            ) VALUES ($1,$2,$3,$4,$5,$6,'requested',$1,$7,$8,$9,$10)
             RETURNING *
             """,
             user_id,
             today.replace(day=1),
             today,
             net,
+            currency,
             account["method"],
             gross,
             withheld,
+            fx_rate,
+            payout_minor_units(net, currency, fx_rate),
         )
         return {"payout": dict(row)}
 
@@ -527,6 +514,7 @@ class CreatorPayoutService:
             SELECT e.creator_id,
                    SUM(e.net_micros)::bigint AS amount_micros,
                    a.method,
+                   a.currency,
                    COALESCE(k.withholding_rate_bps, 0) AS withholding_rate_bps
             FROM creator_earnings e
             JOIN creator_kyc k
@@ -539,7 +527,7 @@ class CreatorPayoutService:
                   WHERE p.creator_id = e.creator_id
                     AND p.status IN ('requested','approved','processing')
               )
-            GROUP BY e.creator_id, a.method, k.withholding_rate_bps
+            GROUP BY e.creator_id, a.method, a.currency, k.withholding_rate_bps
             HAVING SUM(e.net_micros) >= $1
             """,
             MIN_PAYOUT_MICROS,
@@ -550,13 +538,17 @@ class CreatorPayoutService:
             gross, withheld, net = split_withholding(
                 int(row["amount_micros"]), int(row.get("withholding_rate_bps") or 0)
             )
+            currency = str(row.get("currency") or "USD").strip().upper()
+            if currency not in CURRENCIES:
+                currency = "USD"
+            fx_rate = 1.0 if currency == "USD" else USD_KHR_RATE
             payout_id = await self._pool.fetchval(
                 """
                 INSERT INTO creator_payouts (
                     creator_id, period_start, period_end, amount_micros,
                     currency, method, status, created_by,
-                    gross_micros, withheld_micros
-                ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$6,$7,$8)
+                    gross_micros, withheld_micros, fx_rate, payout_amount_minor
+                ) VALUES ($1,$2,$3,$4,$5,$6,'requested',$7,$8,$9,$10,$11)
                 ON CONFLICT (creator_id, period_start, period_end) DO NOTHING
                 RETURNING id
                 """,
@@ -564,10 +556,13 @@ class CreatorPayoutService:
                 period_start,
                 period_end,
                 net,
+                currency,
                 row["method"],
                 created_by,
                 gross,
                 withheld,
+                fx_rate,
+                payout_minor_units(net, currency, fx_rate),
             )
             if payout_id:
                 created += 1

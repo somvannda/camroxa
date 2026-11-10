@@ -506,6 +506,8 @@ export type CreatorPayout = {
   amount_micros: number;
   gross_micros?: number;
   withheld_micros?: number;
+  fx_rate?: number | null;
+  payout_amount_minor?: number | null;
   currency: string;
   method: string;
   status: "requested" | "approved" | "processing" | "paid" | "failed" | "cancelled";
