@@ -20,6 +20,7 @@ import {
   useCreatorToast,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
+import { CreatorImageCrop } from "@/components/CreatorImageCrop";
 import {
   checkHandle,
   claimCreator,
@@ -105,6 +106,7 @@ export function CreatorStudioView() {
   const [handleCheck, setHandleCheck] = useState<{ available: boolean; reason: string | null; suggestions: string[] } | null>(null);
   const [checking, setChecking] = useState(false);
   const [uploading, setUploading] = useState<"avatar" | "banner" | null>(null);
+  const [pendingCrop, setPendingCrop] = useState<{ file: File; kind: "avatar" | "banner" } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -351,7 +353,7 @@ export function CreatorStudioView() {
             />
           </CreatorField>
 
-          <CreatorField label="Avatar" htmlFor="creator-avatar-file" hint="Square image, at least 400×400px. JPG, PNG, or WebP.">
+          <CreatorField label="Avatar" htmlFor="creator-avatar-file" hint="Square crop, saved at 512 × 512. JPG, PNG, or WebP.">
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16 }}>
               {form.avatar_url ? (
                 <img src={form.avatar_url} alt="" className={styles.avatar} />
@@ -369,7 +371,7 @@ export function CreatorStudioView() {
                   hidden
                   onChange={(event) => {
                     const file = event.target.files?.[0];
-                    if (file) void onUpload("avatar", file);
+                    if (file) setPendingCrop({ file, kind: "avatar" });
                     event.currentTarget.value = "";
                   }}
                 />
@@ -377,7 +379,7 @@ export function CreatorStudioView() {
             </div>
           </CreatorField>
 
-          <CreatorField label="Banner" htmlFor="creator-banner-file" hint="Wide image, at least 1200×400px. The center is kept on mobile.">
+          <CreatorField label="Banner" htmlFor="creator-banner-file" hint="3:1 crop, saved at 1500 × 500. The center is kept on mobile.">
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16 }}>
               {form.banner_url ? (
                 <img
@@ -400,7 +402,7 @@ export function CreatorStudioView() {
                   hidden
                   onChange={(event) => {
                     const file = event.target.files?.[0];
-                    if (file) void onUpload("banner", file);
+                    if (file) setPendingCrop({ file, kind: "banner" });
                     event.currentTarget.value = "";
                   }}
                 />
@@ -448,6 +450,18 @@ export function CreatorStudioView() {
         </div>
       </CreatorPanel>
       <CreatorToast toast={toast} onDismiss={dismiss} />
+      {pendingCrop ? (
+        <CreatorImageCrop
+          file={pendingCrop.file}
+          kind={pendingCrop.kind}
+          onCancel={() => setPendingCrop(null)}
+          onConfirm={(cropped) => {
+            const kind = pendingCrop.kind;
+            setPendingCrop(null);
+            void onUpload(kind, cropped);
+          }}
+        />
+      ) : null}
     </CreatorPage>
   );
 }

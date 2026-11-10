@@ -11,6 +11,7 @@ import {
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type TextareaHTMLAttributes,
 } from "react";
 import styles from "./creator-ui.module.css";
@@ -133,7 +134,10 @@ export function CreatorButton({
   variant = "primary",
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  ref?: Ref<HTMLButtonElement>;
+}) {
   return (
     <button
       className={`${creatorButtonClass(variant)} ${className}`.trim()}

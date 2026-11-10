@@ -74,10 +74,17 @@ The data itself is honest: real creator records, real statuses, no fake counters
 - The topbar is a solid translucent surface instead of a gradient.
 - Avatar/banner uploads are live with previews.
 
+### Avatar and banner crop
+
+- Choosing an avatar or banner opens a crop dialog instead of uploading immediately.
+- Avatar crops 1:1 and saves 512 × 512; banner crops 3:1 and saves 1500 × 500.
+- Drag to reposition, 1–3× zoom slider, thirds grid, Escape or Cancel to abandon.
+- Output is a JPEG re-encoded on canvas, so oversized phone photos never reach storage raw.
+- Verified: dialog opens, zoom is exact (2.00× doubles the rendered image), canvas output is 512 × 512, upload succeeds and the preview updates.
+
 ### Still open
 
-- The Studio header still has several actions; keep one primary and move the rest into a quieter secondary row.
-- Add drag-to-crop for avatar/banner images.
-- Payout KYC document viewer.
+- Payout KYC document viewer with signed URLs.
+- Tax withholding and annual statements.
 
 
