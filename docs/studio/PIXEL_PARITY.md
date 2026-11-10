@@ -59,6 +59,7 @@ functional controls the capture does not show (listed below).
 | Clip info rail | 360 px card: hero, Remix, waveform, underlined tabs, section cards | same (facts kept in a Details card) |
 | Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards, sticky mini-player | same (mini-player now built; D-023) |
 | Comments | collapsible “Comments and notes” card with a list and send arrow | same; posts project comments (new POST endpoint) |
+| Remix | header pill that starts a variation generation | same; generates from the song style, adds the result to the library, disabled while running |
 
 ## Intentional divergences (recorded, not defects)
 

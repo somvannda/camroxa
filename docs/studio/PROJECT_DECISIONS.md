@@ -593,3 +593,17 @@ content fits, but the capture shows it in every detail state and the user asked 
 
 **Consequences.** The rail keeps a fixed strip above its bottom edge; the body scrolls
 above it. Playback and like state stay the same single-preview source.
+
+
+---
+
+## D-024 — Remix generates a variation from the song style
+
+**Date:** 2026-11-10 **Status:** accepted (supersedes the Remix part of D-018)
+
+**Decision.** The song-detail Remix pill calls the generation API with the song's style (and
+instrumental/model flags), polls the task and adds the finished variation to the library
+with a toast. It is disabled while a remix is running and when the song has no style.
+
+**Consequences.** Remix spends credits like any generation; it only starts on an explicit
+click. The result is a new generation, not an in-place edit of the original.
