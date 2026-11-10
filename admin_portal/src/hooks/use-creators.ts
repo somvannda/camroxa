@@ -115,6 +115,15 @@ export function useMarkPayoutPaid() {
   });
 }
 
+export function useKycDocumentLink() {
+  return useMutation({
+    mutationFn: async (input: { userId: string; kind: 'id' | 'selfie' }) =>
+      httpClient.get<{ url: string; expires_in: number | null; signed: boolean }>(
+        `/api/v3/admin/creators/kyc/${encodeURIComponent(input.userId)}/documents/${input.kind}`,
+      ),
+  });
+}
+
 export function useApprovePayout() {
   const queryClient = useQueryClient();
   return useMutation({

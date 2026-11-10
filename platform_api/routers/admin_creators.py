@@ -325,6 +325,22 @@ async def list_kyc(
     return await service.list_kyc(status=status, limit=limit, offset=offset)
 
 
+@router.get("/kyc/{user_id}/documents/{kind}")
+async def sign_kyc_document(
+    user_id: str,
+    kind: Literal["id", "selfie"],
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+) -> dict:
+    """Return a short-lived signed URL for a KYC document.
+
+    The admin portal requests this with its bearer token and then opens the
+    returned URL, so the raw storage key is never exposed to the browser.
+    """
+    del ctx
+    return await service.signed_kyc_document(user_id, kind=kind)
+
+
 @router.post("/kyc/{user_id}/decision")
 async def decide_kyc(
     user_id: str,

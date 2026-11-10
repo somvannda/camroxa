@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from platform_api.exceptions import ValidationError
+from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.services.creator_payout_service import CreatorPayoutService
 
 
@@ -204,3 +204,54 @@ async def test_release_available_earnings_promotes_due_rows() -> None:
     released = await service.release_available_earnings()
 
     assert released == 4
+
+
+@pytest.mark.asyncio
+async def test_signed_kyc_document_requires_a_submission() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetchrow = AsyncMock(return_value=None)
+
+    with pytest.raises(NotFoundError):
+        await service.signed_kyc_document(str(uuid4()), kind="id")
+
+
+@pytest.mark.asyncio
+async def test_signed_kyc_document_passes_legacy_urls_through() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetchrow = AsyncMock(
+        return_value={
+            "id_document_ref": "https://example.com/legacy-id.png",
+            "selfie_ref": None,
+        }
+    )
+
+    payload = await service.signed_kyc_document(str(uuid4()), kind="id")
+
+    assert payload == {
+        "url": "https://example.com/legacy-id.png",
+        "expires_in": None,
+        "signed": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_signed_kyc_document_rejects_a_missing_kind() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetchrow = AsyncMock(
+        return_value={"id_document_ref": "creator/kyc/x/id.jpg", "selfie_ref": None}
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.signed_kyc_document(str(uuid4()), kind="selfie")
+
+
+@pytest.mark.asyncio
+async def test_kyc_document_upload_rejects_non_documents() -> None:
+    service = CreatorPayoutService(AsyncMock())
+
+    with pytest.raises(ValidationError) as exc:
+        await service.upload_kyc_document(
+            str(uuid4()), kind="id", content_type="text/plain", data=b"hi"
+        )
+
+    assert (exc.value.details or {}).get("fields", {}).get("file")

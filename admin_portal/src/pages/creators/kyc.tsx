@@ -34,6 +34,7 @@ import { toast } from '@/hooks/use-toast';
 import {
   useCreatorKyc,
   useDecideKyc,
+  useKycDocumentLink,
   type CreatorKycRecord,
 } from '@/hooks/use-creators';
 
@@ -56,10 +57,35 @@ export default function CreatorKycPage() {
   const [status, setStatus] = useState('pending');
   const { data, isLoading, isError, refetch } = useCreatorKyc(status);
   const decide = useDecideKyc();
+  const openDoc = useKycDocumentLink();
   const [rejecting, setRejecting] = useState<CreatorKycRecord | null>(null);
   const [reason, setReason] = useState('');
 
   const items = data?.items ?? [];
+
+  function openDocument(record: CreatorKycRecord, kind: 'id' | 'selfie') {
+    const tab = window.open('', '_blank', 'noopener,noreferrer');
+    openDoc.mutate(
+      { userId: record.user_id, kind },
+      {
+        onSuccess: (payload) => {
+          if (tab) {
+            tab.location.href = payload.url;
+          } else {
+            window.open(payload.url, '_blank', 'noopener,noreferrer');
+          }
+        },
+        onError: (error) => {
+          tab?.close();
+          toast({
+            title: 'Could not open the document',
+            description: error instanceof Error ? error.message : 'Unknown error',
+            variant: 'destructive',
+          });
+        },
+      },
+    );
+  }
 
   function approve(record: CreatorKycRecord) {
     decide.mutate(
@@ -171,27 +197,25 @@ export default function CreatorKycPage() {
                       <div className="text-sm capitalize">{record.id_type.replace('_', ' ')}</div>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
                         •••• {record.id_last4}
-                        {/^https?:\/\//i.test(record.id_document_ref) ? (
-                          <a
-                            href={record.id_document_ref}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sky-400 hover:text-sky-300"
-                            title="Open ID document"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        ) : null}
-                        {record.selfie_ref && /^https?:\/\//i.test(record.selfie_ref) ? (
-                          <a
-                            href={record.selfie_ref}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sky-400 hover:text-sky-300"
+                        <button
+                          type="button"
+                          onClick={() => openDocument(record, 'id')}
+                          className="text-sky-400 hover:text-sky-300 disabled:opacity-50"
+                          title="Open ID document"
+                          disabled={openDoc.isPending}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </button>
+                        {record.selfie_ref ? (
+                          <button
+                            type="button"
+                            onClick={() => openDocument(record, 'selfie')}
+                            className="text-sky-400 hover:text-sky-300 disabled:opacity-50"
                             title="Open selfie"
+                            disabled={openDoc.isPending}
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
+                          </button>
                         ) : null}
                       </div>
                     </TableCell>

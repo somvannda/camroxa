@@ -16,6 +16,7 @@ import {
   CreatorSelect,
   CreatorStatus,
   CreatorToast,
+  creatorButtonClass,
   useCreatorToast,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
@@ -25,6 +26,7 @@ import {
   requestPayout,
   savePayoutAccount,
   submitKyc,
+  uploadKycDocument,
   type CreatorPayoutStatus,
 } from "@/lib/creator-api";
 
@@ -63,6 +65,8 @@ export function CreatorPayoutsView() {
   const [idLast4, setIdLast4] = useState("");
   const [documentRef, setDocumentRef] = useState("");
   const [selfieRef, setSelfieRef] = useState("");
+  const [docNames, setDocNames] = useState<{ id?: string; selfie?: string }>({});
+  const [uploadingDoc, setUploadingDoc] = useState<"id" | "selfie" | null>(null);
   const [taxId, setTaxId] = useState("");
 
   const [method, setMethod] = useState<"aba" | "wing" | "khqr" | "bank" | "paypal" | "wise">("aba");
@@ -97,6 +101,27 @@ export function CreatorPayoutsView() {
       active = false;
     };
   }, []);
+
+  async function onDocument(kind: "id" | "selfie", file: File) {
+    setUploadingDoc(kind);
+    setError("");
+    setFieldErrors({});
+    try {
+      const { key } = await uploadKycDocument(kind, file);
+      if (kind === "id") {
+        setDocumentRef(key);
+      } else {
+        setSelfieRef(key);
+      }
+      setDocNames((current) => ({ ...current, [kind]: file.name }));
+      showToast(kind === "id" ? "ID document uploaded." : "Selfie uploaded.");
+    } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
+      setError(cause instanceof Error ? cause.message : "Could not upload the document");
+    } finally {
+      setUploadingDoc(null);
+    }
+  }
 
   async function onKyc(event: React.FormEvent) {
     event.preventDefault();
@@ -277,17 +302,65 @@ export function CreatorPayoutsView() {
               <CreatorField label="ID last 4 characters" htmlFor="kyc-last4" error={fieldErrors.id_last4}>
                 <CreatorInput id="kyc-last4" value={idLast4} onChange={(event) => setIdLast4(event.target.value)} maxLength={4} required />
               </CreatorField>
-              <CreatorField label="ID document reference" htmlFor="kyc-doc" hint="Secure upload reference or https:// link" error={fieldErrors.id_document_ref}>
-                <CreatorInput id="kyc-doc" value={documentRef} onChange={(event) => setDocumentRef(event.target.value)} required />
+              <CreatorField
+                label="ID document"
+                htmlFor="kyc-doc"
+                hint="Photo or PDF of your ID. Stored privately and opened only by the review team."
+                error={fieldErrors.id_document_ref}
+              >
+                <div className={styles.uploadRow}>
+                  <label className={creatorButtonClass("secondary")} style={{ cursor: "pointer" }}>
+                    <Icon name="fa-upload" />
+                    {uploadingDoc === "id" ? "Uploading…" : documentRef ? "Replace ID" : "Upload ID"}
+                    <input
+                      id="kyc-doc"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/heic,application/pdf"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void onDocument("id", file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                  <span className={styles.uploadName}>
+                    {documentRef ? docNames.id || "Uploaded" : "No document yet"}
+                  </span>
+                </div>
               </CreatorField>
-              <CreatorField label="Selfie reference (optional)" htmlFor="kyc-selfie" error={fieldErrors.selfie_ref}>
-                <CreatorInput id="kyc-selfie" value={selfieRef} onChange={(event) => setSelfieRef(event.target.value)} />
+              <CreatorField
+                label="Selfie (optional)"
+                htmlFor="kyc-selfie"
+                hint="A photo holding your ID speeds up the review."
+                error={fieldErrors.selfie_ref}
+              >
+                <div className={styles.uploadRow}>
+                  <label className={creatorButtonClass("secondary")} style={{ cursor: "pointer" }}>
+                    <Icon name="fa-upload" />
+                    {uploadingDoc === "selfie" ? "Uploading…" : selfieRef ? "Replace selfie" : "Upload selfie"}
+                    <input
+                      id="kyc-selfie"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/heic"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void onDocument("selfie", file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                  <span className={styles.uploadName}>
+                    {selfieRef ? docNames.selfie || "Uploaded" : "Optional"}
+                  </span>
+                </div>
               </CreatorField>
               <CreatorField label="Tax ID (optional)" htmlFor="kyc-tax" error={fieldErrors.tax_id}>
                 <CreatorInput id="kyc-tax" value={taxId} onChange={(event) => setTaxId(event.target.value)} />
               </CreatorField>
               <div>
-                <CreatorButton type="submit" disabled={saving}>
+                <CreatorButton type="submit" disabled={saving || uploadingDoc !== null || !documentRef}>
                   <Icon name="fa-shield-halved" /> {saving ? "Submitting…" : "Submit verification"}
                 </CreatorButton>
               </div>

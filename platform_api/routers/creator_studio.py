@@ -342,6 +342,21 @@ async def submit_kyc(
     return await service.submit_kyc(ctx.user_id, body.model_dump(exclude_unset=True))
 
 
+@router.post("/kyc/document")
+async def upload_kyc_document(
+    ctx: CurrentUserDep,
+    service: PayoutServiceDep,
+    kind: Literal["id", "selfie"] = Query(...),
+    file: UploadFile = File(...),
+) -> dict:
+    return await service.upload_kyc_document(
+        ctx.user_id,
+        kind=kind,
+        content_type=str(file.content_type or "application/octet-stream"),
+        data=await file.read(),
+    )
+
+
 @router.put("/payout-account")
 async def save_payout_account(
     body: PayoutAccountRequest,

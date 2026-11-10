@@ -617,6 +617,22 @@
   background: rgba(4, 6, 14, 0.78);
 }
 
+.uploadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.uploadName {
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 42ch;
+}
+
 .cropDialog {
   width: min(680px, 100%);
   max-height: calc(100vh - 48px);

@@ -7,8 +7,14 @@ import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
-from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
+from platform_api.exceptions import (
+    DuplicateError,
+    ExternalServiceError,
+    NotFoundError,
+    ValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +186,124 @@ class CreatorPayoutService:
             tax_id,
         )
         return {"kyc": dict(row)}
+
+    async def upload_kyc_document(
+        self,
+        user_id: str,
+        *,
+        kind: str,
+        content_type: str,
+        data: bytes,
+    ) -> dict[str, Any]:
+        """Store an identity document in private storage and return its key.
+
+        The returned key is what the creator submits as ``id_document_ref`` or
+        ``selfie_ref``. It is never a public URL.
+        """
+        if kind not in {"id", "selfie"}:
+            raise ValidationError(
+                "kind must be id or selfie.",
+                details={"fields": {"kind": "invalid"}},
+            )
+        normalized = str(content_type or "").split(";")[0].strip().lower()
+        if not (normalized.startswith("image/") or normalized == "application/pdf"):
+            raise ValidationError(
+                "Upload a photo or PDF of the document.",
+                details={"fields": {"file": "image or PDF required"}},
+            )
+        if not data:
+            raise ValidationError(
+                "The uploaded document is empty.",
+                details={"fields": {"file": "empty"}},
+            )
+        if len(data) > 10 * 1024 * 1024:
+            raise ValidationError(
+                "Documents are limited to 10 MB.",
+                details={"fields": {"file": "max 10 MB"}},
+            )
+
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Document uploads are not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        extension = {
+            "image/jpeg": "jpg",
+            "image/jpg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+            "image/heic": "heic",
+            "application/pdf": "pdf",
+        }.get(normalized, "bin")
+        key = f"creator/kyc/{user_id}/{kind}-{uuid4()}.{extension}"
+        try:
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(
+                key=key, data=data, content_type=normalized
+            )
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not store the uploaded document.",
+                is_retryable=True,
+                details={"provider": "storage"},
+            ) from exc
+        return {"key": key, "kind": kind}
+
+    async def signed_kyc_document(
+        self, user_id: str, *, kind: str
+    ) -> dict[str, Any]:
+        """Return a short-lived read URL for a KYC document.
+
+        Legacy rows store a plain https URL; those are returned unchanged and
+        flagged so the caller knows they are not signed.
+        """
+        if kind not in {"id", "selfie"}:
+            raise ValidationError(
+                "kind must be id or selfie.",
+                details={"fields": {"kind": "invalid"}},
+            )
+        row = await self._pool.fetchrow(
+            "SELECT id_document_ref, selfie_ref FROM creator_kyc WHERE user_id = $1",
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("KYC submission not found.")
+        ref = row["id_document_ref"] if kind == "id" else row["selfie_ref"]
+        if not ref:
+            raise NotFoundError("No document uploaded for this check.")
+        ref = str(ref).strip()
+        if ref.lower().startswith(("http://", "https://")):
+            return {"url": ref, "expires_in": None, "signed": False}
+
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Document storage is not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        storage = StorageService.from_config(config)
+        try:
+            url = await storage.presign_private_get_url(ref, expires_seconds=300)
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not sign the document link.",
+                is_retryable=True,
+                details={"provider": "storage"},
+            ) from exc
+        return {"url": url, "expires_in": 300, "signed": True}
 
     async def upsert_payout_account(self, user_id: str, data: dict[str, Any]) -> dict[str, Any]:
         method = str(data.get("method") or "").strip().lower()

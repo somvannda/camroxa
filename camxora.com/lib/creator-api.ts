@@ -257,6 +257,23 @@ export async function uploadCreatorMedia(
   return (await response.json()) as { url: string; kind: string };
 }
 
+export async function uploadKycDocument(
+  kind: "id" | "selfie",
+  file: File
+): Promise<{ key: string; kind: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await musicAuthFetch(
+    `/api/v3/creator/kyc/document?kind=${encodeURIComponent(kind)}`,
+    { method: "POST", body: form }
+  );
+  if (!response.ok) {
+    const parsed = await readError(response, `Upload failed (${response.status})`);
+    throw new CreatorApiError(parsed.message, response.status, parsed.fields);
+  }
+  return (await response.json()) as { key: string; kind: string };
+}
+
 export type CreatorApplication = {
   id: string;
   status: "draft" | "submitted" | "in_review" | "changes_requested" | "approved" | "rejected" | "withdrawn";
