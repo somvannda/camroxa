@@ -51,7 +51,7 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
   // All Songs opens level 2 on a date-grouped list, with a way back.
   await tiles.nth(0).click();
   await expect(library.getByLabel("Back to library")).toBeVisible();
-  await expect(library.getByText("All Songs", { exact: true })).toBeVisible();
+  await expect(library.getByText("Library", { exact: true })).toBeVisible();
   await expect
     .poll(
       async () =>
@@ -119,7 +119,7 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
 
   // Uploads opens its own level-2 list.
   await tiles.nth(3).click();
-  await expect(library.getByText("Uploads", { exact: true })).toBeVisible();
+  await expect(library.getByLabel("Back to library")).toBeVisible();
   await expect
     .poll(
       async () =>
@@ -129,7 +129,7 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
     .toBeGreaterThan(0);
 
   // Closing the drawer removes it.
-  await library.getByLabel("Close library").click();
+  await page.getByRole("button", { name: "Library", exact: true }).click();
   await expect(library).toHaveCount(0);
 });
 
@@ -141,13 +141,17 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
   const library = page.getByRole("complementary", { name: "Library" });
   await library.getByRole("button", { name: "All Songs" }).click();
 
-  // The captured toolbar: Liked only / New / In Project / Stems / Uploads.
+  // The captured toolbar: filter / New / thumbs-up / In Project / Stems.
+  await expect(library.getByRole("button", { name: "Filter songs" })).toBeVisible();
   await expect(library.getByLabel("Liked only")).toBeVisible();
   await expect(library.getByRole("button", { name: "Stems" })).toBeEnabled();
-  await expect(library.getByRole("button", { name: "Uploads" })).toBeVisible();
+  await expect(library.locator(".se-library-head strong")).toHaveText("Library");
 
   await library.getByRole("button", { name: "In Project" }).click();
-  await expect(library.locator(".se-library-head strong")).toHaveText("In Project");
+  await expect(library.getByRole("button", { name: "In Project" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
   await expect
     .poll(
       async () =>
@@ -158,10 +162,17 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
     .toBeGreaterThan(0);
 
   await library.getByRole("button", { name: "In Project" }).click();
-  await expect(library.locator(".se-library-head strong")).toHaveText("All Songs");
+  await expect(library.getByRole("button", { name: "In Project" })).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
 
-  await library.getByLabel("Liked only").click();
-  await expect(library.locator(".se-library-head strong")).toHaveText("Liked");
+  // The funnel opens the captured filter menu.
+  await library.getByRole("button", { name: "Filter songs" }).click();
+  const filterMenu = library.getByRole("menu", { name: "Filter songs" });
+  await expect(filterMenu.getByRole("menuitemradio")).toHaveCount(3);
+  await filterMenu.getByRole("menuitemradio", { name: "Liked" }).click();
+  await expect(library.getByLabel("Liked only")).toHaveAttribute("aria-pressed", "true");
   await library.getByLabel("Liked only").click();
 
   // + New leaves the editor for the generator.
@@ -275,8 +286,7 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
   const library = page.getByRole("complementary", { name: "Library" });
-  await library.getByRole("button", { name: "All Songs" }).click();
-  await library.getByRole("button", { name: "Uploads" }).click();
+  await library.getByRole("group", { name: "Library filters" }).getByRole("button", { name: "Uploads" }).click();
 
   await library.getByLabel("Choose audio file").setInputFiles("public/seed/demo-loop.wav");
 

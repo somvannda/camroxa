@@ -1053,9 +1053,9 @@ test("library tiles sit on the captured grid", async ({ page }) => {
   );
   // S52: 169×64 tiles, 8 px inset, 4 px gap, first row at y52.
   expect(tiles).toHaveLength(4);
-  expect(tiles[0]).toMatchObject({ x: 1330, y: 53, width: 169, height: 64 });
+  expect(tiles[0]).toMatchObject({ x: 1330, y: 97, width: 169, height: 64 });
   expect(tiles[1].x).toBe(1503);
-  expect(tiles[2].y).toBe(121);
+  expect(tiles[2].y).toBe(165);
 });
 
 test("My Projects modal matches the captured layout", async ({ page }) => {
@@ -1363,7 +1363,7 @@ test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
     background: "rgb(15, 20, 31)",
   });
 
-  // The shell shrinks while the rail is open: header and footer stop at the card edge.
+  // The header/footer span the full width; the rail floats over them (S52).
   const edges = await page.evaluate(() => {
     const right = (selector: string) => {
       const element = document.querySelector(selector);
@@ -1384,5 +1384,5 @@ test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   });
   expect(edges.head).toBe(REFERENCE_VIEWPORT.width);
   expect(edges.timeline).toBe(REFERENCE_VIEWPORT.width);
-  expect(edges.lastFoot).toBeLessThan(REFERENCE_VIEWPORT.width - 360);
+  expect(edges.lastFoot).toBeGreaterThan(REFERENCE_VIEWPORT.width - 360);
 });

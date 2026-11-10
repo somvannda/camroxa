@@ -38,7 +38,7 @@ test("keyboard drives transport and the add-track accelerators", async ({ page }
   const library = page.getByRole("complementary", { name: "Library" });
   await expect(library).toBeVisible();
   await expect(library.getByLabel("Back to library")).toBeVisible();
-  await expect(library.getByText("Uploads", { exact: true })).toBeVisible();
+  await expect(library.getByLabel("Choose audio file")).toBeAttached();
 
   // M does nothing: no third track appears.
   await page.keyboard.press("m");

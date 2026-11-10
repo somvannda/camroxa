@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import type { WebMusicGeneration } from "@/lib/library-api";
@@ -172,6 +172,26 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
     const [allProjects, setAllProjects] = useState(false);
     /** Date headings collapse their group, like the reference's heading buttons. */
     const [collapsedDays, setCollapsedDays] = useState<string[]>([]);
+    const [filterOpen, setFilterOpen] = useState(false);
+    const filterRef = useRef<HTMLSpanElement | null>(null);
+
+    useEffect(() => {
+      if (!filterOpen) return;
+      const onPointer = (event: PointerEvent) => {
+        if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+          setFilterOpen(false);
+        }
+      };
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setFilterOpen(false);
+      };
+      document.addEventListener("pointerdown", onPointer);
+      document.addEventListener("keydown", onKey);
+      return () => {
+        document.removeEventListener("pointerdown", onPointer);
+        document.removeEventListener("keydown", onKey);
+      };
+    }, [filterOpen]);
     const [uploading, setUploading] = useState(false);
     const [creatingWorkspace, setCreatingWorkspace] = useState(false);
     const [workspaceError, setWorkspaceError] = useState("");
@@ -260,9 +280,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               <button type="button" className="se-icon" aria-label="Back to library" onClick={onBack}>
                 <Icon name="fa-chevron-left" />
               </button>
-              <strong>
-                {view.kind === "songs" ? view.title : view.kind === "stems" ? "Stems" : "Uploads"}
-              </strong>
+              <strong>Library</strong>
               <label className="se-lib-search-wrap">
                 <Icon name="fa-magnifying-glass" />
                 <input
@@ -276,9 +294,6 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               </label>
             </>
           )}
-          <button type="button" className="se-icon" onClick={onClose} aria-label="Close library">
-            <Icon name="fa-xmark" />
-          </button>
         </div>
 
         {error ? (
@@ -494,6 +509,61 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
         ) : view.kind === "songs" ? (
           <>
             <div className="se-lib-tools" role="toolbar" aria-label="Song filters">
+              <span className="se-lib-tool-wrap" ref={filterRef}>
+                <button
+                  type="button"
+                  className="se-lib-chip"
+                  aria-label="Filter songs"
+                  aria-haspopup="menu"
+                  aria-expanded={filterOpen}
+                  onClick={() => setFilterOpen((open) => !open)}
+                >
+                  <Icon name="fa-filter" />
+                  <Icon name="fa-chevron-down" />
+                </button>
+                {filterOpen ? (
+                  <div className="se-lib-tool-menu" role="menu" aria-label="Filter songs">
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={filter === "all"}
+                      onClick={() => {
+                        onFilter("all");
+                        setFilterOpen(false);
+                      }}
+                    >
+                      All songs
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={filter === "liked"}
+                      onClick={() => {
+                        onFilter("liked");
+                        setFilterOpen(false);
+                      }}
+                    >
+                      Liked
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={filter === "project"}
+                      onClick={() => {
+                        onFilter("project");
+                        setFilterOpen(false);
+                      }}
+                    >
+                      In project
+                    </button>
+                  </div>
+                ) : null}
+              </span>
+              <button type="button" className="se-lib-chip" onClick={onNewSong}>
+                <Icon name="fa-bars-staggered" />
+                <span>New</span>
+                <Icon name="fa-chevron-down" />
+              </button>
               <button
                 type="button"
                 className={`se-lib-chip${filter === "liked" ? " on" : ""}`}
@@ -501,11 +571,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                 aria-pressed={filter === "liked"}
                 onClick={() => onFilter(filter === "liked" ? "all" : "liked")}
               >
-                <Icon name="fa-heart" />
-              </button>
-              <button type="button" className="se-lib-chip" onClick={onNewSong}>
-                <Icon name="fa-plus" />
-                <span>New</span>
+                <Icon name="fa-thumbs-up" />
               </button>
               <button
                 type="button"
@@ -517,9 +583,6 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               </button>
               <button type="button" className="se-lib-chip" onClick={onOpenStems}>
                 Stems
-              </button>
-              <button type="button" className="se-lib-chip" onClick={onOpenUploads}>
-                Uploads
               </button>
             </div>
             {activeWorkspace ? (

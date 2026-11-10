@@ -60,8 +60,8 @@ type Props = {
 const EQ_F_MIN = 20;
 const EQ_F_MAX = 20000;
 const EQ_DB = 24;
-const EQ_W = 400;
-const EQ_H = 124;
+const EQ_W = 240;
+const EQ_H = 160;
 const EQ_PAD = 8;
 const EQ_TYPES = ["highpass", "peaking", "highshelf", "lowshelf", "lowpass", "notch"] as const;
 
@@ -94,6 +94,57 @@ function bandDb(freq: number, band: { freq: number; q: number; gain: number; typ
     default:
       return band.gain * Math.exp(-Math.pow(octaves / width, 2));
   }
+}
+
+/** Soft-knee compressor response drawn from the live params (S41). */
+function CompressorCurve({ params }: { params: Record<string, number> }) {
+  const threshold = params.threshold ?? -18;
+  const ratio = Math.max(1, params.ratio ?? 4);
+  const knee = Math.max(0, params.knee ?? 6);
+  const width = 220;
+  const height = 104;
+  const pad = 10;
+  const span = 60;
+  const x = (db: number) => pad + ((db + span) / span) * (width - pad * 2);
+  const y = (db: number) => height - pad - ((db + span) / span) * (height - pad * 2);
+  const outDb = (input: number) => {
+    const over = input - threshold;
+    if (knee <= 0) return over > 0 ? threshold + over / ratio : input;
+    const half = knee / 2;
+    if (over <= -half) return input;
+    if (over >= half) return threshold + over / ratio;
+    const t = over + half;
+    return input + ((1 / ratio - 1) * t * t) / (2 * knee);
+  };
+  const samples = Array.from({ length: 61 }, (_, index) => -span + (index / 60) * span);
+  const curve = samples
+    .map((db, index) => `${index === 0 ? "M" : "L"}${x(db).toFixed(1)} ${y(Math.max(-span, outDb(db))).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg
+      className="sp-comp-curve"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Compressor transfer curve"
+    >
+      <line
+        x1={x(-span)}
+        y1={y(-span)}
+        x2={x(0)}
+        y2={y(0)}
+        className="sp-comp-axis"
+        strokeDasharray="3 4"
+      />
+      <path d={curve} className="sp-comp-line" />
+      <circle cx={x(threshold)} cy={y(outDb(threshold))} r={4} className="sp-comp-dot" />
+      <text x={pad} y={height - 1} className="sp-comp-label">
+        -60
+      </text>
+      <text x={width - pad - 10} y={height - 1} className="sp-comp-label">
+        0
+      </text>
+    </svg>
+  );
 }
 
 /**
@@ -533,21 +584,24 @@ export function StudioPluginDock({ chain, onChange, trackName, customPlugins = [
                   onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
                 />
               ) : (
-                <div className="sp-knobs sp-knob-grid">
-                {[...primary, ...secondary].map((param) => (
-                  <ParamKnob
-                    key={param.key}
-                    label={param.label}
-                    unit={param.unit}
-                    min={param.min}
-                    max={param.max}
-                    step={param.max - param.min > 100 ? 1 : 0.1}
-                    log={param.unit === "hz"}
-                    value={entry.params[param.key] ?? param.default}
-                    disabled={entry.bypassed}
-                    onChange={(value) => onChange(setParam(chain, entry.entryId, param.key, value))}
-                  />
-                ))}
+                <div className={plugin.id === "compressor" ? "sp-comp-body" : undefined}>
+                  {plugin.id === "compressor" ? <CompressorCurve params={entry.params} /> : null}
+                  <div className="sp-knobs sp-knob-grid">
+                    {[...primary, ...secondary].map((param) => (
+                      <ParamKnob
+                        key={param.key}
+                        label={param.label}
+                        unit={param.unit}
+                        min={param.min}
+                        max={param.max}
+                        step={param.max - param.min > 100 ? 1 : 0.1}
+                        log={param.unit === "hz"}
+                        value={entry.params[param.key] ?? param.default}
+                        disabled={entry.bypassed}
+                        onChange={(value) => onChange(setParam(chain, entry.entryId, param.key, value))}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </article>

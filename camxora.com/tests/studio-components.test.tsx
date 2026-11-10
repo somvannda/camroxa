@@ -596,8 +596,6 @@ describe("StudioLibrary", () => {
     expect(onFilter).toHaveBeenCalledWith("liked");
     await user.click(screen.getByRole("button", { name: "Stems" }));
     expect(onOpenStems).toHaveBeenCalledOnce();
-    await user.click(screen.getByRole("button", { name: "Uploads" }));
-    expect(onOpenUploads).toHaveBeenCalledOnce();
   });
 
   it("offers + New and imports audio from the toolbar", async () => {
