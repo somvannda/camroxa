@@ -164,6 +164,25 @@ export async function updateCreator(input: CreatorInput): Promise<CreatorStudioR
   });
 }
 
+export async function uploadCreatorMedia(
+  kind: "avatar" | "banner",
+  file: File
+): Promise<{ url: string; kind: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await musicAuthFetch(
+    `/api/v3/creator/me/media?kind=${encodeURIComponent(kind)}`,
+    { method: "POST", body: form }
+  );
+  if (!response.ok) {
+    throw new CreatorApiError(
+      await readError(response, `Upload failed (${response.status})`),
+      response.status
+    );
+  }
+  return (await response.json()) as { url: string; kind: string };
+}
+
 export type CreatorApplication = {
   id: string;
   status: "draft" | "submitted" | "in_review" | "changes_requested" | "approved" | "rejected" | "withdrawn";

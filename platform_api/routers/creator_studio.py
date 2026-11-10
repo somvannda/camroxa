@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
@@ -183,6 +183,21 @@ async def update_my_creator_profile(
 ) -> CreatorStudioResponse:
     payload = await service.update(ctx.user_id, body.model_dump(exclude_unset=True))
     return CreatorStudioResponse.model_validate(payload)
+
+
+@router.post("/me/media")
+async def upload_creator_media(
+    ctx: CurrentUserDep,
+    service: CreatorServiceDep,
+    kind: Literal["avatar", "banner"] = Query(...),
+    file: UploadFile = File(...),
+) -> dict:
+    return await service.upload_media(
+        ctx.user_id,
+        kind=kind,
+        content_type=str(file.content_type or "image/jpeg"),
+        data=await file.read(),
+    )
 
 
 @router.get("/handle-available", response_model=HandleAvailabilityResponse)

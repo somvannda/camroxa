@@ -11,8 +11,14 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
+from uuid import uuid4
 
-from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
+from platform_api.exceptions import (
+    DuplicateError,
+    ExternalServiceError,
+    NotFoundError,
+    ValidationError,
+)
 from platform_api.repositories.creator_repo import CreatorRepository
 
 HANDLE_RE = re.compile(r"^[a-z][a-z0-9_]{2,29}$")
@@ -191,6 +197,7 @@ def _validate_display_name(value: Any) -> str:
 
 class CreatorProfileService:
     def __init__(self, pool: Any) -> None:
+        self._pool = pool
         self._repo = CreatorRepository(pool)
 
     # ------------------------------------------------------------------
@@ -341,6 +348,79 @@ class CreatorProfileService:
             "profile": _studio_payload(profile),
             "checklist": _checklist(profile),
         }
+
+    async def upload_media(
+        self,
+        user_id: str,
+        *,
+        kind: str,
+        content_type: str,
+        data: bytes,
+    ) -> dict[str, Any]:
+        if kind not in {"avatar", "banner"}:
+            raise ValidationError(
+                "kind must be avatar or banner.",
+                details={"fields": {"kind": "invalid"}},
+            )
+        if await self._repo.get_by_user_id(user_id) is None:
+            raise NotFoundError("Creator profile not found.")
+        normalized_type = str(content_type or "").split(";")[0].strip().lower()
+        if not normalized_type.startswith("image/"):
+            raise ValidationError(
+                "Only image files can be uploaded.",
+                details={"fields": {"file": "image required"}},
+            )
+        if not data:
+            raise ValidationError(
+                "The uploaded image is empty.",
+                details={"fields": {"file": "empty"}},
+            )
+        if len(data) > 5 * 1024 * 1024:
+            raise ValidationError(
+                "Images are limited to 5 MB.",
+                details={"fields": {"file": "max 5 MB"}},
+            )
+
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Image uploads are not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        extension = {
+            "image/jpeg": "jpg",
+            "image/jpg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+            "image/gif": "gif",
+        }.get(normalized_type, "jpg")
+        key = f"creator/{kind}/{user_id}/{uuid4()}.{extension}"
+        try:
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(
+                key=key,
+                data=data,
+                content_type=normalized_type,
+            )
+            url = await storage.get_signed_get_url(
+                key, expires_seconds=365 * 24 * 60 * 60
+            )
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not store the uploaded image.",
+                is_retryable=True,
+                details={"provider": "storage"},
+            ) from exc
+
+        column = "avatar_url" if kind == "avatar" else "banner_url"
+        await self._repo.update_profile(user_id, {column: url})
+        return {"url": url, "kind": kind}
 
     async def availability(self, raw_handle: str) -> dict[str, Any]:
         normalized = normalize_handle(raw_handle)

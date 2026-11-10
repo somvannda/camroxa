@@ -13,6 +13,7 @@ import {
   CreatorPanel,
   CreatorSelect,
   CreatorTextarea,
+  creatorButtonClass,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -21,6 +22,7 @@ import {
   CreatorApiError,
   fetchMyCreator,
   updateCreator,
+  uploadCreatorMedia,
   type CreatorStudioProfile,
   type CreatorStudioResponse,
 } from "@/lib/creator-api";
@@ -33,6 +35,7 @@ type FormState = {
   city: string;
   genres: string;
   avatar_url: string;
+  banner_url: string;
   ai_disclosure: "none" | "ai_assisted" | "ai_artist";
 };
 
@@ -44,6 +47,7 @@ const EMPTY_FORM: FormState = {
   city: "",
   genres: "",
   avatar_url: "",
+  banner_url: "",
   ai_disclosure: "none",
 };
 
@@ -67,6 +71,7 @@ function formFromProfile(profile: CreatorStudioProfile): FormState {
     city: profile.city ?? "",
     genres: profile.genres.join(", "),
     avatar_url: profile.avatar_url ?? "",
+    banner_url: profile.banner_url ?? "",
     ai_disclosure: profile.ai_disclosure,
   };
 }
@@ -80,6 +85,7 @@ function toPayload(form: FormState) {
     city: form.city.trim() || undefined,
     genres: form.genres.split(",").map((item) => item.trim()).filter(Boolean),
     avatar_url: form.avatar_url.trim() || undefined,
+    banner_url: form.banner_url.trim() || undefined,
     ai_disclosure: form.ai_disclosure,
   };
 }
@@ -94,6 +100,7 @@ export function CreatorStudioView() {
   const [success, setSuccess] = useState("");
   const [handleCheck, setHandleCheck] = useState<{ available: boolean; reason: string | null; suggestions: string[] } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [uploading, setUploading] = useState<"avatar" | "banner" | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -133,9 +140,26 @@ export function CreatorStudioView() {
     }
   }
 
+  async function onUpload(kind: "avatar" | "banner", file: File) {
+    setUploading(kind);
+    setError("");
+    setSuccess("");
+    try {
+      const { url } = await uploadCreatorMedia(kind, file);
+      setForm((current) => ({
+        ...current,
+        [kind === "avatar" ? "avatar_url" : "banner_url"]: url,
+      }));
+      setSuccess(kind === "avatar" ? "Avatar uploaded." : "Banner uploaded.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not upload image");
+    } finally {
+      setUploading(null);
+    }
+  }
+
   async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setSaving(true);
+    event.preventDefault();    setSaving(true);
     setError("");
     setSuccess("");
     try {
@@ -335,13 +359,61 @@ export function CreatorStudioView() {
             />
           </CreatorField>
 
-          <CreatorField label="Avatar URL" htmlFor="creator-avatar">
-            <CreatorInput
-              id="creator-avatar"
-              value={form.avatar_url}
-              onChange={(event) => setForm({ ...form, avatar_url: event.target.value })}
-              placeholder="https://..."
-            />
+          <CreatorField label="Avatar" htmlFor="creator-avatar-file" hint="Square image, at least 400×400px. JPG, PNG, or WebP.">
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16 }}>
+              {form.avatar_url ? (
+                <img src={form.avatar_url} alt="" className={styles.avatar} />
+              ) : (
+                <span className={styles.avatarFallback} aria-hidden="true">
+                  {form.display_name.slice(0, 1).toUpperCase() || "C"}
+                </span>
+              )}
+              <label className={creatorButtonClass("secondary")} style={{ cursor: "pointer" }}>
+                <Icon name="fa-upload" /> {uploading === "avatar" ? "Uploading…" : "Upload avatar"}
+                <input
+                  id="creator-avatar-file"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onUpload("avatar", file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </CreatorField>
+
+          <CreatorField label="Banner" htmlFor="creator-banner-file" hint="Wide image, at least 1200×400px. The center is kept on mobile.">
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16 }}>
+              {form.banner_url ? (
+                <img
+                  src={form.banner_url}
+                  alt=""
+                  style={{ width: 220, height: 72, objectFit: "cover", borderRadius: 10, border: "1px solid var(--line)" }}
+                />
+              ) : (
+                <span
+                  style={{ width: 220, height: 72, borderRadius: 10, background: "var(--panel2)", border: "1px solid var(--line)" }}
+                  aria-hidden="true"
+                />
+              )}
+              <label className={creatorButtonClass("secondary")} style={{ cursor: "pointer" }}>
+                <Icon name="fa-upload" /> {uploading === "banner" ? "Uploading…" : "Upload banner"}
+                <input
+                  id="creator-banner-file"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onUpload("banner", file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            </div>
           </CreatorField>
 
           <CreatorField label="AI disclosure" htmlFor="creator-ai">
