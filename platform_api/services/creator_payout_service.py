@@ -289,8 +289,8 @@ class CreatorPayoutService:
             """
             INSERT INTO creator_payouts (
                 creator_id, period_start, period_end, amount_micros,
-                currency, method, status
-            ) VALUES ($1,$2,$3,$4,'USD',$5,'requested')
+                currency, method, status, created_by
+            ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$1)
             RETURNING *
             """,
             user_id,
@@ -301,7 +301,9 @@ class CreatorPayoutService:
         )
         return {"payout": dict(row)}
 
-    async def create_run(self, *, period_start: date, period_end: date) -> dict[str, Any]:
+    async def create_run(
+        self, *, period_start: date, period_end: date, created_by: str
+    ) -> dict[str, Any]:
         if period_end <= period_start:
             raise ValidationError(
                 "period_end must be after period_start.",
@@ -335,8 +337,8 @@ class CreatorPayoutService:
                 """
                 INSERT INTO creator_payouts (
                     creator_id, period_start, period_end, amount_micros,
-                    currency, method, status
-                ) VALUES ($1,$2,$3,$4,'USD',$5,'requested')
+                    currency, method, status, created_by
+                ) VALUES ($1,$2,$3,$4,'USD',$5,'requested',$6)
                 ON CONFLICT (creator_id, period_start, period_end) DO NOTHING
                 RETURNING id
                 """,
@@ -345,6 +347,7 @@ class CreatorPayoutService:
                 period_end,
                 int(row["amount_micros"]),
                 row["method"],
+                created_by,
             )
             if payout_id:
                 created += 1
@@ -472,12 +475,55 @@ class CreatorPayoutService:
         )
         return {"items": [dict(row) for row in rows], "total": int(total or 0), "limit": limit, "offset": offset}
 
+    async def approve_payout(self, payout_id: str, *, reviewer_id: str) -> dict[str, Any]:
+        payout = await self._pool.fetchrow(
+            "SELECT * FROM creator_payouts WHERE id = $1", payout_id
+        )
+        if payout is None:
+            raise NotFoundError("Payout not found.")
+        if payout["status"] != "requested":
+            raise ValidationError(
+                "Only requested payouts can be approved.",
+                details={"fields": {"status": "invalid"}},
+            )
+        if payout.get("created_by") and str(payout["created_by"]) == str(reviewer_id):
+            raise ValidationError(
+                "Maker-checker: the person who created the payout cannot approve it.",
+                details={"fields": {"approval": "different reviewer required"}},
+            )
+        row = await self._pool.fetchrow(
+            """
+            UPDATE creator_payouts
+            SET status = 'approved', approved_by = $2, approved_at = NOW()
+            WHERE id = $1 AND status = 'requested'
+            RETURNING *
+            """,
+            payout_id,
+            reviewer_id,
+        )
+        return {"payout": dict(row)}
+
     async def mark_paid(self, payout_id: str, *, reference: str, reviewer_id: str) -> dict[str, Any]:
         payout = await self._pool.fetchrow(
             "SELECT * FROM creator_payouts WHERE id = $1", payout_id
         )
         if payout is None:
             raise NotFoundError("Payout not found.")
+        if payout["status"] != "approved":
+            raise ValidationError(
+                "Payout must be approved before it can be marked paid.",
+                details={"fields": {"status": "approval required"}},
+            )
+        if payout.get("approved_by") and str(payout["approved_by"]) == str(reviewer_id):
+            raise ValidationError(
+                "Maker-checker: the approver cannot mark the same payout paid.",
+                details={"fields": {"payment": "different reviewer required"}},
+            )
+        if payout.get("created_by") and str(payout["created_by"]) == str(reviewer_id):
+            raise ValidationError(
+                "Maker-checker: the person who created the payout cannot mark it paid.",
+                details={"fields": {"payment": "different reviewer required"}},
+            )
         if not reference.strip():
             raise ValidationError(
                 "A payment reference is required.",
@@ -486,14 +532,12 @@ class CreatorPayoutService:
         row = await self._pool.fetchrow(
             """
             UPDATE creator_payouts
-            SET status = 'paid', paid_at = NOW(), payment_ref = $2,
-                approved_by = COALESCE(approved_by, $3), approved_at = COALESCE(approved_at, NOW())
+            SET status = 'paid', paid_at = NOW(), payment_ref = $2
             WHERE id = $1
             RETURNING *
             """,
             payout_id,
             reference.strip(),
-            reviewer_id,
         )
         await self._pool.execute(
             """

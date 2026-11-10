@@ -247,10 +247,20 @@ async def create_payout_run(
     ctx: AdminDep,
     service: PayoutServiceDep,
 ) -> dict:
-    del ctx
     return await service.create_run(
-        period_start=body.period_start, period_end=body.period_end
+        period_start=body.period_start,
+        period_end=body.period_end,
+        created_by=ctx.user_id,
     )
+
+
+@router.post("/payouts/{payout_id}/approve")
+async def approve_payout(
+    payout_id: str,
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+) -> dict:
+    return await service.approve_payout(payout_id, reviewer_id=ctx.user_id)
 
 
 @router.get("/payouts/export")

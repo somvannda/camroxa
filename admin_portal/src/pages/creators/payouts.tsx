@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Download, Loader2, Play, Wallet } from 'lucide-react';
+import { CheckCircle2, Download, Loader2, Play, ShieldCheck, Wallet } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
 import {
+  useApprovePayout,
   useCreatePayoutRun,
   useCreatorPayouts,
   useExportPayoutsCsv,
@@ -64,6 +65,7 @@ export default function CreatorPayoutsPage() {
   const [status, setStatus] = useState('requested');
   const { data, isLoading, isError, refetch } = useCreatorPayouts(status);
   const markPaid = useMarkPayoutPaid();
+  const approve = useApprovePayout();
   const createRun = useCreatePayoutRun();
   const exportCsv = useExportPayoutsCsv();
   const [paying, setPaying] = useState<CreatorPayoutRecord | null>(null);
@@ -112,6 +114,22 @@ export default function CreatorPayoutsPage() {
         variant: 'destructive',
       });
     }
+  }
+
+  function approveRecord(record: CreatorPayoutRecord) {
+    approve.mutate(record.id, {
+      onSuccess: () =>
+        toast({
+          title: 'Payout approved',
+          description: 'A different admin must mark it paid.',
+        }),
+      onError: (error) =>
+        toast({
+          title: 'Could not approve payout',
+          description: error instanceof Error ? error.message : 'Unknown error',
+          variant: 'destructive',
+        }),
+    });
   }
 
   function submitPaid() {
@@ -226,7 +244,21 @@ export default function CreatorPayoutsPage() {
                       {payout.payment_ref || '—'}
                     </TableCell>
                     <TableCell className="text-right">
-                      {payout.status === 'requested' || payout.status === 'approved' || payout.status === 'processing' ? (
+                      {payout.status === 'requested' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => approveRecord(payout)}
+                          disabled={approve.isPending}
+                        >
+                          {approve.isPending ? (
+                            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                          ) : (
+                            <ShieldCheck className="mr-1 h-4 w-4" />
+                          )}
+                          Approve
+                        </Button>
+                      ) : payout.status === 'approved' || payout.status === 'processing' ? (
                         <Button size="sm" onClick={() => setPaying(payout)} disabled={markPaid.isPending}>
                           {markPaid.isPending ? (
                             <Loader2 className="mr-1 h-4 w-4 animate-spin" />

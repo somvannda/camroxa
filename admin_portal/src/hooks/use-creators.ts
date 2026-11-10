@@ -115,6 +115,20 @@ export function useMarkPayoutPaid() {
   });
 }
 
+export function useApprovePayout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payoutId: string) => {
+      return httpClient.post(
+        `/api/v3/admin/creators/payouts/${encodeURIComponent(payoutId)}/approve`,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creator-payouts'] });
+    },
+  });
+}
+
 export type CreatorApplicationRecord = {
   id: string;
   user_id: string;

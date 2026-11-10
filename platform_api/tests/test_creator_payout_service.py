@@ -136,9 +136,61 @@ async def test_payout_run_creates_one_payout_per_eligible_creator() -> None:
     service._pool.fetchval = AsyncMock(side_effect=[uuid4(), None])
 
     result = await service.create_run(
-        period_start=date(2026, 10, 1), period_end=date(2026, 11, 1)
+        period_start=date(2026, 10, 1),
+        period_end=date(2026, 11, 1),
+        created_by=str(uuid4()),
     )
 
     assert result["eligible_creators"] == 2
     assert result["created"] == 1
     assert result["skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_paid_requires_approval() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetchrow = AsyncMock(
+        return_value={**_payout(uuid4()), "status": "requested", "created_by": uuid4()}
+    )
+
+    with pytest.raises(ValidationError) as exc:
+        await service.mark_paid(
+            str(uuid4()), reference="ABA-123", reviewer_id=str(uuid4())
+        )
+
+    assert "status" in (exc.value.details or {}).get("fields", {})
+
+
+@pytest.mark.asyncio
+async def test_maker_checker_blocks_same_approver_marking_paid() -> None:
+    reviewer = uuid4()
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetchrow = AsyncMock(
+        return_value={
+            **_payout(uuid4()),
+            "status": "approved",
+            "created_by": uuid4(),
+            "approved_by": reviewer,
+        }
+    )
+
+    with pytest.raises(ValidationError) as exc:
+        await service.mark_paid(
+            str(uuid4()), reference="ABA-123", reviewer_id=str(reviewer)
+        )
+
+    assert "payment" in (exc.value.details or {}).get("fields", {})
+
+
+@pytest.mark.asyncio
+async def test_maker_checker_blocks_creator_approving_own_payout() -> None:
+    creator = uuid4()
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetchrow = AsyncMock(
+        return_value={**_payout(creator), "status": "requested", "created_by": creator}
+    )
+
+    with pytest.raises(ValidationError) as exc:
+        await service.approve_payout(str(uuid4()), reviewer_id=str(creator))
+
+    assert "approval" in (exc.value.details or {}).get("fields", {})
