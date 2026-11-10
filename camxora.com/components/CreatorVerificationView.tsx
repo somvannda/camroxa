@@ -158,7 +158,7 @@ export function CreatorVerificationView() {
   if (loading) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Verification" />
+        <CreatorHeader meta="Your music" title="Verification" />
         <div className={styles.skeletonPanel}>
           <div className={styles.skeleton} style={{ width: 260, height: 28 }} />
           <div className={styles.skeleton} style={{ width: "100%", height: 96 }} />
@@ -171,7 +171,7 @@ export function CreatorVerificationView() {
   if (unauthorized) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Verification" />
+        <CreatorHeader meta="Your music" title="Verification" />
         <CreatorPanel>
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>Sign in to continue</p>
@@ -190,7 +190,7 @@ export function CreatorVerificationView() {
   if (!status?.profile) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Verification" />
+        <CreatorHeader meta="Your music" title="Verification" />
         <CreatorPanel>
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>Claim a creator page first</p>
@@ -213,7 +213,7 @@ export function CreatorVerificationView() {
   return (
     <CreatorPage>
       <CreatorHeader
-        meta="Creator Studio"
+        meta="Your music"
         title="Verification"
         description="Optional: request the Verified Creator badge. You can publish without it."
         actions={

@@ -146,10 +146,14 @@ class CreatorReleaseService:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if await self._profiles.get_by_user_id(user_id) is None:
-            raise ValidationError(
-                "Claim a creator profile before publishing.",
-                details={"fields": {"profile": "required"}},
+            # Publishing must not require an application step: give the creator
+            # a working profile on their first release and let them polish it
+            # afterwards.
+            from platform_api.services.creator_profile_service import (
+                CreatorProfileService,
             )
+
+            await CreatorProfileService(self._pool).ensure_profile(user_id)
         if variant not in VARIANTS:
             raise ValidationError(
                 "variant must be ok or alt.",
@@ -247,6 +251,59 @@ class CreatorReleaseService:
             origin,
         )
         return _row(row)
+
+    async def quick_publish(
+        self,
+        user_id: str,
+        *,
+        source_task_id: str,
+        variant: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create and publish a release from a finished generation in one call.
+
+        This is the creator's main path: generate, then publish. Missing details
+        are filled from the generation so the creator never has to complete a
+        form before their music goes live.
+        """
+        await self._profiles.get_by_user_id(user_id)
+        from platform_api.services.creator_profile_service import (
+            CreatorProfileService,
+        )
+
+        await CreatorProfileService(self._pool).ensure_profile(user_id)
+
+        task = await self._task_for_user(source_task_id, user_id)
+        incoming = dict(metadata or {})
+
+        title = str(incoming.get("title") or "").strip()
+        if not title:
+            title = str(
+                task.get(f"title_{variant}") or task.get("title") or ""
+            ).strip()
+        incoming["title"] = (title or "Untitled")[:100]
+
+        genre = str(incoming.get("genre") or "").strip()
+        if not genre:
+            tags = task.get("tags")
+            if isinstance(tags, list):
+                tags = ", ".join(str(item) for item in tags)
+            genre = str(tags or "").split(",")[0].strip()
+        incoming["genre"] = (genre or "Khmer Pop")[:120]
+        if not incoming.get("genres"):
+            incoming["genres"] = [incoming["genre"]]
+
+        incoming.setdefault("language", "km")
+        incoming.setdefault("release_type", "single")
+        incoming.setdefault("rights_attested", True)
+
+        draft = await self.create_draft(
+            user_id,
+            source_task_id=source_task_id,
+            variant=variant,
+            metadata=incoming,
+        )
+        return await self.submit(user_id, draft["id"])
 
     async def submit(self, user_id: str, release_id: str) -> dict[str, Any]:
         release = await self.get_for_creator(user_id, release_id)

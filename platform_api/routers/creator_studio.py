@@ -270,6 +270,27 @@ async def create_release(
     }
 
 
+@router.post("/releases/quick-publish", status_code=201)
+async def quick_publish_release(
+    body: ReleaseCreateRequest,
+    ctx: CurrentUserDep,
+    service: ReleaseServiceDep,
+) -> dict:
+    """Publish a finished generation in one call.
+
+    Creates the creator profile when needed, fills missing details from the
+    generation, and puts the release live immediately.
+    """
+    return {
+        "release": await service.quick_publish(
+            ctx.user_id,
+            source_task_id=body.source_task_id,
+            variant=body.variant,
+            metadata=body.metadata,
+        )
+    }
+
+
 @router.get("/releases/{release_id}")
 async def get_release(
     release_id: str, ctx: CurrentUserDep, service: ReleaseServiceDep

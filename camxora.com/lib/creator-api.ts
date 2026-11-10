@@ -404,6 +404,25 @@ export async function createRelease(input: {
   });
 }
 
+export async function publishGeneration(input: {
+  source_task_id: string;
+  variant: "ok" | "alt";
+  metadata?: Partial<CreatorRelease["metadata"]>;
+}): Promise<{ release: CreatorRelease }> {
+  return studioJson<{ release: CreatorRelease }>(
+    "/api/v3/creator/releases/quick-publish",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_task_id: input.source_task_id,
+        variant: input.variant,
+        metadata: input.metadata ?? {},
+      }),
+    }
+  );
+}
+
 export async function submitRelease(releaseId: string): Promise<{ release: CreatorRelease }> {
   return studioJson<{ release: CreatorRelease }>(
     `/api/v3/creator/releases/${encodeURIComponent(releaseId)}/submit`,

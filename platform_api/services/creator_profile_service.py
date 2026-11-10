@@ -183,6 +183,18 @@ def _decode_links(value: Any) -> list[dict[str, str]]:
     return value if isinstance(value, list) else []
 
 
+def _handle_slug(name: str) -> str:
+    """Derive a handle candidate from a display name."""
+    slug = re.sub(r"[^a-z0-9_]", "", name.casefold().replace(" ", "_"))
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    if len(slug) < 3:
+        slug = f"{slug}creator" if slug else "creator"
+    slug = slug[:24]
+    if not slug[0].isalpha():
+        slug = f"c{slug}"[:24]
+    return slug
+
+
 def _validate_display_name(value: Any) -> str:
     name = _clean_text(value, field="display_name", max_length=50, required=True)
     assert name is not None
@@ -283,6 +295,69 @@ class CreatorProfileService:
             "profile": _studio_payload(profile),
             "checklist": _checklist(profile),
         }
+
+    async def ensure_profile(self, user_id: str) -> dict[str, Any]:
+        """Return the creator profile, creating one if this is their first publish.
+
+        Publishing must never require an application step, so a first-time
+        creator gets a working profile with a derived handle immediately. They
+        can personalise it later without losing anything.
+        """
+        existing = await self._repo.get_by_user_id(user_id)
+        if existing:
+            return existing
+
+        account = await self._pool.fetchrow(
+            "SELECT display_name, email FROM users WHERE id = $1", user_id
+        )
+        if account is None:
+            raise NotFoundError("User not found.")
+
+        base = str(account.get("display_name") or "").strip()
+        if not base:
+            local = str(account.get("email") or "").split("@")[0]
+            base = local.replace(".", " ").replace("_", " ").replace("-", " ").strip()
+        base = base[:50]
+        try:
+            display_name = _validate_display_name(base or "Creator")
+        except ValidationError:
+            display_name = "Creator"
+
+        handle_base = _handle_slug(display_name)
+        handle = handle_base
+        attempt = 1
+        while True:
+            valid = True
+            try:
+                validate_handle(handle)
+            except ValidationError:
+                valid = False
+            if valid and not await self._repo.handle_exists(handle):
+                break
+            attempt += 1
+            if attempt > 50:
+                handle = f"creator{uuid4().hex[:8]}"
+                break
+            handle = f"{handle_base}{attempt}"
+
+        return await self._repo.insert_profile(
+            user_id=user_id,
+            handle=handle,
+            display_name=display_name,
+            tagline=None,
+            bio=None,
+            country_code=None,
+            city=None,
+            avatar_url=None,
+            banner_url=None,
+            links=[],
+            genres=[],
+            influences=[],
+            pronouns=None,
+            ai_disclosure="none",
+            support_enabled=False,
+            payout_currency="USD",
+        )
 
     async def claim(self, user_id: str, data: dict[str, Any]) -> dict[str, Any]:
         if await self._repo.get_by_user_id(user_id):

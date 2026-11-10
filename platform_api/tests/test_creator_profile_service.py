@@ -11,6 +11,7 @@ import pytest
 from platform_api.exceptions import DuplicateError, ValidationError
 from platform_api.services.creator_profile_service import (
     CreatorProfileService,
+    _handle_slug,
     normalize_handle,
     validate_handle,
 )
@@ -184,6 +185,64 @@ async def test_public_releases_maps_albums_and_singles() -> None:
     assert items[0]["genres"] == ["Khmer Pop", "R&B"]
     assert items[1]["release_type"] == "single"
     assert items[1]["genres"] == []
+
+
+def test_handle_slug_is_safe_and_readable() -> None:
+    assert _handle_slug("Sokha Chan") == "sokha_chan"
+    assert _handle_slug("Dara & Malis!") == "dara_malis"
+    assert _handle_slug("សុខា") == "creator"
+    assert _handle_slug("7teen") == "c7teen"
+
+
+@pytest.mark.asyncio
+async def test_ensure_profile_returns_the_existing_profile() -> None:
+    existing = _profile()
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value=existing)
+
+    payload = await CreatorProfileService(pool).ensure_profile(str(uuid4()))
+
+    assert payload["handle"] == "sokha"
+    pool.fetchrow.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_profile_creates_a_profile_for_a_first_time_creator() -> None:
+    user_id = uuid4()
+    inserted = _profile(handle="dara")
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(
+        side_effect=[
+            None,  # no profile yet
+            {"display_name": "Dara", "email": "dara@example.com"},
+            inserted,  # insert_profile returns the new row
+        ]
+    )
+    pool.fetchval = AsyncMock(return_value=None)  # handle is free
+
+    payload = await CreatorProfileService(pool).ensure_profile(str(user_id))
+
+    assert payload["handle"] == "dara"
+    insert_sql = pool.fetchrow.await_args_list[2].args[0]
+    assert "INSERT INTO creator_profiles" in insert_sql
+
+
+@pytest.mark.asyncio
+async def test_ensure_profile_suffixes_a_taken_handle() -> None:
+    user_id = uuid4()
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(
+        side_effect=[
+            None,
+            {"display_name": "Sokha", "email": "sokha@example.com"},
+            _profile(handle="sokha2"),
+        ]
+    )
+    pool.fetchval = AsyncMock(side_effect=[True, None])  # sokha taken, sokha2 free
+
+    payload = await CreatorProfileService(pool).ensure_profile(str(user_id))
+
+    assert payload["handle"] == "sokha2"
 
 
 @pytest.mark.asyncio

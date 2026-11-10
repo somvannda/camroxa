@@ -24,6 +24,7 @@ import {
   createRelease,
   CreatorApiError,
   fetchReleases,
+  publishGeneration,
   submitRelease,
   unpublishRelease,
   withdrawRelease,
@@ -154,8 +155,46 @@ export function CreatorReleasesView() {
     if (option && !title.trim()) setTitle(option.title);
   }
 
-  async function onCreate(event: React.FormEvent) {
-    event.preventDefault();
+  async function onPublish() {
+    const option = readyOptions.find((item) => item.value === selected);
+    if (!option) {
+      setError("Pick a finished generation first.");
+      return;
+    }
+    if (!rights) {
+      setFieldErrors({ rights_attested: "Confirm you own or cleared the rights." });
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setFieldErrors({});
+    try {
+      await publishGeneration({
+        source_task_id: option.taskId,
+        variant: option.variant,
+        metadata: {
+          title: (title.trim() || option.title).slice(0, 100),
+          genre: genre.trim() || "Khmer Pop",
+          genres: [genre.trim() || "Khmer Pop"],
+          language: "km",
+          release_type: "single",
+          rights_attested: true,
+        },
+      });
+      showToast("Published. Plays count from the first listen.");
+      setSelected("");
+      setTitle("");
+      setRights(false);
+      await refresh();
+    } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
+      setError(cause instanceof Error ? cause.message : "Could not publish");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onCreate() {
     const option = readyOptions.find((item) => item.value === selected);
     if (!option) {
       setError("Pick a finished generation first.");
@@ -217,7 +256,7 @@ export function CreatorReleasesView() {
   if (loading) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Releases" />
+        <CreatorHeader meta="Your music" title="Releases" />
         <div className={styles.skeletonPanel}>
           <div className={styles.skeleton} style={{ width: 220, height: 28 }} />
           <div className={styles.skeleton} style={{ width: "100%", height: 72 }} />
@@ -230,7 +269,7 @@ export function CreatorReleasesView() {
   if (unauthorized) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Releases" />
+        <CreatorHeader meta="Your music" title="Releases" />
         <CreatorPanel>
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>Sign in to manage releases</p>
@@ -253,9 +292,9 @@ export function CreatorReleasesView() {
   return (
     <CreatorPage>
       <CreatorHeader
-        meta="Creator Studio"
+        meta="Your music"
         title="Releases"
-        description="Move a finished generation from draft to live on Camxora."
+        description="Publish a finished generation. It goes live immediately, and plays start counting from the first listen."
         actions={
           <>
             <CreatorButtonLink href="/creator" variant="ghost">
@@ -282,11 +321,11 @@ export function CreatorReleasesView() {
       />
 
       <div className={styles.split}>
-        <CreatorPanel title="New release">
+        <CreatorPanel title="Publish a track" meta="Lives immediately">
           {readyOptions.length === 0 ? (
             <div className={styles.empty}>
               <p className={styles.emptyTitle}>No finished generations yet</p>
-              <p className={styles.emptyBody}>Create a track, wait for it to finish, then come back here.</p>
+              <p className={styles.emptyBody}>Create a track, wait for it to finish, then publish it here.</p>
               <div>
                 <CreatorButtonLink href="/create" variant="secondary">
                   <Icon name="fa-plus" /> Create music
@@ -294,7 +333,7 @@ export function CreatorReleasesView() {
               </div>
             </div>
           ) : (
-            <form className={styles.form} onSubmit={onCreate}>
+            <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void onPublish(); }}>
               <CreatorField label="Finished generation" htmlFor="release-generation" error={fieldErrors.variant}>
                 <CreatorSelect
                   id="release-generation"
@@ -313,8 +352,8 @@ export function CreatorReleasesView() {
                   id="release-title"
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Uses the generation title"
                   maxLength={100}
-                  required
                 />
               </CreatorField>
               <CreatorField label="Genre" htmlFor="release-genre" error={fieldErrors.genre}>
@@ -323,7 +362,6 @@ export function CreatorReleasesView() {
                   value={genre}
                   onChange={(event) => setGenre(event.target.value)}
                   maxLength={120}
-                  required
                 />
               </CreatorField>
               <div>
@@ -337,9 +375,20 @@ export function CreatorReleasesView() {
                   <p className={styles.error}>{fieldErrors.rights_attested}</p>
                 ) : null}
               </div>
-              <div>
+              <div className={styles.actions}>
                 <CreatorButton type="submit" disabled={saving || !selected || !rights}>
-                  <Icon name="fa-plus" /> {saving ? "Creating…" : "Create draft"}
+                  <Icon name="fa-arrow-up-from-bracket" />
+                  {saving ? "Publishing…" : "Publish"}
+                </CreatorButton>
+                <CreatorButton
+                  type="button"
+                  variant="ghost"
+                  disabled={saving || !selected || !rights}
+                  onClick={() => {
+                    void onCreate();
+                  }}
+                >
+                  <Icon name="fa-floppy-disk" /> Save as draft
                 </CreatorButton>
               </div>
             </form>

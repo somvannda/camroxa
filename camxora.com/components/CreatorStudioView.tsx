@@ -190,7 +190,7 @@ export function CreatorStudioView() {
   if (loading) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Creator Studio" />
+        <CreatorHeader meta="Your music" title="Your music" />
         <div className={styles.skeletonPanel}>
           <div className={styles.skeleton} style={{ width: 260, height: 28 }} />
           <div className={styles.skeleton} style={{ width: "100%", height: 120 }} />
@@ -203,7 +203,7 @@ export function CreatorStudioView() {
   if (unauthorized) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Creator Studio" />
+        <CreatorHeader meta="Your music" title="Your music" />
         <CreatorPanel>
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>Sign in to continue</p>
@@ -226,12 +226,12 @@ export function CreatorStudioView() {
   return (
     <CreatorPage>
       <CreatorHeader
-        meta="Creator Studio"
-        title={profile ? profile.display_name : "Claim your creator page"}
+        meta="Your music"
+        title={profile ? profile.display_name : "Set up your artist page"}
         description={
           profile
             ? `@${profile.handle} · ${profile.tier} · ${profile.status}`
-            : "Pick a handle, add a short bio, and publish your public creator page."
+            : "Optional. Publishing works without this — this only makes your artist page yours."
         }
         actions={
           profile ? (

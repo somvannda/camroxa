@@ -191,7 +191,7 @@ export function CreatorPayoutsView() {
   if (loading) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Payouts" />
+        <CreatorHeader meta="Your music" title="Payouts" />
         <div className={styles.skeletonPanel}>
           <div className={styles.skeleton} style={{ width: 220, height: 28 }} />
           <div className={styles.skeleton} style={{ width: "100%", height: 72 }} />
@@ -204,7 +204,7 @@ export function CreatorPayoutsView() {
   if (unauthorized) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Payouts" />
+        <CreatorHeader meta="Your music" title="Payouts" />
         <CreatorPanel>
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>Sign in to manage payouts</p>
@@ -232,7 +232,7 @@ export function CreatorPayoutsView() {
   return (
     <CreatorPage>
       <CreatorHeader
-        meta="Creator Studio"
+        meta="Your music"
         title="Payouts"
         description="Verify once, then request payouts when your balance reaches $20."
         actions={

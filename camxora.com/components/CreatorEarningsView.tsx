@@ -79,7 +79,7 @@ export function CreatorEarningsView() {
   if (loading) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Earnings" />
+        <CreatorHeader meta="Your music" title="Earnings" />
         <div className={styles.skeletonPanel}>
           <div className={styles.skeleton} style={{ width: 220, height: 28 }} />
           <div className={styles.skeleton} style={{ width: "100%", height: 72 }} />
@@ -92,7 +92,7 @@ export function CreatorEarningsView() {
   if (unauthorized) {
     return (
       <CreatorPage>
-        <CreatorHeader meta="Creator Studio" title="Earnings" />
+        <CreatorHeader meta="Your music" title="Earnings" />
         <CreatorPanel>
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>Sign in to track earnings</p>
@@ -114,7 +114,7 @@ export function CreatorEarningsView() {
   return (
     <CreatorPage>
       <CreatorHeader
-        meta="Creator Studio"
+        meta="Your music"
         title="Earnings"
         description="Track which songs are eligible to earn. Payout verification is only required when you request a payout."
         actions={
