@@ -381,6 +381,17 @@ async def decide_kyc(
     )
 
 
+@router.get("/audit")
+async def list_money_audit(
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+    creator_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> dict:
+    del ctx
+    return await service.list_audit(creator_id=creator_id, limit=limit)
+
+
 @router.get("/reconciliation")
 async def payout_reconciliation(
     ctx: AdminDep,

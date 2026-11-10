@@ -99,6 +99,64 @@ class CreatorPayoutService:
             json.dumps(payload),
         )
 
+    async def _audit(
+        self,
+        *,
+        actor_id: str | None,
+        action: str,
+        subject_type: str,
+        subject_id: str | None = None,
+        creator_id: str | None = None,
+        amount_micros: int | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        """Append one money action to the immutable trail.
+
+        Never let a failed audit write stop a payout: the payout already
+        happened, and losing the record is worse than a missing log line only
+        if we silently swallow it — so failures are logged loudly instead.
+        """
+        try:
+            await self._pool.execute(
+                """
+                INSERT INTO creator_money_audit (
+                    actor_id, action, subject_type, subject_id,
+                    creator_id, amount_micros, detail
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+                """,
+                actor_id,
+                action,
+                subject_type,
+                subject_id,
+                creator_id,
+                amount_micros,
+                json.dumps(detail or {}),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to write creator money audit entry: action=%s subject=%s",
+                action,
+                subject_id,
+            )
+
+    async def list_audit(
+        self, *, creator_id: str | None = None, limit: int = 100
+    ) -> dict[str, Any]:
+        rows = await self._pool.fetch(
+            """
+            SELECT a.*, u.email AS actor_email, c.email AS creator_email
+            FROM creator_money_audit a
+            LEFT JOIN users u ON u.id = a.actor_id
+            LEFT JOIN users c ON c.id = a.creator_id
+            WHERE ($1::uuid IS NULL OR a.creator_id = $1::uuid)
+            ORDER BY a.created_at DESC
+            LIMIT $2
+            """,
+            creator_id,
+            max(1, min(limit, 200)),
+        )
+        return {"items": [dict(row) for row in rows]}
+
     async def get_status(self, user_id: str) -> dict[str, Any]:
         kyc = await self._pool.fetchrow(
             "SELECT * FROM creator_kyc WHERE user_id = $1", user_id
@@ -638,6 +696,19 @@ class CreatorPayoutService:
                 created += 1
             else:
                 skipped += 1
+        await self._audit(
+            actor_id=created_by,
+            action="payout_run_created",
+            subject_type="payout_run",
+            detail={
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "fx_rate": float(fx_rate or USD_KHR_RATE),
+                "created": created,
+                "skipped": skipped,
+                "eligible_creators": len(rows),
+            },
+        )
         return {
             "period_start": period_start.isoformat(),
             "period_end": period_end.isoformat(),
@@ -899,6 +970,14 @@ class CreatorPayoutService:
                 "creator_payout_ready",
                 {"payments_active": True},
             )
+        await self._audit(
+            actor_id=reviewer_id,
+            action=f"kyc_{decision}",
+            subject_type="creator_kyc",
+            subject_id=user_id,
+            creator_id=user_id,
+            detail={"reason": reason or None},
+        )
         return {"kyc": dict(row)}
 
     async def list_payouts(self, status: str | None = None, limit: int = 50, offset: int = 0) -> dict[str, Any]:
@@ -947,6 +1026,15 @@ class CreatorPayoutService:
             """,
             payout_id,
             reviewer_id,
+        )
+        await self._audit(
+            actor_id=reviewer_id,
+            action="payout_approved",
+            subject_type="creator_payout",
+            subject_id=str(payout_id),
+            creator_id=str(payout["creator_id"]),
+            amount_micros=int(payout["amount_micros"]),
+            detail={"currency": payout.get("currency")},
         )
         return {"payout": dict(row)}
 
@@ -1001,6 +1089,19 @@ class CreatorPayoutService:
                 "amount_micros": int(payout["amount_micros"]),
                 "amount_usd": _micros_to_usd(int(payout["amount_micros"])),
                 "reference": reference.strip(),
+            },
+        )
+        await self._audit(
+            actor_id=reviewer_id,
+            action="payout_paid",
+            subject_type="creator_payout",
+            subject_id=str(payout_id),
+            creator_id=str(payout["creator_id"]),
+            amount_micros=int(payout["amount_micros"]),
+            detail={
+                "reference": reference.strip(),
+                "currency": payout.get("currency"),
+                "withheld_micros": int(payout.get("withheld_micros") or 0),
             },
         )
         return {"payout": dict(row)}

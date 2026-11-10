@@ -129,9 +129,10 @@ async def test_kyc_approval_moves_eligible_tracks_to_earning() -> None:
         str(user_id), decision="approve", reviewer_id=str(uuid4())
     )
 
-    assert service._pool.execute.await_count == 2
-    assert "creator_earning_eligibility" in service._pool.execute.await_args_list[0].args[0]
-    assert "notification_queue" in service._pool.execute.await_args_list[1].args[0]
+    statements = [call.args[0] for call in service._pool.execute.await_args_list]
+    assert any("creator_earning_eligibility" in s for s in statements)
+    assert any("notification_queue" in s for s in statements)
+    assert any("creator_money_audit" in s for s in statements)
 
 
 @pytest.mark.asyncio
