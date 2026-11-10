@@ -1,9 +1,33 @@
 # Camxora Creator Program — Documentation Set
 
-**Status:** Proposal / business requirements. No code changes made.
-**Date:** 2026-11-09
+**Status:** Implemented on `feat/creator-program`. This file is the index; the
+behaviour below is in code, not a proposal.
+**Date:** 2026-11-09 (implementation notes updated 2026-11-10)
 **Owner:** Product + Platform
 **Surfaces:** `camxora.com` (public + creator hub), `platform_api` (domain + admin APIs), `admin_portal` (ops consoles)
+
+---
+
+## 0. What ships today
+
+There is **no application step**. A signed-in user generates a track, presses
+**Publish**, and it is live. The artist profile is created automatically on
+first publish with a handle derived from the display name, and can be
+personalised afterwards. KYC gates **money**, never music.
+
+| Capability | Route(s) | Notes |
+|---|---|---|
+| Publish a generation | `POST /api/v3/creator/releases/quick-publish` | Auto-creates the profile, fills title/genre from the generation |
+| Draft → publish | `POST /api/v3/creator/releases`, `.../{id}/submit` | Publishing is instant; review and takedown happen after |
+| Public releases | `GET /api/v3/creators/{handle}/releases` | Only `publish_status = 'published'` rows |
+| Earnings | `GET /api/v3/creator/earnings` | Holdback, then hourly release to `available` |
+| KYC | `POST /api/v3/creator/kyc`, `.../kyc/document` | Documents stored privately, opened via 300s signed URLs |
+| Payouts | `POST /api/v3/creator/payouts/request` | `requested → approved → paid`, maker-checker enforced |
+| Tax | `GET /api/v3/creator/tax/statements` | 30% withheld unless W-9 + US |
+| Admin | `/api/v3/admin/creators/*` | KYC, payouts, releases, royalty periods, reconciliation |
+
+Known limitation: there is no treaty-rate table, so every non-US creator is
+withheld at 30% until a W-8BEN treaty rate is implemented.
 
 ---
 

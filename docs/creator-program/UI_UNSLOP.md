@@ -84,7 +84,8 @@ The data itself is honest: real creator records, real statuses, no fake counters
 
 ### Still open
 
-- Payout KYC document viewer with signed URLs.
-- Tax withholding and annual statements.
+- Treaty-rate table for W-8BEN withholding (non-US creators currently withheld at 30%).
+- Tax statements are generated, not yet rendered as a downloadable PDF.
+- Reserve release has an admin action but no scheduled job.
 
 
