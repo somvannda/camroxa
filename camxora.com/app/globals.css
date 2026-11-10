@@ -4715,7 +4715,7 @@ html{color-scheme:dark}
 .se-assistant-take{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:#8b90a6}
 .se-assistant-take span{flex:1;color:hsl(var(--foreground))}
 .se-assistant-actions{display:flex;gap:8px;padding-top:4px}
-.se-prompt{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;flex-direction:column;gap:2px;width:min(645px,calc(100% - 48px));padding:5px 14px;border-radius:16px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:6}
+.se-prompt{position:absolute;left:calc(50% + 130px);bottom:16px;transform:translateX(-50%);display:flex;flex-direction:column;gap:2px;width:min(645px,calc(100% - 48px));padding:5px 14px;border-radius:16px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:6}
 .se-prompt-top{display:flex;align-items:center;gap:8px;min-height:28px}
 .se-prompt-attach{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid rgba(255,255,255,.12);border-radius:50%;background:rgba(255,255,255,.04);color:hsl(var(--foreground));cursor:pointer}
 .se-prompt-attach:hover{background:rgba(255,255,255,.1)}

@@ -1096,17 +1096,19 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
     return {
       width: Math.round(rect.width),
       height: Math.round(rect.height),
+      left: Math.round(rect.x),
       centered: Math.round(rect.x + rect.width / 2 - (bodyBox.x + bodyBox.width / 2)),
       bottomGap: Math.round(bodyBox.bottom - rect.bottom),
       radius: getComputedStyle(element).borderTopLeftRadius,
       background: getComputedStyle(element).backgroundColor,
     };
   });
-  // S16/S38: a 645 x 97 floating card 16 px above the shell body bottom.
+  // S16/S38: a 645 x 97 card after the 260 px panel, 16 px above the body bottom.
   expect(info).toMatchObject({
     width: 645,
     height: 97,
-    centered: 0,
+    left: 652,
+    centered: 130,
     bottomGap: 16,
     radius: "16px",
     background: "rgb(19, 24, 38)",

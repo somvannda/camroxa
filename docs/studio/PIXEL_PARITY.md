@@ -30,7 +30,7 @@ functional controls the capture does not show (listed below).
 | Colour strip | x8, 10 px wide | same |
 | Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom, labels thin 1/2/4/8 bars as it drops | same |
 | Time ruler | 22 px `#1e1e20` band with dim labels (labels kept at AA contrast) | same |
-| Prompt bar | 645×97 card 16 px above the shell body: attach +, panel/close tools, prompt line with a Tab hint, floating BETA at the top-right, model picker and send | same geometry; a removable track/clip chip and the v6 / v6-wild / v6-mini picker feed the assistant panel, where the take is auditioned or committed to the track (spends credits) |
+| Prompt bar | 645×97 card centred over the arrangement (x=652), 16 px above the shell body: attach +, panel/close tools, prompt line with a Tab hint, floating BETA at the top-right, model picker and send | same geometry; a removable track/clip chip and the v6 / v6-wild / v6-mini picker feed the assistant panel, where the take is auditioned or committed to the track (spends credits) |
 | Conversation dock (S36) | 315 px bar docked bottom-left, chip row with a panel glyph, one-line prompt, attach +, model and send; invitation copy in the empty conversation area | same: the panel glyph opens the assistant and docks the bar at x=16/315 px; expanding returns it to the centre |
 | Assistant panel | left column with the prompt, progress and per-take Commit/Audition actions (S37) | same; the shell reflows (tracks hidden, arrangement starts at 378 px) and the composer moves into the column |
 | Playhead | 1 px `#4c4c4c` line with a cyan `#3dafff` ruler flag | same |
