@@ -727,6 +727,39 @@ test("plugin dock sits above the footer on the captured surface", async ({ page 
   expect(info?.addHeight).toBe(36);
 });
 
+test("the convolution card loads an impulse response from the library", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel convolution" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Convolution/ })
+    .first()
+    .click();
+
+  const slot = page.locator(".sp-slot").first();
+  await expect(slot.getByRole("button", { name: "Impulse response" })).toContainText(
+    "No impulse response"
+  );
+  await expect(slot.getByRole("slider", { name: "Gain" })).toHaveValue("0");
+  await expect(slot.locator(".sp-ir")).toHaveAttribute("aria-label", "No impulse response");
+
+  await slot.getByRole("button", { name: "Impulse response" }).click();
+  const menu = page.getByRole("menu", { name: "Impulse responses" });
+  await expect(menu.getByRole("menuitem")).toHaveCount(6);
+  await menu.getByRole("menuitem", { name: "Halls" }).click();
+  await menu.getByRole("menuitem", { name: "New England Hall" }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(slot.getByRole("button", { name: "Impulse response" })).toContainText(
+    "Halls › New England Hall"
+  );
+  await expect(slot.locator(".sp-ir")).toHaveAttribute(
+    "aria-label",
+    "Impulse response New England Hall"
+  );
+});
+
 test("the empty dock rail suggests the next three effects", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

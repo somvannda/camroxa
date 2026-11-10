@@ -98,6 +98,7 @@ export const STUDIO_PLUGINS: readonly PluginDef[] = [
     description: "Places the signal in a sampled real space: load an impulse response, then shape it…",
     params: [
       { key: "mix", label: "Mix", min: 0, max: 100, default: 50, unit: "%", tier: "primary" },
+      { key: "gain", label: "Gain", min: -24, max: 24, default: 0, unit: "db", tier: "primary" },
       { key: "pre", label: "Pre", min: 0, max: 200, default: 0, unit: "ms", tier: "secondary" },
       { key: "width", label: "Width", min: 0, max: 200, default: 100, unit: "%", tier: "secondary" },
     ],

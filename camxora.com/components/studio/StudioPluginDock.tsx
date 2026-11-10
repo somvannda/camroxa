@@ -18,6 +18,7 @@ import {
   getPlugin,
   presetsFor,
   type CustomPlugin,
+  type ParamDef,
   type PluginChainEntry,
   type PluginId,
 } from "@/lib/studio-plugins";
@@ -28,11 +29,18 @@ import {
   commitPreset,
   movePlugin,
   removePlugin,
+  setAsset,
   setMode,
   setParam,
   toggleBypass,
   togglePoppedOut,
 } from "@/lib/studio-plugin-chain";
+import {
+  IMPULSE_CATEGORIES,
+  findImpulseResponse,
+  impulseEnvelope,
+  impulseLabel,
+} from "@/lib/studio-ir";
 
 type Props = {
   chain: PluginChainEntry[];
@@ -144,6 +152,160 @@ function CompressorCurve({ params }: { params: Record<string, number> }) {
         0
       </text>
     </svg>
+  );
+}
+
+/** Convolution card (S44): impulse slot + grouped IR picker, then Mix/Gain/Pre/Width. */
+function ConvolutionCard({
+  assetId,
+  params,
+  values,
+  disabled,
+  onAsset,
+  onChange,
+}: {
+  assetId: string | null;
+  params: ParamDef[];
+  values: Record<string, number>;
+  disabled: boolean;
+  onAsset: (id: string | null) => void;
+  onChange: (key: string, value: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState<string | null>(null);
+  const [menuBox, setMenuBox] = useState<{ left: number; top: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const response = findImpulseResponse(assetId);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const envelope = response ? impulseEnvelope(response) : [];
+  const width = 260;
+  const height = 64;
+  const points = envelope.map(
+    (value, index) =>
+      [
+        (index / Math.max(1, envelope.length - 1)) * width,
+        height / 2 - value * (height / 2 - 4),
+      ] as const
+  );
+  const wave = points.length
+    ? `M${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L")} L${points
+        .slice()
+        .reverse()
+        .map(([x, y]) => `${x.toFixed(1)} ${(height - y).toFixed(1)}`)
+        .join(" L")} Z`
+    : "";
+
+  return (
+    <div className="sp-conv-body">
+      <div className="sp-conv-slot">
+        <svg
+          className="sp-ir"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={response ? `Impulse response ${response.name}` : "No impulse response"}
+        >
+          <line x1={0} x2={width} y1={height / 2} y2={height / 2} className="sp-ir-axis" />
+          {wave ? <path d={wave} className="sp-ir-wave" /> : null}
+          <circle cx={width - 12} cy={12} r={6} className="sp-ir-dot" />
+          <text x={4} y={height - 3} className="sp-ir-label">
+            0s
+          </text>
+          <text x={width - 20} y={height - 3} className="sp-ir-label">
+            2s
+          </text>
+        </svg>
+        <div className="sp-ir-picker" ref={wrapRef}>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-label="Impulse response"
+            disabled={disabled}
+            onClick={(event) => {
+              if (!open) {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setMenuBox({ left: rect.left, top: Math.max(8, rect.top - 268) });
+              }
+              setOpen((value) => !value);
+            }}
+          >
+            <span>{response ? impulseLabel(assetId) : "No impulse response"}</span>
+            <Icon name="fa-chevron-down" />
+          </button>
+          {open ? (
+            <div
+              className="sp-ir-menu"
+              role="menu"
+              aria-label="Impulse responses"
+              style={menuBox ? { left: menuBox.left, top: menuBox.top } : undefined}
+            >
+              {IMPULSE_CATEGORIES.map((group) => (
+                <div key={group.label}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="sp-ir-cat"
+                    aria-expanded={category === group.label}
+                    onClick={() =>
+                      setCategory((current) => (current === group.label ? null : group.label))
+                    }
+                  >
+                    {group.label}
+                  </button>
+                  {category === group.label
+                    ? group.items.map((ir) => (
+                        <button
+                          key={ir.id}
+                          type="button"
+                          role="menuitem"
+                          className={assetId === ir.id ? "on" : undefined}
+                          onClick={() => {
+                            onAsset(ir.id);
+                            setOpen(false);
+                          }}
+                        >
+                          {ir.name}
+                        </button>
+                      ))
+                    : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="sp-knobs sp-knob-grid">
+        {params.map((param) => (
+          <ParamKnob
+            key={param.key}
+            label={param.label}
+            unit={param.unit}
+            min={param.min}
+            max={param.max}
+            step={param.max - param.min > 100 ? 1 : 0.1}
+            value={values[param.key] ?? param.default}
+            disabled={disabled}
+            onChange={(value) => onChange(param.key, value)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -571,16 +733,19 @@ export function StudioPluginDock({ chain, onChange, trackName, customPlugins = [
                 </div>
               ) : null}
 
-              {plugin.assetSlot ? (
-                <div className="sp-asset" aria-label={plugin.assetSlot.label}>
-                  {entry.assetId ? entry.assetId : plugin.assetSlot.emptyLabel}
-                </div>
-              ) : null}
-
               {plugin.id === "eq" ? (
                 <EqCard
                   params={entry.params}
                   disabled={Boolean(entry.bypassed)}
+                  onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
+                />
+              ) : plugin.id === "convolution" ? (
+                <ConvolutionCard
+                  assetId={entry.assetId ?? null}
+                  params={plugin.params}
+                  values={entry.params}
+                  disabled={Boolean(entry.bypassed)}
+                  onAsset={(id) => onChange(setAsset(chain, entry.entryId, id))}
                   onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
                 />
               ) : (

@@ -121,6 +121,17 @@ export function setParamSet(
   );
 }
 
+/** Load an impulse response into a convolution slot (S44). */
+export function setAsset(
+  chain: PluginChainEntry[],
+  entryId: string,
+  assetId: string | null
+): PluginChainEntry[] {
+  return chain.map((entry) =>
+    entry.entryId === entryId ? { ...entry, assetId, dirty: true } : entry
+  );
+}
+
 /** Commit the tweak to the named preset (reference: `Update` writes it back). */
 export function commitPreset(
   chain: PluginChainEntry[],

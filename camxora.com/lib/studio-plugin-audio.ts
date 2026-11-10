@@ -18,6 +18,7 @@
  *   can say so, instead of silently changing the sound.
  */
 
+import { findImpulseResponse } from "@/lib/studio-ir";
 import {
   customParamMap,
   getPlugin,
@@ -354,7 +355,39 @@ export function createPluginAudio(
     };
   }
 
-  if (id === "reverb" || id === "convolution") {
+  if (id === "convolution") {
+    // S44: the impulse comes from the picked IR, with real pre-delay and gain.
+    const mix = wetDry(ctx, params.mix ?? 50);
+    const pre = ctx.createDelay(0.5);
+    const convolver = ctx.createConvolver();
+    const makeup = ctx.createGain();
+    mix.input.connect(pre).connect(convolver).connect(makeup).connect(mix.wet).connect(mix.output);
+
+    let renderedFor: string | null = null;
+    const apply = (p: Record<string, number>) => {
+      const ir = findImpulseResponse(entry.assetId);
+      const key = entry.assetId ?? "none";
+      if (key !== renderedFor) {
+        convolver.buffer = makeImpulse(ctx, ir?.seconds ?? 2.4, ir?.decay ?? 3);
+        renderedFor = key;
+      }
+      pre.delayTime.value = clamp((p.pre ?? 0) / 1000, 0, 0.2);
+      makeup.gain.value = Math.pow(10, clamp(p.gain ?? 0, -24, 24) / 20);
+      mix.setMix(p.mix ?? 50);
+    };
+    apply(params);
+    return {
+      input: mix.input,
+      output: mix.output,
+      approximate: true,
+      update: apply,
+      dispose: () => {
+        [pre, convolver, makeup, mix.input, mix.output].forEach((n) => n.disconnect());
+      },
+    };
+  }
+
+  if (id === "reverb") {
     const mix = wetDry(ctx, params.mix ?? 25);
     const convolver = ctx.createConvolver();
     const lowCut = ctx.createBiquadFilter();
@@ -379,7 +412,7 @@ export function createPluginAudio(
     return {
       input: mix.input,
       output: mix.output,
-      approximate: id === "reverb",
+      approximate: true,
       update: apply,
       dispose: () => {
         [convolver, lowCut, highCut, mix.input, mix.output].forEach((n) => n.disconnect());
