@@ -23,11 +23,16 @@ personalised afterwards. KYC gates **money**, never music.
 | Earnings | `GET /api/v3/creator/earnings` | Holdback, then hourly release to `available` |
 | KYC | `POST /api/v3/creator/kyc`, `.../kyc/document` | Documents stored privately, opened via 300s signed URLs |
 | Payouts | `POST /api/v3/creator/payouts/request` | `requested → approved → paid`, maker-checker enforced |
-| Tax | `GET /api/v3/creator/tax/statements` | 30% withheld unless W-9 + US |
+| Tax | `GET /api/v3/creator/tax/statements` | 30% withheld (no US–Cambodia treaty) unless W-9 + US |
 | Admin | `/api/v3/admin/creators/*` | KYC, payouts, releases, royalty periods, reconciliation |
 
-Known limitation: there is no treaty-rate table, so every non-US creator is
-withheld at 30% until a W-8BEN treaty rate is implemented.
+**Scope is Cambodia only.** Payout accounts are Cambodian banks, Wing, and KHQR.
+Payouts settle in **KHR or USD**, and a KHR payout records the rate used so the
+USD ledger still reconciles.
+
+Known limitation: there is no treaty table, because Cambodia has no US tax
+treaty — every Cambodian creator is withheld at the statutory 30% until a W-9
+shows they are a US person.
 
 ---
 

@@ -301,7 +301,12 @@ export function CreatorPayoutsView() {
               <CreatorField label="Date of birth" htmlFor="kyc-dob" error={fieldErrors.date_of_birth}>
                 <CreatorInput id="kyc-dob" type="date" value={dob} onChange={(event) => setDob(event.target.value)} required />
               </CreatorField>
-              <CreatorField label="Country" htmlFor="kyc-country" error={fieldErrors.country_code}>
+              <CreatorField
+                label="Country"
+                htmlFor="kyc-country"
+                hint="Payouts are only available to creators in Cambodia for now."
+                error={fieldErrors.country_code}
+              >
                 <CreatorInput id="kyc-country" value={country} onChange={(event) => setCountry(event.target.value)} maxLength={2} required />
               </CreatorField>
               <CreatorField
@@ -417,7 +422,12 @@ export function CreatorPayoutsView() {
             </div>
           ) : null}
           <form className={styles.form} onSubmit={onAccount}>
-            <CreatorField label="Method" htmlFor="account-method" error={fieldErrors.method}>
+            <CreatorField
+              label="Method"
+              htmlFor="account-method"
+              hint="Cambodian bank, Wing, or KHQR."
+              error={fieldErrors.method}
+            >
               <CreatorSelect
                 id="account-method"
                 value={method}
