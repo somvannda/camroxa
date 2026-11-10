@@ -26,7 +26,7 @@ functional controls the capture does not show (listed below).
 | Project chip | x115, 36 px, `#1c1c1e` | x110 (brand wordmark is wider) |
 | Transport/time/tempo | grouped pills, 36 px | same grouping |
 | Track panel | 260 px canvas `#141416`, head 29 px | same |
-| Track row | 85 px, name x48 y100 11 px, controls 24×24, fader capsules `#1c1c1e` 167 px + 50 px pan arch at x28 y126, selected `#262628` | same |
+| Track row | 85 px, name x48 y100 11 px, controls 24×24, fader capsules 167 px + the captured pan arch (both with vertical bar handles) at x28 y126 | same geometry; brand surface colours |
 | Colour strip | x8, 10 px wide | same |
 | Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom, labels thin 1/2/4/8 bars as it drops | same |
 | Time ruler | 22 px `#1e1e20` band with dim labels (labels kept at AA contrast) | same |
