@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { Icon } from "@/components/Icon";
+import { ParamKnob } from "@/components/studio/ParamKnob";
 import {
   STUDIO_PLUGINS,
   getPlugin,
@@ -76,70 +77,6 @@ function bandDb(freq: number, band: { freq: number; q: number; gain: number; typ
     default:
       return band.gain * Math.exp(-Math.pow(octaves / width, 2));
   }
-}
-
-function formatFreq(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}khz`;
-  return `${Math.round(value)}hz`;
-}
-
-function Knob({
-  label,
-  value,
-  min,
-  max,
-  step,
-  title,
-  log,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  title: string;
-  log?: boolean;
-  disabled?: boolean;
-  onChange: (value: number) => void;
-}) {
-  const pct = log
-    ? Math.min(
-        1,
-        Math.max(
-          0,
-          (Math.log(Math.max(1, value)) - Math.log(min)) / (Math.log(max) - Math.log(min))
-        )
-      )
-    : Math.min(1, Math.max(0, (value - min) / (max - min)));
-  return (
-    <label className="sp-knob">
-      <span
-        className="sp-knob-dial"
-        style={{ ["--p" as string]: `${(pct * 270).toFixed(1)}deg` }}
-        aria-hidden="true"
-      >
-        <span
-          className="sp-knob-pointer"
-          style={{ transform: `rotate(${(-135 + pct * 270).toFixed(1)}deg)` }}
-        />
-      </span>
-      <input
-        className="sp-knob-input"
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        aria-label={label}
-        aria-valuetext={title}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <span className="sp-knob-label">{label}</span>
-    </label>
-  );
 }
 
 /**
@@ -297,34 +234,33 @@ function EqCard({
       </svg>
 
       <div className="sp-knobs">
-        <Knob
+        <ParamKnob
           label="Freq"
           value={current.freq}
           min={EQ_F_MIN}
           max={EQ_F_MAX}
           step={1}
-          title={formatFreq(current.freq)}
+          unit="hz"
           log
           disabled={disabled}
           onChange={(next) => onChange(`band${selected}.freq`, next)}
         />
-        <Knob
+        <ParamKnob
           label="Q"
           value={current.q}
           min={0.1}
           max={18}
           step={0.1}
-          title={current.q.toFixed(1)}
           disabled={disabled}
           onChange={(next) => onChange(`band${selected}.q`, next)}
         />
-        <Knob
+        <ParamKnob
           label="Gain"
           value={current.gain}
           min={-24}
           max={24}
           step={0.5}
-          title={`${current.gain}db`}
+          unit="db"
           disabled={disabled}
           onChange={(next) => onChange(`band${selected}.gain`, next)}
         />
@@ -505,28 +441,16 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                   onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
                 />
               ) : (
-                <div className="sp-params">
-                {primary.map((param) => (
-                  <ParamControl
+                <div className="sp-knobs sp-knob-grid">
+                {[...primary, ...secondary].map((param) => (
+                  <ParamKnob
                     key={param.key}
                     label={param.label}
                     unit={param.unit}
-                    tier="primary"
                     min={param.min}
                     max={param.max}
-                    value={entry.params[param.key] ?? param.default}
-                    disabled={entry.bypassed}
-                    onChange={(value) => onChange(setParam(chain, entry.entryId, param.key, value))}
-                  />
-                ))}
-                {secondary.map((param) => (
-                  <ParamControl
-                    key={param.key}
-                    label={param.label}
-                    unit={param.unit}
-                    tier="secondary"
-                    min={param.min}
-                    max={param.max}
+                    step={param.max - param.min > 100 ? 1 : 0.1}
+                    log={param.unit === "hz"}
                     value={entry.params[param.key] ?? param.default}
                     disabled={entry.bypassed}
                     onChange={(value) => onChange(setParam(chain, entry.entryId, param.key, value))}
@@ -616,49 +540,4 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
   );
 }
 
-function ParamControl({
-  label,
-  unit,
-  tier,
-  min,
-  max,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  unit?: string;
-  tier: "primary" | "secondary";
-  min: number;
-  max: number;
-  value: number;
-  disabled?: boolean;
-  onChange: (value: number) => void;
-}) {
-  const step = max - min > 100 ? 1 : 0.01;
-  const display =
-    unit === "hz" && value >= 1000
-      ? `${(value / 1000).toFixed(1)}k`
-      : Number.isInteger(value)
-        ? String(value)
-        : value.toFixed(2);
-  return (
-    <label className={`sp-param ${tier}`}>
-      <span className="sp-param-label">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
-        aria-label={label}
-      />
-      <span className="sp-param-value">
-        {display}
-        {unit && unit !== "%" ? unit : unit === "%" ? "%" : ""}
-      </span>
-    </label>
-  );
-}
+

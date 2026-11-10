@@ -45,7 +45,7 @@ functional controls the capture does not show (listed below).
 | Empty library | centred “No songs found.” + 38 px Reset all filters pill | same (only when filters/search caused it) |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
 | History drawer | 300 px panel under the header, inset 8 px, on #101012, ‹ date › stepper | same; our version list/restore inside |
-| Plugin dock | full-width band above the footer, slot cards on #141416 | same |
+| Plugin dock | full-width band above the footer, slot cards | same; every effect card now uses the shared knob control (dial, accent arc, label + value) |
 | EQ card | 450 px card: Band selector + switch, six shape buttons, curve with per-band handles, Freq/Q/Gain knobs | same geometry; controls/curve use the CAMXORA accent instead of the captured pink/yellow (user request) |
 | Popped-out plugin | large floating card from the external-link control | same: fixed 460 px (520 for EQ) at the bottom-right |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |

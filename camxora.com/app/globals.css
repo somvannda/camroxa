@@ -4483,6 +4483,8 @@ html{color-scheme:dark}
 .sp-eq-shapes button path{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .sp-eq-shapes button.on{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
 .sp-knobs{display:flex;align-items:flex-start;justify-content:space-around;gap:10px;padding:2px 0 0}
+.sp-knobs.sp-knob-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 6px;justify-items:center;justify-content:initial}
+.sp-knob-readout{font-size:11px;color:#8b90a6;font-variant-numeric:tabular-nums}
 .sp-knob{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:#8b90a6}
 .sp-knob-dial{position:relative;width:62px;height:62px;border-radius:50%;background:conic-gradient(hsl(var(--accent)) 0 var(--p), #2b2b30 var(--p) 270deg, transparent 270deg)}
 .sp-knob-dial::after{content:"";position:absolute;inset:7px;border-radius:50%;background:#141416;z-index:0}
