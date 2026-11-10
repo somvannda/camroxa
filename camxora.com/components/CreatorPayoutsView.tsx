@@ -7,10 +7,12 @@ import {
   CreatorButton,
   CreatorButtonLink,
   CreatorField,
+  CREATOR_NAV_ITEMS,
   CreatorHeader,
   CreatorInput,
   CreatorPage,
   CreatorPanel,
+  CreatorSubnav,
   CreatorSelect,
   CreatorStatus,
   CreatorToast,
@@ -219,6 +221,8 @@ export function CreatorPayoutsView() {
           </>
         }
       />
+
+      <CreatorSubnav items={CREATOR_NAV_ITEMS} />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 

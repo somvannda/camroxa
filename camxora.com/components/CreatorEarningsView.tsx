@@ -5,9 +5,11 @@ import { Icon } from "@/components/Icon";
 import { CreatorMetrics } from "@/components/CreatorMetrics";
 import {
   CreatorButtonLink,
+  CREATOR_NAV_ITEMS,
   CreatorHeader,
   CreatorPage,
   CreatorPanel,
+  CreatorSubnav,
   CreatorStatus,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
@@ -126,6 +128,8 @@ export function CreatorEarningsView() {
           </>
         }
       />
+
+      <CreatorSubnav items={CREATOR_NAV_ITEMS} />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 

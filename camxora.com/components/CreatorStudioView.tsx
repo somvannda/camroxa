@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import {
+  CREATOR_NAV_ITEMS,
   CreatorButton,
   CreatorButtonLink,
   CreatorField,
@@ -239,16 +240,7 @@ export function CreatorStudioView() {
         }
       />
 
-      <CreatorSubnav
-        items={[
-          { href: "/creator", label: "Overview" },
-          { href: "/creator/releases", label: "Releases" },
-          { href: "/creator/earnings", label: "Earnings" },
-          { href: "/creator/payouts", label: "Payouts" },
-          { href: "/creator/verification", label: "Verification" },
-          { href: "/creators", label: "Directory" },
-        ]}
-      />
+      <CreatorSubnav items={CREATOR_NAV_ITEMS} />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 

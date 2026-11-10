@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
 
+logger = logging.getLogger(__name__)
+
 MIN_PAYOUT_MICROS = 20_000_000
+PAYOUT_RELEASE_ENABLED = True
 KYC_ID_TYPES = {"passport", "national_id", "drivers_license"}
 PAYOUT_METHODS = {"aba", "wing", "khqr", "bank", "paypal", "wise"}
 CURRENCIES = {"USD", "KHR"}
@@ -375,6 +380,21 @@ class CreatorPayoutService:
         )
         return [dict(row) for row in rows]
 
+    async def release_available_earnings(self) -> int:
+        result = await self._pool.execute(
+            """
+            UPDATE creator_earnings
+            SET status = 'available'
+            WHERE status = 'pending'
+              AND available_at IS NOT NULL
+              AND available_at <= NOW()
+            """
+        )
+        try:
+            return int(str(result).split()[-1])
+        except (IndexError, ValueError):
+            return 0
+
     # ------------------------------------------------------------------
     # Admin
     # ------------------------------------------------------------------
@@ -557,3 +577,25 @@ class CreatorPayoutService:
             },
         )
         return {"payout": dict(row)}
+
+
+async def run_earnings_release_loop(
+    pool: Any,
+    *,
+    interval_seconds: int = 3600,
+    startup_delay: float = 60.0,
+) -> None:
+    """Promote pending earnings to available once their holdback passes."""
+    if startup_delay:
+        await asyncio.sleep(startup_delay)
+    service = CreatorPayoutService(pool)
+    while True:
+        try:
+            released = await service.release_available_earnings()
+            if released:
+                logger.info("Released %s creator earnings rows.", released)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Creator earnings release failed; retrying next interval.")
+        await asyncio.sleep(max(300, interval_seconds))

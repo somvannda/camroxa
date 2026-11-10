@@ -194,3 +194,13 @@ async def test_maker_checker_blocks_creator_approving_own_payout() -> None:
         await service.approve_payout(str(uuid4()), reviewer_id=str(creator))
 
     assert "approval" in (exc.value.details or {}).get("fields", {})
+
+
+@pytest.mark.asyncio
+async def test_release_available_earnings_promotes_due_rows() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.execute = AsyncMock(return_value="UPDATE 4")
+
+    released = await service.release_available_earnings()
+
+    assert released == 4

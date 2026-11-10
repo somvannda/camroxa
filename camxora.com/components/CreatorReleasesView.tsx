@@ -8,10 +8,12 @@ import {
   CreatorButtonLink,
   CreatorCheckbox,
   CreatorField,
+  CREATOR_NAV_ITEMS,
   CreatorHeader,
   CreatorInput,
   CreatorPage,
   CreatorPanel,
+  CreatorSubnav,
   CreatorSelect,
   CreatorStatus,
   CreatorToast,
@@ -64,6 +66,7 @@ function ReleaseFlow({ status }: { status: string }) {
             aria-hidden="true"
             className={`${styles.flowDot} ${index <= current ? styles.flowDotActive : ""}`}
           />
+
           <span className={`${styles.flowLabel} ${index <= current ? styles.flowLabelActive : ""}`}>
             {step}
           </span>
@@ -264,6 +267,8 @@ export function CreatorReleasesView() {
           </>
         }
       />
+
+      <CreatorSubnav items={CREATOR_NAV_ITEMS} />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 

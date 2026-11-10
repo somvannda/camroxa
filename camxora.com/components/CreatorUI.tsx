@@ -17,6 +17,15 @@ import styles from "./creator-ui.module.css";
 
 type ButtonVariant = "primary" | "secondary" | "ghost";
 
+export const CREATOR_NAV_ITEMS = [
+  { href: "/creator", label: "Overview" },
+  { href: "/creator/releases", label: "Releases" },
+  { href: "/creator/earnings", label: "Earnings" },
+  { href: "/creator/payouts", label: "Payouts" },
+  { href: "/creator/verification", label: "Verification" },
+  { href: "/creators", label: "Directory" },
+];
+
 export function CreatorPage({ children }: { children: ReactNode }) {
   return <div className={styles.page}>{children}</div>;
 }

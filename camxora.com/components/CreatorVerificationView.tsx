@@ -8,10 +8,12 @@ import {
   CreatorButtonLink,
   CreatorCheckbox,
   CreatorField,
+  CREATOR_NAV_ITEMS,
   CreatorHeader,
   CreatorInput,
   CreatorPage,
   CreatorPanel,
+  CreatorSubnav,
   CreatorSelect,
   CreatorStatus,
   CreatorTextarea,
@@ -225,6 +227,8 @@ export function CreatorVerificationView() {
           </>
         }
       />
+
+      <CreatorSubnav items={CREATOR_NAV_ITEMS} />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 

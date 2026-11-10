@@ -591,6 +591,24 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Creator eligibility loop not started (non-fatal): %s", exc)
 
+        # --- Creator earnings holdback release (hourly) ---
+        try:
+            from platform_api.services import creator_payout_service as _creator_payout
+
+            if not getattr(_creator_payout, "PAYOUT_RELEASE_ENABLED", True):
+                logger.info("Creator earnings release loop is disabled.")
+            else:
+                asyncio.create_task(
+                    _creator_payout.run_earnings_release_loop(
+                        db_pool,
+                        startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                    ),
+                    name="creator-earnings-release",
+                )
+                logger.info("Creator earnings release loop started.")
+        except Exception as exc:
+            logger.warning("Creator earnings release loop not started (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",

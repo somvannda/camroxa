@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
 from platform_api.exceptions import NotFoundError, ValidationError
@@ -258,6 +258,11 @@ class RoyaltyEngineService:
                     )
 
                 label = period_start.strftime("%B %Y")
+                holdback_days = int(document.get("holdback_days") or 30)
+                available_at = (
+                    datetime.combine(period_end, datetime.min.time(), tzinfo=timezone.utc)
+                    + timedelta(days=holdback_days)
+                )
                 for creator_id, amount in allocation["creator_totals"].items():
                     if amount <= 0:
                         continue
@@ -267,12 +272,13 @@ class RoyaltyEngineService:
                             creator_id, source, source_id, period,
                             gross_micros, fee_micros, net_micros,
                             currency, status, available_at, description
-                        ) VALUES ($1,'royalty',$2,$3,$4,0,$4,'USD','available',NOW(),$5)
+                        ) VALUES ($1,'royalty',$2,$3,$4,0,$4,'USD','pending',$5,$6)
                         """,
                         creator_id,
                         str(period_id),
                         period_start,
                         amount,
+                        available_at,
                         f"Royalty for {label}",
                     )
 

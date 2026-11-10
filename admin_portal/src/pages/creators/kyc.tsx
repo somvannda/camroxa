@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, ShieldCheck, ShieldX } from 'lucide-react';
+import { ExternalLink, Loader2, ShieldCheck, ShieldX } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -169,7 +169,31 @@ export default function CreatorKycPage() {
                     <TableCell>{record.country_code}</TableCell>
                     <TableCell>
                       <div className="text-sm capitalize">{record.id_type.replace('_', ' ')}</div>
-                      <div className="text-xs text-slate-500">•••• {record.id_last4}</div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        •••• {record.id_last4}
+                        {/^https?:\/\//i.test(record.id_document_ref) ? (
+                          <a
+                            href={record.id_document_ref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sky-400 hover:text-sky-300"
+                            title="Open ID document"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null}
+                        {record.selfie_ref && /^https?:\/\//i.test(record.selfie_ref) ? (
+                          <a
+                            href={record.selfie_ref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sky-400 hover:text-sky-300"
+                            title="Open selfie"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>{formatDate(record.submitted_at)}</TableCell>
                     <TableCell>{statusBadge(record.status)}</TableCell>
