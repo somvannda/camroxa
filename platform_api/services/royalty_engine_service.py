@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
 from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
 from platform_api.services.royalty_policy_service import RoyaltyPolicyService
+
+logger = logging.getLogger(__name__)
 
 MICROS_PER_USD = 1_000_000
 RESERVE_HOLD_DAYS = 90
@@ -306,6 +310,33 @@ class RoyaltyEngineService:
         )
         return {"items": [dict(row) for row in rows]}
 
+    async def release_due_reserves(self) -> int:
+        """Release every reserve whose dispute window has closed. Safe to re-run."""
+        rows = await self._pool.fetch(
+            """
+            SELECT p.id
+            FROM royalty_periods p
+            WHERE p.period_end <= (CURRENT_DATE - ($1 || ' days')::interval)
+              AND EXISTS (
+                  SELECT 1 FROM royalty_ledger l
+                  WHERE l.period_id = p.id AND l.entry_type = 'reserve'
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM royalty_ledger l
+                  WHERE l.period_id = p.id AND l.entry_type = 'reserve_release'
+              )
+            """,
+            str(RESERVE_HOLD_DAYS),
+        )
+        released = 0
+        for row in rows:
+            try:
+                await self.release_reserve(str(row["id"]))
+                released += 1
+            except (DuplicateError, NotFoundError, ValidationError):
+                continue
+        return released
+
     async def release_reserve(self, period_id: str) -> dict[str, Any]:
         """Return a period's held reserve to its creators once the dispute window closes."""
         period = await self._pool.fetchrow(
@@ -438,3 +469,24 @@ class RoyaltyEngineService:
             period_id,
         )
         return {"period": dict(locked)}
+
+async def run_reserve_release_loop(
+    pool: Any,
+    *,
+    interval_seconds: int = 86_400,
+    startup_delay: float = 120.0,
+) -> None:
+    """Release held reserves daily once their dispute window has closed."""
+    if startup_delay:
+        await asyncio.sleep(startup_delay)
+    while True:
+        try:
+            released = await RoyaltyEngineService(pool).release_due_reserves()
+            if released:
+                logger.info("Released reserves for %s royalty periods.", released)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Reserve release failed; retrying next interval.")
+        await asyncio.sleep(max(3600, interval_seconds))
+

@@ -268,9 +268,21 @@ async def test_kyc_document_upload_rejects_non_documents() -> None:
 def test_withholding_rate_follows_tax_status() -> None:
     assert withholding_bps_for("w9", "US") == 0
     assert withholding_bps_for("W9", "us") == 0
+    # Cambodia has no US treaty, so the statutory rate applies.
     assert withholding_bps_for("w8ben", "KH") == 3000
     assert withholding_bps_for(None, "KH") == 3000
+    # A W-9 only helps a US person; elsewhere it is not a valid certificate.
     assert withholding_bps_for("w9", "KH") == 3000
+    # US person with no form on file falls back to the statutory rate.
+    assert withholding_bps_for(None, "US") == 3000
+
+
+def test_treaty_rates_apply_only_with_a_w8ben() -> None:
+    assert withholding_bps_for("w8ben", "GB") == 0
+    assert withholding_bps_for("w8ben", "TH") == 1500
+    assert withholding_bps_for("w8ben", "VN") == 1000
+    assert withholding_bps_for("w9", "GB") == 3000
+    assert withholding_bps_for("w8ben", "LA") == 3000
 
 
 def test_split_withholding_keeps_the_cent() -> None:

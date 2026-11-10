@@ -191,3 +191,17 @@ async def test_release_reserve_splits_pro_rata_and_nets_to_zero() -> None:
     assert len(earnings) == 2
     assert sum(args[3] for args in earnings) == 1_000_001
 
+
+
+@pytest.mark.asyncio
+async def test_release_due_reserves_skips_periods_it_cannot_release() -> None:
+    service = RoyaltyEngineService(AsyncMock())
+    service._pool.fetch = AsyncMock(return_value=[{"id": uuid4()}, {"id": uuid4()}])
+    service.release_reserve = AsyncMock(
+        side_effect=[{"released_micros": 1}, ValidationError("too early")]
+    )
+
+    released = await service.release_due_reserves()
+
+    assert released == 1
+    assert service.release_reserve.await_count == 2

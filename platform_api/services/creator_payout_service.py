@@ -26,17 +26,55 @@ CURRENCIES = {"USD", "KHR"}
 TAX_FORMS = {"w9", "w8ben"}
 DEFAULT_WITHHOLDING_BPS = 3000
 
+# US royalty withholding rates for treaty countries, in basis points, applied
+# only when a W-8BEN is on file. Any country not listed is withheld at the
+# statutory 30%. Verify against the current IRS treaty table before launch.
+TREATY_ROYALTY_BPS: dict[str, int] = {
+    "AT": 0,
+    "AU": 500,
+    "BE": 0,
+    "CA": 0,
+    "CH": 0,
+    "CN": 1000,
+    "DE": 0,
+    "DK": 0,
+    "ES": 0,
+    "FI": 0,
+    "FR": 0,
+    "GB": 0,
+    "ID": 1500,
+    "IE": 0,
+    "IN": 1500,
+    "IT": 0,
+    "JP": 1000,
+    "KR": 1000,
+    "MY": 1000,
+    "NL": 0,
+    "NO": 0,
+    "NZ": 500,
+    "PH": 2500,
+    "SE": 0,
+    "SG": 1000,
+    "TH": 1500,
+    "VN": 1000,
+}
+
 
 def withholding_bps_for(tax_form: str | None, tax_country: str | None) -> int:
     """US royalties withholding rate, in basis points.
 
-    A US person on a W-9 pays nothing up front. Everyone else is withheld at
-    the statutory 30% until a treaty certificate is on file.
+    A US person on a W-9 pays nothing up front. A W-8BEN holder in a treaty
+    country pays that treaty's royalty rate. Everyone else pays the statutory
+    30%, which also covers US persons who never filed a W-9.
     """
     form = str(tax_form or "").strip().lower()
     country = str(tax_country or "").strip().upper()
     if form == "w9" and country == "US":
         return 0
+    if form == "w8ben":
+        rate = TREATY_ROYALTY_BPS.get(country)
+        if rate is not None:
+            return rate
     return DEFAULT_WITHHOLDING_BPS
 
 

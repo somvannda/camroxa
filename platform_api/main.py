@@ -609,6 +609,21 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Creator earnings release loop not started (non-fatal): %s", exc)
 
+        # --- Reserve release after the dispute window (daily) ---
+        try:
+            from platform_api.services import royalty_engine_service as _royalty
+
+            asyncio.create_task(
+                _royalty.run_reserve_release_loop(
+                    db_pool,
+                    startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                ),
+                name="creator-reserve-release",
+            )
+            logger.info("Creator reserve release loop started.")
+        except Exception as exc:
+            logger.warning("Creator reserve release loop not started (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",
