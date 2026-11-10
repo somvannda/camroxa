@@ -4708,6 +4708,10 @@ html{color-scheme:dark}
 .se-assistant-take span{flex:1;color:hsl(var(--foreground))}
 .se-assistant-actions{display:flex;gap:8px;padding-top:4px}
 .se-prompt{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;width:min(645px,calc(100% - 48px));height:56px;padding:0 12px 0 16px;border-radius:16px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:6}
+.se-prompt-context{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 6px 0 10px;border-radius:999px;background:hsl(var(--accent) / .18);color:hsl(var(--foreground));font-size:12px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.se-prompt-context button{display:grid;place-items:center;width:18px;height:18px;flex:none;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer}
+.se-prompt-context button:hover{background:rgba(255,255,255,.12)}
+.se-prompt-context .icon{width:9px;height:9px}
 .se-prompt-badge{padding:2px 7px;border-radius:999px;background:hsl(var(--accent));color:hsl(var(--accent-foreground));font-size:11px;font-weight:600;letter-spacing:.04em}
 .se-prompt-input{flex:1;min-width:0;border:0;background:transparent;color:#f7f4ef;font:inherit;font-size:13px;outline:none}
 .se-prompt-input::placeholder{color:#8b90a6}

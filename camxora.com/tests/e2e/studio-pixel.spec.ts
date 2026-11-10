@@ -1116,6 +1116,13 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   await expect(models).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Generation model" })).toContainText("v6-mini");
 
+  // S37: the selected track shows as a removable context chip in the prompt bar.
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  const chip = page.locator(".se-prompt-context");
+  await expect(chip).toHaveText(/Track 1/);
+  await chip.getByRole("button", { name: "Clear track context" }).click();
+  await expect(chip).toHaveCount(0);
+
   // Generation is inline: mock the API, then the result lands on the track.
   const captured: { model?: unknown } = {};
   await page.route("**/api/v3/web-music/generate", (route) => {

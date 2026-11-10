@@ -3459,12 +3459,24 @@ export function StudioEditorShell() {
           }}
         >
           <span className="se-prompt-badge">BETA</span>
+          {selectedTrack ? (
+            <span className="se-prompt-context">
+              {tracks.find((track) => track.id === selectedTrack)?.name ?? "Track"}
+              <button
+                type="button"
+                aria-label="Clear track context"
+                onClick={() => setSelectedTrack(null)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </span>
+          ) : null}
           <button
             type="button"
             className="se-prompt-model"
             aria-haspopup="listbox"
             aria-expanded={modelOpen}
-            aria-label="Generation model"
+            aria-label={`Generation model: ${promptModel}`}
             onClick={() => setModelOpen((open) => !open)}
           >
             {promptModel} <Icon name="fa-chevron-down" />
