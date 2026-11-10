@@ -21,7 +21,7 @@ functional controls the capture does not show (listed below).
 |---|---|---|
 | App body | `#111111`, text `#f7f4ef` | same |
 | Header band | 52 px `#0a0a0a`, pills 36 px at y8, radius 999 | same |
-| Narrow widths | 1024 keeps undo/redo; 768 keeps the 260 px panel and transport, drops undo and secondary readouts | same |
+| Narrow widths | 1024 keeps undo/redo and the centred prompt bar; 768 keeps the 260 px panel and transport, drops undo and secondary readouts and hides the Magic Bar | same |
 | Under 768 | desktop-only gate card with Back to Create (S65) | same; our art, no photo asset |
 | Project chip | x115, 36 px, `#1c1c1e` | x110 (brand wordmark is wider) |
 | Transport/time/tempo | grouped pills, 36 px | same grouping |

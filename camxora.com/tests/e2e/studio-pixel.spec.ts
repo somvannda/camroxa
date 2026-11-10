@@ -986,11 +986,21 @@ test("narrow headers keep the captured controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
   await expect(page.locator(".se-save")).toBeHidden();
+  // S64: the prompt bar stays visible, centred over the arrangement.
+  const prompt = page.locator(".se-prompt");
+  await expect(prompt).toBeVisible();
+  const promptBox = await prompt.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: Math.round(rect.x), width: Math.round(rect.width) };
+  });
+  expect(promptBox).toEqual({ x: 320, width: 645 });
 
   await page.setViewportSize({ width: 768, height: 1024 });
   // S65: no undo/redo, panel stays 260, transport and time/tempo remain.
   await expect(page.getByRole("button", { name: "Undo" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  // S65: the Magic Bar is not part of the 768 px layout.
+  await expect(prompt).toBeHidden();
   const panel = await page.locator(".se-tracks").evaluate((element) =>
     Math.round(element.getBoundingClientRect().width)
   );
