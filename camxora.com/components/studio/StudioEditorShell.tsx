@@ -372,6 +372,27 @@ export function StudioEditorShell() {
   const [midiClipId, setMidiClipId] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
+  const [promptModel, setPromptModel] = useState("v6");
+  const [modelOpen, setModelOpen] = useState(false);
+  const promptRef = useRef<HTMLFormElement | null>(null);
+
+  useEffect(() => {
+    if (!modelOpen) return;
+    const onPointer = (event: PointerEvent) => {
+      if (promptRef.current && !promptRef.current.contains(event.target as Node)) {
+        setModelOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModelOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [modelOpen]);
   const [remixingSongId, setRemixingSongId] = useState<string | null>(null);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
@@ -3021,7 +3042,7 @@ export function StudioEditorShell() {
     if (!prompt || promptBusy) return;
     setPromptBusy(true);
     try {
-      const created = await generateSong({ mode: "simple", prompt });
+      const created = await generateSong({ mode: "simple", prompt, model: promptModel });
       const deadline = Date.now() + 180_000;
       let generation: WebMusicGeneration | null = null;
       while (Date.now() < deadline) {
@@ -3354,12 +3375,23 @@ export function StudioEditorShell() {
         {/* Captured prompt bar (S16/S52): opens the generator with the prompt. */}
         <form
           className="se-prompt"
+          ref={promptRef}
           onSubmit={(event) => {
             event.preventDefault();
             void submitPrompt(promptValue);
           }}
         >
           <span className="se-prompt-badge">BETA</span>
+          <button
+            type="button"
+            className="se-prompt-model"
+            aria-haspopup="listbox"
+            aria-expanded={modelOpen}
+            aria-label="Generation model"
+            onClick={() => setModelOpen((open) => !open)}
+          >
+            {promptModel} <Icon name="fa-chevron-down" />
+          </button>
           <input
             className="se-prompt-input"
             value={promptValue}
@@ -3368,6 +3400,37 @@ export function StudioEditorShell() {
             placeholder={promptBusy ? "Generating…" : "Describe a part to generate"}
             aria-label="Describe a part to generate"
           />
+          {modelOpen ? (
+            <div className="se-model-menu" role="listbox" aria-label="Generation model">
+              <div className="se-model-custom" aria-disabled="true">
+                <span>Create Custom Model</span>
+                <span className="se-model-credits">100 Credits</span>
+              </div>
+              <p className="se-model-label">All models</p>
+              {(
+                [
+                  ["v6", "Balanced, high-fidelity generations"],
+                  ["v6-wild", "Wilder variations for experiments"],
+                  ["v6-mini", "Faster, lighter generations"],
+                ] as const
+              ).map(([value, description]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="option"
+                  aria-selected={promptModel === value}
+                  className={promptModel === value ? "on" : undefined}
+                  onClick={() => {
+                    setPromptModel(value);
+                    setModelOpen(false);
+                  }}
+                >
+                  <strong>{value}</strong>
+                  <small>{description}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <button
             type="submit"
             className="se-prompt-send"

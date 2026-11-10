@@ -1096,14 +1096,26 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   });
   await expect(page.getByRole("button", { name: "Generate this part" })).toBeDisabled();
 
+  // Model picker (S38): three models, selecting one changes the request.
+  await page.getByRole("button", { name: "Generation model" }).click();
+  const models = page.getByRole("listbox", { name: "Generation model" });
+  await expect(models).toBeVisible();
+  await expect(models.getByRole("option")).toHaveCount(3);
+  await models.getByRole("option", { name: /v6-mini/ }).click();
+  await expect(models).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Generation model" })).toContainText("v6-mini");
+
   // Generation is inline: mock the API, then the result lands on the track.
-  await page.route("**/api/v3/web-music/generate", (route) =>
-    route.fulfill({
+  const captured: { model?: unknown } = {};
+  await page.route("**/api/v3/web-music/generate", (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    captured.model = body.model;
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ task_id: "gen-test", status: "queued", title: "Generated demo", style: "pop" }),
-    })
-  );
+    });
+  });
   await page.route("**/api/v3/web-music/generations/gen-test", (route) =>
     route.fulfill({
       status: 200,
@@ -1130,6 +1142,7 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   await expect(page.getByRole("status").filter({ hasText: "Generated and added" })).toBeVisible({
     timeout: 20_000,
   });
+  expect(captured.model).toBe("v6-mini");
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(1);
 });
 
