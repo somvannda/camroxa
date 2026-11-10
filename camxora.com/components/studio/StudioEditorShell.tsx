@@ -398,6 +398,7 @@ export function StudioEditorShell() {
   const [pendingSong, setPendingSong] = useState<WebMusicGeneration | null>(null);
   const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
   const promptRef = useRef<HTMLFormElement | null>(null);
 
   useEffect(() => {
@@ -417,6 +418,24 @@ export function StudioEditorShell() {
       document.removeEventListener("keydown", onKey);
     };
   }, [modelOpen]);
+
+  useEffect(() => {
+    if (!attachOpen) return;
+    const onPointer = (event: PointerEvent) => {
+      if (promptRef.current && !promptRef.current.contains(event.target as Node)) {
+        setAttachOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAttachOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [attachOpen]);
   const [remixingSongId, setRemixingSongId] = useState<string | null>(null);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
@@ -441,6 +460,8 @@ export function StudioEditorShell() {
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
+  /** A clip explicitly attached with the prompt bar's + menu (not just selected). */
+  const [attachedClipId, setAttachedClipId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [tracksCollapsed, setTracksCollapsed] = useState(false);
   const [playhead, setPlayhead] = useState(0);
@@ -3570,7 +3591,7 @@ export function StudioEditorShell() {
           );
         })()}
 
-        {/* Captured prompt bar (S16/S52): opens the generator with the prompt. */}
+        {/* Captured prompt bar (S16/S36/S38/S45): attach, prompt, model, send. */}
         <form
           className={`se-prompt${designMode ? " is-design" : ""}`}
           ref={promptRef}
@@ -3580,50 +3601,119 @@ export function StudioEditorShell() {
           }}
         >
           <span className="se-prompt-badge">BETA</span>
-          {designMode && designContext ? (
-            <span className="se-prompt-context is-plugin">
-              <Icon name="fa-wave-square" />
-              {designContext}
-              <button type="button" aria-label="Exit plugin designer" onClick={exitPluginDesigner}>
-                <Icon name="fa-xmark" />
-              </button>
-            </span>
-          ) : selectedTrack ? (
-            <span className="se-prompt-context">
-              {tracks.find((track) => track.id === selectedTrack)?.name ?? "Track"}
+          <div className="se-prompt-top">
+            <button
+              type="button"
+              className="se-prompt-attach"
+              aria-label="Attach a track or clip"
+              aria-haspopup="menu"
+              aria-expanded={attachOpen}
+              onClick={() => setAttachOpen((open) => !open)}
+            >
+              <Icon name="fa-plus" />
+            </button>
+            {designMode && designContext ? (
+              <span className="se-prompt-context is-plugin">
+                <Icon name="fa-wave-square" />
+                {designContext}
+                <button type="button" aria-label="Exit plugin designer" onClick={exitPluginDesigner}>
+                  <Icon name="fa-xmark" />
+                </button>
+              </span>
+            ) : selectedTrack ? (
+              <span className="se-prompt-context">
+                {(attachedClipId === selectedClip &&
+                  clips.find((clip) => clip.id === attachedClipId)?.title) ||
+                  tracks.find((track) => track.id === selectedTrack)?.name ||
+                  "Track"}
+                <button
+                  type="button"
+                  aria-label="Clear track context"
+                  onClick={() => {
+                    setAttachedClipId(null);
+                    setSelectedTrack(null);
+                    setSelectedClip(null);
+                  }}
+                >
+                  <Icon name="fa-xmark" />
+                </button>
+              </span>
+            ) : null}
+            <span className="se-prompt-tools">
               <button
                 type="button"
-                aria-label="Clear track context"
-                onClick={() => setSelectedTrack(null)}
+                aria-label={assistantOpen ? "Dock prompt to the centre" : "Open conversation"}
+                aria-pressed={assistantOpen}
+                onClick={() => setAssistantOpen((open) => !open)}
+              >
+                <Icon name={assistantOpen ? "fa-up-right-and-down-left-from-center" : "fa-table-columns"} />
+              </button>
+              <button
+                type="button"
+                aria-label={designMode ? "Exit plugin designer" : "Clear prompt"}
+                onClick={() => {
+                  if (designMode) exitPluginDesigner();
+                  else setPromptValue("");
+                }}
               >
                 <Icon name="fa-xmark" />
               </button>
             </span>
+          </div>
+          {attachOpen ? (
+            <div className="se-prompt-attach-menu" role="menu" aria-label="Attach to the prompt">
+              {tracks.map((track) => (
+                <button
+                  key={track.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setAttachedClipId(null);
+                    setSelectedTrack(track.id);
+                    setSelectedClip(null);
+                    setAttachOpen(false);
+                  }}
+                >
+                  <Icon name="fa-layer-group" /> {track.name}
+                </button>
+              ))}
+              {clips.slice(0, 6).map((clip) => {
+                const owner = tracks.find((track) => track.clipIds.includes(clip.id));
+                return (
+                  <button
+                    key={clip.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      if (owner) setSelectedTrack(owner.id);
+                      setSelectedClip(clip.id);
+                      setAttachedClipId(clip.id);
+                      setAttachOpen(false);
+                    }}
+                  >
+                    <Icon name="fa-wave-square" /> {clip.title || "Clip"}
+                  </button>
+                );
+              })}
+            </div>
           ) : null}
-          <button
-            type="button"
-            className="se-prompt-model"
-            aria-haspopup="listbox"
-            aria-expanded={modelOpen}
-            aria-label={`Generation model: ${promptModel}`}
-            onClick={() => setModelOpen((open) => !open)}
-          >
-            {promptModel} <Icon name="fa-chevron-down" />
-          </button>
-          <input
-            className="se-prompt-input"
-            value={promptValue}
-            disabled={promptBusy}
-            onChange={(event) => setPromptValue(event.target.value)}
-            placeholder={
-              designMode
-                ? "Make me a new plugin. Here's what I have in mind:"
-                : promptBusy
-                  ? "Generating…"
-                  : "Describe a part to generate"
-            }
-            aria-label="Describe a part to generate"
-          />
+          <div className="se-prompt-line">
+            <input
+              className="se-prompt-input"
+              value={promptValue}
+              disabled={promptBusy}
+              onChange={(event) => setPromptValue(event.target.value)}
+              placeholder={
+                designMode
+                  ? "Make me a new plugin. Here's what I have in mind:"
+                  : promptBusy
+                    ? "Generating…"
+                    : "Describe a part to generate"
+              }
+              aria-label="Describe a part to generate"
+            />
+            {!designMode && !promptValue.trim() ? <kbd className="se-prompt-kbd">Tab</kbd> : null}
+          </div>
           {modelOpen ? (
             <div className="se-model-menu" role="listbox" aria-label="Generation model">
               <div className="se-model-custom" aria-disabled="true">
@@ -3655,15 +3745,27 @@ export function StudioEditorShell() {
               ))}
             </div>
           ) : null}
-          <button
-            type="submit"
-            className={`se-prompt-send${designMode && promptValue.trim() ? " is-active" : ""}`}
-            aria-label={designMode ? "Design this plugin" : "Generate this part"}
-            title={designMode ? "Builds a plugin, no credits spent" : "Generates with your account credits"}
-            disabled={!promptValue.trim() || promptBusy}
-          >
-            <Icon name="fa-arrow-up" />
-          </button>
+          <div className="se-prompt-actions">
+            <button
+              type="button"
+              className="se-prompt-model"
+              aria-haspopup="listbox"
+              aria-expanded={modelOpen}
+              aria-label={`Generation model: ${promptModel}`}
+              onClick={() => setModelOpen((open) => !open)}
+            >
+              {promptModel} <Icon name="fa-chevron-down" />
+            </button>
+            <button
+              type="submit"
+              className={`se-prompt-send${designMode && promptValue.trim() ? " is-active" : ""}`}
+              aria-label={designMode ? "Design this plugin" : "Generate this part"}
+              title={designMode ? "Builds a plugin, no credits spent" : "Generates with your account credits"}
+              disabled={!promptValue.trim() || promptBusy}
+            >
+              <Icon name="fa-arrow-up" />
+            </button>
+          </div>
         </form>
       </div>
 
@@ -3682,6 +3784,11 @@ export function StudioEditorShell() {
           </header>
           <p className="se-assistant-note">Chat is powered by AI and can make mistakes.</p>
           <div className="se-assistant-log">
+            {assistantMessages.length === 0 && !pendingSong && !designRequest && !designBuilt ? (
+              <p className="se-assistant-invite">
+                Describe a section or ask for ideas to start a conversation with the Studio Agent.
+              </p>
+            ) : null}
             {assistantMessages.map((message) => (
               <p key={message.id} className={`se-assistant-msg ${message.role}`}>
                 {message.text}

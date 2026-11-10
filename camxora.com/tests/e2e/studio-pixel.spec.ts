@@ -1102,10 +1102,10 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
       background: getComputedStyle(element).backgroundColor,
     };
   });
-  // S16/S52: a 645 x 56 floating bar 16 px above the shell body bottom.
+  // S16/S38: a 645 x 97 floating card 16 px above the shell body bottom.
   expect(info).toMatchObject({
     width: 645,
-    height: 56,
+    height: 97,
     centered: 0,
     bottomGap: 16,
     radius: "16px",
@@ -1194,6 +1194,49 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
 
   await assistant.getByRole("button", { name: "Close assistant" }).click();
   await expect(page.locator(".se-tracks")).toBeVisible();
+});
+
+test("prompt dock matches S36 and toggles the conversation", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel dock" });
+
+  // S16/S38 anatomy: attach, tools, input line with Tab, model + send.
+  const bar = page.locator(".se-prompt");
+  await expect(bar.locator(".se-prompt-attach")).toBeVisible();
+  await expect(bar.locator(".se-prompt-kbd")).toHaveText("Tab");
+  await expect(bar.locator(".se-prompt-actions .se-prompt-model")).toBeVisible();
+
+  // S36: the panel glyph undocks the bar into the bottom-left conversation dock.
+  await page.getByRole("button", { name: "Open conversation" }).click();
+  const assistant = page.getByRole("complementary", { name: "Studio assistant" });
+  await expect(assistant).toBeVisible();
+  await expect(
+    assistant.getByText(/Describe a section or ask for ideas to start a conversation/)
+  ).toBeVisible();
+  const dock = await bar.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: Math.round(rect.x), width: Math.round(rect.width), height: Math.round(rect.height) };
+  });
+  expect(dock.x).toBe(16);
+  expect(dock.width).toBe(315);
+  expect(dock.height).toBeGreaterThan(90);
+
+  // The expand glyph returns it to the centre and closes the conversation.
+  await page.getByRole("button", { name: "Dock prompt to the centre" }).click();
+  await expect(assistant).toHaveCount(0);
+  expect(
+    await bar.evaluate((element) => Math.round(element.getBoundingClientRect().width))
+  ).toBe(645);
+
+  // Attach menu: a clip becomes the prompt's context chip and clears again.
+  await page.getByRole("button", { name: "Attach a track or clip" }).click();
+  const attach = page.getByRole("menu", { name: "Attach to the prompt" });
+  await expect(attach).toBeVisible();
+  await attach.getByRole("menuitem", { name: /Fixture clip/ }).click();
+  await expect(page.locator(".se-prompt-context")).toHaveText(/Fixture clip/);
+  await page.getByRole("button", { name: "Clear track context" }).click();
+  await expect(page.locator(".se-prompt-context")).toHaveCount(0);
 });
 
 test("plugin cards offer the captured preset menu", async ({ page }) => {

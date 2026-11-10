@@ -4688,7 +4688,7 @@ html{color-scheme:dark}
 @media (max-width:767px){.se-shell{display:none}.se-desktop-gate{display:flex;align-items:center;justify-content:center;min-height:100dvh;padding:24px;background:#0a0a0a}}
 .se-prompt-model{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 10px;border:0;border-radius:999px;background:hsl(222 30% 15%);color:hsl(var(--foreground));font:inherit;font-size:12px;cursor:pointer}
 .se-prompt-model .icon{width:10px;height:10px}
-.se-model-menu{position:absolute;right:10px;bottom:64px;display:flex;flex-direction:column;width:248px;padding:8px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:70}
+.se-model-menu{position:absolute;right:10px;bottom:calc(100% - 8px);display:flex;flex-direction:column;width:248px;padding:8px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:70}
 .se-model-custom{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;color:#c2c2c1;font-size:12px;opacity:.7}
 .se-model-credits{font-size:11px;color:#8b90a6}
 .se-model-label{margin:8px 10px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8b90a6}
@@ -4701,10 +4701,11 @@ html{color-scheme:dark}
 .se-shell.has-assistant .se-body{padding-left:378px}
 .se-shell.has-assistant .se-foot{padding-left:390px}
 .se-shell.has-assistant .se-tracks{display:none}
-.se-shell.has-assistant .se-prompt{position:fixed;left:16px;right:auto;bottom:60px;transform:none;width:338px;z-index:80}
+.se-shell.has-assistant .se-prompt{position:fixed;left:16px;right:auto;bottom:60px;transform:none;width:315px;z-index:80;padding:8px 12px 10px}
 .se-assistant{position:fixed;left:8px;top:8px;bottom:8px;z-index:75;display:flex;flex-direction:column;width:370px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
 .se-assistant-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
 .se-assistant-head strong{font-size:13px;font-weight:600}
+.se-assistant-invite{margin:auto;max-width:240px;text-align:center;color:#8b90a6;font-size:12px;line-height:1.55}
 .se-assistant-note{margin:0;padding:10px 14px 4px;font-size:11px;color:#8b90a6}
 .se-assistant-log{display:flex;flex-direction:column;gap:10px;padding:10px 14px;overflow-y:auto}
 .se-assistant-msg{margin:0;font-size:13px;line-height:1.45}
@@ -4714,20 +4715,36 @@ html{color-scheme:dark}
 .se-assistant-take{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:#8b90a6}
 .se-assistant-take span{flex:1;color:hsl(var(--foreground))}
 .se-assistant-actions{display:flex;gap:8px;padding-top:4px}
-.se-prompt{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;width:min(645px,calc(100% - 48px));height:56px;padding:0 12px 0 16px;border-radius:16px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:6}
+.se-prompt{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;flex-direction:column;gap:2px;width:min(645px,calc(100% - 48px));padding:5px 14px;border-radius:16px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:6}
+.se-prompt-top{display:flex;align-items:center;gap:8px;min-height:28px}
+.se-prompt-attach{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid rgba(255,255,255,.12);border-radius:50%;background:rgba(255,255,255,.04);color:hsl(var(--foreground));cursor:pointer}
+.se-prompt-attach:hover{background:rgba(255,255,255,.1)}
+.se-prompt-attach .icon{width:11px;height:11px}
+.se-prompt-tools{margin-left:auto;display:flex;align-items:center;gap:2px}
+.se-prompt-tools button{display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#8b90a6;cursor:pointer}
+.se-prompt-tools button:hover{background:rgba(255,255,255,.08);color:hsl(var(--foreground))}
+.se-prompt-tools .icon{width:13px;height:13px}
+.se-prompt-line{display:flex;align-items:center;gap:8px;min-height:20px}
+.se-prompt-kbd{flex:none;padding:2px 6px;border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.04);color:#8b90a6;font-family:inherit;font-size:11px;line-height:1.4}
+.se-prompt-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:32px}
+.se-prompt-attach-menu{position:absolute;left:14px;bottom:calc(100% - 2px);z-index:80;display:flex;flex-direction:column;width:220px;max-height:260px;overflow-y:auto;padding:6px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45)}
+.se-prompt-attach-menu button{display:flex;align-items:center;gap:8px;padding:7px 8px;border:0;border-radius:8px;background:transparent;color:hsl(var(--foreground));font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.se-prompt-attach-menu button:hover{background:rgba(255,255,255,.07)}
+.se-prompt-attach-menu .icon{width:11px;height:11px;color:#8b90a6}
 .se-prompt-context{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 6px 0 10px;border-radius:999px;background:hsl(var(--accent) / .18);color:hsl(var(--foreground));font-size:12px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
 .se-prompt-context button{display:grid;place-items:center;width:18px;height:18px;flex:none;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer}
 .se-prompt-context button:hover{background:rgba(255,255,255,.12)}
 .se-prompt-context .icon{width:9px;height:9px}
-.se-prompt-badge{padding:2px 7px;border-radius:999px;background:hsl(var(--accent));color:hsl(var(--accent-foreground));font-size:11px;font-weight:600;letter-spacing:.04em}
+.se-prompt-badge{position:absolute;top:-10px;right:18px;padding:2px 7px;border-radius:999px;background:hsl(var(--accent));color:hsl(var(--accent-foreground));font-size:11px;font-weight:600;letter-spacing:.04em}
 .se-prompt-input{flex:1;min-width:0;border:0;background:transparent;color:#f7f4ef;font:inherit;font-size:13px;outline:none}
 .se-prompt-input::placeholder{color:#8b90a6}
-.se-prompt-send{display:grid;place-items:center;width:32px;height:32px;flex:none;border:0;border-radius:50%;background:#f7f4ef;color:#111111;cursor:pointer}
+.se-prompt-send{display:grid;place-items:center;width:32px;height:32px;flex:none;border:0;border-radius:50%;background:rgba(255,255,255,.08);color:#8b90a6;cursor:pointer}
 .se-prompt-send:disabled{opacity:.35;cursor:not-allowed}
 .se-prompt.is-design{border-color:hsl(var(--accent) / .42);background:linear-gradient(180deg,hsl(var(--accent) / .16),hsl(222 30% 11%) 78%);box-shadow:0 18px 48px rgba(0,0,0,.45)}
+.se-prompt.is-design .se-prompt-attach{border-color:hsl(var(--accent) / .4);color:hsl(var(--accent))}
 .se-prompt-context.is-plugin{background:hsl(var(--accent) / .3);padding-left:9px}
 .se-prompt-context.is-plugin > .icon{width:11px;height:11px;color:hsl(var(--accent))}
-.se-prompt-send.is-active{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
+.se-prompt-send.is-active,.se-prompt-send:not(:disabled){background:#f7f4ef;color:#111111}
 .se-design-actions{display:flex;gap:8px;padding:10px 0 2px}
 .se-design-card{display:flex;align-items:center;gap:10px;width:100%;min-height:72px;margin:10px 0;padding:12px 14px;border-radius:10px;background:hsl(222 30% 13%);border:1px solid rgba(255,255,255,.08);cursor:grab}
 .se-design-card:active{cursor:grabbing}
