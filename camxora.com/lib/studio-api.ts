@@ -358,6 +358,23 @@ export async function listStudioUploads(limit = 50): Promise<{ items: StudioUplo
   return studioJson(`/api/v3/web-music/studio/uploads?limit=${limit}`);
 }
 
+/** One row per stem clip from completed stem operations (G12/B-004). */
+export type StudioStem = {
+  clip_id: string;
+  operation_id: string;
+  task_id: string;
+  title: string;
+  stem_type: string;
+  audio_url: string;
+  image_url?: string | null;
+  duration_seconds?: number | null;
+  created_at?: string | null;
+};
+
+export async function listStudioStems(limit = 100): Promise<{ items: StudioStem[] }> {
+  return studioJson(`/api/v3/web-music/studio/stems?limit=${limit}`);
+}
+
 export type StudioProjectVersion = {
   id: string;
   project_id: string;

@@ -1392,6 +1392,16 @@ async def list_studio_operations(
     )
 
 
+@router.get("/studio/stems")
+async def list_studio_stems(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(100, ge=1, le=200),
+) -> dict:
+    """Completed stem sets, flattened to one row per stem clip (G12)."""
+    return await service.list_studio_stems(UUID(ctx.user_id), limit=limit)
+
+
 @router.get("/studio/operations/{operation_id}")
 async def get_studio_operation(
     operation_id: UUID,

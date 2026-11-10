@@ -26,15 +26,15 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
   const library = page.getByRole("complementary", { name: "Library" });
   await expect(library).toBeVisible();
 
-  // Level 1: the four filter tiles, in the captured order. Stems stays visible but
-  // disabled until a stems job has actually produced a set (B-005).
+  // Level 1: the four filter tiles, in the captured order. Stems is enabled now
+  // that completed stem sets exist (G12).
   const tiles = library.getByRole("group", { name: "Library filters" }).getByRole("button");
   await expect(tiles).toHaveCount(4);
   await expect(tiles.nth(0)).toHaveText("All Songs");
   await expect(tiles.nth(1)).toHaveText("Liked");
   await expect(tiles.nth(2)).toHaveText("Stems");
   await expect(tiles.nth(3)).toHaveText("Uploads");
-  await expect(tiles.nth(2)).toBeDisabled();
+  await expect(tiles.nth(2)).toBeEnabled();
 
   // Both level-1 sections resolve to rows or their own empty explanation.
   for (const label of ["Workspaces", "Studio projects"]) {
@@ -143,7 +143,7 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
 
   // The captured toolbar: Liked only / New / In Project / Stems / Uploads.
   await expect(library.getByLabel("Liked only")).toBeVisible();
-  await expect(library.getByRole("button", { name: "Stems" })).toBeDisabled();
+  await expect(library.getByRole("button", { name: "Stems" })).toBeEnabled();
   await expect(library.getByRole("button", { name: "Uploads" })).toBeVisible();
 
   await library.getByRole("button", { name: "In Project" }).click();
@@ -214,6 +214,52 @@ test("double-clicking a song opens its detail rail and Back returns to the list"
   await expect(page.getByRole("complementary", { name: "Library" })).toBeVisible();
 });
 
+
+test("stems view lists completed stems and adds one to the timeline", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Stems ${Math.random().toString(36).slice(2, 6)}` });
+  await page.route("**/api/v3/web-music/studio/stems*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            clip_id: "stem-vocals",
+            operation_id: "op-1",
+            task_id: "task-1",
+            title: "(Vocals)",
+            stem_type: "Vocals",
+            audio_url: "/seed/demo-loop.wav",
+            duration_seconds: 12,
+            created_at: "2026-11-10T07:00:00Z",
+          },
+          {
+            clip_id: "stem-inst",
+            operation_id: "op-1",
+            task_id: "task-1",
+            title: "(Instrumental)",
+            stem_type: "Instrumental",
+            audio_url: "/seed/demo-loop.wav",
+            duration_seconds: 12,
+            created_at: "2026-11-10T07:00:00Z",
+          },
+        ],
+      }),
+    })
+  );
+
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "Library" });
+  await library.getByRole("group", { name: "Library filters" }).getByRole("button", { name: "Stems" }).click();
+  await expect(library.getByText("Vocals", { exact: true })).toBeVisible();
+  await expect(library.getByText("Instrumental", { exact: true })).toBeVisible();
+
+  const before = await page.locator(".se-clip").count();
+  await library.getByRole("button", { name: "Add Vocals" }).click();
+  await expect(page.locator(".se-clip")).toHaveCount(before + 1);
+  await expect(page.locator(".se-clip", { hasText: "Vocals" })).toHaveCount(1);
+});
 
 test("library upload adds audio to the Uploads list", async ({ page }) => {
   test.setTimeout(120_000);

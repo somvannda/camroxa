@@ -5013,6 +5013,72 @@ class WebMusicService:
         )
         return {"items": [self._studio_operation_payload(row) for row in rows]}
 
+    async def list_studio_stems(self, user_id: UUID, *, limit: int = 100) -> dict[str, Any]:
+        """Flatten completed stem operations into one typed stem list (G12/B-004).
+
+        A stem operation's provider result is a clip list; the library wants one row per
+        stem, not one row per job, so project each clip with its group name.
+        """
+        safe_limit = max(1, min(int(limit), 200))
+        rows = await self._pool.fetch(
+            """
+            SELECT id, task_id, result_json, created_at FROM studio_operations
+            WHERE user_id = $1
+              AND operation_type = 'stems'
+              AND status IN ('complete', 'success', 'completed')
+              AND result_json IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id,
+            safe_limit,
+        )
+        items: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            result = row["result_json"]
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except (TypeError, ValueError):
+                    continue
+            if not isinstance(result, dict):
+                continue
+            clips = result.get("clips")
+            if not isinstance(clips, list):
+                continue
+            for clip in clips:
+                if not isinstance(clip, dict):
+                    continue
+                clip_id = str(clip.get("id") or "").strip()
+                if not clip_id or clip_id in seen:
+                    continue
+                audio = (
+                    clip.get("audio_url")
+                    or clip.get("durable_url")
+                    or clip.get("stream_audio_url")
+                )
+                if not audio:
+                    continue
+                seen.add(clip_id)
+                metadata = clip.get("metadata") if isinstance(clip.get("metadata"), dict) else {}
+                items.append(
+                    {
+                        "clip_id": clip_id,
+                        "operation_id": str(row["id"]),
+                        "task_id": str(row["task_id"]),
+                        "title": str(clip.get("title") or "Stem"),
+                        "stem_type": str(metadata.get("stem_type_group_name") or ""),
+                        "audio_url": str(audio),
+                        "image_url": clip.get("image_url") or clip.get("imageUrl"),
+                        "duration_seconds": clip.get("duration"),
+                        "created_at": row["created_at"].isoformat()
+                        if row["created_at"] is not None
+                        else None,
+                    }
+                )
+        return {"items": items}
+
     async def radio_station(
         self, user_id: UUID, task_id: UUID, *, limit: int = 20
     ) -> dict[str, Any]:

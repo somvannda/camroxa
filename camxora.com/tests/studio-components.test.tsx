@@ -15,7 +15,7 @@ import { StudioSongDetail } from "@/components/studio/StudioSongDetail";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import type { StudioTrack } from "@/lib/studio-tracks";
-import type { StudioProject, StudioUpload } from "@/lib/studio-api";
+import type { StudioProject, StudioStem, StudioUpload } from "@/lib/studio-api";
 import { addStudioProjectComment, listStudioProjectComments } from "@/lib/studio-api";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
@@ -274,6 +274,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     activeWorkspaceId: null,
     projects: [] as StudioProject[] | null,
     uploads: [] as StudioUpload[] | null,
+    stems: [] as StudioStem[] | null,
     currentProjectId: null,
     likedKeys: [] as string[] | null,
     playingSongId: null as string | null,
@@ -285,6 +286,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     onClose: noop,
     onBack: noop,
     onOpenSongs: noop,
+    onOpenStems: noop,
     onOpenUploads: noop,
     onOpenWorkspace: noop,
     onFilter: noop,
@@ -325,8 +327,9 @@ describe("StudioLibrary", () => {
   it("opens on the level-1 tile chooser", async () => {
     const user = userEvent.setup();
     const onOpenSongs = vi.fn();
+    const onOpenStems = vi.fn();
     const onOpenUploads = vi.fn();
-    render(<StudioLibrary {...libraryProps({ onOpenSongs, onOpenUploads })} />);
+    render(<StudioLibrary {...libraryProps({ onOpenSongs, onOpenStems, onOpenUploads })} />);
 
     const tiles = screen.getByRole("group", { name: "Library filters" }).querySelectorAll("button");
     expect([...tiles].map((node) => node.textContent)).toEqual([
@@ -335,8 +338,11 @@ describe("StudioLibrary", () => {
       "Stems",
       "Uploads",
     ]);
-    // The stems tile is visible but explained rather than silently dead (B-005).
-    expect((screen.getByRole("button", { name: "Stems" }) as HTMLButtonElement).disabled).toBe(true);
+    // Completed stem sets exist now, so the tile opens the list (G12).
+    expect((screen.getByRole("button", { name: "Stems" }) as HTMLButtonElement).disabled).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Stems" }));
+    expect(onOpenStems).toHaveBeenCalledOnce();
 
     await user.click(screen.getByRole("button", { name: "All Songs" }));
     expect(onOpenSongs).toHaveBeenCalledWith("all");
@@ -572,12 +578,14 @@ describe("StudioLibrary", () => {
   it("changes the corpus from the level-2 filter toolbar", async () => {
     const user = userEvent.setup();
     const onFilter = vi.fn();
+    const onOpenStems = vi.fn();
     const onOpenUploads = vi.fn();
     render(
       <StudioLibrary
         {...libraryProps({
           view: { kind: "songs", title: "All Songs", filter: "all" },
           onFilter,
+          onOpenStems,
           onOpenUploads,
         })}
       />
@@ -586,7 +594,8 @@ describe("StudioLibrary", () => {
     expect(onFilter).toHaveBeenCalledWith("project");
     await user.click(screen.getByLabelText("Liked only"));
     expect(onFilter).toHaveBeenCalledWith("liked");
-    expect((screen.getByRole("button", { name: "Stems" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Stems" }));
+    expect(onOpenStems).toHaveBeenCalledOnce();
     await user.click(screen.getByRole("button", { name: "Uploads" }));
     expect(onOpenUploads).toHaveBeenCalledOnce();
   });

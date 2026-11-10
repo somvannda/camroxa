@@ -42,7 +42,7 @@ functional controls the capture does not show (listed below).
 | Shell shrink | header/footer/timeline stop at the rail edge (x1321 at 1689) | same |
 | Library head | 34 px: panel icon + title left, magnifier right | same (close X kept) |
 | Library tiles | 64 px cards, 40 px icon squares (blue/purple/green/pink) | same |
-| Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same |
+| Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same; the Stems view reuses the upload row with a layer glyph, Play and Add |
 | Uploads level | Filter / New / liked / In Project / Stems chips | same; Filter and Stems disabled |
 | Empty library | centred “No songs found.” + 38 px Reset all filters pill | same (only when filters/search caused it) |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |

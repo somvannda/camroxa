@@ -32,18 +32,17 @@ decision (vitest vs. node:test vs. Playwright only).
 web dev server `:3103`. Real generation and stems are verified end to end — see B-005
 for the exact environment and the callback tunnel.
 
-## B-004 — Stems tab needs a listing API
+## B-004 — Stems tab needs a listing API (RESOLVED 2026-11-10)
 
-**Blocks:** G12's stems tab, and PRJ-023.
+**Was:** a stem set existed only as a `studio_operations` row with a provider-shaped
+`result_json`, and no stems job had ever completed in this environment (B-005), so the
+projection could not be written against real data.
 
-**State:** uploads and workspaces now list (`GET /studio/uploads`, `GET /workspaces`
-with `song_count`), and workspace selection filters the song list. Stems do not: a stem
-set exists only as a `studio_operations` row with a provider-shaped `result_json`, and
-no stems job has ever completed in this environment (B-005), so the projection cannot be
-written against real data.
-
-**Unblock:** finish B-005, capture one successful stems result, then project it as a
-typed list endpoint. Not on the critical path.
+**Resolved:** B-005 now has a real result, and `GET /api/v3/web-music/studio/stems`
+flattens completed `stems` operations into one typed row per stem clip (deduped, with
+audio URL, group name, duration and timestamps). The library's Stems tile and toolbar
+chip open that list; each row auditions and adds the stem at the playhead. Covered by
+`platform_api/tests/test_web_music_studio_stems.py` and the library e2e.
 
 ## B-005 — Studio ops need one genuinely generated clip (RESOLVED LOCALLY 2026-11-10)
 

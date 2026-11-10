@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import { groupByDay, relativeAge } from "@/lib/studio-library-grouping";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
-import type { StudioProject, StudioUpload } from "@/lib/studio-api";
+import type { StudioProject, StudioStem, StudioUpload } from "@/lib/studio-api";
 
 /**
  * Library panel (spec §19.1/§19.2): two levels, like the reference.
@@ -16,8 +16,8 @@ import type { StudioProject, StudioUpload } from "@/lib/studio-api";
  * list itself: songs grouped under Today / Yesterday / date headings, with the captured
  * toolbar (filter / + New / upload / In Project / Stems), or the uploads.
  *
- * Stems stays visible but disabled: a stem set cannot be listed before a stems job has
- * succeeded (B-005), so a control that opens nothing would be worse than a labelled one.
+ * Stems opens the completed stem clips projected by `GET /studio/stems` (G12); each
+ * row auditions and adds at the playhead, like an upload.
  */
 
 export type SongFilter = "all" | "liked" | "project";
@@ -25,6 +25,7 @@ export type SongFilter = "all" | "liked" | "project";
 export type LibraryView =
   | { kind: "root" }
   | { kind: "songs"; title: string; filter: SongFilter }
+  | { kind: "stems" }
   | { kind: "uploads" };
 
 export type StudioLibraryProps = {
@@ -37,6 +38,8 @@ export type StudioLibraryProps = {
   activeWorkspaceId: string | null;
   projects: StudioProject[] | null;
   uploads: StudioUpload[] | null;
+  /** Completed stem clips (G12); null while loading. */
+  stems?: StudioStem[] | null;
   currentProjectId: string | null;
   /** Clip keys the viewer liked (`<songId>:<variant>`), or null while loading. */
   likedKeys: string[] | null;
@@ -44,6 +47,8 @@ export type StudioLibraryProps = {
   playingSongId: string | null;
   /** Upload id currently auditioning, or null. */
   playingUploadId: string | null;
+  /** Stem clip id currently auditioning, or null. */
+  playingStemId?: string | null;
   /** Song ids the open project already uses, for the In Project filter. */
   projectSongIds: string[];
   /** Double-clicking a row opens its detail rail (§100). */
@@ -54,6 +59,7 @@ export type StudioLibraryProps = {
   onClose: () => void;
   onBack: () => void;
   onOpenSongs: (filter: "all" | "liked") => void;
+  onOpenStems?: () => void;
   onOpenUploads: () => void;
   onOpenWorkspace: (workspaceId: string | null) => void;
   onFilter: (filter: SongFilter) => void;
@@ -71,6 +77,8 @@ export type StudioLibraryProps = {
   /** Audition an upload (reference uploads rows have Play). */
   onToggleUploadPlay: (upload: StudioUpload) => void;
   onAddUpload: (upload: StudioUpload) => void;
+  onToggleStemPlay?: (stem: StudioStem) => void;
+  onAddStem?: (stem: StudioStem) => void;
   onOpenProject: (projectId: string) => void;
 };
 
@@ -130,10 +138,12 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       activeWorkspaceId,
       projects,
       uploads,
+      stems = null,
       currentProjectId,
       likedKeys,
       playingSongId,
       playingUploadId,
+      playingStemId = null,
       projectSongIds,
       error,
       onRetry,
@@ -141,6 +151,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       onClose,
       onBack,
       onOpenSongs,
+      onOpenStems,
       onOpenUploads,
       onOpenWorkspace,
       onFilter,
@@ -152,6 +163,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       onToggleLike,
       onToggleUploadPlay,
       onAddUpload,
+      onToggleStemPlay,
+      onAddStem,
       onOpenProject,
     } = props;
 
@@ -247,7 +260,9 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               <button type="button" className="se-icon" aria-label="Back to library" onClick={onBack}>
                 <Icon name="fa-chevron-left" />
               </button>
-              <strong>{view.kind === "songs" ? view.title : "Uploads"}</strong>
+              <strong>
+                {view.kind === "songs" ? view.title : view.kind === "stems" ? "Stems" : "Uploads"}
+              </strong>
               <label className="se-lib-search-wrap">
                 <Icon name="fa-magnifying-glass" />
                 <input
@@ -286,12 +301,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                 <span className="se-lib-tile-icon" data-tone="liked"><Icon name="fa-heart" /></span>
                 <span>Liked</span>
               </button>
-              <button
-                type="button"
-                className="se-lib-tile"
-                disabled
-                title="Stems need a finished stem separation first"
-              >
+              <button type="button" className="se-lib-tile" onClick={onOpenStems}>
                 <span className="se-lib-tile-icon" data-tone="stems"><Icon name="fa-layer-group" /></span>
                 <span>Stems</span>
               </button>
@@ -421,6 +431,66 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               )}
             </section>
           </div>
+        ) : view.kind === "stems" ? (
+          <>
+            {stems === null ? (
+              <p className="se-lib-empty">Loading stems…</p>
+            ) : stems.length === 0 ? (
+              <p className="se-lib-empty">
+                No stems yet. Open a song and choose Get stems to separate it.
+              </p>
+            ) : (
+              <ul className="se-lib-list">
+                {stems
+                  .filter((stem) =>
+                    q ? `${stem.title} ${stem.stem_type}`.toLowerCase().includes(q) : true
+                  )
+                  .map((stem) => (
+                    <li key={stem.clip_id} className="se-lib-row se-lib-upload">
+                      <span className="se-lib-art se-lib-thumb-upload" aria-hidden="true">
+                        <Icon name="fa-layer-group" />
+                      </span>
+                      <span className="se-lib-song-body">
+                        <span className="se-lib-title">
+                          {stem.stem_type || stem.title.replace(/^.*?\(([^)]+)\)$/, "$1") || "Stem"}
+                        </span>
+                        <span className="se-lib-meta">
+                          {[
+                            formatUploadLength(stem.duration_seconds),
+                            stem.title.replace(/^\(.*\)$/, "").trim(),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </span>
+                      <span className="se-lib-song-actions">
+                        <button
+                          type="button"
+                          className="se-lib-icon"
+                          aria-label={`${
+                            playingStemId === stem.clip_id ? "Pause" : "Play"
+                          } ${stem.stem_type || stem.title}`}
+                          onClick={() => onToggleStemPlay?.(stem)}
+                          disabled={!stem.audio_url}
+                        >
+                          <Icon name={playingStemId === stem.clip_id ? "fa-pause" : "fa-play"} />
+                        </button>
+                        <button
+                          type="button"
+                          className="se-lib-icon"
+                          onClick={() => onAddStem?.(stem)}
+                          disabled={!stem.audio_url}
+                          aria-label={`Add ${stem.stem_type || stem.title}`}
+                          title="Add to the project"
+                        >
+                          <Icon name="fa-plus" />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </>
         ) : view.kind === "songs" ? (
           <>
             <div className="se-lib-tools" role="toolbar" aria-label="Song filters">
@@ -445,12 +515,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               >
                 In Project
               </button>
-              <button
-                type="button"
-                className="se-lib-chip"
-                disabled
-                title="Stems need a finished stem separation first"
-              >
+              <button type="button" className="se-lib-chip" onClick={onOpenStems}>
                 Stems
               </button>
               <button type="button" className="se-lib-chip" onClick={onOpenUploads}>
@@ -645,12 +710,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               >
                 In Project
               </button>
-              <button
-                type="button"
-                className="se-lib-chip"
-                disabled
-                title="Stems need a finished separation first"
-              >
+              <button type="button" className="se-lib-chip" onClick={onOpenStems}>
                 Stems
               </button>
             </div>

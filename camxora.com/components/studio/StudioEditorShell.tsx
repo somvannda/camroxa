@@ -10,8 +10,10 @@ import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import {
   listStudioProjects,
+  listStudioStems,
   listStudioUploads,
   uploadStudioAudio,
+  type StudioStem,
   type StudioUpload,
 } from "@/lib/studio-api";
 import {
@@ -200,6 +202,8 @@ export function StudioEditorShell() {
   const [libraryWorkspaceId, setLibraryWorkspaceId] = useState<string | null>(null);
   const [libraryProjects, setLibraryProjects] = useState<StudioProject[] | null>(null);
   const [libraryUploads, setLibraryUploads] = useState<StudioUpload[] | null>(null);
+  const [libraryStems, setLibraryStems] = useState<StudioStem[] | null>(null);
+  const [playingStemId, setPlayingStemId] = useState<string | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
   /** A failed library request; the panel offers a retry instead of pretending it is empty. */
   const [libraryError, setLibraryError] = useState<string | null>(null);
@@ -646,6 +650,18 @@ export function StudioEditorShell() {
           }
         });
     }
+    if (libraryView.kind === "stems" && libraryStems === null) {
+      listStudioStems(100)
+        .then((result) => {
+          if (active) setLibraryStems(result.items ?? []);
+        })
+        .catch(() => {
+          if (active) {
+            setLibraryStems([]);
+            setLibraryError("Some library data could not load.");
+          }
+        });
+    }
     if (likedKeys === null) {
       fetchWebMusicLikedKeys()
         .then((keys) => {
@@ -675,6 +691,8 @@ export function StudioEditorShell() {
     libraryWorkspaces,
     libraryProjects,
     libraryUploads,
+    libraryStems,
+    libraryView.kind,
     likedKeys,
     dislikedKeys,
   ]);
@@ -961,6 +979,51 @@ export function StudioEditorShell() {
     });
   }
 
+  /** Audition a stem clip; shares the single preview element with songs/uploads. */
+  function toggleStemPreview(stem: StudioStem) {
+    if (playingStemId === stem.clip_id) {
+      previewRef.current?.pause();
+      previewRef.current = null;
+      setPlayingStemId(null);
+      return;
+    }
+    if (!stem.audio_url) return;
+    previewRef.current?.pause();
+    const audio = new Audio(stem.audio_url);
+    previewRef.current = audio;
+    setPlayingSongId(null);
+    setPlayingUploadId(null);
+    setPlayingStemId(stem.clip_id);
+    audio.onended = () => {
+      setPlayingStemId((current) => (current === stem.clip_id ? null : current));
+    };
+    void audio.play().catch(() => {
+      setPlayingStemId((current) => (current === stem.clip_id ? null : current));
+    });
+  }
+
+  /** Place a stem clip on the timeline at the playhead. */
+  function addStemToTimeline(stem: StudioStem) {
+    const trackId = selectedTrack ?? tracks[0]?.id;
+    if (!trackId || !stem.audio_url) return;
+    const label = stem.stem_type || stem.title.replace(/^.*?\(([^)]+)\)$/, "$1") || "Stem";
+    insertClips([
+      {
+        trackId,
+        clip: {
+          id: `stem-${stem.clip_id}-${Date.now().toString(36)}`,
+          title: label,
+          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          duration: stem.duration_seconds ?? 8,
+          volume: 1,
+          pan: 0,
+          audioUrl: stem.audio_url,
+        },
+      },
+    ]);
+    setExportToast(`${label} added to the track at the playhead.`);
+  }
+
   /** Like/unlike the row's primary clip, updating the Liked filter optimistically. */
   async function toggleSongLike(song: WebMusicGeneration, nextLiked: boolean) {
     const clip = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
@@ -1018,6 +1081,7 @@ export function StudioEditorShell() {
     setLibraryWorkspaces(null);
     setLibraryProjects(null);
     setLibraryUploads(null);
+    setLibraryStems(null);
     setLikedKeys(null);
     setDislikedKeys(null);
   }
@@ -3570,10 +3634,12 @@ export function StudioEditorShell() {
               activeWorkspaceId={libraryWorkspaceId}
               projects={libraryProjects}
               uploads={libraryUploads}
+              stems={libraryStems}
               currentProjectId={projectId}
               likedKeys={likedKeys}
               playingSongId={playingSongId}
               playingUploadId={playingUploadId}
+              playingStemId={playingStemId}
               projectSongIds={projectSongIds}
               error={libraryError}
               onRetry={retryLibrary}
@@ -3581,6 +3647,7 @@ export function StudioEditorShell() {
               onClose={() => setLibraryOpen(false)}
               onBack={() => setLibraryView({ kind: "root" })}
               onOpenSongs={openLibrarySongs}
+              onOpenStems={() => setLibraryView({ kind: "stems" })}
               onOpenUploads={() => setLibraryView({ kind: "uploads" })}
               onOpenWorkspace={openLibraryWorkspace}
               onFilter={setLibrarySongFilter}
@@ -3594,6 +3661,8 @@ export function StudioEditorShell() {
               onToggleLike={(song, nextLiked) => void toggleSongLike(song, nextLiked)}
               onToggleUploadPlay={toggleUploadPreview}
               onAddUpload={addUploadToTimeline}
+              onToggleStemPlay={toggleStemPreview}
+              onAddStem={addStemToTimeline}
               onOpenProject={(id) => {
                 window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;
               }}
