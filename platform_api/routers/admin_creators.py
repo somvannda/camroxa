@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -13,6 +13,7 @@ from platform_api.services.creator_program_service import CreatorProgramService
 from platform_api.services.creator_release_service import CreatorReleaseService
 from platform_api.services.creator_eligibility_service import CreatorEligibilityService
 from platform_api.services.creator_payout_service import CreatorPayoutService
+from platform_api.services.royalty_engine_service import RoyaltyEngineService
 
 router = APIRouter(prefix="/admin/creators", tags=["creator-admin"])
 
@@ -35,10 +36,15 @@ async def _get_payout_service() -> CreatorPayoutService:
     raise NotImplementedError("CreatorPayoutService dependency not configured.")
 
 
+async def _get_royalty_engine_service() -> RoyaltyEngineService:
+    raise NotImplementedError("RoyaltyEngineService dependency not configured.")
+
+
 ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
 ReleaseServiceDep = Annotated[CreatorReleaseService, Depends(_get_release_service)]
 EligibilityServiceDep = Annotated[CreatorEligibilityService, Depends(_get_eligibility_service)]
 PayoutServiceDep = Annotated[CreatorPayoutService, Depends(_get_payout_service)]
+RoyaltyEngineDep = Annotated[RoyaltyEngineService, Depends(_get_royalty_engine_service)]
 
 
 class ApplicationDecisionRequest(BaseModel):
@@ -82,6 +88,12 @@ class MarkPaidRequest(BaseModel):
 
 class TakedownRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class RoyaltyCalculateRequest(BaseModel):
+    period_start: date
+    period_end: date
+    pool_usd: float | None = None
 
 
 @router.get("/applications")
@@ -186,6 +198,30 @@ async def refresh_eligibility(
 ) -> dict:
     del ctx
     return {"refreshed": await service.refresh_all(limit=limit)}
+
+
+@router.post("/royalty/calculate")
+async def calculate_royalty(
+    body: RoyaltyCalculateRequest,
+    ctx: AdminDep,
+    service: RoyaltyEngineDep,
+) -> dict:
+    del ctx
+    return await service.calculate(
+        period_start=body.period_start,
+        period_end=body.period_end,
+        pool_usd=body.pool_usd,
+    )
+
+
+@router.get("/royalty/periods")
+async def list_royalty_periods(
+    ctx: AdminDep,
+    service: RoyaltyEngineDep,
+    limit: int = Query(default=24, ge=1, le=100),
+) -> dict:
+    del ctx
+    return await service.list_periods(limit=limit)
 
 
 @router.get("/kyc")

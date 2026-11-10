@@ -81,6 +81,7 @@ const CreatorKycPage = React.lazy(() => import('@/pages/creators/kyc'));
 const CreatorPayoutsPage = React.lazy(() => import('@/pages/creators/payouts'));
 const CreatorApplicationsPage = React.lazy(() => import('@/pages/creators/applications'));
 const CreatorReleasesPage = React.lazy(() => import('@/pages/creators/releases'));
+const CreatorRoyaltiesPage = React.lazy(() => import('@/pages/creators/royalties'));
 
 function LoadingFallback() {
   return (
@@ -148,6 +149,7 @@ function App() {
                     <Route path="/creators/payouts" element={<CreatorPayoutsPage />} />
                     <Route path="/creators/applications" element={<CreatorApplicationsPage />} />
                     <Route path="/creators/releases" element={<CreatorReleasesPage />} />
+                    <Route path="/creators/royalties" element={<CreatorRoyaltiesPage />} />
                   </Route>
                 </Route>
 

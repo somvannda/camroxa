@@ -219,3 +219,43 @@ export function useTakedownRelease() {
     },
   });
 }
+
+export type RoyaltyPeriodRecord = {
+  id: string;
+  period_start: string;
+  period_end: string;
+  pool_micros: number;
+  total_weighted_streams: number;
+  rate_micros: number;
+  status: 'open' | 'calculated' | 'locked' | 'paid';
+  calculated_at?: string | null;
+  locked_at?: string | null;
+};
+
+export function useRoyaltyPeriods() {
+  return useQuery({
+    queryKey: ['royalty-periods'],
+    queryFn: async () =>
+      httpClient.get<{ items: RoyaltyPeriodRecord[] }>(
+        '/api/v3/admin/creators/royalty/periods',
+        { limit: 24 },
+      ),
+  });
+}
+
+export function useCalculateRoyalty() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      period_start: string;
+      period_end: string;
+      pool_usd?: number;
+    }) => {
+      return httpClient.post('/api/v3/admin/creators/royalty/calculate', input);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['royalty-periods'] });
+      queryClient.invalidateQueries({ queryKey: ['creator-payouts'] });
+    },
+  });
+}
