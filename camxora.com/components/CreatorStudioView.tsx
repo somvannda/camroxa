@@ -103,6 +103,7 @@ export function CreatorStudioView() {
   const [handleCheck, setHandleCheck] = useState<{ available: boolean; reason: string | null; suggestions: string[] } | null>(null);
   const [checking, setChecking] = useState(false);
   const [uploading, setUploading] = useState<"avatar" | "banner" | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -145,6 +146,7 @@ export function CreatorStudioView() {
   async function onUpload(kind: "avatar" | "banner", file: File) {
     setUploading(kind);
     setError("");
+    setFieldErrors({});
     try {
       const { url } = await uploadCreatorMedia(kind, file);
       setForm((current) => ({
@@ -153,6 +155,7 @@ export function CreatorStudioView() {
       }));
       showToast(kind === "avatar" ? "Avatar uploaded." : "Banner uploaded.");
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not upload image");
     } finally {
       setUploading(null);
@@ -160,8 +163,10 @@ export function CreatorStudioView() {
   }
 
   async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();    setSaving(true);
+    event.preventDefault();
+    setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       const payload = toPayload(form);
       const data = studio?.profile
@@ -171,6 +176,7 @@ export function CreatorStudioView() {
       if (data.profile) setForm(formFromProfile(data.profile));
       showToast(studio?.profile ? "Profile saved." : "Creator page created.");
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not save profile");
     } finally {
       setSaving(false);
@@ -281,7 +287,7 @@ export function CreatorStudioView() {
         className={profile ? styles.sectionGap : ""}
       >
         <form className={styles.form} onSubmit={onSubmit}>
-          <CreatorField label="Handle" htmlFor="creator-handle">
+          <CreatorField label="Handle" htmlFor="creator-handle" error={fieldErrors.handle}>
             <div style={{ display: "flex", gap: 8 }}>
               <CreatorInput
                 id="creator-handle"
@@ -307,7 +313,7 @@ export function CreatorStudioView() {
             ) : null}
           </CreatorField>
 
-          <CreatorField label="Display name" htmlFor="creator-name">
+          <CreatorField label="Display name" htmlFor="creator-name" error={fieldErrors.display_name}>
             <CreatorInput
               id="creator-name"
               value={form.display_name}
@@ -318,7 +324,7 @@ export function CreatorStudioView() {
             />
           </CreatorField>
 
-          <CreatorField label="Tagline" htmlFor="creator-tagline">
+          <CreatorField label="Tagline" htmlFor="creator-tagline" error={fieldErrors.tagline}>
             <CreatorInput
               id="creator-tagline"
               value={form.tagline}
@@ -328,7 +334,7 @@ export function CreatorStudioView() {
             />
           </CreatorField>
 
-          <CreatorField label="Bio" htmlFor="creator-bio">
+          <CreatorField label="Bio" htmlFor="creator-bio" error={fieldErrors.bio}>
             <CreatorTextarea
               id="creator-bio"
               value={form.bio}
@@ -339,7 +345,7 @@ export function CreatorStudioView() {
             />
           </CreatorField>
 
-          <CreatorField label="City" htmlFor="creator-city">
+          <CreatorField label="City" htmlFor="creator-city" error={fieldErrors.city}>
             <CreatorInput
               id="creator-city"
               value={form.city}
@@ -349,7 +355,7 @@ export function CreatorStudioView() {
             />
           </CreatorField>
 
-          <CreatorField label="Genres (comma-separated, max 3)" htmlFor="creator-genres">
+          <CreatorField label="Genres (comma-separated, max 3)" htmlFor="creator-genres" error={fieldErrors.genres}>
             <CreatorInput
               id="creator-genres"
               value={form.genres}
@@ -415,7 +421,7 @@ export function CreatorStudioView() {
             </div>
           </CreatorField>
 
-          <CreatorField label="AI disclosure" htmlFor="creator-ai">
+          <CreatorField label="AI disclosure" htmlFor="creator-ai" error={fieldErrors.ai_disclosure}>
             <CreatorSelect
               id="creator-ai"
               value={form.ai_disclosure}

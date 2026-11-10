@@ -50,6 +50,7 @@ export function CreatorPayoutsView() {
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const { toast, showToast, dismiss } = useCreatorToast();
 
@@ -99,6 +100,7 @@ export function CreatorPayoutsView() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       await submitKyc({
         legal_name: legalName.trim(),
@@ -113,6 +115,7 @@ export function CreatorPayoutsView() {
       showToast("Payout verification submitted. We review it before your first payout.");
       await refresh();
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not submit verification");
     } finally {
       setSaving(false);
@@ -123,6 +126,7 @@ export function CreatorPayoutsView() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       await savePayoutAccount({
         method,
@@ -134,6 +138,7 @@ export function CreatorPayoutsView() {
       showToast("Payout account saved. It needs verification before the first payout.");
       await refresh();
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not save payout account");
     } finally {
       setSaving(false);
@@ -143,11 +148,13 @@ export function CreatorPayoutsView() {
   async function onRequest() {
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       await requestPayout();
       showToast("Payout requested. Finance reviews it in the next cycle.");
       await refresh();
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not request payout");
     } finally {
       setSaving(false);
@@ -241,16 +248,16 @@ export function CreatorPayoutsView() {
 
           {!kycLocked ? (
             <form className={styles.form} onSubmit={onKyc} style={{ marginTop: kyc ? 20 : 0 }}>
-              <CreatorField label="Legal name" htmlFor="kyc-name">
+              <CreatorField label="Legal name" htmlFor="kyc-name" error={fieldErrors.legal_name}>
                 <CreatorInput id="kyc-name" value={legalName} onChange={(event) => setLegalName(event.target.value)} required />
               </CreatorField>
-              <CreatorField label="Date of birth" htmlFor="kyc-dob">
+              <CreatorField label="Date of birth" htmlFor="kyc-dob" error={fieldErrors.date_of_birth}>
                 <CreatorInput id="kyc-dob" type="date" value={dob} onChange={(event) => setDob(event.target.value)} required />
               </CreatorField>
-              <CreatorField label="Country" htmlFor="kyc-country">
+              <CreatorField label="Country" htmlFor="kyc-country" error={fieldErrors.country_code}>
                 <CreatorInput id="kyc-country" value={country} onChange={(event) => setCountry(event.target.value)} maxLength={2} required />
               </CreatorField>
-              <CreatorField label="ID type" htmlFor="kyc-id-type">
+              <CreatorField label="ID type" htmlFor="kyc-id-type" error={fieldErrors.id_type}>
                 <CreatorSelect
                   id="kyc-id-type"
                   value={idType}
@@ -263,16 +270,16 @@ export function CreatorPayoutsView() {
                   ariaLabel="ID type"
                 />
               </CreatorField>
-              <CreatorField label="ID last 4 characters" htmlFor="kyc-last4">
+              <CreatorField label="ID last 4 characters" htmlFor="kyc-last4" error={fieldErrors.id_last4}>
                 <CreatorInput id="kyc-last4" value={idLast4} onChange={(event) => setIdLast4(event.target.value)} maxLength={4} required />
               </CreatorField>
-              <CreatorField label="ID document reference" htmlFor="kyc-doc" hint="Secure upload reference or https:// link">
+              <CreatorField label="ID document reference" htmlFor="kyc-doc" hint="Secure upload reference or https:// link" error={fieldErrors.id_document_ref}>
                 <CreatorInput id="kyc-doc" value={documentRef} onChange={(event) => setDocumentRef(event.target.value)} required />
               </CreatorField>
-              <CreatorField label="Selfie reference (optional)" htmlFor="kyc-selfie">
+              <CreatorField label="Selfie reference (optional)" htmlFor="kyc-selfie" error={fieldErrors.selfie_ref}>
                 <CreatorInput id="kyc-selfie" value={selfieRef} onChange={(event) => setSelfieRef(event.target.value)} />
               </CreatorField>
-              <CreatorField label="Tax ID (optional)" htmlFor="kyc-tax">
+              <CreatorField label="Tax ID (optional)" htmlFor="kyc-tax" error={fieldErrors.tax_id}>
                 <CreatorInput id="kyc-tax" value={taxId} onChange={(event) => setTaxId(event.target.value)} />
               </CreatorField>
               <div>
@@ -294,7 +301,7 @@ export function CreatorPayoutsView() {
             </div>
           ) : null}
           <form className={styles.form} onSubmit={onAccount}>
-            <CreatorField label="Method" htmlFor="account-method">
+            <CreatorField label="Method" htmlFor="account-method" error={fieldErrors.method}>
               <CreatorSelect
                 id="account-method"
                 value={method}
@@ -308,16 +315,16 @@ export function CreatorPayoutsView() {
                 ariaLabel="Payout method"
               />
             </CreatorField>
-            <CreatorField label="Account name" htmlFor="account-name">
+            <CreatorField label="Account name" htmlFor="account-name" error={fieldErrors.account_name}>
               <CreatorInput id="account-name" value={accountName} onChange={(event) => setAccountName(event.target.value)} required />
             </CreatorField>
-            <CreatorField label="Account last 4 characters" htmlFor="account-last4">
+            <CreatorField label="Account last 4 characters" htmlFor="account-last4" error={fieldErrors.account_last4}>
               <CreatorInput id="account-last4" value={accountLast4} onChange={(event) => setAccountLast4(event.target.value)} maxLength={4} required />
             </CreatorField>
-            <CreatorField label="Bank code (optional)" htmlFor="account-bank">
+            <CreatorField label="Bank code (optional)" htmlFor="account-bank" error={fieldErrors.bank_code}>
               <CreatorInput id="account-bank" value={bankCode} onChange={(event) => setBankCode(event.target.value)} />
             </CreatorField>
-            <CreatorField label="Currency" htmlFor="account-currency">
+            <CreatorField label="Currency" htmlFor="account-currency" error={fieldErrors.currency}>
               <CreatorSelect
                 id="account-currency"
                 value={currency}

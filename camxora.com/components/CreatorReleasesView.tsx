@@ -96,6 +96,7 @@ export function CreatorReleasesView() {
   const [rights, setRights] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [unauthorized, setUnauthorized] = useState(false);
   const [error, setError] = useState("");
   const { toast, showToast, dismiss } = useCreatorToast();
@@ -159,6 +160,7 @@ export function CreatorReleasesView() {
     }
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       await createRelease({
         source_task_id: option.taskId,
@@ -178,6 +180,7 @@ export function CreatorReleasesView() {
       setRights(false);
       await refresh();
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not create release");
     } finally {
       setSaving(false);
@@ -187,6 +190,7 @@ export function CreatorReleasesView() {
   async function onAction(release: CreatorRelease) {
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       if (["draft", "changes_requested"].includes(release.status)) {
         await submitRelease(release.id);
@@ -200,6 +204,7 @@ export function CreatorReleasesView() {
       }
       await refresh();
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not update release");
     } finally {
       setSaving(false);
@@ -285,7 +290,7 @@ export function CreatorReleasesView() {
             </div>
           ) : (
             <form className={styles.form} onSubmit={onCreate}>
-              <CreatorField label="Finished generation" htmlFor="release-generation">
+              <CreatorField label="Finished generation" htmlFor="release-generation" error={fieldErrors.variant}>
                 <CreatorSelect
                   id="release-generation"
                   value={selected}
@@ -298,7 +303,7 @@ export function CreatorReleasesView() {
                   ariaLabel="Finished generation"
                 />
               </CreatorField>
-              <CreatorField label="Title" htmlFor="release-title">
+              <CreatorField label="Title" htmlFor="release-title" error={fieldErrors.title}>
                 <CreatorInput
                   id="release-title"
                   value={title}
@@ -307,7 +312,7 @@ export function CreatorReleasesView() {
                   required
                 />
               </CreatorField>
-              <CreatorField label="Genre" htmlFor="release-genre">
+              <CreatorField label="Genre" htmlFor="release-genre" error={fieldErrors.genre}>
                 <CreatorInput
                   id="release-genre"
                   value={genre}
@@ -316,12 +321,17 @@ export function CreatorReleasesView() {
                   required
                 />
               </CreatorField>
-              <CreatorCheckbox
-                id="release-rights"
-                checked={rights}
-                onCheckedChange={setRights}
-                label="I own or have cleared the rights to this track."
-              />
+              <div>
+                <CreatorCheckbox
+                  id="release-rights"
+                  checked={rights}
+                  onCheckedChange={setRights}
+                  label="I own or have cleared the rights to this track."
+                />
+                {fieldErrors.rights_attested ? (
+                  <p className={styles.error}>{fieldErrors.rights_attested}</p>
+                ) : null}
+              </div>
               <div>
                 <CreatorButton type="submit" disabled={saving || !selected || !rights}>
                   <Icon name="fa-plus" /> {saving ? "Creating…" : "Create draft"}

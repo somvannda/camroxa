@@ -66,6 +66,7 @@ export function CreatorVerificationView() {
   const [evidenceKind, setEvidenceKind] = useState<CreatorVerification["kind"]>("identity");
   const [evidenceRef, setEvidenceRef] = useState("");
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   async function refresh() {
     setStatus(await fetchProgramStatus());
@@ -98,6 +99,7 @@ export function CreatorVerificationView() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       await submitApplication({
         pitch: pitch.trim(),
@@ -111,6 +113,7 @@ export function CreatorVerificationView() {
       setRights(false);
       await refresh();
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not submit application");
     } finally {
       setSaving(false);
@@ -120,6 +123,7 @@ export function CreatorVerificationView() {
   async function onWithdraw() {
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       await withdrawApplication();
       showToast("Application withdrawn.");
@@ -135,12 +139,14 @@ export function CreatorVerificationView() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
       await submitVerification({ kind: evidenceKind, evidence_ref: evidenceRef.trim() });
       showToast("Verification evidence submitted.");
       setEvidenceRef("");
       await refresh();
     } catch (cause) {
+      if (cause instanceof CreatorApiError) setFieldErrors(cause.fields);
       setError(cause instanceof Error ? cause.message : "Could not submit evidence");
     } finally {
       setSaving(false);
@@ -278,7 +284,7 @@ export function CreatorVerificationView() {
                 placeholder="Tell us about your music, your audience, and what you are building."
               />
             </CreatorField>
-            <CreatorField label="External link" htmlFor="app-link">
+            <CreatorField label="External link" htmlFor="app-link" error={fieldErrors.links}>
               <CreatorInput
                 id="app-link"
                 value={link}
@@ -316,7 +322,7 @@ export function CreatorVerificationView() {
           </CreatorButtonLink>
         </div>
         <form className={styles.form} onSubmit={onVerification}>
-          <CreatorField label="Evidence type" htmlFor="evidence-kind">
+          <CreatorField label="Evidence type" htmlFor="evidence-kind" error={fieldErrors.kind}>
             <CreatorSelect
               id="evidence-kind"
               value={evidenceKind}
@@ -330,7 +336,7 @@ export function CreatorVerificationView() {
               ariaLabel="Evidence type"
             />
           </CreatorField>
-          <CreatorField label="Evidence reference" htmlFor="evidence-ref">
+          <CreatorField label="Evidence reference" htmlFor="evidence-ref" error={fieldErrors.evidence_ref}>
             <CreatorInput
               id="evidence-ref"
               value={evidenceRef}

@@ -71,18 +71,21 @@ export function CreatorField({
   label,
   htmlFor,
   hint,
+  error,
   children,
 }: {
   label: string;
   htmlFor: string;
   hint?: string;
+  error?: string;
   children: ReactNode;
 }) {
   return (
     <div className={styles.field}>
       <label className={styles.label} htmlFor={htmlFor}>{label}</label>
       {children}
-      {hint ? <span className={styles.hint}>{hint}</span> : null}
+      {hint && !error ? <span className={styles.hint}>{hint}</span> : null}
+      {error ? <span className={styles.error} role="alert">{error}</span> : null}
     </div>
   );
 }

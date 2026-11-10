@@ -52,38 +52,93 @@ export type CreatorListResponse = {
   offset: number;
 };
 
+export type CreatorFieldErrors = Record<string, string>;
+
 export class CreatorApiError extends Error {
   readonly status: number;
+  readonly fields: CreatorFieldErrors;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, fields: CreatorFieldErrors = {}) {
     super(message);
     this.name = "CreatorApiError";
     this.status = status;
+    this.fields = fields;
   }
 }
 
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = (await response.json()) as {
-      error?: { message?: string };
-      detail?: string | { message?: string };
-      message?: string;
+type ErrorPayload = {
+  error?: {
+    message?: string;
+    details?: {
+      fields?: Record<string, unknown>;
+      field?: string;
     };
-    return (
-      data.error?.message ||
-      (typeof data.detail === "string" ? data.detail : data.detail?.message) ||
-      data.message ||
-      fallback
-    );
+  };
+  detail?: unknown;
+  message?: string;
+};
+
+function collectFieldErrors(data: ErrorPayload): CreatorFieldErrors {
+  const fields: CreatorFieldErrors = {};
+  const push = (key: unknown, message: unknown) => {
+    if (!key || !message) return;
+    const normalized = String(key).trim();
+    if (!normalized || fields[normalized]) return;
+    fields[normalized] = String(message);
+  };
+
+  const details = data.error?.details;
+  if (details?.fields && typeof details.fields === "object") {
+    for (const [key, value] of Object.entries(details.fields)) push(key, value);
+  }
+  if (details?.field) push(details.field, data.error?.message || "Invalid value");
+
+  if (Array.isArray(data.detail)) {
+    for (const item of data.detail) {
+      if (!item || typeof item !== "object") continue;
+      const entry = item as { loc?: unknown; msg?: unknown };
+      const loc = Array.isArray(entry.loc)
+        ? entry.loc.filter((part) => part !== "body")
+        : [];
+      push(loc[loc.length - 1], entry.msg);
+    }
+  } else if (data.detail && typeof data.detail === "object") {
+    const detail = data.detail as { fields?: Record<string, unknown>; field?: string; message?: string };
+    if (detail.fields) {
+      for (const [key, value] of Object.entries(detail.fields)) push(key, value);
+    }
+    if (detail.field) push(detail.field, detail.message || "Invalid value");
+  }
+
+  return fields;
+}
+
+async function readError(
+  response: Response,
+  fallback: string
+): Promise<{ message: string; fields: CreatorFieldErrors }> {
+  try {
+    const data = (await response.json()) as ErrorPayload;
+    const detailMessage =
+      typeof data.detail === "string"
+        ? data.detail
+        : data.detail && typeof data.detail === "object" && "message" in data.detail
+          ? String((data.detail as { message?: unknown }).message || "")
+          : "";
+    return {
+      message: data.error?.message || detailMessage || data.message || fallback,
+      fields: collectFieldErrors(data),
+    };
   } catch {
-    return fallback;
+    return { message: fallback, fields: {} };
   }
 }
 
 async function publicJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: "application/json" } });
   if (!response.ok) {
-    throw new CreatorApiError(await readError(response, `Request failed (${response.status})`), response.status);
+    const parsed = await readError(response, `Request failed (${response.status})`);
+    throw new CreatorApiError(parsed.message, response.status, parsed.fields);
   }
   return (await response.json()) as T;
 }
@@ -91,7 +146,8 @@ async function publicJson<T>(path: string): Promise<T> {
 async function studioJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await musicAuthFetch(path, init);
   if (!response.ok) {
-    throw new CreatorApiError(await readError(response, `Request failed (${response.status})`), response.status);
+    const parsed = await readError(response, `Request failed (${response.status})`);
+    throw new CreatorApiError(parsed.message, response.status, parsed.fields);
   }
   return (await response.json()) as T;
 }
@@ -175,10 +231,8 @@ export async function uploadCreatorMedia(
     { method: "POST", body: form }
   );
   if (!response.ok) {
-    throw new CreatorApiError(
-      await readError(response, `Upload failed (${response.status})`),
-      response.status
-    );
+    const parsed = await readError(response, `Upload failed (${response.status})`);
+    throw new CreatorApiError(parsed.message, response.status, parsed.fields);
   }
   return (await response.json()) as { url: string; kind: string };
 }

@@ -729,8 +729,39 @@
     padding: 88px 20px 64px;
   }
 
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
   .title {
     font-size: 28px;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions > * {
+    flex: 1 1 auto;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric {
+    padding-right: 12px;
+  }
+
+  .metricValue {
+    font-size: 24px;
   }
 
   .row {
@@ -739,5 +770,13 @@
 
   .rowActions {
     justify-content: flex-start;
+  }
+
+  .toast {
+    right: 16px;
+    left: 16px;
+    bottom: 96px;
+    width: auto;
+    max-width: none;
   }
 }
