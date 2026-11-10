@@ -217,42 +217,83 @@ async def test_release_available_earnings_promotes_due_rows() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signed_kyc_document_requires_a_submission() -> None:
+async def test_kyc_document_read_requires_a_submission() -> None:
     service = CreatorPayoutService(AsyncMock())
     service._pool.fetchrow = AsyncMock(return_value=None)
 
     with pytest.raises(NotFoundError):
-        await service.signed_kyc_document(str(uuid4()), kind="id")
+        await service.read_kyc_document(str(uuid4()), kind="id")
 
 
 @pytest.mark.asyncio
-async def test_signed_kyc_document_passes_legacy_urls_through() -> None:
+async def test_kyc_document_read_refuses_legacy_urls() -> None:
     service = CreatorPayoutService(AsyncMock())
     service._pool.fetchrow = AsyncMock(
         return_value={
             "id_document_ref": "https://example.com/legacy-id.png",
             "selfie_ref": None,
+            "id_document_type": None,
+            "selfie_type": None,
+            "documents_encrypted": False,
         }
     )
 
-    payload = await service.signed_kyc_document(str(uuid4()), kind="id")
+    with pytest.raises(ValidationError) as exc:
+        await service.read_kyc_document(str(uuid4()), kind="id")
 
-    assert payload == {
-        "url": "https://example.com/legacy-id.png",
-        "expires_in": None,
-        "signed": False,
-    }
+    assert (exc.value.details or {}).get("fields", {}).get("document")
 
 
 @pytest.mark.asyncio
-async def test_signed_kyc_document_rejects_a_missing_kind() -> None:
+async def test_kyc_document_read_rejects_a_missing_side() -> None:
     service = CreatorPayoutService(AsyncMock())
     service._pool.fetchrow = AsyncMock(
-        return_value={"id_document_ref": "creator/kyc/x/id.jpg", "selfie_ref": None}
+        return_value={
+            "id_document_ref": "creator/kyc/x/id.jpg",
+            "selfie_ref": None,
+            "id_document_type": "image/jpeg",
+            "selfie_type": None,
+            "documents_encrypted": True,
+        }
     )
 
     with pytest.raises(NotFoundError):
-        await service.signed_kyc_document(str(uuid4()), kind="selfie")
+        await service.read_kyc_document(str(uuid4()), kind="selfie")
+
+
+def test_document_cipher_round_trips_and_separates_domains() -> None:
+    from platform_api.services.document_encryption import DocumentCipher
+    from platform_api.services.key_encryption import KeyEncryption
+
+    cipher = DocumentCipher("master-key-for-tests")
+    payload = b"%PDF-1.7 fake identity document"
+
+    blob = cipher.encrypt(payload)
+    assert blob[:1] == b"\x01"
+    assert payload not in blob
+    assert cipher.decrypt(blob) == payload
+    assert DocumentCipher.is_encrypted(blob) is True
+
+    # Same master key, different purpose: document ciphertext must not be
+    # readable as an API-key value, and vice versa.
+    api = KeyEncryption("master-key-for-tests")
+    import pytest as _pytest
+    from cryptography.fernet import InvalidToken
+
+    with _pytest.raises((InvalidToken, UnicodeDecodeError, ValueError)):
+        api.decrypt(blob)
+
+
+def test_document_cipher_rejects_tampering() -> None:
+    from platform_api.services.document_encryption import DocumentCipher
+    from cryptography.fernet import InvalidToken
+
+    cipher = DocumentCipher("master-key-for-tests")
+    blob = bytearray(cipher.encrypt(b"confidential"))
+    blob[-1] ^= 0xFF
+
+    with pytest.raises(InvalidToken):
+        cipher.decrypt(bytes(blob))
 
 
 @pytest.mark.asyncio

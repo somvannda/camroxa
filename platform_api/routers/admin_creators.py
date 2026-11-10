@@ -342,19 +342,28 @@ async def list_kyc(
 
 
 @router.get("/kyc/{user_id}/documents/{kind}")
-async def sign_kyc_document(
+async def open_kyc_document(
     user_id: str,
     kind: Literal["id", "selfie"],
     ctx: AdminDep,
     service: PayoutServiceDep,
-) -> dict:
-    """Return a short-lived signed URL for a KYC document.
+) -> Response:
+    """Stream a decrypted KYC document.
 
-    The admin portal requests this with its bearer token and then opens the
-    returned URL, so the raw storage key is never exposed to the browser.
+    The stored object is ciphertext; this endpoint is the only place it becomes
+    viewable, and only for an authenticated admin.
     """
     del ctx
-    return await service.signed_kyc_document(user_id, kind=kind)
+    document = await service.read_kyc_document(user_id, kind=kind)
+    return Response(
+        content=document["data"],
+        media_type=document["media_type"],
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f'inline; filename="{kind}-document"',
+        },
+    )
 
 
 @router.post("/kyc/{user_id}/decision")

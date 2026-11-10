@@ -68,12 +68,14 @@ export default function CreatorKycPage() {
     openDoc.mutate(
       { userId: record.user_id, kind },
       {
-        onSuccess: (payload) => {
+        onSuccess: (blob) => {
+          const url = URL.createObjectURL(blob);
           if (tab) {
-            tab.location.href = payload.url;
+            tab.location.href = url;
           } else {
-            window.open(payload.url, '_blank', 'noopener,noreferrer');
+            window.open(url, '_blank', 'noopener,noreferrer');
           }
+          window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
         },
         onError: (error) => {
           tab?.close();

@@ -260,7 +260,7 @@ export async function uploadCreatorMedia(
 export async function uploadKycDocument(
   kind: "id" | "selfie",
   file: File
-): Promise<{ key: string; kind: string }> {
+): Promise<{ key: string; kind: string; content_type: string; encrypted: boolean }> {
   const form = new FormData();
   form.append("file", file);
   const response = await musicAuthFetch(
@@ -271,7 +271,12 @@ export async function uploadKycDocument(
     const parsed = await readError(response, `Upload failed (${response.status})`);
     throw new CreatorApiError(parsed.message, response.status, parsed.fields);
   }
-  return (await response.json()) as { key: string; kind: string };
+  return (await response.json()) as {
+    key: string;
+    kind: string;
+    content_type: string;
+    encrypted: boolean;
+  };
 }
 
 export type CreatorApplication = {
@@ -561,6 +566,8 @@ export async function submitKyc(input: {
   tax_id?: string;
   tax_form?: "w9" | "w8ben";
   tax_country?: string;
+  id_document_type?: string;
+  selfie_type?: string;
 }): Promise<{ kyc: CreatorKyc }> {
   return studioJson<{ kyc: CreatorKyc }>("/api/v3/creator/kyc", {
     method: "POST",

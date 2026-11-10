@@ -121,6 +121,8 @@ export function CreatorPayoutsView() {
   const [idLast4, setIdLast4] = useState("");
   const [documentRef, setDocumentRef] = useState("");
   const [selfieRef, setSelfieRef] = useState("");
+  const [documentType, setDocumentType] = useState("");
+  const [selfieType, setSelfieType] = useState("");
   const [docNames, setDocNames] = useState<{ id?: string; selfie?: string }>({});
   const [uploadingDoc, setUploadingDoc] = useState<"id" | "selfie" | null>(null);
   const [taxId, setTaxId] = useState("");
@@ -166,11 +168,13 @@ export function CreatorPayoutsView() {
     setError("");
     setFieldErrors({});
     try {
-      const { key } = await uploadKycDocument(kind, file);
+      const { key, content_type } = await uploadKycDocument(kind, file);
       if (kind === "id") {
         setDocumentRef(key);
+        setDocumentType(content_type);
       } else {
         setSelfieRef(key);
+        setSelfieType(content_type);
       }
       setDocNames((current) => ({ ...current, [kind]: file.name }));
       showToast(kind === "id" ? "ID document uploaded." : "Selfie uploaded.");
@@ -199,6 +203,8 @@ export function CreatorPayoutsView() {
         tax_id: taxId.trim() || undefined,
         tax_form: "w8ben",
         tax_country: "KH",
+        id_document_type: documentType || undefined,
+        selfie_type: selfieType || undefined,
       });
       showToast("Payout verification submitted. We review it before your first payout.");
       await refresh();

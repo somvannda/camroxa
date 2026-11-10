@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import httpClient from '@/lib/http-client';
+import httpClient, { apiClient } from '@/lib/http-client';
 
 export type PagedResponse<T> = {
   items: T[];
@@ -121,10 +121,13 @@ export function useMarkPayoutPaid() {
 
 export function useKycDocumentLink() {
   return useMutation({
-    mutationFn: async (input: { userId: string; kind: 'id' | 'selfie' }) =>
-      httpClient.get<{ url: string; expires_in: number | null; signed: boolean }>(
+    mutationFn: async (input: { userId: string; kind: 'id' | 'selfie' }) => {
+      const response = await apiClient.get(
         `/api/v3/admin/creators/kyc/${encodeURIComponent(input.userId)}/documents/${input.kind}`,
-      ),
+        { responseType: 'blob' },
+      );
+      return response.data as Blob;
+    },
   });
 }
 

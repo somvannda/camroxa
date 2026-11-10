@@ -198,6 +198,14 @@ class CreatorPayoutService:
             )
         tax_country = str(data.get("tax_country") or country).strip().upper()[:2] or country
         withholding_bps = withholding_bps_for(tax_form, tax_country)
+        id_document_type = (
+            str(data.get("id_document_type") or "").strip()[:100]
+            or "application/octet-stream"
+        )
+        selfie_type = str(data.get("selfie_type") or "").strip()[:100] or None
+        # Anything uploaded through the API lands under creator/kyc/ and is
+        # encrypted; only pre-encryption rows keep the legacy flag.
+        documents_encrypted = document_ref.startswith("creator/kyc/")
 
         existing = await self._pool.fetchrow(
             "SELECT status FROM creator_kyc WHERE user_id = $1", user_id
@@ -211,8 +219,9 @@ class CreatorPayoutService:
                 user_id, legal_name, date_of_birth, country_code, id_type,
                 id_last4, id_document_ref, selfie_ref, tax_id, status,
                 tax_form, tax_country, withholding_rate_bps,
+                id_document_type, selfie_type, documents_encrypted,
                 submitted_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10,$11,$12,NOW(),NOW())
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10,$11,$12,$13,$14,$15,NOW(),NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 legal_name = EXCLUDED.legal_name,
                 date_of_birth = EXCLUDED.date_of_birth,
@@ -225,6 +234,9 @@ class CreatorPayoutService:
                 tax_form = EXCLUDED.tax_form,
                 tax_country = EXCLUDED.tax_country,
                 withholding_rate_bps = EXCLUDED.withholding_rate_bps,
+                id_document_type = EXCLUDED.id_document_type,
+                selfie_type = EXCLUDED.selfie_type,
+                documents_encrypted = EXCLUDED.documents_encrypted,
                 status = 'pending',
                 submitted_at = NOW(),
                 reviewed_by = NULL,
@@ -245,6 +257,9 @@ class CreatorPayoutService:
             tax_form,
             tax_country,
             withholding_bps,
+            id_document_type,
+            selfie_type,
+            documents_encrypted,
         )
         return {"kyc": dict(row)}
 
@@ -305,9 +320,17 @@ class CreatorPayoutService:
         }.get(normalized, "bin")
         key = f"creator/kyc/{user_id}/{kind}-{uuid4()}.{extension}"
         try:
+            from platform_api.services.document_encryption import (
+                document_cipher_from_settings,
+            )
+
+            cipher = document_cipher_from_settings()
+            payload = cipher.encrypt(data)
             storage = StorageService.from_config(config)
+            # Stored as opaque bytes: a leaked object or a signed URL to it
+            # returns ciphertext, never a viewable identity document.
             await storage.upload_bytes(
-                key=key, data=data, content_type=normalized
+                key=key, data=payload, content_type="application/octet-stream"
             )
         except Exception as exc:
             raise ExternalServiceError(
@@ -315,15 +338,15 @@ class CreatorPayoutService:
                 is_retryable=True,
                 details={"provider": "storage"},
             ) from exc
-        return {"key": key, "kind": kind}
+        return {"key": key, "kind": kind, "content_type": normalized, "encrypted": True}
 
-    async def signed_kyc_document(
+    async def read_kyc_document(
         self, user_id: str, *, kind: str
     ) -> dict[str, Any]:
-        """Return a short-lived read URL for a KYC document.
+        """Decrypt and return a KYC document.
 
-        Legacy rows store a plain https URL; those are returned unchanged and
-        flagged so the caller knows they are not signed.
+        Documents are never served by handing the browser a storage URL: the
+        object is ciphertext, and the API is the only place it is decrypted.
         """
         if kind not in {"id", "selfie"}:
             raise ValidationError(
@@ -331,7 +354,11 @@ class CreatorPayoutService:
                 details={"fields": {"kind": "invalid"}},
             )
         row = await self._pool.fetchrow(
-            "SELECT id_document_ref, selfie_ref FROM creator_kyc WHERE user_id = $1",
+            """
+            SELECT id_document_ref, selfie_ref, id_document_type, selfie_type,
+                   documents_encrypted
+            FROM creator_kyc WHERE user_id = $1
+            """,
             user_id,
         )
         if row is None:
@@ -341,7 +368,10 @@ class CreatorPayoutService:
             raise NotFoundError("No document uploaded for this check.")
         ref = str(ref).strip()
         if ref.lower().startswith(("http://", "https://")):
-            return {"url": ref, "expires_in": None, "signed": False}
+            raise ValidationError(
+                "This legacy document reference cannot be served. Re-upload it.",
+                details={"fields": {"document": "legacy reference"}},
+            )
 
         from platform_api.services.storage_service import StorageService
         from platform_api.services.streaming_config_service import (
@@ -357,14 +387,39 @@ class CreatorPayoutService:
             )
         storage = StorageService.from_config(config)
         try:
-            url = await storage.presign_private_get_url(ref, expires_seconds=300)
+            raw = await storage.download_bytes(ref)
         except Exception as exc:
             raise ExternalServiceError(
-                "Could not sign the document link.",
+                "Could not read the stored document.",
                 is_retryable=True,
                 details={"provider": "storage"},
             ) from exc
-        return {"url": url, "expires_in": 300, "signed": True}
+
+        encrypted = bool(row.get("documents_encrypted"))
+        if encrypted:
+            from platform_api.services.document_encryption import (
+                document_cipher_from_settings,
+            )
+
+            try:
+                data = document_cipher_from_settings().decrypt(raw)
+            except Exception as exc:
+                raise ExternalServiceError(
+                    "Could not decrypt the stored document.",
+                    is_retryable=False,
+                    details={"reason": "decrypt_failed"},
+                ) from exc
+        else:
+            data = raw
+
+        media_type = (
+            row["id_document_type"] if kind == "id" else row["selfie_type"]
+        ) or "application/octet-stream"
+        return {
+            "data": data,
+            "media_type": str(media_type),
+            "encrypted": encrypted,
+        }
 
     async def upsert_payout_account(self, user_id: str, data: dict[str, Any]) -> dict[str, Any]:
         method = str(data.get("method") or "").strip().lower()
