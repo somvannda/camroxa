@@ -65,10 +65,19 @@ The data itself is honest: real creator records, real statuses, no fake counters
 - Replaced the public-page purple gradient banner fallback with a neutral graphite surface and a hairline.
 - Converted the Studio checklist from eight equal cards to a compact readiness list.
 
+### Global shell pass
+
+- Primary buttons, `Create Music`, `Buy packs`, and sidebar create buttons are now flat brand violet with no gradient, glow, or colored shadow.
+- Sidebar section labels are sentence case with normal tracking.
+- Active navigation uses a quiet surface step and a 2px accent rule, not a glass gradient.
+- `.eyebrow` is sentence case with normal tracking across the app.
+- The topbar is a solid translucent surface instead of a gradient.
+- Avatar/banner uploads are live with previews.
+
 ### Still open
 
-- The global primary button still uses the app-wide purple gradient. A full brand pass should either keep it as the one accent or move primary buttons to an off-white surface with dark text.
-- Uppercase tracked eyebrows still exist outside the creator surfaces (`Discover`, `Charts`, etc.).
 - The Studio header still has several actions; keep one primary and move the rest into a quieter secondary row.
-- Add a real banner image when a creator uploads one, instead of the neutral fallback.
+- Add drag-to-crop for avatar/banner images.
+- Payout KYC document viewer.
+
 
