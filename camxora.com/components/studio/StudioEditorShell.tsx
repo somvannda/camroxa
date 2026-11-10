@@ -72,6 +72,7 @@ import {
 } from "@/lib/studio-designer";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
+import { StudioTakeLanes } from "@/components/studio/StudioTakeLanes";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
@@ -127,6 +128,14 @@ type ClipLike = {
   offset?: number;
   fadeIn?: number;
   midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
+  /** Alternate takes (S29), newest first; the active one mirrors `audioUrl`. */
+  takes?: Array<{
+    id: string;
+    title?: string;
+    audioUrl?: string | null;
+    duration?: number;
+    active?: boolean;
+  }>;
 };
 
 function clock(seconds: number): string {
@@ -473,6 +482,7 @@ export function StudioEditorShell() {
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [masterSelected, setMasterSelected] = useState(false);
+  const [takeLanesOpen, setTakeLanesOpen] = useState(false);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
   /** A clip explicitly attached with the prompt bar's + menu (not just selected). */
   const [attachedClipId, setAttachedClipId] = useState<string | null>(null);
@@ -1897,6 +1907,10 @@ export function StudioEditorShell() {
     setLocalMasterChain(null);
     setMasterSelected(false);
   }, [projectId]);
+
+  useEffect(() => {
+    if (midiClipId) setTakeLanesOpen(false);
+  }, [midiClipId]);
 
   /** Persist the master chain into the project document (S48). */
   function commitMasterChain(next: MasterChainEntry[]) {
@@ -3364,6 +3378,53 @@ export function StudioEditorShell() {
   function commitTake(song: WebMusicGeneration, take: { variant: string; title?: string; audio_url?: string | null; duration_seconds?: number | null }) {
     const trackId = selectedTrack ?? tracks[0]?.id;
     if (!trackId || !take.audio_url) return;
+    const start = snapToGrid(playhead, secondsPerBar, beatsPerBar);
+    // S29: regenerating over an existing audio clip stacks a take instead of adding a clip.
+    const owner = tracks.find((track) => track.id === trackId);
+    const existing = owner
+      ? clips.find(
+          (clip) =>
+            owner.clipIds.includes(clip.id) &&
+            !clip.midi &&
+            clip.audioUrl &&
+            Math.abs((clip.start ?? 0) - start) < 0.05
+        )
+      : undefined;
+    if (existing) {
+      const title = take.title || song.title || "Take";
+      const nextTake = {
+        id: `take-${song.id}-${take.variant}-${Date.now().toString(36)}`,
+        title,
+        audioUrl: take.audio_url,
+        duration: take.duration_seconds ?? existing.duration ?? 8,
+        active: true,
+      };
+      const prior =
+        existing.takes && existing.takes.length
+          ? existing.takes.map((item) => ({ ...item, active: false }))
+          : [
+              {
+                id: `take-base-${existing.id}`,
+                title: existing.title || "Original",
+                audioUrl: existing.audioUrl,
+                duration: existing.duration ?? 8,
+                active: false,
+              },
+            ];
+      const updated: ClipLike = {
+        ...existing,
+        audioUrl: nextTake.audioUrl,
+        duration: nextTake.duration,
+        takes: [nextTake, ...prior],
+      };
+      const lanes = clips.map((clip) => (clip.id === existing.id ? updated : clip));
+      const data = currentData() as Record<string, unknown>;
+      writeProjectData({ ...data, lanes }, "a take");
+      setSelectedClip(existing.id);
+      setTakeLanesOpen(true);
+      setExportToast("Take added to the clip.");
+      return;
+    }
     insertClips([
       {
         trackId,
@@ -3380,6 +3441,23 @@ export function StudioEditorShell() {
       },
     ]);
     setExportToast("Take added to the track at the playhead.");
+  }
+
+  /** Make one take active; the clip's audio mirrors it (S29). */
+  function activateTake(clipId: string, takeId: string) {
+    const data = currentData() as Record<string, unknown>;
+    const lanes = clips.map((clip) => {
+      if (clip.id !== clipId) return clip;
+      const takes = (clip.takes ?? []).map((take) => ({ ...take, active: take.id === takeId }));
+      const active = takes.find((take) => take.active);
+      return {
+        ...clip,
+        takes,
+        audioUrl: active?.audioUrl ?? clip.audioUrl,
+        duration: active?.duration ?? clip.duration,
+      };
+    });
+    writeProjectData({ ...data, lanes }, "the active take");
   }
 
   /** Audition a single take from the assistant panel. */
@@ -4238,7 +4316,23 @@ export function StudioEditorShell() {
         onRequestStems={() => void requestStems()}
       />
 
-      {midiClip ? (
+      {takeLanesOpen ? (
+        <StudioTakeLanes
+          takes={selectedClip ? clips.find((clip) => clip.id === selectedClip)?.takes ?? null : null}
+          color={
+            (() => {
+              const owner = selectedClip
+                ? tracks.find((track) => track.clipIds.includes(selectedClip))
+                : undefined;
+              return owner?.color ?? "#38bdf8";
+            })()
+          }
+          onClose={() => setTakeLanesOpen(false)}
+          onActivate={(takeId) => {
+            if (selectedClip) activateTake(selectedClip, takeId);
+          }}
+        />
+      ) : midiClip ? (
         <StudioMidiEditor
           clip={midiClip}
           barWidth={barWidth}
@@ -4287,6 +4381,11 @@ export function StudioEditorShell() {
         }}
         onToggleLibrary={() => toggleLibrary()}
         whatsThis={settings.whatsThis}
+        takeLanesOpen={takeLanesOpen}
+        onToggleTakeLanes={() => {
+          setTakeLanesOpen((open) => !open);
+          setMidiClipId(null);
+        }}
         onWhatsThis={(next) => {
           const updated = { ...settingsRef.current, whatsThis: next };
           setSettings(updated);

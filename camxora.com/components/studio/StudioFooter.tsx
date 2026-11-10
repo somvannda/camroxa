@@ -23,6 +23,9 @@ export type StudioFooterProps = {
   onToggleLibrary: () => void;
   whatsThis: boolean;
   onWhatsThis: (next: boolean) => void;
+  /** S29: the take-lanes band is open. */
+  takeLanesOpen?: boolean;
+  onToggleTakeLanes?: () => void;
 };
 
 export function StudioFooter(props: StudioFooterProps) {
@@ -38,6 +41,8 @@ export function StudioFooter(props: StudioFooterProps) {
     onToggleLibrary,
     whatsThis,
     onWhatsThis,
+    takeLanesOpen = false,
+    onToggleTakeLanes,
   } = props;
 
   return (
@@ -48,7 +53,15 @@ export function StudioFooter(props: StudioFooterProps) {
           <button type="button" className="se-icon" disabled aria-label="Draw (not wired)"><Icon name="fa-pen" /></button>
         </span>
         <span className="se-foot-group">
-          <button type="button" className="se-icon" disabled aria-label="List (not wired)"><Icon name="fa-bars" /></button>
+          <button
+            type="button"
+            className={`se-icon${takeLanesOpen ? " on" : ""}`}
+            aria-label="Take lanes"
+            aria-pressed={takeLanesOpen}
+            onClick={() => onToggleTakeLanes?.()}
+          >
+            <Icon name="fa-bars" />
+          </button>
           <button type="button" className="se-icon" disabled aria-label="Microphone input (use Record in the transport)" title="Recording lives in the transport: arm a track, then Record"><Icon name="fa-microphone" /></button>
         </span>
       </div>
