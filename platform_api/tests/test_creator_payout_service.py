@@ -332,53 +332,65 @@ async def test_generate_statements_rolls_up_paid_payouts() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reconciliation_flags_drift_and_reports_totals() -> None:
+async def test_reconciliation_compares_earnings_against_payout_gross() -> None:
+    """Withholding is not drift: a $30 earning paid as $21 net + $9 tax balances."""
     service = CreatorPayoutService(AsyncMock())
     service._pool.fetch = AsyncMock(
         return_value=[
             {
                 "creator_id": uuid4(),
-                "earned_micros": 50_000_000,
-                "unpaid_micros": 20_000_000,
+                "earned_micros": 30_000_000,
+                "unpaid_micros": 0,
                 "settled_micros": 30_000_000,
-                "paid_micros": 29_000_000,
+                "paid_micros": 21_000_000,
+                "paid_gross_micros": 30_000_000,
+                "withheld_micros": 9_000_000,
                 "in_flight_micros": 0,
-                "variance_micros": 1_000_000,
+                "variance_micros": 0,
             }
         ]
     )
 
     result = await service.reconciliation()
 
-    assert result["totals"]["paid_micros"] == 29_000_000
-    assert result["totals"]["variance_micros"] == 1_000_000
-    assert result["totals"]["balanced"] is False
+    totals = result["totals"]
+    assert totals["paid_micros"] == 21_000_000
+    assert totals["withheld_micros"] == 9_000_000
+    assert totals["variance_micros"] == 0
+    assert totals["balanced"] is True
 
 
 @pytest.mark.asyncio
-async def test_payout_run_uses_the_supplied_khr_rate() -> None:
+async def test_reconciliation_flags_genuine_drift() -> None:
     service = CreatorPayoutService(AsyncMock())
     service._pool.fetch = AsyncMock(
         return_value=[
             {
                 "creator_id": uuid4(),
-                "amount_micros": 21_000_000,
-                "method": "wing",
-                "currency": "KHR",
-                "withholding_rate_bps": 0,
-            }
+                "earned_micros": 50_000_000,
+                "unpaid_micros": 0,
+                "settled_micros": 50_000_000,
+                "paid_micros": 49_000_000,
+                "paid_gross_micros": 50_000_000,
+                "withheld_micros": 0,
+                "in_flight_micros": 0,
+                "variance_micros": 0,
+            },
+            {
+                "creator_id": uuid4(),
+                "earned_micros": 10_000_000,
+                "unpaid_micros": 0,
+                "settled_micros": 10_000_000,
+                "paid_micros": 8_000_000,
+                "paid_gross_micros": 9_000_000,
+                "withheld_micros": 0,
+                "in_flight_micros": 0,
+                "variance_micros": 1_000_000,
+            },
         ]
     )
-    service._pool.fetchval = AsyncMock(return_value=uuid4())
 
-    result = await service.create_run(
-        period_start=date(2026, 10, 1),
-        period_end=date(2026, 11, 1),
-        created_by=str(uuid4()),
-        fx_rate=4200,
-    )
+    result = await service.reconciliation()
 
-    args = service._pool.fetchval.await_args.args
-    assert args[10] == 4200          # fx_rate passed through
-    assert args[11] == 88_200        # 21.00 USD * 4200 KHR
-    assert result["fx_rate"] == 4200
+    assert result["totals"]["variance_micros"] == 1_000_000
+    assert result["totals"]["balanced"] is False

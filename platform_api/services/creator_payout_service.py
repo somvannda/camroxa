@@ -691,6 +691,8 @@ class CreatorPayoutService:
             paid AS (
                 SELECT creator_id,
                        SUM(amount_micros) FILTER (WHERE status = 'paid')::bigint AS paid_micros,
+                       SUM(gross_micros) FILTER (WHERE status = 'paid')::bigint AS paid_gross_micros,
+                       SUM(withheld_micros) FILTER (WHERE status = 'paid')::bigint AS withheld_micros,
                        SUM(amount_micros) FILTER (WHERE status IN ('requested','approved','processing'))::bigint AS in_flight_micros
                 FROM creator_payouts
                 GROUP BY creator_id
@@ -708,14 +710,18 @@ class CreatorPayoutService:
                    COALESCE(e.unpaid_micros, 0) AS unpaid_micros,
                    COALESCE(e.settled_micros, 0) AS settled_micros,
                    COALESCE(p.paid_micros, 0) AS paid_micros,
+                   COALESCE(p.paid_gross_micros, 0) AS paid_gross_micros,
+                   COALESCE(p.withheld_micros, 0) AS withheld_micros,
                    COALESCE(p.in_flight_micros, 0) AS in_flight_micros,
-                   (COALESCE(e.settled_micros, 0) - COALESCE(p.paid_micros, 0)) AS variance_micros
+                   -- Compare like with like: earnings are pre-tax, so the payout gross
+                   -- is the correct counterparty, not the netted amount.
+                   (COALESCE(e.settled_micros, 0) - COALESCE(p.paid_gross_micros, 0)) AS variance_micros
             FROM creators c
             JOIN users u ON u.id = c.creator_id
             LEFT JOIN creator_profiles cp ON cp.user_id = c.creator_id
             LEFT JOIN earned e ON e.creator_id = c.creator_id
             LEFT JOIN paid p ON p.creator_id = c.creator_id
-            ORDER BY ABS(COALESCE(e.settled_micros, 0) - COALESCE(p.paid_micros, 0)) DESC,
+            ORDER BY ABS(COALESCE(e.settled_micros, 0) - COALESCE(p.paid_gross_micros, 0)) DESC,
                      u.display_name
             LIMIT 200
             """
@@ -726,6 +732,10 @@ class CreatorPayoutService:
             "unpaid_micros": sum(int(row["unpaid_micros"] or 0) for row in items),
             "settled_micros": sum(int(row["settled_micros"] or 0) for row in items),
             "paid_micros": sum(int(row["paid_micros"] or 0) for row in items),
+            "paid_gross_micros": sum(
+                int(row.get("paid_gross_micros") or 0) for row in items
+            ),
+            "withheld_micros": sum(int(row.get("withheld_micros") or 0) for row in items),
             "in_flight_micros": sum(int(row["in_flight_micros"] or 0) for row in items),
             "variance_micros": sum(int(row["variance_micros"] or 0) for row in items),
         }

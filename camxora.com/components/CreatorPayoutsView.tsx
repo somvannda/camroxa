@@ -46,6 +46,51 @@ function sentAmount(payout: CreatorPayout): string | null {
   return `$${(minor / 100).toFixed(2)}`;
 }
 
+function printStatement(statement: CreatorTaxStatement, handle?: string | null) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  const money = (micros: number) => `$${(Number(micros || 0) / 1_000_000).toFixed(2)}`;
+  const esc = (value: string) =>
+    value.replace(/[&<>"']/g, (char) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] as string,
+    );
+  win.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8" />
+<title>Camxora earnings statement ${statement.tax_year}</title>
+<style>
+  @page { margin: 24mm 18mm; }
+  body { font: 14px/1.6 "Open Sans", system-ui, sans-serif; color: #111827; margin: 0; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .muted { color: #6b7280; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+  th, td { text-align: left; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+  th { font-weight: 500; color: #6b7280; font-size: 12px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .total { font-weight: 600; }
+  footer { margin-top: 32px; font-size: 11px; color: #6b7280; }
+</style></head><body>
+  <h1>Camxora earnings statement</h1>
+  <p class="muted">Tax year ${statement.tax_year}${handle ? ` · @${esc(handle)}` : ""}</p>
+  <table>
+    <thead><tr><th>Item</th><th style="text-align:right">Amount</th></tr></thead>
+    <tbody>
+      <tr><td>Gross royalties</td><td class="num">${money(statement.gross_micros)}</td></tr>
+      <tr><td>US tax withheld</td><td class="num">−${money(statement.withheld_micros)}</td></tr>
+      <tr class="total"><td>Net paid</td><td class="num">${money(statement.net_micros)}</td></tr>
+      <tr><td>Payouts</td><td class="num">${statement.payout_count}</td></tr>
+      <tr><td>Tax form on file</td><td class="num">${esc((statement.tax_form || "none").toUpperCase())}</td></tr>
+    </tbody>
+  </table>
+  <footer>
+    This statement summarises royalties paid by Camxora for ${statement.tax_year}. It is not an
+    official tax document. Cambodia has no US tax treaty, so royalties are withheld at 30%
+    unless a W-9 is on file.
+  </footer>
+</body></html>`);
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
 function formatDate(value?: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -543,6 +588,13 @@ export function CreatorPayoutsView() {
                     {usd(statement.gross_micros)} gross · {usd(statement.withheld_micros)} withheld
                   </p>
                 </div>
+                <CreatorButton
+                  type="button"
+                  variant="ghost"
+                  onClick={() => printStatement(statement)}
+                >
+                  <Icon name="fa-print" /> Print
+                </CreatorButton>
               </div>
             ))}
           </div>
