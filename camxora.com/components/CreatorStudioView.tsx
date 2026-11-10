@@ -212,6 +212,9 @@ export function CreatorStudioView() {
             <CreatorButtonLink href="/creator/earnings" variant="ghost">
               <Icon name="fa-chart-line" /> Earnings
             </CreatorButtonLink>
+            <CreatorButtonLink href="/creator/payouts" variant="ghost">
+              <Icon name="fa-wallet" /> Payouts
+            </CreatorButtonLink>
             <CreatorButtonLink href="/creator/verification" variant="ghost">
               <Icon name="fa-circle-check" /> Verification
             </CreatorButtonLink>

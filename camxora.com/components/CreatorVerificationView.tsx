@@ -305,13 +305,18 @@ export function CreatorVerificationView() {
       ) : null}
 
       <CreatorPanel
-        title="Payout identity verification"
-        meta="Separate from the badge · encrypted"
+        title="Verification evidence"
+        meta="Optional · encrypted"
         className={styles.sectionGap}
       >
         <p className={styles.emptyBody} style={{ marginBottom: 20 }}>
-          Only required when you request a payout. You can publish, grow an audience, and request the badge without it.
+          Optional evidence to support the badge request. Payout identity verification is separate and lives in Payouts.
         </p>
+        <div className={styles.actions} style={{ marginBottom: 20 }}>
+          <CreatorButtonLink href="/creator/payouts" variant="secondary">
+            <Icon name="fa-shield-halved" /> Open payouts
+          </CreatorButtonLink>
+        </div>
         <form className={styles.form} onSubmit={onVerification}>
           <CreatorField label="Evidence type" htmlFor="evidence-kind">
             <CreatorSelect

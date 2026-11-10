@@ -120,7 +120,7 @@ export function CreatorEarningsView() {
             <CreatorButtonLink href="/creator" variant="ghost">
               <Icon name="fa-arrow-left" /> Back to Studio
             </CreatorButtonLink>
-            <CreatorButtonLink href="/creator/verification" variant="ghost">
+            <CreatorButtonLink href="/creator/payouts" variant="ghost">
               <Icon name="fa-shield-halved" /> Payout verification
             </CreatorButtonLink>
           </>
@@ -187,7 +187,7 @@ export function CreatorEarningsView() {
                   </div>
                   <div className={styles.rowActions}>
                     {canVerify ? (
-                      <CreatorButtonLink href="/creator/verification" variant="secondary">
+                      <CreatorButtonLink href="/creator/payouts" variant="secondary">
                         <Icon name="fa-shield-halved" /> Complete verification
                       </CreatorButtonLink>
                     ) : null}

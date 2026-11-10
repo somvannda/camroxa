@@ -14,6 +14,7 @@ from platform_api.services.creator_profile_service import CreatorProfileService
 from platform_api.services.creator_program_service import CreatorProgramService
 from platform_api.services.creator_release_service import CreatorReleaseService
 from platform_api.services.creator_eligibility_service import CreatorEligibilityService
+from platform_api.services.creator_payout_service import CreatorPayoutService
 
 router = APIRouter(prefix="/creator", tags=["creator-studio"])
 
@@ -34,10 +35,15 @@ async def _get_eligibility_service() -> CreatorEligibilityService:
     raise NotImplementedError("CreatorEligibilityService dependency not configured.")
 
 
+async def _get_payout_service() -> CreatorPayoutService:
+    raise NotImplementedError("CreatorPayoutService dependency not configured.")
+
+
 CreatorServiceDep = Annotated[CreatorProfileService, Depends(_get_creator_service)]
 ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
 ReleaseServiceDep = Annotated[CreatorReleaseService, Depends(_get_release_service)]
 EligibilityServiceDep = Annotated[CreatorEligibilityService, Depends(_get_eligibility_service)]
+PayoutServiceDep = Annotated[CreatorPayoutService, Depends(_get_payout_service)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -130,6 +136,25 @@ class ReleaseCreateRequest(BaseModel):
 
 class ReleaseUpdateRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
+
+
+class KycRequest(BaseModel):
+    legal_name: str = Field(..., min_length=2, max_length=120)
+    date_of_birth: str = Field(..., min_length=10, max_length=10)
+    country_code: str = Field(..., min_length=2, max_length=2)
+    id_type: Literal["passport", "national_id", "drivers_license"]
+    id_last4: str = Field(..., min_length=4, max_length=4)
+    id_document_ref: str = Field(..., min_length=1, max_length=1000)
+    selfie_ref: str | None = Field(default=None, max_length=1000)
+    tax_id: str | None = Field(default=None, max_length=40)
+
+
+class PayoutAccountRequest(BaseModel):
+    method: Literal["aba", "wing", "khqr", "bank", "paypal", "wise"]
+    account_name: str = Field(..., min_length=2, max_length=120)
+    account_last4: str = Field(..., min_length=4, max_length=4)
+    bank_code: str | None = Field(default=None, max_length=30)
+    currency: Literal["USD", "KHR"] = "USD"
 
 
 @router.get("/me", response_model=CreatorStudioResponse)
@@ -284,3 +309,35 @@ async def refresh_eligibility(
     refreshed = await service.refresh_creator(ctx.user_id)
     payload = await service.list_creator(ctx.user_id)
     return {"refreshed": refreshed, **payload}
+
+
+@router.get("/payouts")
+async def get_payout_status(
+    ctx: CurrentUserDep, service: PayoutServiceDep
+) -> dict:
+    return await service.get_status(ctx.user_id)
+
+
+@router.post("/kyc")
+async def submit_kyc(
+    body: KycRequest,
+    ctx: CurrentUserDep,
+    service: PayoutServiceDep,
+) -> dict:
+    return await service.submit_kyc(ctx.user_id, body.model_dump(exclude_unset=True))
+
+
+@router.put("/payout-account")
+async def save_payout_account(
+    body: PayoutAccountRequest,
+    ctx: CurrentUserDep,
+    service: PayoutServiceDep,
+) -> dict:
+    return await service.upsert_payout_account(ctx.user_id, body.model_dump(exclude_unset=True))
+
+
+@router.post("/payouts/request")
+async def request_payout(
+    ctx: CurrentUserDep, service: PayoutServiceDep
+) -> dict:
+    return await service.request_payout(ctx.user_id)

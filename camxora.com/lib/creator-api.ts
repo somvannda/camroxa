@@ -352,3 +352,87 @@ export async function refreshEligibility(): Promise<CreatorEligibilityResponse &
     { method: "POST" }
   );
 }
+
+export type CreatorKyc = {
+  user_id: string;
+  legal_name: string;
+  status: "pending" | "verified" | "rejected" | "expired";
+  reason?: string | null;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+};
+
+export type CreatorPayoutAccount = {
+  id: string;
+  method: "aba" | "wing" | "khqr" | "bank" | "paypal" | "wise";
+  account_name: string;
+  account_last4: string;
+  bank_code?: string | null;
+  currency: string;
+  status: "pending" | "verified" | "rejected" | "disabled";
+};
+
+export type CreatorPayout = {
+  id: string;
+  amount_micros: number;
+  currency: string;
+  method: string;
+  status: "requested" | "approved" | "processing" | "paid" | "failed" | "cancelled";
+  requested_at?: string | null;
+  paid_at?: string | null;
+  payment_ref?: string | null;
+};
+
+export type CreatorPayoutStatus = {
+  kyc: CreatorKyc | null;
+  account: CreatorPayoutAccount | null;
+  balance: {
+    available_micros: number;
+    available_usd: number;
+    pending_micros: number;
+    paid_micros: number;
+    min_payout_micros: number;
+  };
+  payouts: CreatorPayout[];
+};
+
+export async function fetchPayoutStatus(): Promise<CreatorPayoutStatus> {
+  return studioJson<CreatorPayoutStatus>("/api/v3/creator/payouts");
+}
+
+export async function submitKyc(input: {
+  legal_name: string;
+  date_of_birth: string;
+  country_code: string;
+  id_type: "passport" | "national_id" | "drivers_license";
+  id_last4: string;
+  id_document_ref: string;
+  selfie_ref?: string;
+  tax_id?: string;
+}): Promise<{ kyc: CreatorKyc }> {
+  return studioJson<{ kyc: CreatorKyc }>("/api/v3/creator/kyc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function savePayoutAccount(input: {
+  method: "aba" | "wing" | "khqr" | "bank" | "paypal" | "wise";
+  account_name: string;
+  account_last4: string;
+  bank_code?: string;
+  currency: "USD" | "KHR";
+}): Promise<{ account: CreatorPayoutAccount }> {
+  return studioJson<{ account: CreatorPayoutAccount }>("/api/v3/creator/payout-account", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function requestPayout(): Promise<{ payout: CreatorPayout }> {
+  return studioJson<{ payout: CreatorPayout }>("/api/v3/creator/payouts/request", {
+    method: "POST",
+  });
+}

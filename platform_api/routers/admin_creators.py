@@ -6,12 +6,13 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.services.creator_program_service import CreatorProgramService
 from platform_api.services.creator_release_service import CreatorReleaseService
 from platform_api.services.creator_eligibility_service import CreatorEligibilityService
+from platform_api.services.creator_payout_service import CreatorPayoutService
 
 router = APIRouter(prefix="/admin/creators", tags=["creator-admin"])
 
@@ -30,9 +31,14 @@ async def _get_eligibility_service() -> CreatorEligibilityService:
     raise NotImplementedError("CreatorEligibilityService dependency not configured.")
 
 
+async def _get_payout_service() -> CreatorPayoutService:
+    raise NotImplementedError("CreatorPayoutService dependency not configured.")
+
+
 ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
 ReleaseServiceDep = Annotated[CreatorReleaseService, Depends(_get_release_service)]
 EligibilityServiceDep = Annotated[CreatorEligibilityService, Depends(_get_eligibility_service)]
+PayoutServiceDep = Annotated[CreatorPayoutService, Depends(_get_payout_service)]
 
 
 class ApplicationDecisionRequest(BaseModel):
@@ -63,6 +69,15 @@ class BadgeGrantRequest(BaseModel):
 class ReleaseDecisionRequest(BaseModel):
     decision: Literal["approve", "request_changes", "reject"]
     reason: str | None = None
+
+
+class KycDecisionRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    reason: str | None = None
+
+
+class MarkPaidRequest(BaseModel):
+    reference: str = Field(..., min_length=1, max_length=120)
 
 
 @router.get("/applications")
@@ -153,6 +168,57 @@ async def refresh_eligibility(
 ) -> dict:
     del ctx
     return {"refreshed": await service.refresh_all(limit=limit)}
+
+
+@router.get("/kyc")
+async def list_kyc(
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+    status: str | None = Query(default=None, max_length=20),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    del ctx
+    return await service.list_kyc(status=status, limit=limit, offset=offset)
+
+
+@router.post("/kyc/{user_id}/decision")
+async def decide_kyc(
+    user_id: str,
+    body: KycDecisionRequest,
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+) -> dict:
+    return await service.decide_kyc(
+        user_id,
+        decision=body.decision,
+        reviewer_id=ctx.user_id,
+        reason=body.reason,
+    )
+
+
+@router.get("/payouts")
+async def list_payouts(
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+    status: str | None = Query(default=None, max_length=20),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    del ctx
+    return await service.list_payouts(status=status, limit=limit, offset=offset)
+
+
+@router.post("/payouts/{payout_id}/mark-paid")
+async def mark_payout_paid(
+    payout_id: str,
+    body: MarkPaidRequest,
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+) -> dict:
+    return await service.mark_paid(
+        payout_id, reference=body.reference, reviewer_id=ctx.user_id
+    )
 
 
 @router.post("/{user_id}/badges")

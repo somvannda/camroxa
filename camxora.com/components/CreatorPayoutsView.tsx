@@ -1,0 +1,394 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Icon } from "@/components/Icon";
+import { CreatorMetrics } from "@/components/CreatorMetrics";
+import {
+  CreatorButton,
+  CreatorButtonLink,
+  CreatorField,
+  CreatorHeader,
+  CreatorInput,
+  CreatorPage,
+  CreatorPanel,
+  CreatorSelect,
+  CreatorStatus,
+} from "@/components/CreatorUI";
+import styles from "@/components/creator-ui.module.css";
+import {
+  CreatorApiError,
+  fetchPayoutStatus,
+  requestPayout,
+  savePayoutAccount,
+  submitKyc,
+  type CreatorPayoutStatus,
+} from "@/lib/creator-api";
+
+function usd(micros: number): string {
+  return `$${(Number(micros || 0) / 1_000_000).toFixed(2)}`;
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function kycTone(status?: string | null): "neutral" | "review" | "live" | "danger" {
+  if (status === "verified") return "live";
+  if (status === "pending") return "review";
+  if (status === "rejected" || status === "expired") return "danger";
+  return "neutral";
+}
+
+export function CreatorPayoutsView() {
+  const [data, setData] = useState<CreatorPayoutStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [legalName, setLegalName] = useState("");
+  const [dob, setDob] = useState("");
+  const [country, setCountry] = useState("KH");
+  const [idType, setIdType] = useState<"passport" | "national_id" | "drivers_license">("national_id");
+  const [idLast4, setIdLast4] = useState("");
+  const [documentRef, setDocumentRef] = useState("");
+  const [selfieRef, setSelfieRef] = useState("");
+  const [taxId, setTaxId] = useState("");
+
+  const [method, setMethod] = useState<"aba" | "wing" | "khqr" | "bank" | "paypal" | "wise">("aba");
+  const [accountName, setAccountName] = useState("");
+  const [accountLast4, setAccountLast4] = useState("");
+  const [bankCode, setBankCode] = useState("");
+  const [currency, setCurrency] = useState<"USD" | "KHR">("USD");
+
+  async function refresh() {
+    setData(await fetchPayoutStatus());
+  }
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetchPayoutStatus()
+      .then((payload) => {
+        if (active) setData(payload);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        if (cause instanceof CreatorApiError && cause.status === 401) {
+          setUnauthorized(true);
+        } else {
+          setError(cause instanceof Error ? cause.message : "Could not load payouts");
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function onKyc(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      await submitKyc({
+        legal_name: legalName.trim(),
+        date_of_birth: dob,
+        country_code: country.trim().toUpperCase(),
+        id_type: idType,
+        id_last4: idLast4.trim(),
+        id_document_ref: documentRef.trim(),
+        selfie_ref: selfieRef.trim() || undefined,
+        tax_id: taxId.trim() || undefined,
+      });
+      setSuccess("Payout verification submitted. We review it before your first payout.");
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not submit verification");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onAccount(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      await savePayoutAccount({
+        method,
+        account_name: accountName.trim(),
+        account_last4: accountLast4.trim(),
+        bank_code: bankCode.trim() || undefined,
+        currency,
+      });
+      setSuccess("Payout account saved. It needs verification before the first payout.");
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save payout account");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onRequest() {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      await requestPayout();
+      setSuccess("Payout requested. Finance reviews it in the next cycle.");
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not request payout");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <CreatorPage>
+        <CreatorHeader meta="Creator Studio" title="Payouts" />
+        <div className={styles.skeletonPanel}>
+          <div className={styles.skeleton} style={{ width: 220, height: 28 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 72 }} />
+          <div className={styles.skeleton} style={{ width: "100%", height: 320 }} />
+        </div>
+      </CreatorPage>
+    );
+  }
+
+  if (unauthorized) {
+    return (
+      <CreatorPage>
+        <CreatorHeader meta="Creator Studio" title="Payouts" />
+        <CreatorPanel>
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>Sign in to manage payouts</p>
+            <p className={styles.emptyBody}>Complete verification once, then request payouts when your balance reaches $20.</p>
+            <div>
+              <CreatorButtonLink href="/login?next=/creator/payouts" variant="primary">
+                <Icon name="fa-right-to-bracket" /> Sign in
+              </CreatorButtonLink>
+            </div>
+          </div>
+        </CreatorPanel>
+      </CreatorPage>
+    );
+  }
+
+  const balance = data?.balance;
+  const kyc = data?.kyc;
+  const account = data?.account;
+  const canRequest =
+    kyc?.status === "verified" &&
+    account?.status === "verified" &&
+    (balance?.available_micros ?? 0) >= (balance?.min_payout_micros ?? 20_000_000);
+  const kycLocked = kyc?.status === "verified" || kyc?.status === "pending";
+
+  return (
+    <CreatorPage>
+      <CreatorHeader
+        meta="Creator Studio"
+        title="Payouts"
+        description="Verify once, then request payouts when your balance reaches $20."
+        actions={
+          <>
+            <CreatorButtonLink href="/creator" variant="ghost">
+              <Icon name="fa-arrow-left" /> Back to Studio
+            </CreatorButtonLink>
+            <CreatorButtonLink href="/creator/earnings" variant="ghost">
+              <Icon name="fa-chart-line" /> Earnings
+            </CreatorButtonLink>
+          </>
+        }
+      />
+
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {success ? <p className={styles.success} role="status">{success}</p> : null}
+
+      <CreatorMetrics
+        items={[
+          { label: "Available", value: usd(balance?.available_micros ?? 0) },
+          { label: "Pending", value: usd(balance?.pending_micros ?? 0) },
+          { label: "Paid", value: usd(balance?.paid_micros ?? 0) },
+          { label: "Payout KYC", value: kyc?.status ?? "Not started" },
+        ]}
+      />
+
+      <div className={styles.split}>
+        <CreatorPanel title="Payout verification" meta={kyc ? kyc.status : "Not started"}>
+          {kyc ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              <CreatorStatus label={kyc.status} tone={kycTone(kyc.status)} />
+              <p className={styles.rowMeta}>
+                {kyc.status === "verified"
+                  ? "Verified. Payouts are active."
+                  : kyc.status === "pending"
+                    ? "Under review. We will notify you when it is approved."
+                    : kyc.reason || "Please resubmit your information."}
+              </p>
+            </div>
+          ) : null}
+
+          {!kycLocked ? (
+            <form className={styles.form} onSubmit={onKyc} style={{ marginTop: kyc ? 20 : 0 }}>
+              <CreatorField label="Legal name" htmlFor="kyc-name">
+                <CreatorInput id="kyc-name" value={legalName} onChange={(event) => setLegalName(event.target.value)} required />
+              </CreatorField>
+              <CreatorField label="Date of birth" htmlFor="kyc-dob">
+                <CreatorInput id="kyc-dob" type="date" value={dob} onChange={(event) => setDob(event.target.value)} required />
+              </CreatorField>
+              <CreatorField label="Country" htmlFor="kyc-country">
+                <CreatorInput id="kyc-country" value={country} onChange={(event) => setCountry(event.target.value)} maxLength={2} required />
+              </CreatorField>
+              <CreatorField label="ID type" htmlFor="kyc-id-type">
+                <CreatorSelect
+                  id="kyc-id-type"
+                  value={idType}
+                  onValueChange={(value) => setIdType(value as typeof idType)}
+                  options={[
+                    { value: "national_id", label: "National ID" },
+                    { value: "passport", label: "Passport" },
+                    { value: "drivers_license", label: "Driver's license" },
+                  ]}
+                  ariaLabel="ID type"
+                />
+              </CreatorField>
+              <CreatorField label="ID last 4 characters" htmlFor="kyc-last4">
+                <CreatorInput id="kyc-last4" value={idLast4} onChange={(event) => setIdLast4(event.target.value)} maxLength={4} required />
+              </CreatorField>
+              <CreatorField label="ID document reference" htmlFor="kyc-doc" hint="Secure upload reference or https:// link">
+                <CreatorInput id="kyc-doc" value={documentRef} onChange={(event) => setDocumentRef(event.target.value)} required />
+              </CreatorField>
+              <CreatorField label="Selfie reference (optional)" htmlFor="kyc-selfie">
+                <CreatorInput id="kyc-selfie" value={selfieRef} onChange={(event) => setSelfieRef(event.target.value)} />
+              </CreatorField>
+              <CreatorField label="Tax ID (optional)" htmlFor="kyc-tax">
+                <CreatorInput id="kyc-tax" value={taxId} onChange={(event) => setTaxId(event.target.value)} />
+              </CreatorField>
+              <div>
+                <CreatorButton type="submit" disabled={saving}>
+                  <Icon name="fa-shield-halved" /> {saving ? "Submitting…" : "Submit verification"}
+                </CreatorButton>
+              </div>
+            </form>
+          ) : null}
+        </CreatorPanel>
+
+        <CreatorPanel title="Payout account" meta={account ? account.status : "Not set"}>
+          {account ? (
+            <div style={{ display: "grid", gap: 8, marginBottom: 20 }}>
+              <CreatorStatus label={account.status} tone={account.status === "verified" ? "live" : account.status === "rejected" ? "danger" : "review"} />
+              <p className={styles.rowMeta}>
+                {account.method.toUpperCase()} · {account.account_name} · •••• {account.account_last4} · {account.currency}
+              </p>
+            </div>
+          ) : null}
+          <form className={styles.form} onSubmit={onAccount}>
+            <CreatorField label="Method" htmlFor="account-method">
+              <CreatorSelect
+                id="account-method"
+                value={method}
+                onValueChange={(value) => setMethod(value as typeof method)}
+                options={[
+                  { value: "aba", label: "ABA Bank" },
+                  { value: "wing", label: "Wing" },
+                  { value: "khqr", label: "KHQR" },
+                  { value: "bank", label: "Other bank" },
+                ]}
+                ariaLabel="Payout method"
+              />
+            </CreatorField>
+            <CreatorField label="Account name" htmlFor="account-name">
+              <CreatorInput id="account-name" value={accountName} onChange={(event) => setAccountName(event.target.value)} required />
+            </CreatorField>
+            <CreatorField label="Account last 4 characters" htmlFor="account-last4">
+              <CreatorInput id="account-last4" value={accountLast4} onChange={(event) => setAccountLast4(event.target.value)} maxLength={4} required />
+            </CreatorField>
+            <CreatorField label="Bank code (optional)" htmlFor="account-bank">
+              <CreatorInput id="account-bank" value={bankCode} onChange={(event) => setBankCode(event.target.value)} />
+            </CreatorField>
+            <CreatorField label="Currency" htmlFor="account-currency">
+              <CreatorSelect
+                id="account-currency"
+                value={currency}
+                onValueChange={(value) => setCurrency(value as typeof currency)}
+                options={[
+                  { value: "USD", label: "USD" },
+                  { value: "KHR", label: "KHR" },
+                ]}
+                ariaLabel="Currency"
+              />
+            </CreatorField>
+            <div>
+              <CreatorButton type="submit" variant="secondary" disabled={saving}>
+                <Icon name="fa-floppy-disk" /> Save account
+              </CreatorButton>
+            </div>
+          </form>
+        </CreatorPanel>
+      </div>
+
+      <CreatorPanel title="Request a payout" className={styles.sectionGap}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <p className={styles.rowTitle}>{usd(balance?.available_micros ?? 0)} available</p>
+            <p className={styles.rowMeta}>
+              Minimum {usd(balance?.min_payout_micros ?? 20_000_000)} · paid monthly after verification.
+            </p>
+          </div>
+          <CreatorButton type="button" onClick={onRequest} disabled={saving || !canRequest}>
+            <Icon name="fa-money-bill-transfer" /> {saving ? "Requesting…" : "Request payout"}
+          </CreatorButton>
+        </div>
+        {!canRequest ? (
+          <p className={styles.hint} style={{ marginTop: 12 }}>
+            {kyc?.status !== "verified"
+              ? "Complete payout verification first."
+              : account?.status !== "verified"
+                ? "Your payout account needs verification."
+                : "Your balance is below the $20 minimum."}
+          </p>
+        ) : null}
+      </CreatorPanel>
+
+      <CreatorPanel title="Payout history" className={styles.sectionGap}>
+        {!data?.payouts.length ? (
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>No payouts yet</p>
+            <p className={styles.emptyBody}>Your first payout appears here after finance processes it.</p>
+          </div>
+        ) : (
+          <div className={styles.list}>
+            {data.payouts.map((payout) => (
+              <div className={styles.row} key={payout.id}>
+                <div>
+                  <p className={styles.rowTitle}>{usd(payout.amount_micros)}</p>
+                  <p className={styles.rowMeta}>
+                    {payout.method.toUpperCase()} · requested {formatDate(payout.requested_at)}
+                    {payout.paid_at ? ` · paid ${formatDate(payout.paid_at)}` : ""}
+                  </p>
+                </div>
+                <CreatorStatus
+                  label={payout.status}
+                  tone={payout.status === "paid" ? "live" : payout.status === "failed" ? "danger" : "review"}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </CreatorPanel>
+    </CreatorPage>
+  );
+}
