@@ -31,7 +31,7 @@ functional controls the capture does not show (listed below).
 | Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom, labels thin 1/2/4/8 bars as it drops | same |
 | Time ruler | 22 px `#1e1e20` band with dim labels (labels kept at AA contrast) | same |
 | Prompt bar | 645×56 floating bar 16 px above the shell body, BETA badge, model picker, send | same; v6 / v6-wild / v6-mini picker feeds the assistant panel, where the take is auditioned or committed to the track (spends credits) |
-| Assistant panel | left column with the prompt, progress and Commit/Audition actions (S37) | same as a floating 370 px drawer; the shell does not reflow |
+| Assistant panel | left column with the prompt, progress and per-take Commit/Audition actions (S37) | same as a floating 370 px drawer; the shell does not reflow |
 | Playhead | 1 px `#4c4c4c` line with a cyan `#3dafff` ruler flag | same |
 | Lane | 86 px, starts y82 | same |
 | Clip | starts y84, 82 px tall, radius 10, label at +17 | same; waveform painted from the decoded clip audio (peaks cached per URL) |
