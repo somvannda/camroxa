@@ -212,6 +212,36 @@ class CreatorProfileService:
             return {"redirect": redirect}
         return None
 
+    async def get_public_releases(self, handle: str) -> dict[str, Any] | None:
+        normalized = normalize_handle(handle)
+        profile = await self._repo.get_by_handle(normalized)
+        if profile is None:
+            return None
+        rows = await self._repo.list_public_releases(normalized)
+        items = []
+        for row in rows:
+            genres = row.get("genres")
+            if isinstance(genres, str):
+                try:
+                    genres = json.loads(genres)
+                except json.JSONDecodeError:
+                    genres = []
+            count = int(row.get("track_count") or 0)
+            items.append(
+                {
+                    "id": str(row["id"]),
+                    "title": row["title"],
+                    "album_slug": row.get("album_slug"),
+                    "genre": row.get("genre"),
+                    "genres": genres if isinstance(genres, list) else [],
+                    "cover_url": None,
+                    "track_count": count,
+                    "release_type": "album" if count > 1 else "single",
+                    "published_at": row.get("published_at"),
+                }
+            )
+        return {"items": items}
+
     async def list_public(
         self,
         *,

@@ -134,6 +134,59 @@ async def test_old_handle_resolves_to_redirect() -> None:
 
 
 @pytest.mark.asyncio
+async def test_public_releases_returns_none_for_unknown_creator() -> None:
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value=None)
+    pool.fetchval = AsyncMock(return_value=None)
+
+    payload = await CreatorProfileService(pool).get_public_releases("nobody")
+
+    assert payload is None
+
+
+@pytest.mark.asyncio
+async def test_public_releases_maps_albums_and_singles() -> None:
+    published = datetime.now(timezone.utc)
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value=_profile())
+    pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": uuid4(),
+                "title": "Phnom Penh Nights",
+                "album_slug": "phnom-penh-nights",
+                "genre": "Khmer Pop",
+                "genres": '["Khmer Pop","R&B"]',
+                "cover_storage_key": None,
+                "published_at": published,
+                "track_count": 5,
+            },
+            {
+                "id": uuid4(),
+                "title": "One More Ride",
+                "album_slug": None,
+                "genre": None,
+                "genres": None,
+                "cover_storage_key": None,
+                "published_at": published,
+                "track_count": 1,
+            },
+        ]
+    )
+
+    payload = await CreatorProfileService(pool).get_public_releases("sokha")
+
+    assert payload is not None
+    items = payload["items"]
+    assert len(items) == 2
+    assert items[0]["release_type"] == "album"
+    assert items[0]["track_count"] == 5
+    assert items[0]["genres"] == ["Khmer Pop", "R&B"]
+    assert items[1]["release_type"] == "single"
+    assert items[1]["genres"] == []
+
+
+@pytest.mark.asyncio
 async def test_availability_rejects_reserved_handles() -> None:
     pool = AsyncMock()
     pool.fetchval = AsyncMock(return_value=None)

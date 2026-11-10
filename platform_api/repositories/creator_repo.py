@@ -239,6 +239,33 @@ class CreatorRepository:
         )
         return [dict(row) for row in rows]
 
+    async def list_public_releases(self, handle: str) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT a.id,
+                   a.album_name AS title,
+                   a.album_slug,
+                   a.genre,
+                   a.genres,
+                   a.cover_storage_key,
+                   a.published_at,
+                   COUNT(t.id)::int AS track_count
+            FROM creator_profiles cp
+            JOIN stream_albums a
+              ON a.user_id = cp.user_id AND a.publish_status = 'published'
+            JOIN stream_tracks t
+              ON t.album_id = a.id AND t.publish_status = 'published'
+            WHERE LOWER(cp.handle) = LOWER($1)
+              AND cp.status = 'active'
+            GROUP BY a.id
+            HAVING COUNT(t.id) > 0
+            ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC
+            LIMIT 50
+            """,
+            handle,
+        )
+        return [dict(row) for row in rows]
+
     async def count_public(
         self,
         *,

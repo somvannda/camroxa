@@ -62,6 +62,22 @@ class CreatorListResponse(BaseModel):
     offset: int
 
 
+class CreatorReleaseItem(BaseModel):
+    id: str
+    title: str
+    album_slug: str | None = None
+    genre: str | None = None
+    genres: list[str] = Field(default_factory=list)
+    cover_url: str | None = None
+    track_count: int = 0
+    release_type: str = "single"
+    published_at: datetime | None = None
+
+
+class CreatorReleasesResponse(BaseModel):
+    items: list[CreatorReleaseItem]
+
+
 @router.get("", response_model=CreatorListResponse)
 async def list_creators(
     service: CreatorServiceDep,
@@ -96,3 +112,13 @@ async def get_creator(handle: str, service: CreatorServiceDep) -> CreatorPublicP
             status_code=308,
         )
     return CreatorPublicProfile.model_validate(payload)
+
+
+@router.get("/{handle}/releases", response_model=CreatorReleasesResponse)
+async def get_creator_releases(
+    handle: str, service: CreatorServiceDep
+) -> CreatorReleasesResponse:
+    payload = await service.get_public_releases(handle)
+    if payload is None:
+        raise NotFoundError("Creator not found.")
+    return CreatorReleasesResponse.model_validate(payload)

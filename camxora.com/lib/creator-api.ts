@@ -176,6 +176,26 @@ export async function fetchCreator(handle: string): Promise<CreatorProfile> {
   return publicJson<CreatorProfile>(`/api/v3/creators/${encodeURIComponent(handle)}`);
 }
 
+export type CreatorReleaseSummary = {
+  id: string;
+  title: string;
+  album_slug?: string | null;
+  genre?: string | null;
+  genres: string[];
+  cover_url?: string | null;
+  track_count: number;
+  release_type: "single" | "album";
+  published_at?: string | null;
+};
+
+export async function fetchCreatorReleases(
+  handle: string
+): Promise<{ items: CreatorReleaseSummary[] }> {
+  return publicJson<{ items: CreatorReleaseSummary[] }>(
+    `/api/v3/creators/${encodeURIComponent(handle)}/releases`
+  );
+}
+
 export async function fetchMyCreator(): Promise<CreatorStudioResponse> {
   return studioJson<CreatorStudioResponse>("/api/v3/creator/me");
 }

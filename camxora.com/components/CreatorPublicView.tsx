@@ -9,10 +9,17 @@ import {
   CreatorHeader,
   CreatorPage,
   CreatorPanel,
+  CreatorStatus,
   creatorButtonClass,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
-import { CreatorApiError, fetchCreator, type CreatorProfile } from "@/lib/creator-api";
+import {
+  CreatorApiError,
+  fetchCreator,
+  fetchCreatorReleases,
+  type CreatorProfile,
+  type CreatorReleaseSummary,
+} from "@/lib/creator-api";
 
 function formatCount(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -22,6 +29,7 @@ function formatCount(value: number): string {
 
 export function CreatorPublicView({ handle }: { handle: string }) {
   const [creator, setCreator] = useState<CreatorProfile | null>(null);
+  const [releases, setReleases] = useState<CreatorReleaseSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
@@ -45,6 +53,13 @@ export function CreatorPublicView({ handle }: { handle: string }) {
       })
       .finally(() => {
         if (active) setLoading(false);
+      });
+    fetchCreatorReleases(handle)
+      .then((data) => {
+        if (active) setReleases(data.items);
+      })
+      .catch(() => {
+        /* the releases shelf is optional */
       });
     return () => {
       active = false;
@@ -176,7 +191,7 @@ export function CreatorPublicView({ handle }: { handle: string }) {
         items={[
           { label: "Monthly listeners", value: formatCount(creator.stats.monthly_listeners) },
           { label: "Followers", value: formatCount(creator.stats.followers) },
-          { label: "Releases", value: creator.stats.releases },
+          { label: "Releases", value: releases.length || creator.stats.releases },
           { label: "Valid streams", value: formatCount(creator.stats.valid_streams) },
         ]}
       />
@@ -208,13 +223,35 @@ export function CreatorPublicView({ handle }: { handle: string }) {
         ) : null}
       </CreatorPanel>
 
-      <CreatorPanel title="Releases" meta="0 published" className={styles.sectionGap}>
-        <div className={styles.empty}>
-          <p className={styles.emptyTitle}>No published releases yet</p>
-          <p className={styles.emptyBody}>
-            Release management ships in Phase 2. Published releases will appear here and in the catalog.
-          </p>
-        </div>
+      <CreatorPanel title="Releases" meta={`${releases.length} published`} className={styles.sectionGap}>
+        {releases.length === 0 ? (
+          <div className={styles.empty}>
+            <p className={styles.emptyTitle}>No published releases yet</p>
+            <p className={styles.emptyBody}>
+              This creator has not published a release yet. Follow to hear it first.
+            </p>
+          </div>
+        ) : (
+          <div className={styles.list}>
+            {releases.map((release) => (
+              <div className={styles.row} key={release.id}>
+                <div style={{ minWidth: 0 }}>
+                  <p className={styles.rowTitle}>{release.title}</p>
+                  <p className={styles.rowMeta}>
+                    {release.release_type === "album" ? "Album" : "Single"}
+                    {release.genre ? ` · ${release.genre}` : ""}
+                    {release.track_count ? ` · ${release.track_count} tracks` : ""}
+                    {release.published_at ? ` · ${new Date(release.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}
+                  </p>
+                </div>
+                <CreatorStatus
+                  label={release.release_type === "album" ? "Album" : "Single"}
+                  tone="neutral"
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </CreatorPanel>
     </CreatorPage>
   );
