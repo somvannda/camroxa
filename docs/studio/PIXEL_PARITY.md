@@ -47,7 +47,7 @@ functional controls the capture does not show (listed below).
 | Empty library | centred “No songs found.” + 38 px Reset all filters pill | same (only when filters/search caused it) |
 | Master strip | Main + fader + mute pinned at the panel bottom | same |
 | History drawer | 300 px panel under the header, inset 8 px, on #101012, ‹ date › stepper | same; our version list/restore inside |
-| Plugin dock | full-width band above the footer, 448 px slot cards, preset pill | same; the compressor card has the captured transfer curve beside six knobs, EQ puts its curve left of the band controls, and the pill opens a preset menu (Default + starter sets) |
+| Plugin dock | full-width band above the footer, 448 px slot cards, preset pill | same; the compressor card has the captured transfer curve beside six knobs, EQ puts its curve left of the band controls, the pill opens a preset menu (Default + starter sets), and the spare rail shows Add effect plus three 30%-opacity ghost tiles (Compressor/Reverb/Delay) |
 | EQ card | 450 px card: Band selector + switch, six shape buttons, curve with per-band handles, Freq/Q/Gain knobs | same two-column geometry (curve left, band controls right); controls/curve use the CAMXORA accent instead of the captured pink/yellow (user request) |
 | Popped-out plugin | large floating card from the external-link control | same: fixed 460 px (520 for EQ) at the bottom-right |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |

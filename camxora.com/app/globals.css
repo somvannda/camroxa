@@ -4518,6 +4518,14 @@ html{color-scheme:dark}
 .sp-param-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8b90a6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-param input{width:100%;accent-color:#d6bd12;height:14px}
 .sp-param-value{font-size:11px;font-variant-numeric:tabular-nums;color:#c2c2c1}
+.sp-empty-rail{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:14px;width:527px;min-height:200px;padding:16px;border:1px solid rgba(255,255,255,.06);border-radius:12px;background:#141416}
+.sp-ghosts{display:flex;gap:12px;width:100%}
+.sp-ghost{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid rgba(255,255,255,.06);border-radius:10px;background:#101012;color:#c2c2c1;font:inherit;font-size:11px;text-align:left;opacity:.35;cursor:pointer}
+.sp-ghost:hover{opacity:.7}
+.sp-ghost .sp-card-preview{height:56px}
+.sp-ghost .sp-card-preview svg{top:6px;height:24px}
+.sp-ghost .sp-card-knobs{display:none}
+.sp-ghost-label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sp-add{flex:0 0 auto;align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 16px;border:0;border-radius:999px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:13px;cursor:pointer}
 .sp-add:hover{background:#242427}
 .sp-dialog-backdrop{position:fixed;inset:0;z-index:210;display:grid;place-items:center;padding:24px;background:rgba(3,5,11,.72);backdrop-filter:blur(3px)}

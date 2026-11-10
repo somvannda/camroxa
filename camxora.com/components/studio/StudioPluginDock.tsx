@@ -609,9 +609,32 @@ export function StudioPluginDock({ chain, onChange, trackName, customPlugins = [
         })}
 
         {chain.length > 0 ? (
-          <button type="button" className="sp-add" onClick={() => setCatalogOpen(true)}>
-            <Icon name="fa-plus" /> Add effect
-          </button>
+          <div className="sp-empty-rail" aria-label="Add another effect">
+            <button type="button" className="sp-add" onClick={() => setCatalogOpen(true)}>
+              <Icon name="fa-plus" /> Add effect
+            </button>
+            <div className="sp-ghosts">
+              {(["compressor", "reverb", "delay"] as PluginId[])
+                .filter((id) => !chain.some((entry) => entry.pluginId === id))
+                .slice(0, 3)
+                .map((id) => {
+                  const suggestion = getPlugin(id);
+                  if (!suggestion) return null;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className="sp-ghost"
+                      aria-label={`Add ${suggestion.name}`}
+                      onClick={() => add(id)}
+                    >
+                      <PluginPreview id={id} />
+                      <span className="sp-ghost-label">{suggestion.name}</span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
         ) : null}
       </div>
 

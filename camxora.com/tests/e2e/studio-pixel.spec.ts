@@ -727,6 +727,27 @@ test("plugin dock sits above the footer on the captured surface", async ({ page 
   expect(info?.addHeight).toBe(36);
 });
 
+test("the empty dock rail suggests the next three effects", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel ghosts" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^EQ/ })
+    .first()
+    .click();
+
+  const rail = page.getByLabel("Add another effect");
+  await expect(rail).toBeVisible();
+  await expect(rail.locator(".sp-ghost")).toHaveCount(3);
+  await expect(rail.getByRole("button", { name: "Add Compressor" })).toBeVisible();
+
+  await rail.getByRole("button", { name: "Add Compressor" }).click();
+  await expect(page.locator(".sp-slot")).toHaveCount(2);
+  await expect(rail.locator(".sp-ghost")).toHaveCount(2);
+});
+
 test("plugin catalog dialog matches the captured surface", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
