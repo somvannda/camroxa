@@ -4699,6 +4699,7 @@ html{color-scheme:dark}
 .se-model-menu small{font-size:11px;color:#8b90a6}
 .se-shell.has-assistant .se-body{padding-left:392px}
 .se-shell.has-assistant .se-tracks{display:none}
+.se-shell.has-assistant .se-prompt-tools button + button{display:none}
 .se-shell.has-assistant .se-prompt{position:fixed;left:24px;right:auto;bottom:101px;transform:none;width:328px;z-index:80;padding:8px 12px 10px}
 .se-assistant{position:fixed;left:8px;top:52px;bottom:8px;z-index:5;display:flex;flex-direction:column;width:360px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
 .se-assistant-head{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
