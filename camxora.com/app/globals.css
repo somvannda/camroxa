@@ -4690,6 +4690,10 @@ html{color-scheme:dark}
 .se-model-menu button.on{background:hsl(var(--accent) / .14)}
 .se-model-menu strong{font-size:12px;font-weight:600}
 .se-model-menu small{font-size:11px;color:#8b90a6}
+.se-shell.has-assistant .se-head{padding-left:390px}
+.se-shell.has-assistant .se-body{padding-left:378px}
+.se-shell.has-assistant .se-foot{padding-left:390px}
+.se-shell.has-assistant .se-tracks{display:none}
 .se-assistant{position:fixed;left:8px;top:8px;bottom:8px;z-index:75;display:flex;flex-direction:column;width:370px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
 .se-assistant-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
 .se-assistant-head strong{font-size:13px;font-weight:600}

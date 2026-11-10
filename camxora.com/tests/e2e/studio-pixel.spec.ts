@@ -1161,6 +1161,11 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   // S37: the take arrives in the assistant panel; commit places it on the track.
   const assistant = page.getByRole("complementary", { name: "Studio assistant" });
   await expect(assistant).toBeVisible();
+  // S37: the assistant replaces the track panel and shifts the arrangement right.
+  await expect(page.locator(".se-tracks")).toBeHidden();
+  expect(
+    await page.locator(".se-lane").first().evaluate((element) => Math.round(element.getBoundingClientRect().x))
+  ).toBe(378);
   await expect(assistant.getByText(/Created Generated demo/)).toBeVisible({ timeout: 20_000 });
   expect(captured.model).toBe("v6-mini");
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(0);
@@ -1169,6 +1174,9 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   await assistant.locator(".se-assistant-take").nth(1).getByRole("button", { name: "Commit" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Take added" })).toBeVisible();
   await expect(page.locator(".se-clip", { hasText: "Generated demo alt" })).toHaveCount(1);
+
+  await assistant.getByRole("button", { name: "Close assistant" }).click();
+  await expect(page.locator(".se-tracks")).toBeVisible();
 });
 
 test("plugin cards offer the captured preset menu", async ({ page }) => {

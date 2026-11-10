@@ -3183,7 +3183,11 @@ export function StudioEditorShell() {
           </div>
         </div>
       </div>
-      <div className={`se-shell${touchMode ? " is-touch" : ""}${railOpen ? " has-rail" : ""}`}>
+      <div
+      className={`se-shell${touchMode ? " is-touch" : ""}${railOpen ? " has-rail" : ""}${
+        assistantOpen ? " has-assistant" : ""
+      }`}
+    >
       <StudioHeader
         title={project?.title || "Untitled project"}
         projectId={projectId}
