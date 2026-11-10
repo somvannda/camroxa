@@ -1144,6 +1144,13 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
             download_url: "/seed/demo-loop.wav",
             duration_seconds: 4,
           },
+          {
+            variant: "v2",
+            title: "Generated demo alt",
+            audio_url: "/seed/demo-loop.wav",
+            download_url: "/seed/demo-loop.wav",
+            duration_seconds: 4,
+          },
         ],
       }),
     })
@@ -1157,10 +1164,11 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   await expect(assistant.getByText(/Created Generated demo/)).toBeVisible({ timeout: 20_000 });
   expect(captured.model).toBe("v6-mini");
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(0);
-  await expect(assistant.getByRole("button", { name: "Audition" })).toBeVisible();
-  await assistant.getByRole("button", { name: "Commit to track" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "added to the track" })).toBeVisible();
-  await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(1);
+  await expect(assistant.getByText("Take 1")).toBeVisible();
+  await expect(assistant.getByText("Take 2")).toBeVisible();
+  await assistant.locator(".se-assistant-take").nth(1).getByRole("button", { name: "Commit" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Take added" })).toBeVisible();
+  await expect(page.locator(".se-clip", { hasText: "Generated demo alt" })).toHaveCount(1);
 });
 
 test("plugin cards offer the captured preset menu", async ({ page }) => {

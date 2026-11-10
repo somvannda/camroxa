@@ -4699,6 +4699,8 @@ html{color-scheme:dark}
 .se-assistant-msg.user{color:hsl(var(--foreground));font-weight:600}
 .se-assistant-msg.status{color:#8b90a6}
 .se-assistant-msg.result{color:hsl(var(--foreground))}
+.se-assistant-take{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:#8b90a6}
+.se-assistant-take span{flex:1;color:hsl(var(--foreground))}
 .se-assistant-actions{display:flex;gap:8px;padding-top:4px}
 .se-prompt{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;width:min(645px,calc(100% - 48px));height:56px;padding:0 12px 0 16px;border-radius:16px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:6}
 .se-prompt-badge{padding:2px 7px;border-radius:999px;background:hsl(var(--accent));color:hsl(var(--accent-foreground));font-size:11px;font-weight:600;letter-spacing:.04em}

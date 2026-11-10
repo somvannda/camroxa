@@ -378,6 +378,7 @@ export function StudioEditorShell() {
     Array<{ id: string; role: "user" | "status" | "result"; text: string }>
   >([]);
   const [pendingSong, setPendingSong] = useState<WebMusicGeneration | null>(null);
+  const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const promptRef = useRef<HTMLFormElement | null>(null);
 
@@ -3102,11 +3103,44 @@ export function StudioEditorShell() {
     }
   }
 
-  /** Commit the pending generation to the selected (or first) track at the playhead. */
-  function commitPendingSong() {
-    if (!pendingSong) return;
-    addSongToTimeline(pendingSong);
-    setExportToast("Generated part added to the track at the playhead.");
+  /** Insert one take (generation clip) at the playhead on the selected track. */
+  function commitTake(song: WebMusicGeneration, take: { variant: string; title?: string; audio_url?: string | null; duration_seconds?: number | null }) {
+    const trackId = selectedTrack ?? tracks[0]?.id;
+    if (!trackId || !take.audio_url) return;
+    insertClips([
+      {
+        trackId,
+        clip: {
+          id: `clip-${song.id}-${take.variant}-${Date.now().toString(36)}`,
+          title: take.title || song.title || "Song",
+          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          duration: take.duration_seconds ?? 8,
+          volume: 1,
+          pan: 0,
+          audioUrl: take.audio_url,
+          songId: song.id,
+        },
+      },
+    ]);
+    setExportToast("Take added to the track at the playhead.");
+  }
+
+  /** Audition a single take from the assistant panel. */
+  function toggleTakePreview(url: string) {
+    if (previewingUrl === url) {
+      previewRef.current?.pause();
+      previewRef.current = null;
+      setPreviewingUrl(null);
+      return;
+    }
+    previewRef.current?.pause();
+    const audio = new Audio(url);
+    previewRef.current = audio;
+    setPreviewingUrl(url);
+    setPlayingSongId(null);
+    setPlayingUploadId(null);
+    audio.onended = () => setPreviewingUrl((current) => (current === url ? null : current));
+    void audio.play().catch(() => setPreviewingUrl((current) => (current === url ? null : current)));
   }
 
   const railOpen = libraryOpen || inspectorOpen;
@@ -3502,25 +3536,30 @@ export function StudioEditorShell() {
                 {message.text}
               </p>
             ))}
-            {pendingSong ? (
-              <div className="se-assistant-actions">
-                <button
-                  type="button"
-                  className="se-pill on"
-                  onClick={commitPendingSong}
-                  disabled={tracks.length === 0}
-                >
-                  Commit to track
-                </button>
-                <button
-                  type="button"
-                  className="se-pill"
-                  onClick={() => toggleSongPreview(pendingSong)}
-                >
-                  {playingSongId === pendingSong.id ? "Pause" : "Audition"}
-                </button>
-              </div>
-            ) : null}
+            {pendingSong
+              ? (pendingSong.clips ?? [])
+                  .filter((take) => take.audio_url)
+                  .map((take, index) => (
+                    <div key={`${pendingSong.id}-${take.variant}`} className="se-assistant-take">
+                      <span>Take {index + 1}</span>
+                      <button
+                        type="button"
+                        className="se-pill"
+                        onClick={() => take.audio_url && toggleTakePreview(take.audio_url)}
+                      >
+                        {previewingUrl === take.audio_url ? "Pause" : "Audition"}
+                      </button>
+                      <button
+                        type="button"
+                        className="se-pill on"
+                        onClick={() => commitTake(pendingSong, take)}
+                        disabled={tracks.length === 0}
+                      >
+                        Commit
+                      </button>
+                    </div>
+                  ))
+              : null}
           </div>
         </aside>
       ) : null}
