@@ -45,8 +45,9 @@ functional controls the capture does not show (listed below).
 | Library rows | 56 px art, title 15 px, meta 13 px, filter chips 30 px | same; the Stems view reuses the upload row with a layer glyph, Play and Add |
 | Songs toolbar | Filter ▾ / New / thumbs-up / In Project / Stems | same; the funnel opens All/Liked/In project and Stems opens the list |
 | Empty library | centred “No songs found.” + 38 px Reset all filters pill | same (only when filters/search caused it) |
-| Master strip | Main + fader + mute pinned at the panel bottom | same |
+| Master strip | Main + fader + mute pinned at the panel bottom | same; clicking Main selects the master chain (S48) |
 | History drawer | 300 px panel under the header, inset 8 px, on #101012, ‹ date › stepper | same; our version list/restore inside |
+| Master chain (S48) | Limiter card with Lookahead / Pre Gain / Attack / Release / Link; the spare rail suggests EQ, Compressor and Reverb | same card geometry; the limiter controls drive the real master compressor (lookahead delay + pre-gain), EQ/Compressor add as Amount links, Reverb is disabled because the master bus does not render it |
 | Plugin dock | full-width band above the footer, 448 px slot cards, preset pill | same; the compressor card has the captured transfer curve beside six knobs, EQ puts its curve left of the band controls, the pill opens a preset menu (Default + starter sets), and the spare rail shows Add effect plus three 30%-opacity ghost tiles (Compressor/Reverb/Delay) |
 | EQ card | 450 px card: Band selector + switch, six shape buttons, curve with per-band handles, Freq/Q/Gain knobs | same two-column geometry (curve left, band controls right); controls/curve use the CAMXORA accent instead of the captured pink/yellow (user request) |
 | Convolution card (S44) | IR slot with a 0–2 s impulse preview, Halls › New England Hall breadcrumb, Mix/Gain/Pre/Width knobs | same two-column layout; 11 IRs in six groups, the picked impulse drives the real convolver (pre-delay and gain included) |

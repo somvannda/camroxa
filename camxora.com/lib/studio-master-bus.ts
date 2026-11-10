@@ -14,13 +14,34 @@
  * anything else is skipped rather than approximated.
  */
 
+import type { ParamDef } from "@/lib/studio-plugins";
+
 export type MasterChainEntry = {
   id?: string;
   type?: string;
   /** 0..1 amounts, interpreted per plugin kind. */
   amount?: number;
   enabled?: boolean;
+  /** Limiter controls (S48): lookahead ms, pre-gain dB, attack/release ms, link 0/1. */
+  params?: Record<string, number>;
 };
+
+export const LIMITER_DEFAULTS = {
+  lookahead: 3,
+  preGain: 0,
+  attack: 1,
+  release: 60,
+  link: 1,
+};
+
+/** Controls captured on the master Limiter card (S48). */
+export const LIMITER_PARAMS: ParamDef[] = [
+  { key: "lookahead", label: "Lookahead", min: 0, max: 20, default: 3, unit: "ms", tier: "primary" },
+  { key: "preGain", label: "Pre Gain", min: -12, max: 24, default: 0, unit: "db", tier: "primary" },
+  { key: "attack", label: "Attack", min: 0, max: 50, default: 1, unit: "ms", tier: "primary" },
+  { key: "release", label: "Release", min: 5, max: 500, default: 60, unit: "ms", tier: "primary" },
+  { key: "link", label: "Link", min: 0, max: 1, default: 1, tier: "primary" },
+];
 
 const MAX_DRIVE = 4;
 
@@ -77,10 +98,25 @@ export function buildMasterBus(
       comp.knee.value = isLimiter ? 0 : 24;
       comp.threshold.value = isLimiter ? -1 : -24 + amount * 12;
       comp.ratio.value = isLimiter ? 20 : 2 + amount * 6;
-      comp.attack.value = isLimiter ? 0.001 : 0.003;
-      comp.release.value = 0.25;
-      cursor.connect(comp);
-      cursor = comp;
+      if (isLimiter) {
+        const params = entry.params ?? {};
+        const preGain = Math.pow(10, (params.preGain ?? 0) / 20);
+        const lookahead = Math.min(0.05, Math.max(0, (params.lookahead ?? 3) / 1000));
+        const pre = context.createGain();
+        pre.gain.value = preGain;
+        const delay = context.createDelay(0.06);
+        delay.delayTime.value = lookahead;
+        comp.attack.value = Math.min(0.05, Math.max(0, (params.attack ?? 1) / 1000));
+        comp.release.value = Math.min(0.5, Math.max(0.005, (params.release ?? 60) / 1000));
+        // WebAudio compresses both channels together, which is the linked behaviour.
+        cursor.connect(pre).connect(delay).connect(comp);
+        cursor = comp;
+      } else {
+        comp.attack.value = 0.003;
+        comp.release.value = 0.25;
+        cursor.connect(comp);
+        cursor = comp;
+      }
       built += 1;
     } else if (kind.includes("drive") || kind.includes("distort")) {
       const shaper = context.createWaveShaper();

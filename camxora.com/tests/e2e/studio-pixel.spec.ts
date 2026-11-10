@@ -727,6 +727,43 @@ test("plugin dock sits above the footer on the captured surface", async ({ page 
   expect(info?.addHeight).toBe(36);
 });
 
+test("the master chain shows the captured Limiter and remembers it", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  const projectId = await createStudioProject(page, { title: "Pixel master" });
+
+  await page.getByRole("button", { name: "Main", exact: true }).click();
+  const dock = page.getByRole("region", { name: "Master chain" });
+  await expect(dock).toBeVisible();
+  await expect(page.getByRole("button", { name: "Main", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  await dock.getByRole("button", { name: "Add effect" }).click();
+  await page.getByRole("menu", { name: "Add master effect" })
+    .getByRole("menuitem", { name: "Limiter" })
+    .click();
+  const card = page.getByLabel("Limiter slot");
+  await expect(card).toBeVisible();
+  for (const name of ["Lookahead", "Pre Gain", "Attack", "Release", "Link"]) {
+    await expect(card.getByRole("slider", { name })).toBeVisible();
+  }
+  await card.getByRole("slider", { name: "Lookahead" }).fill("10");
+  await expect(page.locator(".se-chain-chip", { hasText: "Limiter" })).toBeVisible();
+
+  // Persisted in the document: reload and reopen the master.
+  await page.goto(`/studio/editor?project=${encodeURIComponent(projectId)}`);
+  await page.getByRole("button", { name: "Main", exact: true }).click();
+  await expect(page.getByLabel("Limiter slot").getByRole("slider", { name: "Lookahead" })).toHaveValue(
+    "10"
+  );
+
+  // Selecting a track swaps back to that track's plugin dock.
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Master chain" })).toHaveCount(0);
+});
+
 test("the convolution card loads an impulse response from the library", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

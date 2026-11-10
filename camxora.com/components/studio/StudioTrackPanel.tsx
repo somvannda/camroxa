@@ -49,6 +49,9 @@ export type StudioTrackPanelProps = {
   onAddUploadTrack: () => void;
   /** A designed plugin card (S45) dropped on a track. */
   onDropPlugin?: (trackId: string, payload: string) => void;
+  /** The master chain is selected (S48), not a track. */
+  masterSelected?: boolean;
+  onSelectMaster?: () => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
   /** Capture head: one control expands or collapses every visible track. */
@@ -129,6 +132,8 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onAddMidiTrack,
     onAddUploadTrack,
     onDropPlugin,
+    masterSelected = false,
+    onSelectMaster,
     onToggleHidden,
     onShowAllHidden,
     onToggleAllCollapsed,
@@ -555,9 +560,16 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
         ) : null}
       </div>
 
-      <div className="se-master-strip" data-help="master">
+      <div className={`se-master-strip${masterSelected ? " is-selected" : ""}`} data-help="master">
         <div className="se-master-head">
-          <span className="se-master-label">Main</span>
+          <button
+            type="button"
+            className={`se-master-label${masterSelected ? " on" : ""}`}
+            aria-pressed={masterSelected}
+            onClick={() => onSelectMaster?.()}
+          >
+            Main
+          </button>
           <button
             type="button"
             className={`se-icon${masterMuted ? " on" : ""}`}

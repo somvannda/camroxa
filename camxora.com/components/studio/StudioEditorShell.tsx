@@ -71,6 +71,7 @@ import {
   type DesignResult,
 } from "@/lib/studio-designer";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
+import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
@@ -471,6 +472,7 @@ export function StudioEditorShell() {
   settingsRef.current = settings;
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
+  const [masterSelected, setMasterSelected] = useState(false);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
   /** A clip explicitly attached with the prompt bar's + menu (not just selected). */
   const [attachedClipId, setAttachedClipId] = useState<string | null>(null);
@@ -1868,6 +1870,13 @@ export function StudioEditorShell() {
       .filter((entry): entry is CustomPlugin => entry !== null);
   }, [project]);
 
+  const derivedMasterChain = useMemo<MasterChainEntry[]>(() => {
+    const raw = (project?.data as { masterChain?: unknown } | undefined)?.masterChain;
+    return Array.isArray(raw) ? (raw as MasterChainEntry[]) : [];
+  }, [project]);
+  const [localMasterChain, setLocalMasterChain] = useState<MasterChainEntry[] | null>(null);
+  const masterChain = localMasterChain ?? derivedMasterChain;
+
   const [localChains, setLocalChains] = useState<Record<string, PluginChainEntry[]> | null>(null);
   const chains = localChains ?? derivedChains;
   const chainsRef = useRef(chains);
@@ -1885,7 +1894,16 @@ export function StudioEditorShell() {
 
   useEffect(() => {
     setLocalChains(null);
+    setLocalMasterChain(null);
+    setMasterSelected(false);
   }, [projectId]);
+
+  /** Persist the master chain into the project document (S48). */
+  function commitMasterChain(next: MasterChainEntry[]) {
+    setLocalMasterChain(next);
+    const base = currentData() as Record<string, unknown>;
+    writeProjectData({ ...base, masterChain: next }, "the master chain");
+  }
 
   /** Persist one track's plugin chain into the project document. */
   function commitChain(trackId: string, next: PluginChainEntry[]) {
@@ -3525,7 +3543,10 @@ export function StudioEditorShell() {
           hiddenOpen={hiddenOpen}
           collapsed={tracksCollapsed}
           onToggleCollapsed={() => setTracksCollapsed((value) => !value)}
-          onSelectTrack={setSelectedTrack}
+          onSelectTrack={(trackId) => {
+            setMasterSelected(false);
+            setSelectedTrack(trackId);
+          }}
           onToggleMenu={setMenuTrackId}
           onToggleFlag={toggleTrackFlag}
           onToggleArm={toggleArm}
@@ -3540,6 +3561,11 @@ export function StudioEditorShell() {
           onDelete={deleteTrack}
           onAddTrack={addTrack}
           onAddMidiTrack={addMidiTrack}
+          masterSelected={masterSelected}
+          onSelectMaster={() => {
+            setMasterSelected(true);
+            setMidiClipId(null);
+          }}
           onDropPlugin={(trackId, payload) => {
             try {
               const parsed = sanitizeCustomPlugin(JSON.parse(payload));
@@ -4231,6 +4257,8 @@ export function StudioEditorShell() {
           onChangeLanes={(lane, points) => setMidiLanes(midiClip.id, lane, points)}
           onClose={() => setMidiClipId(null)}
         />
+      ) : masterSelected ? (
+        <StudioMasterDock chain={masterChain} onChange={commitMasterChain} />
       ) : selectedTrack ? (
         <StudioPluginDock
           chain={chains[selectedTrack] ?? []}
@@ -4242,8 +4270,12 @@ export function StudioEditorShell() {
       ) : null}
 
       <StudioFooter
-        chain={(selectedTrack ? chains[selectedTrack] : [])?.map((entry) => entry.pluginId) ?? []}
-        hasTrack={Boolean(selectedTrack)}
+        chain={
+          masterSelected
+            ? masterChain.map((entry) => entry.type ?? "")
+            : (selectedTrack ? chains[selectedTrack] : [])?.map((entry) => entry.pluginId) ?? []
+        }
+        hasTrack={masterSelected || Boolean(selectedTrack)}
         loop={loop}
         onLoop={() => setLoop((value) => !value)}
         onZoomOut={() => zoomBy(-1)}
