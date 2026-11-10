@@ -25,7 +25,7 @@ Playwright gate at the capture viewport (1689×1277). Targets live in
 | **Comments** | “Comments and notes” loads and posts project comments from the song rail (owner-only POST endpoint, replies supported by the model) |
 | **Prompt bar** | 645x56 floating bar above the timeline that generates inline (credits) and drops the result at the playhead; the song detail keeps the captured sticky mini-player (D-023) |
 | **MIDI** | Add-track MIDI creates a four-bar clip and opens the bottom piano-roll editor (grid, velocity lane, tabs, quantize); notes are editable, persisted, synthesised in playback and included in exports |
-| **Plugins** | dock band + slot cards, catalog dialog with Learn chips, and a working **four-band EQ card** (selector, switch, six shapes, multi-point curve, Freq/Q/Gain knobs) backed by four cascaded biquads |
+| **Plugins** | dock band + slot cards, catalog with Learn chips, shared knob controls on every card, preset menus, and a working **four-band EQ card** backed by four cascaded biquads |
 
 ### Verified
 
