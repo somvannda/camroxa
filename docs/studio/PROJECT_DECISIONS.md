@@ -552,7 +552,7 @@ rather than layering a second mechanism.
 
 ---
 
-## D-022 — Pixel-level parity supersedes the density-only rule
+## D-022 ï¿½ Pixel-level parity supersedes the density-only rule
 
 **Date:** 2026-11-09 **Status:** accepted (new requirement)
 
@@ -562,7 +562,7 @@ wordmark/logo and our own copy stay ours; the reference wordmark, marketing copy
 artwork are **not** reproduced.
 
 This supersedes the earlier rule in `PROJECT_MASTER_PLAN.md` / `SPEC_TO_CODE.md` /
-`SUNO_STUDIO_GAP_ANALYSIS.md` (“match interaction quality and density, not pixels”).
+`SUNO_STUDIO_GAP_ANALYSIS.md` (ï¿½match interaction quality and density, not pixelsï¿½).
 
 **Method.**
 
@@ -577,7 +577,7 @@ This supersedes the earlier rule in `PROJECT_MASTER_PLAN.md` / `SPEC_TO_CODE.md`
 
 **Consequences.** Existing `.s-*`/`.se-*` tokens may be replaced by reference values.
 Visual regression becomes a hard gate: the audit runs in CI. Functional state stays
-separate — a pixel match never implies a wired feature.
+separate ï¿½ a pixel match never implies a wired feature.
 
 
 ---
@@ -622,3 +622,25 @@ spacing, control geometry and type scale stay at the captured values.
 
 **Consequences.** The pixel gate asserts the brand token colours (e.g. body `#0b0f19`,
 cards `#131826`, accent `#ad77f8`). Any future colour change must go through the tokens.
+
+## D-026 â€” Plugin designer is deterministic, local, and never auto-inserts
+
+**Date:** 2026-11-10 **Status:** accepted
+
+**Decision.** S45's "Create new plugin" opens the prompt bar in design mode and runs a
+local designer: it reads the prompt for intent, names the plugin from the description
+(e.g. "Warm Tape"), and picks controls from one of five real audio families
+(saturation, space, movement, dynamics, filter). The assistant restates the request
+and waits for **Build it**; the result is saved to `MY PLUGINS` and yields a draggable
+card, never an inserted effect. No generation credits are spent.
+
+**Why not the generation API.** The captured designer answers in conversation and
+returns a plugin object, not audio. Sending the prompt to the clip generator would
+spend credits and produce the wrong output type. The local designer keeps the three
+captured beats (restate â†’ build â†’ card) honest: the card maps onto DSP that actually
+renders in the chain.
+
+**Consequences.** Designed plugins persist in the project document (`customPlugins`)
+and are snapshotted into each chain entry, so a stored chain stays self-describing.
+Their parameters are clamped by their own definition, and the audio engine maps each
+family onto a real Web Audio graph.

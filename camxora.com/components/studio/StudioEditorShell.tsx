@@ -53,8 +53,19 @@ import {
   secondsPerBar as secondsPerBarFor,
 } from "@/lib/studio-signature";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
+import { addCustomPlugin } from "@/lib/studio-plugin-chain";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
-import type { PluginChainEntry } from "@/lib/studio-plugins";
+import {
+  sanitizeCustomPlugin,
+  type CustomPlugin,
+  type PluginChainEntry,
+} from "@/lib/studio-plugins";
+import {
+  DESIGN_CARD_SUBTITLE,
+  DESIGN_PROMPT,
+  designPlugin,
+  type DesignResult,
+} from "@/lib/studio-designer";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { StudioHeader } from "@/components/studio/StudioHeader";
@@ -375,8 +386,15 @@ export function StudioEditorShell() {
   const [promptModel, setPromptModel] = useState("v6");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantMessages, setAssistantMessages] = useState<
-    Array<{ id: string; role: "user" | "status" | "result"; text: string }>
+    Array<{ id: string; role: "user" | "status" | "result" | "design"; text: string }>
   >([]);
+  /** S45: the prompt bar is designing a plugin rather than generating a part. */
+  const [designMode, setDesignMode] = useState(false);
+  const [designContext, setDesignContext] = useState<string | null>(null);
+  /** Restate message awaiting "Build it" / "Change something…". */
+  const [designRequest, setDesignRequest] = useState<DesignResult | null>(null);
+  /** Built plugin shown as a draggable card; saved to the library, never inserted. */
+  const [designBuilt, setDesignBuilt] = useState<DesignResult | null>(null);
   const [pendingSong, setPendingSong] = useState<WebMusicGeneration | null>(null);
   const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
@@ -1719,6 +1737,15 @@ export function StudioEditorShell() {
     return (data.chains as Record<string, PluginChainEntry[]>) || {};
   }, [project]);
 
+  /** Designed plugins saved in this project's library (S45). */
+  const customPlugins = useMemo<CustomPlugin[]>(() => {
+    const raw = (project?.data as { customPlugins?: unknown } | undefined)?.customPlugins;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((entry) => sanitizeCustomPlugin(entry))
+      .filter((entry): entry is CustomPlugin => entry !== null);
+  }, [project]);
+
   const [localChains, setLocalChains] = useState<Record<string, PluginChainEntry[]> | null>(null);
   const chains = localChains ?? derivedChains;
   const chainsRef = useRef(chains);
@@ -3042,10 +3069,96 @@ export function StudioEditorShell() {
     }
   }
 
+  /**
+   * S45 entry: "Create new plugin" closes the catalog and turns the Magic Bar into
+   * design mode — warm tint, seeded prompt, active send, current object attached.
+   */
+  function openPluginDesigner() {
+    const clip = selectedClip ? clips.find((item) => item.id === selectedClip) : null;
+    const track = tracks.find((item) => item.id === selectedTrack) ?? tracks[0];
+    setDesignContext(clip?.title || track?.name || "Studio");
+    setDesignMode(true);
+    setDesignRequest(null);
+    setDesignBuilt(null);
+    setAssistantOpen(false);
+    setPromptValue(DESIGN_PROMPT);
+    window.setTimeout(() => {
+      const input = promptRef.current?.querySelector("input");
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    }, 0);
+  }
+
+  function exitPluginDesigner() {
+    setDesignMode(false);
+    setDesignContext(null);
+    setDesignRequest(null);
+    setDesignBuilt(null);
+    setPromptValue("");
+  }
+
+  /** Design mode's send: restate the request and ask before building anything. */
+  function startPluginDesign(prompt: string) {
+    const result = designPlugin(prompt, customPlugins.map((plugin) => plugin.name));
+    setAssistantOpen(true);
+    setPendingSong(null);
+    setDesignBuilt(null);
+    setDesignRequest(result);
+    setAssistantMessages([
+      { id: `u-${Date.now()}`, role: "user", text: prompt },
+      { id: `d-${Date.now()}`, role: "design", text: result.restate },
+    ]);
+    setPromptValue("");
+  }
+
+  /** Save the designed plugin to MY PLUGINS; it is never auto-inserted. */
+  function buildDesignedPlugin() {
+    if (!designRequest) return;
+    const result = designRequest;
+    const data = currentData() as Record<string, unknown>;
+    const existing = Array.isArray(data.customPlugins) ? data.customPlugins : [];
+    writeProjectData(
+      { ...data, customPlugins: [...existing, result.plugin] },
+      "a designed plugin"
+    );
+    setDesignRequest(null);
+    setDesignBuilt(result);
+    setAssistantMessages((current) => [
+      ...current,
+      { id: `r-${Date.now()}`, role: "result", text: result.completion },
+    ]);
+  }
+
+  /** Return to the prompt with the original wording so the user can edit it. */
+  function revisePluginDesign() {
+    const original = assistantMessages.find((message) => message.role === "user")?.text;
+    setDesignRequest(null);
+    setPromptValue(original ?? DESIGN_PROMPT);
+    window.setTimeout(() => {
+      const input = promptRef.current?.querySelector("input");
+      input?.focus();
+      input?.setSelectionRange(0, input.value.length);
+    }, 0);
+  }
+
+  /** Insert a built plugin into a track's chain (drag target or the card button). */
+  function addDesignedToTrack(custom: CustomPlugin, trackId?: string) {
+    const target = trackId ?? selectedTrack ?? tracks[0]?.id;
+    if (!target) return;
+    const current = chains[target] ?? [];
+    commitChain(target, addCustomPlugin(current, custom));
+    setSelectedTrack(target);
+    setExportToast(`${custom.name} added to the track.`);
+  }
+
   /** Prompt bar (S16): generate inline, then place the result at the playhead. */
   async function submitPrompt(raw: string) {
     const prompt = raw.trim();
     if (!prompt || promptBusy) return;
+    if (designMode) {
+      startPluginDesign(prompt);
+      return;
+    }
     setPromptBusy(true);
     setAssistantOpen(true);
     setPendingSong(null);
@@ -3301,6 +3414,14 @@ export function StudioEditorShell() {
           onDelete={deleteTrack}
           onAddTrack={addTrack}
           onAddMidiTrack={addMidiTrack}
+          onDropPlugin={(trackId, payload) => {
+            try {
+              const parsed = sanitizeCustomPlugin(JSON.parse(payload));
+              if (parsed) addDesignedToTrack(parsed, trackId);
+            } catch {
+              /* not one of our cards */
+            }
+          }}
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
@@ -3451,7 +3572,7 @@ export function StudioEditorShell() {
 
         {/* Captured prompt bar (S16/S52): opens the generator with the prompt. */}
         <form
-          className="se-prompt"
+          className={`se-prompt${designMode ? " is-design" : ""}`}
           ref={promptRef}
           onSubmit={(event) => {
             event.preventDefault();
@@ -3459,7 +3580,15 @@ export function StudioEditorShell() {
           }}
         >
           <span className="se-prompt-badge">BETA</span>
-          {selectedTrack ? (
+          {designMode && designContext ? (
+            <span className="se-prompt-context is-plugin">
+              <Icon name="fa-wave-square" />
+              {designContext}
+              <button type="button" aria-label="Exit plugin designer" onClick={exitPluginDesigner}>
+                <Icon name="fa-xmark" />
+              </button>
+            </span>
+          ) : selectedTrack ? (
             <span className="se-prompt-context">
               {tracks.find((track) => track.id === selectedTrack)?.name ?? "Track"}
               <button
@@ -3486,7 +3615,13 @@ export function StudioEditorShell() {
             value={promptValue}
             disabled={promptBusy}
             onChange={(event) => setPromptValue(event.target.value)}
-            placeholder={promptBusy ? "Generating…" : "Describe a part to generate"}
+            placeholder={
+              designMode
+                ? "Make me a new plugin. Here's what I have in mind:"
+                : promptBusy
+                  ? "Generating…"
+                  : "Describe a part to generate"
+            }
             aria-label="Describe a part to generate"
           />
           {modelOpen ? (
@@ -3522,9 +3657,9 @@ export function StudioEditorShell() {
           ) : null}
           <button
             type="submit"
-            className="se-prompt-send"
-            aria-label="Generate this part"
-            title="Generates with your account credits"
+            className={`se-prompt-send${designMode && promptValue.trim() ? " is-active" : ""}`}
+            aria-label={designMode ? "Design this plugin" : "Generate this part"}
+            title={designMode ? "Builds a plugin, no credits spent" : "Generates with your account credits"}
             disabled={!promptValue.trim() || promptBusy}
           >
             <Icon name="fa-arrow-up" />
@@ -3552,6 +3687,46 @@ export function StudioEditorShell() {
                 {message.text}
               </p>
             ))}
+            {designRequest ? (
+              <div className="se-design-actions">
+                <button type="button" className="se-pill on" onClick={buildDesignedPlugin}>
+                  Build it
+                </button>
+                <button type="button" className="se-pill" onClick={revisePluginDesign}>
+                  Change something…
+                </button>
+              </div>
+            ) : null}
+            {designBuilt ? (
+              <div
+                className="se-design-card"
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(
+                    "application/x-camxora-plugin",
+                    JSON.stringify(designBuilt.plugin)
+                  );
+                  event.dataTransfer.effectAllowed = "copy";
+                }}
+                aria-label={`${designBuilt.plugin.name}, designed plugin`}
+              >
+                <span className="se-design-grip" aria-hidden="true">
+                  <Icon name="fa-grip-vertical" />
+                </span>
+                <span className="se-design-body">
+                  <strong>{designBuilt.plugin.name}</strong>
+                  <span className="se-design-sub">{DESIGN_CARD_SUBTITLE}</span>
+                </span>
+                <button
+                  type="button"
+                  className="se-pill on"
+                  onClick={() => addDesignedToTrack(designBuilt.plugin)}
+                  disabled={tracks.length === 0}
+                >
+                  Add to track
+                </button>
+              </div>
+            ) : null}
             {pendingSong
               ? (pendingSong.clips ?? [])
                   .filter((take) => take.audio_url)
@@ -3836,6 +4011,8 @@ export function StudioEditorShell() {
         <StudioPluginDock
           chain={chains[selectedTrack] ?? []}
           trackName={tracks.find((track) => track.id === selectedTrack)?.name}
+          customPlugins={customPlugins}
+          onDesignPlugin={openPluginDesigner}
           onChange={(next) => commitChain(selectedTrack, next)}
         />
       ) : null}

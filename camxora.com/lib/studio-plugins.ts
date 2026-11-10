@@ -24,7 +24,27 @@ export type PluginId =
   | "gate"
   | "limiter"
   | "reverb"
-  | "chorus";
+  | "chorus"
+  /** A plugin designed in the assistant (S45); the definition travels in the entry. */
+  | "custom";
+
+/** Audio family a designed plugin maps onto (S45: one card, one real effect). */
+export type CustomPluginFamily = "saturation" | "space" | "movement" | "dynamics" | "filter";
+
+/**
+ * A user-designed plugin (S45). It is saved to the project's plugin library and only
+ * enters a chain when the user drags it onto a track — never automatically.
+ */
+export type CustomPlugin = {
+  id: string;
+  name: string;
+  description: string;
+  family: CustomPluginFamily;
+  params: ParamDef[];
+  defaults: Record<string, number>;
+  /** The prompt it was designed from, for the library card. */
+  prompt?: string;
+};
 
 /** Primary knobs render large; secondary (filters, trims) render small. */
 export type ParamTier = "primary" | "secondary";
@@ -296,6 +316,8 @@ export type PluginChainEntry = {
   /** Stable id for the chain slot (a plugin can appear twice). */
   entryId: string;
   pluginId: PluginId;
+  /** Snapshot of a designed plugin, so the chain is self-describing. */
+  custom?: CustomPlugin;
   presetId?: string | null;
   presetName: string;
   /** "Custom" in the reference means the preset has unsaved changes. */
@@ -345,4 +367,81 @@ export function sanitizeParams(
     out[param.key] = Math.min(param.max, Math.max(param.min, value));
   }
   return out;
+}
+
+export function customParamMap(
+  custom: Pick<CustomPlugin, "params">,
+  input: Record<string, unknown> | null | undefined
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const param of custom.params) {
+    const raw = input?.[param.key];
+    const value = typeof raw === "number" && Number.isFinite(raw) ? raw : param.default;
+    out[param.key] = Math.min(param.max, Math.max(param.min, value));
+  }
+  return out;
+}
+
+/** Present a designed plugin through the same shape the dock uses for built-ins. */
+export function customAsDef(custom: CustomPlugin): PluginDef {
+  return {
+    id: "custom",
+    name: custom.name,
+    description: custom.description,
+    params: custom.params,
+  };
+}
+
+const CUSTOM_FAMILIES: readonly CustomPluginFamily[] = [
+  "saturation",
+  "space",
+  "movement",
+  "dynamics",
+  "filter",
+];
+
+/**
+ * Validate a persisted designed plugin. Returns null when the snapshot is not
+ * recognisably ours, so a stale document cannot inject a fake definition.
+ */
+export function sanitizeCustomPlugin(input: unknown): CustomPlugin | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  if (typeof raw.id !== "string" || !raw.id.startsWith("custom-")) return null;
+  if (typeof raw.name !== "string" || !raw.name.trim()) return null;
+  const family = raw.family as CustomPluginFamily;
+  if (!CUSTOM_FAMILIES.includes(family)) return null;
+  if (!Array.isArray(raw.params) || raw.params.length === 0 || raw.params.length > 8) return null;
+  const params: ParamDef[] = [];
+  for (const entry of raw.params) {
+    if (!entry || typeof entry !== "object") return null;
+    const param = entry as Record<string, unknown>;
+    if (typeof param.key !== "string" || !param.key) return null;
+    if (typeof param.label !== "string" || !param.label) return null;
+    const min = Number(param.min);
+    const max = Number(param.max);
+    const fallback = Number(param.default);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+    if (!Number.isFinite(fallback)) return null;
+    params.push({
+      key: param.key,
+      label: param.label,
+      min,
+      max,
+      default: Math.min(max, Math.max(min, fallback)),
+      unit: typeof param.unit === "string" ? (param.unit as ParamDef["unit"]) : undefined,
+      tier: param.tier === "secondary" ? "secondary" : "primary",
+    });
+  }
+  const custom: CustomPlugin = {
+    id: raw.id,
+    name: raw.name.slice(0, 48),
+    description: typeof raw.description === "string" ? raw.description.slice(0, 200) : "",
+    family,
+    params,
+    defaults: {},
+    prompt: typeof raw.prompt === "string" ? raw.prompt.slice(0, 400) : undefined,
+  };
+  custom.defaults = customParamMap(custom, raw.defaults as Record<string, unknown> | undefined);
+  return custom;
 }

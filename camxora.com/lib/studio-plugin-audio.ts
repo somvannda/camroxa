@@ -19,8 +19,10 @@
  */
 
 import {
+  customParamMap,
   getPlugin,
   sanitizeParams,
+  type CustomPlugin,
   type PluginChainEntry,
   type PluginId,
 } from "@/lib/studio-plugins";
@@ -84,10 +86,154 @@ function bypass(ctx: BaseAudioContext): PluginAudioNode {
   return { input: node, output: node, update: () => {}, dispose: () => node.disconnect() };
 }
 
+/** A designed plugin (S45) renders from its family, using its own parameter names. */
+function createCustomAudio(
+  ctx: BaseAudioContext,
+  custom: CustomPlugin,
+  inputParams: Record<string, number>
+): PluginAudioNode {
+  const params = customParamMap(custom, inputParams);
+
+  if (custom.family === "saturation") {
+    const mix = wetDry(ctx, params.mix ?? 100);
+    const shaper = ctx.createWaveShaper();
+    const tone = ctx.createBiquadFilter();
+    const lowCut = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    lowCut.type = "highpass";
+    mix.input.connect(shaper).connect(tone).connect(lowCut).connect(mix.wet).connect(mix.output);
+    const apply = (p: Record<string, number>) => {
+      shaper.curve = makeCurve(clamp((p.drive ?? 38) / 100, 0, 1));
+      shaper.oversample = "4x";
+      tone.frequency.value = clamp(p.tone ?? 6800, 200, 20000);
+      lowCut.frequency.value = clamp(p.lowCut ?? 80, 20, 2000);
+      mix.setMix(p.mix ?? 100);
+    };
+    apply(params);
+    return {
+      input: mix.input,
+      output: mix.output,
+      update: apply,
+      dispose: () => {
+        [shaper, tone, lowCut, mix.input, mix.output].forEach((n) => n.disconnect());
+      },
+    };
+  }
+
+  if (custom.family === "space") {
+    const mix = wetDry(ctx, params.mix ?? 30);
+    const convolver = ctx.createConvolver();
+    const lowCut = ctx.createBiquadFilter();
+    lowCut.type = "highpass";
+    mix.input.connect(convolver).connect(lowCut).connect(mix.wet).connect(mix.output);
+    let renderedFor = -1;
+    const apply = (p: Record<string, number>) => {
+      const seconds = p.decay ?? 3.2;
+      if (Math.abs(seconds - renderedFor) > 0.05) {
+        convolver.buffer = makeImpulse(ctx, seconds, 3);
+        renderedFor = seconds;
+      }
+      lowCut.frequency.value = clamp(p.lowCut ?? 160, 20, 20000);
+      mix.setMix(p.mix ?? 30);
+    };
+    apply(params);
+    return {
+      input: mix.input,
+      output: mix.output,
+      approximate: true,
+      update: apply,
+      dispose: () => {
+        [convolver, lowCut, mix.input, mix.output].forEach((n) => n.disconnect());
+      },
+    };
+  }
+
+  if (custom.family === "movement") {
+    const mix = wetDry(ctx, params.mix ?? 32);
+    const delay = ctx.createDelay(0.1);
+    const lfo = ctx.createOscillator();
+    const depth = ctx.createGain();
+    lfo.type = "sine";
+    lfo.connect(depth).connect(delay.delayTime);
+    mix.input.connect(delay).connect(mix.wet).connect(mix.output);
+    lfo.start();
+    const apply = (p: Record<string, number>) => {
+      lfo.frequency.value = clamp(p.rate ?? 0.8, 0.05, 10);
+      depth.gain.value = (clamp(p.depth ?? 40, 0, 100) / 100) * 0.005;
+      delay.delayTime.value = 0.02;
+      mix.setMix(p.mix ?? 32);
+    };
+    apply(params);
+    return {
+      input: mix.input,
+      output: mix.output,
+      update: apply,
+      dispose: () => {
+        try {
+          lfo.stop();
+        } catch {
+          /* already stopped */
+        }
+        [delay, depth, mix.input, mix.output].forEach((n) => n.disconnect());
+      },
+    };
+  }
+
+  if (custom.family === "dynamics") {
+    const comp = ctx.createDynamicsCompressor();
+    const makeup = ctx.createGain();
+    comp.connect(makeup);
+    const apply = (p: Record<string, number>) => {
+      comp.threshold.value = clamp(p.threshold ?? -18, -100, 0);
+      comp.ratio.value = clamp(p.ratio ?? 4, 1, 20);
+      comp.knee.value = 6;
+      comp.attack.value = clamp((p.attack ?? 12) / 1000, 0, 1);
+      comp.release.value = clamp((p.release ?? 140) / 1000, 0, 1);
+      makeup.gain.value = Math.pow(10, clamp(p.gain ?? 2, -24, 24) / 20);
+    };
+    apply(params);
+    return {
+      input: comp,
+      output: makeup,
+      update: apply,
+      dispose: () => {
+        comp.disconnect();
+        makeup.disconnect();
+      },
+    };
+  }
+
+  // Filter: a shaped low/high cut pair.
+  const highpass = ctx.createBiquadFilter();
+  const lowpass = ctx.createBiquadFilter();
+  highpass.type = "highpass";
+  lowpass.type = "lowpass";
+  highpass.connect(lowpass);
+  const apply = (p: Record<string, number>) => {
+    highpass.frequency.value = clamp(p.lowCut ?? 100, 20, 20000);
+    highpass.Q.value = clamp(p.resonance ?? 1, 0.0001, 30);
+    lowpass.frequency.value = clamp(p.highCut ?? 14000, 100, 20000);
+    lowpass.Q.value = clamp(p.resonance ?? 1, 0.0001, 30);
+  };
+  apply(params);
+  return {
+    input: highpass,
+    output: lowpass,
+    update: apply,
+    dispose: () => {
+      highpass.disconnect();
+      lowpass.disconnect();
+    },
+  };
+}
+
 export function createPluginAudio(
   ctx: BaseAudioContext,
   entry: PluginChainEntry
 ): PluginAudioNode {
+  if (entry.custom) {
+    return createCustomAudio(ctx, entry.custom, entry.params);
+  }
   const plugin = getPlugin(entry.pluginId);
   if (!plugin) return bypass(ctx);
   const params = sanitizeParams(entry.pluginId as PluginId, entry.params);

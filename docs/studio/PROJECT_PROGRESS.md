@@ -25,7 +25,7 @@ Playwright gate at the capture viewport (1689×1277). Targets live in
 | **Comments** | “Comments and notes” loads and posts project comments from the song rail (owner-only POST endpoint, replies supported by the model) |
 | **Prompt bar + assistant** | 645x56 floating bar that generates through the model picker into a left assistant panel; the take can be auditioned or committed to the playhead track (S37). The song detail keeps the sticky mini-player (D-023) |
 | **MIDI** | Add-track MIDI creates a four-bar clip and opens the bottom piano-roll editor (grid, velocity lane, tabs, quantize); notes are editable, persisted, synthesised in playback and included in exports |
-| **Plugins** | dock band + slot cards, catalog with Learn chips, shared knob controls on every card, preset menus, and a working **four-band EQ card** backed by four cascaded biquads |
+| **Plugins** | dock band + slot cards, catalog with Learn chips, shared knob controls on every card, preset menus, and a working **four-band EQ card** backed by four cascaded biquads; **Create new plugin** opens the S45 designer (restate → Build it → draggable card saved to MY PLUGINS, never auto-inserted) |
 
 ### Verified
 

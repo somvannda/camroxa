@@ -737,8 +737,10 @@ test("plugin catalog dialog matches the captured surface", async ({ page }) => {
   await expect(dialog).toBeVisible();
   const info = await dialog.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    const card = element.querySelector(".sp-card");
-    const label = element.querySelector(".sp-catalog-label");
+    const card = element.querySelector(".sp-catalog:not(.sp-catalog-mine) .sp-card");
+    const label = Array.from(element.querySelectorAll(".sp-catalog-label")).find(
+      (node) => node.textContent === "Audio effects"
+    );
     return {
       width: Math.round(rect.width),
       radius: getComputedStyle(element).borderTopLeftRadius,
@@ -749,6 +751,10 @@ test("plugin catalog dialog matches the captured surface", async ({ page }) => {
       labelSize: label ? getComputedStyle(label).fontSize : null,
     };
   });
+  // S45: MY PLUGINS comes first with the dashed Create-new-plugin card.
+  await expect(dialog.locator(".sp-catalog-mine .sp-create")).toBeVisible();
+  await expect(dialog.locator(".sp-create-label")).toContainText("Create new plugin");
+
   // S39: 760 px dialog on #171717, #1c1c1e cards, uppercase section label.
   expect(info).toMatchObject({
     width: 760,

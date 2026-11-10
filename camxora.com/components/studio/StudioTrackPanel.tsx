@@ -47,6 +47,8 @@ export type StudioTrackPanelProps = {
   onAddTrack: () => void;
   onAddMidiTrack: () => void;
   onAddUploadTrack: () => void;
+  /** A designed plugin card (S45) dropped on a track. */
+  onDropPlugin?: (trackId: string, payload: string) => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
   /** Capture head: one control expands or collapses every visible track. */
@@ -126,6 +128,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onAddTrack,
     onAddMidiTrack,
     onAddUploadTrack,
+    onDropPlugin,
     onToggleHidden,
     onShowAllHidden,
     onToggleAllCollapsed,
@@ -222,6 +225,17 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
               key={track.id}
               className={`se-track${active ? " selected" : ""}`}
               style={{ height: ROW_HEIGHT, marginBottom: ROW_STEP - ROW_HEIGHT }}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes("application/x-camxora-plugin")) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }}
+              onDrop={(event) => {
+                const payload = event.dataTransfer.getData("application/x-camxora-plugin");
+                if (!payload) return;
+                event.preventDefault();
+                onDropPlugin?.(track.id, payload);
+              }}
             >
               {menuTrackId === track.id ? (
                 <div className="se-track-menu" role="menu" aria-label={`${track.name} options`}>

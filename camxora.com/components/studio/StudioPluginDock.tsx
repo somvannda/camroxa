@@ -12,13 +12,17 @@ import { Icon } from "@/components/Icon";
 import { ParamKnob } from "@/components/studio/ParamKnob";
 import {
   STUDIO_PLUGINS,
+  customAsDef,
+  customParamMap,
   defaultParams,
   getPlugin,
   presetsFor,
+  type CustomPlugin,
   type PluginChainEntry,
   type PluginId,
 } from "@/lib/studio-plugins";
 import {
+  addCustomPlugin,
   addPlugin,
   applyPreset,
   commitPreset,
@@ -35,6 +39,10 @@ type Props = {
   onChange: (next: PluginChainEntry[]) => void;
   /** Track name, shown in the dock header. */
   trackName?: string;
+  /** Designed plugins (S45) saved in this project's library. */
+  customPlugins?: CustomPlugin[];
+  /** Opens the prompt bar in design mode (S45 entry). */
+  onDesignPlugin?: () => void;
 };
 
 /**
@@ -312,7 +320,7 @@ function PluginPreview({ id }: { id: string }) {
   );
 }
 
-export function StudioPluginDock({ chain, onChange, trackName }: Props) {
+export function StudioPluginDock({ chain, onChange, trackName, customPlugins = [], onDesignPlugin }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [presetMenu, setPresetMenu] = useState<string | null>(null);
@@ -333,6 +341,22 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
     setQuery("");
   }
 
+  function addDesigned(custom: CustomPlugin) {
+    onChange(addCustomPlugin(chain, custom));
+    setCatalogOpen(false);
+    setQuery("");
+  }
+
+  const filteredCustom = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return customPlugins;
+    return customPlugins.filter(
+      (plugin) =>
+        plugin.name.toLowerCase().includes(needle) ||
+        plugin.description.toLowerCase().includes(needle)
+    );
+  }, [customPlugins, query]);
+
   return (
     <section className="sp-dock" aria-label={trackName ? `Plugins for ${trackName}` : "Plugin chain"}>
       <div className="sp-rail">
@@ -346,8 +370,9 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
         ) : null}
 
         {chain.map((entry, index) => {
-          const plugin = getPlugin(entry.pluginId);
+          const plugin = entry.custom ? customAsDef(entry.custom) : getPlugin(entry.pluginId);
           if (!plugin) return null;
+          const isDesigned = Boolean(entry.custom);
           const primary = plugin.params.filter((param) => param.tier !== "secondary");
           const secondary = plugin.params.filter((param) => param.tier === "secondary");
           return (
@@ -368,6 +393,7 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                     aria-haspopup="menu"
                     aria-expanded={presetMenu === entry.entryId}
                     title="Presets"
+                    disabled={isDesigned}
                     onClick={() =>
                       setPresetMenu((current) =>
                         current === entry.entryId ? null : entry.entryId
@@ -391,7 +417,9 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                             applyPreset(chain, entry.entryId, {
                               id: null,
                               name: "Default",
-                              params: defaultParams(plugin.id),
+                              params: entry.custom
+                                ? { ...entry.custom.defaults }
+                                : defaultParams(plugin.id as PluginId),
                             })
                           );
                           setPresetMenu(null);
@@ -563,6 +591,42 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                 <Icon name="fa-xmark" />
               </button>
             </header>
+
+            <p className="sp-catalog-label">My plugins</p>
+            <div className="sp-catalog sp-catalog-mine">
+              <button
+                type="button"
+                className="sp-card sp-create"
+                onClick={() => {
+                  setCatalogOpen(false);
+                  setQuery("");
+                  onDesignPlugin?.();
+                }}
+              >
+                <span className="sp-create-plus" aria-hidden="true">
+                  <Icon name="fa-plus" />
+                </span>
+                <span className="sp-create-label">
+                  Create new plugin
+                  <span className="sp-card-badge">BETA</span>
+                </span>
+                <span className="sp-card-desc">Describe it in the prompt bar</span>
+              </button>
+              {filteredCustom.map((custom) => (
+                <button
+                  key={custom.id}
+                  type="button"
+                  className="sp-card sp-card-designed"
+                  onClick={() => addDesigned(custom)}
+                >
+                  <span className="sp-designed-glyph" aria-hidden="true">
+                    <Icon name="fa-wave-square" />
+                  </span>
+                  <span className="sp-card-name">{custom.name}</span>
+                  <span className="sp-card-desc">{custom.description}</span>
+                </button>
+              ))}
+            </div>
 
             <p className="sp-catalog-label">Audio effects</p>
             <div className="sp-catalog">

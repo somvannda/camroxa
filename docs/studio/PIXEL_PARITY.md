@@ -50,7 +50,9 @@ functional controls the capture does not show (listed below).
 | EQ card | 450 px card: Band selector + switch, six shape buttons, curve with per-band handles, Freq/Q/Gain knobs | same geometry; controls/curve use the CAMXORA accent instead of the captured pink/yellow (user request) |
 | Popped-out plugin | large floating card from the external-link control | same: fixed 460 px (520 for EQ) at the bottom-right |
 | Footer chain | plugins as pills plus a compact add control; full Add Track Effects pill when empty | same |
-| Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 88 px device previews, 14 px names, Learn chips, uppercase section label | same; previews are our own traces/knobs per plugin family, not copied art |
+| Plugin catalog | 760 px dialog on #171717, #1c1c1e cards, 88 px device previews, 14 px names, Learn chips, uppercase section label | same; previews are our own traces/knobs per plugin family, not copied art, with a MY PLUGINS section above Audio effects |
+| Plugin designer entry (S45) | dashed `Create new plugin` card closes the catalog; the bar takes a warm tint, seeds `Make me a new plugin…`, sends in its active state and keeps the current object as a chip | same geometry; the tint/send/chip use the CAMXORA accent (D-025) |
+| Plugin designer result (S45) | three beats: restate + `Build it` / `Change something…`, completion copy, then a draggable `Warm Tape — Audio effect · Drag onto a track` card | same; the card is saved to MY PLUGINS, never auto-inserted, and can be dropped on a track row |
 | Track head | 29 px strip with an all-controls toggle left and a panel-collapse control right | both wired; collapse folds the panel to a 44 px rail (own layout, never captured) |
 | Learn popover | 206 px, 44 px rows, 11 px hints | same |
 | Track options menu | 164 px, 33 px icon rows inside the panel; Color opens a flyout | same |

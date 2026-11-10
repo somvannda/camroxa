@@ -14,8 +14,11 @@
 
 import {
   createChainEntry,
+  customParamMap,
   getPlugin,
+  sanitizeCustomPlugin,
   sanitizeParams,
+  type CustomPlugin,
   type PluginChainEntry,
   type PluginId,
 } from "@/lib/studio-plugins";
@@ -26,6 +29,36 @@ let counter = 0;
 export function nextEntryId(pluginId: PluginId): string {
   counter += 1;
   return `${pluginId}-${Date.now().toString(36)}-${counter}`;
+}
+
+/** Clamp params against the entry's own definition (designed or built-in). */
+function sanitizeEntryParams(
+  entry: PluginChainEntry,
+  params: Record<string, unknown>
+): Record<string, number> {
+  return entry.custom ? customParamMap(entry.custom, params) : sanitizeParams(entry.pluginId, params);
+}
+
+/** Insert a designed plugin (S45) as a "Custom" slot. */
+export function addCustomPlugin(
+  chain: PluginChainEntry[],
+  custom: CustomPlugin,
+  atIndex?: number
+): PluginChainEntry[] {
+  const entry: PluginChainEntry = {
+    entryId: nextEntryId("custom"),
+    pluginId: "custom",
+    custom,
+    presetId: null,
+    presetName: "Custom",
+    dirty: false,
+    params: { ...custom.defaults },
+    assetId: null,
+    bypassed: false,
+    poppedOut: false,
+  };
+  const index = atIndex == null ? chain.length : Math.min(Math.max(atIndex, 0), chain.length);
+  return [...chain.slice(0, index), entry, ...chain.slice(index)];
 }
 
 export function addPlugin(
@@ -69,7 +102,7 @@ export function setParam(
 ): PluginChainEntry[] {
   return chain.map((entry) => {
     if (entry.entryId !== entryId) return entry;
-    const params = sanitizeParams(entry.pluginId, { ...entry.params, [key]: value });
+    const params = sanitizeEntryParams(entry, { ...entry.params, [key]: value });
     const changed = params[key] !== entry.params[key];
     if (!changed) return entry;
     return { ...entry, params, dirty: true };
@@ -83,7 +116,7 @@ export function setParamSet(
 ): PluginChainEntry[] {
   return chain.map((entry) =>
     entry.entryId === entryId
-      ? { ...entry, params: sanitizeParams(entry.pluginId, { ...entry.params, ...params }), dirty: true }
+      ? { ...entry, params: sanitizeEntryParams(entry, { ...entry.params, ...params }), dirty: true }
       : entry
   );
 }
@@ -118,7 +151,7 @@ export function applyPreset(
           presetId: preset.id,
           presetName: preset.name,
           mode: preset.mode ?? entry.mode,
-          params: sanitizeParams(entry.pluginId, preset.params),
+          params: sanitizeEntryParams(entry, preset.params),
           dirty: false,
         }
       : entry
@@ -152,7 +185,7 @@ export function setMode(
 
 /** Slots that actually affect audio, in signal order. */
 export function activeChain(chain: PluginChainEntry[]): PluginChainEntry[] {
-  return chain.filter((entry) => !entry.bypassed && getPlugin(entry.pluginId));
+  return chain.filter((entry) => !entry.bypassed && Boolean(entry.custom || getPlugin(entry.pluginId)));
 }
 
 /**
@@ -167,6 +200,28 @@ export function sanitizeChain(input: unknown): PluginChainEntry[] {
     if (!raw || typeof raw !== "object") continue;
     const candidate = raw as Partial<PluginChainEntry>;
     if (typeof candidate.pluginId !== "string") continue;
+    if (candidate.pluginId === "custom") {
+      const custom = sanitizeCustomPlugin(candidate.custom);
+      if (!custom) continue;
+      const entryId =
+        typeof candidate.entryId === "string" && candidate.entryId && !seen.has(candidate.entryId)
+          ? candidate.entryId
+          : nextEntryId("custom");
+      seen.add(entryId);
+      out.push({
+        entryId,
+        pluginId: "custom",
+        custom,
+        presetId: null,
+        presetName: "Custom",
+        dirty: false,
+        params: customParamMap(custom, candidate.params as Record<string, unknown> | undefined),
+        assetId: null,
+        bypassed: Boolean(candidate.bypassed),
+        poppedOut: Boolean(candidate.poppedOut),
+      });
+      continue;
+    }
     const plugin = getPlugin(candidate.pluginId);
     if (!plugin) continue;
     const entryId =
