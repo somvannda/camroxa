@@ -3775,15 +3775,17 @@ export function StudioEditorShell() {
       {assistantOpen ? (
         <aside className="se-assistant" aria-label="Studio assistant">
           <header className="se-assistant-head">
-            <p className="se-assistant-note">Chat is powered by AI and can make mistakes</p>
-            <button
-              type="button"
-              className="se-icon"
-              aria-label="Close assistant"
-              onClick={() => setAssistantOpen(false)}
-            >
-              <Icon name="fa-xmark" />
-            </button>
+            <p className="se-assistant-note">
+              Chat is powered by AI and can make mistakes
+              <button
+                type="button"
+                className="se-icon"
+                aria-label="Close assistant"
+                onClick={() => setAssistantOpen(false)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </p>
           </header>
           <div className="se-assistant-log">
             {assistantMessages.length === 0 && !pendingSong && !designRequest && !designBuilt ? (
