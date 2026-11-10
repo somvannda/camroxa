@@ -60,6 +60,46 @@ export type StudioTrackPanelProps = {
   onToggleMasterMute: () => void;
 };
 
+
+/** Rotary pan knob: the pointer rotates with the value instead of sliding upright. */
+function PanKnob({
+  value,
+  label,
+  onChange,
+  onCommit,
+}: {
+  value: number;
+  label: string;
+  onChange: (value: number) => void;
+  onCommit: () => void;
+}) {
+  const angle = (Math.max(-100, Math.min(100, value)) / 100) * 90;
+  return (
+    <span className="se-pan-knob">
+      <span
+        className="se-pan-dial"
+        style={{ ["--pan-angle" as string]: `${angle.toFixed(1)}deg` }}
+        aria-hidden="true"
+      >
+        <span className="se-pan-pointer" />
+      </span>
+      <input
+        type="range"
+        className="se-pan-input"
+        min={-100}
+        max={100}
+        step={1}
+        value={value}
+        aria-label={label}
+        onChange={(event) => onChange(Number(event.target.value))}
+        onPointerUp={onCommit}
+        onKeyUp={onCommit}
+        onBlur={onCommit}
+      />
+    </span>
+  );
+}
+
 export function StudioTrackPanel(props: StudioTrackPanelProps) {
   const {
     tracks,
@@ -358,20 +398,11 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     onKeyUp={() => onUpdateTrack(track.id, { volume: track.volume })}
                     onBlur={() => onUpdateTrack(track.id, { volume: track.volume })}
                   />
-                  <input
-                    type="range"
-                    className="se-track-slider pan"
-                    min={-100}
-                    max={100}
-                    step={1}
+                  <PanKnob
                     value={track.pan}
-                    aria-label={`Pan ${track.name}`}
-                    onChange={(event) =>
-                      onPreviewTrack(track.id, { pan: Number(event.target.value) })
-                    }
-                    onPointerUp={() => onUpdateTrack(track.id, { pan: track.pan })}
-                    onKeyUp={() => onUpdateTrack(track.id, { pan: track.pan })}
-                    onBlur={() => onUpdateTrack(track.id, { pan: track.pan })}
+                    label={`Pan ${track.name}`}
+                    onChange={(value) => onPreviewTrack(track.id, { pan: value })}
+                    onCommit={() => onUpdateTrack(track.id, { pan: track.pan })}
                   />
                 </div>
               )}

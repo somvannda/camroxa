@@ -89,19 +89,28 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(
     await page.evaluate(() => {
       const row = document.querySelector(".se-track");
-      const pan = document.querySelector(".se-track-slider.pan");
+      const pan = document.querySelector(".se-pan-input");
       return {
         row: row ? getComputedStyle(row).backgroundColor : null,
         pan: pan !== null,
       };
     })
   ).toEqual({ row: "rgba(0, 0, 0, 0)", pan: true });
-  expect(track.sliders).toHaveLength(2);
+  expect(track.sliders).toHaveLength(1);
   expect(track.sliders[0]?.x).toBe(28);
   expect(track.sliders[0]?.width).toBe(167);
   expect(track.sliders[0]?.height).toBe(25);
   expect(Math.abs((track.sliders[0]?.y ?? 0) - 126)).toBeLessThanOrEqual(1);
-  expect(track.sliders[1]).toMatchObject({ x: 201, width: 50 });
+  const pan = await page.evaluate(() => {
+    const input = document.querySelector(".se-pan-input")?.getBoundingClientRect();
+    const pointer = document.querySelector(".se-pan-pointer");
+    return {
+      input: input ? { x: Math.round(input.x), width: Math.round(input.width) } : null,
+      angle: pointer ? getComputedStyle(pointer).transform : null,
+    };
+  });
+  expect(pan.input).toEqual({ x: 201, width: 50 });
+  expect(pan.angle).not.toBe("none");
 
   // §4 ruler: 30 px band, first lane at y82, clip 82 px tall from y84.
   const timeline = await page.evaluate(() => {
@@ -606,8 +615,10 @@ test("track panel head toggles every track's controls", async ({ page }) => {
   await expect(panel).toHaveCSS("width", "260px");
   await head.getByRole("button", { name: "Collapse all track controls" }).click();
   await expect(page.locator(".se-track .se-track-slider")).toHaveCount(0);
+  await expect(page.locator(".se-pan-input")).toHaveCount(0);
   await head.getByRole("button", { name: "Expand all track controls" }).click();
-  await expect(page.locator(".se-track .se-track-slider")).toHaveCount(2);
+  await expect(page.locator(".se-track .se-track-slider")).toHaveCount(1);
+  await expect(page.locator(".se-pan-input")).toHaveCount(1);
 });
 
 test("clip info rail follows the captured anatomy", async ({ page }) => {
