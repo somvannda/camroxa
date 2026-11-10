@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calculator, FileText, Loader2, Lock } from 'lucide-react';
+import { Calculator, FileText, Loader2, Lock, Undo2 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import {
   useCalculateRoyalty,
   useGenerateTaxStatements,
   useLockRoyaltyPeriod,
+  useReleaseReserve,
   useRoyaltyPeriods,
   type RoyaltyPeriodRecord,
 } from '@/hooks/use-creators';
@@ -49,6 +50,7 @@ export default function CreatorRoyaltiesPage() {
   const calculate = useCalculateRoyalty();
   const lock = useLockRoyaltyPeriod();
   const generateStatements = useGenerateTaxStatements();
+  const releaseReserve = useReleaseReserve();
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [poolUsd, setPoolUsd] = useState('3000');
@@ -273,6 +275,37 @@ export default function CreatorRoyaltiesPage() {
                             <Lock className="mr-1 h-4 w-4" />
                           )}
                           Lock
+                        </Button>
+                      ) : null}
+                      {period.status !== 'open' ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-1"
+                          onClick={() =>
+                            releaseReserve.mutate(period.id, {
+                              onSuccess: (result) =>
+                                toast({
+                                  title: 'Reserve released',
+                                  description: `$${(result.released_micros / 1_000_000).toFixed(2)} to ${result.creators} creators.`,
+                                }),
+                              onError: (error) =>
+                                toast({
+                                  title: 'Could not release reserve',
+                                  description:
+                                    error instanceof Error ? error.message : 'Unknown error',
+                                  variant: 'destructive',
+                                }),
+                            })
+                          }
+                          disabled={releaseReserve.isPending}
+                        >
+                          {releaseReserve.isPending ? (
+                            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Undo2 className="mr-1 h-4 w-4" />
+                          )}
+                          Release reserve
                         </Button>
                       ) : null}
                     </TableCell>

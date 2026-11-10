@@ -241,6 +241,16 @@ async def lock_royalty_period(
     return await service.lock_period(period_id)
 
 
+@router.post("/royalty/periods/{period_id}/release-reserve")
+async def release_royalty_reserve(
+    period_id: str,
+    ctx: AdminDep,
+    service: RoyaltyEngineDep,
+) -> dict:
+    del ctx
+    return await service.release_reserve(period_id)
+
+
 @router.post("/payouts/run")
 async def create_payout_run(
     body: PayoutRunRequest,

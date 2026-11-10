@@ -6,10 +6,11 @@ import json
 from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
-from platform_api.exceptions import NotFoundError, ValidationError
+from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
 from platform_api.services.royalty_policy_service import RoyaltyPolicyService
 
 MICROS_PER_USD = 1_000_000
+RESERVE_HOLD_DAYS = 90
 
 
 def allocate_royalties(
@@ -304,6 +305,117 @@ class RoyaltyEngineService:
             max(1, min(limit, 100)),
         )
         return {"items": [dict(row) for row in rows]}
+
+    async def release_reserve(self, period_id: str) -> dict[str, Any]:
+        """Return a period's held reserve to its creators once the dispute window closes."""
+        period = await self._pool.fetchrow(
+            "SELECT * FROM royalty_periods WHERE id = $1", period_id
+        )
+        if period is None:
+            raise NotFoundError("Royalty period not found.")
+
+        hold_until = datetime.combine(
+            period["period_end"], datetime.min.time(), tzinfo=timezone.utc
+        ) + timedelta(days=RESERVE_HOLD_DAYS)
+        if hold_until > datetime.now(timezone.utc):
+            raise ValidationError(
+                "The reserve is still inside its dispute window.",
+                details={
+                    "fields": {"period": "not yet releasable"},
+                    "hold_until": hold_until.isoformat(),
+                },
+            )
+
+        reserve = await self._pool.fetchval(
+            "SELECT amount_micros FROM royalty_ledger "
+            "WHERE period_id = $1 AND entry_type = 'reserve'",
+            period_id,
+        )
+        if not reserve:
+            raise ValidationError(
+                "This period holds no reserve.",
+                details={"fields": {"period": "no reserve"}},
+            )
+        released_before = await self._pool.fetchval(
+            "SELECT 1 FROM royalty_ledger "
+            "WHERE period_id = $1 AND entry_type = 'reserve_release' LIMIT 1",
+            period_id,
+        )
+        if released_before:
+            raise DuplicateError("The reserve for this period is already released.")
+
+        accruals = await self._pool.fetch(
+            """
+            SELECT creator_id, SUM(amount_micros)::bigint AS amount_micros
+            FROM royalty_ledger
+            WHERE period_id = $1 AND entry_type = 'accrual' AND creator_id IS NOT NULL
+            GROUP BY creator_id
+            """,
+            period_id,
+        )
+        total_accrued = sum(int(row["amount_micros"] or 0) for row in accruals)
+        if total_accrued <= 0:
+            raise ValidationError(
+                "There are no creator accruals to release against.",
+                details={"fields": {"period": "no accruals"}},
+            )
+
+        reserve_micros = int(reserve)
+        shares: dict[Any, int] = {}
+        distributed = 0
+        largest = None
+        largest_amount = -1
+        for row in accruals:
+            share = reserve_micros * int(row["amount_micros"] or 0) // total_accrued
+            shares[row["creator_id"]] = share
+            distributed += share
+            if int(row["amount_micros"] or 0) > largest_amount:
+                largest_amount = int(row["amount_micros"] or 0)
+                largest = row["creator_id"]
+        # Hand the rounding remainder to the largest accrual so the reserve nets to zero.
+        if largest is not None:
+            shares[largest] += reserve_micros - distributed
+
+        label = period["period_start"].strftime("%B %Y")
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                for creator_id, share in shares.items():
+                    if share <= 0:
+                        continue
+                    await conn.execute(
+                        """
+                        INSERT INTO royalty_ledger (
+                            period_id, policy_id, creator_id, entry_type,
+                            amount_micros, reason
+                        ) VALUES ($1,$2,$3,'reserve_release',$4,$5)
+                        """,
+                        period_id,
+                        period["policy_id"],
+                        creator_id,
+                        share,
+                        f"Reserve release for {label}",
+                    )
+                    await conn.execute(
+                        """
+                        INSERT INTO creator_earnings (
+                            creator_id, source, source_id, period,
+                            gross_micros, fee_micros, net_micros,
+                            currency, status, available_at, description
+                        ) VALUES ($1,'royalty',$2,$3,$4,0,$4,'USD','available',NOW(),$5)
+                        """,
+                        creator_id,
+                        str(period_id),
+                        period["period_start"],
+                        share,
+                        f"Reserve release for {label}",
+                    )
+
+        return {
+            "period_id": str(period_id),
+            "reserve_micros": reserve_micros,
+            "released_micros": sum(shares.values()),
+            "creators": len([value for value in shares.values() if value > 0]),
+        }
 
     async def lock_period(self, period_id: str) -> dict[str, Any]:
         row = await self._pool.fetchrow(

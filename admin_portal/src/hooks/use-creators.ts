@@ -323,6 +323,19 @@ export function useLockRoyaltyPeriod() {
   });
 }
 
+export function useReleaseReserve() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (periodId: string) =>
+      httpClient.post<{ released_micros: number; creators: number }>(
+        `/api/v3/admin/creators/royalty/periods/${encodeURIComponent(periodId)}/release-reserve`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['royalty-periods'] });
+    },
+  });
+}
+
 export function useCreatePayoutRun() {
   const queryClient = useQueryClient();
   return useMutation({

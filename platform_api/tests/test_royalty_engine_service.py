@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 
+from platform_api.exceptions import DuplicateError, ValidationError
 from platform_api.services.royalty_engine_service import (
     RoyaltyEngineService,
     allocate_royalties,
@@ -94,3 +95,99 @@ async def test_lock_period_marks_it_locked() -> None:
     )
     result = await service.lock_period(str(period_id))
     assert result["period"]["status"] == "locked"
+
+class _FakeConn:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple]] = []
+
+    async def execute(self, sql: str, *args):
+        self.calls.append((sql, args))
+        return "OK"
+
+    async def __aenter__(self):
+        return self
+
+    def transaction(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakePool:
+    def __init__(self, conn, *, period, reserve=0, already=None, accruals=None) -> None:
+        self._conn = conn
+        self._period = period
+        self._reserve = reserve
+        self._already = already
+        self._accruals = accruals or []
+
+    async def fetchrow(self, sql, *args):
+        return self._period
+
+    async def fetchval(self, sql, *args):
+        if "reserve_release" in sql:
+            return self._already
+        return self._reserve
+
+    async def fetch(self, sql, *args):
+        return self._accruals
+
+    def acquire(self):
+        return self._conn
+
+
+def _period(period_end, policy_id=None):
+    from datetime import date
+    return {
+        "id": uuid4(),
+        "period_start": date(2026, 1, 1),
+        "period_end": period_end,
+        "policy_id": policy_id,
+    }
+
+
+@pytest.mark.asyncio
+async def test_release_reserve_is_blocked_inside_the_dispute_window() -> None:
+    from datetime import date
+    service = RoyaltyEngineService(_FakePool(_FakeConn(), period=_period(date.today())))
+    with pytest.raises(ValidationError) as exc:
+        await service.release_reserve(str(uuid4()))
+    assert "hold_until" in (exc.value.details or {})
+
+
+@pytest.mark.asyncio
+async def test_release_reserve_rejects_a_second_release() -> None:
+    from datetime import date
+    service = RoyaltyEngineService(
+        _FakePool(_FakeConn(), period=_period(date(2020, 1, 31)), reserve=5_000_000, already=1)
+    )
+    with pytest.raises(DuplicateError):
+        await service.release_reserve(str(uuid4()))
+
+
+@pytest.mark.asyncio
+async def test_release_reserve_splits_pro_rata_and_nets_to_zero() -> None:
+    from datetime import date
+    a, b = uuid4(), uuid4()
+    conn = _FakeConn()
+    service = RoyaltyEngineService(
+        _FakePool(
+            conn,
+            period=_period(date(2020, 1, 31)),
+            reserve=1_000_001,
+            accruals=[
+                {"creator_id": a, "amount_micros": 60_000_000},
+                {"creator_id": b, "amount_micros": 40_000_000},
+            ],
+        )
+    )
+
+    result = await service.release_reserve(str(uuid4()))
+
+    assert result["released_micros"] == 1_000_001
+    assert result["creators"] == 2
+    earnings = [args for sql, args in conn.calls if "creator_earnings" in sql]
+    assert len(earnings) == 2
+    assert sum(args[3] for args in earnings) == 1_000_001
+
