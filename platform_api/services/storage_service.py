@@ -232,6 +232,26 @@ class StorageService:
 
         return await asyncio.to_thread(_sign)
 
+    async def presign_private_get_url(
+        self, key: str, *, expires_seconds: int = 300
+    ) -> str:
+        """Short-lived read URL for private objects (KYC documents).
+
+        Always signs against the bucket so it never leaks through the public
+        CDN, even when ``cdn_base_url`` is configured.
+        """
+        normalized_key = key.lstrip("/")
+
+        def _sign() -> str:
+            client = self._client()
+            return client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._config.bucket, "Key": normalized_key},
+                ExpiresIn=max(60, int(expires_seconds)),
+            )
+
+        return await asyncio.to_thread(_sign)
+
     async def _object_version(self, key: str) -> str:
         """Current object ETag (content hash) for CDN cache-busting; '' on failure."""
 

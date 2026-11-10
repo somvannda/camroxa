@@ -573,6 +573,57 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Credit grant maintenance not started (non-fatal): %s", exc)
 
+        # --- Creator earning eligibility (hourly) ---
+        try:
+            from platform_api.services import creator_eligibility_service as _creator_elig
+
+            if not getattr(_creator_elig, "_ELIGIBILITY_ENABLED", True):
+                logger.info("Creator eligibility loop is disabled.")
+            else:
+                asyncio.create_task(
+                    _creator_elig.run_creator_eligibility_loop(
+                        db_pool,
+                        startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                    ),
+                    name="creator-eligibility",
+                )
+                logger.info("Creator eligibility loop started.")
+        except Exception as exc:
+            logger.warning("Creator eligibility loop not started (non-fatal): %s", exc)
+
+        # --- Creator earnings holdback release (hourly) ---
+        try:
+            from platform_api.services import creator_payout_service as _creator_payout
+
+            if not getattr(_creator_payout, "PAYOUT_RELEASE_ENABLED", True):
+                logger.info("Creator earnings release loop is disabled.")
+            else:
+                asyncio.create_task(
+                    _creator_payout.run_earnings_release_loop(
+                        db_pool,
+                        startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                    ),
+                    name="creator-earnings-release",
+                )
+                logger.info("Creator earnings release loop started.")
+        except Exception as exc:
+            logger.warning("Creator earnings release loop not started (non-fatal): %s", exc)
+
+        # --- Reserve release after the dispute window (daily) ---
+        try:
+            from platform_api.services import royalty_engine_service as _royalty
+
+            asyncio.create_task(
+                _royalty.run_reserve_release_loop(
+                    db_pool,
+                    startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                ),
+                name="creator-reserve-release",
+            )
+            logger.info("Creator reserve release loop started.")
+        except Exception as exc:
+            logger.warning("Creator reserve release loop not started (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",
@@ -802,6 +853,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         streaming_public,
         streaming_admin,
         streaming_library,
+        creators_public,
+        creator_studio,
+        admin_creators,
     )
     from platform_api.routers import web_music, web_music_licenses
     from platform_api.routers import v2_topups, webhooks_cutluy
@@ -875,6 +929,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         streaming_public.router,
         streaming_admin.router,
         streaming_library.router,
+        creators_public.router,
+        creator_studio.router,
+        admin_creators.router,
         web_music.router,
         web_music_licenses.router,
         webhooks_cutluy.router,

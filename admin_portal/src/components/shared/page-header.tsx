@@ -25,7 +25,7 @@ export function PageHeader({
       )}
     >
       <div className="space-y-3">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-300/85">
+        <div className="text-[11px] font-medium text-slate-500">
           {eyebrow}
         </div>
         <div className="space-y-2">

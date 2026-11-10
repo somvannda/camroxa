@@ -207,8 +207,17 @@ async def _attach_royalty_stats(pool: Any, rows: list[dict]) -> None:
 
     policy = await RoyaltyPolicyService(pool).get_active()
     document = policy["document"]
-    need_s = int(document.get("eligibility_streams") or 1000)
-    need_u = int(document.get("eligibility_unique_listeners") or 100)
+    eligibility = document.get("eligibility") or {}
+    need_s = int(
+        document.get("eligibility_streams")
+        or eligibility.get("min_valid_streams")
+        or 1000
+    )
+    need_u = int(
+        document.get("eligibility_unique_listeners")
+        or eligibility.get("min_unique_listeners")
+        or 100
+    )
     stats = await pool.fetch(
         """
         SELECT subject_id,
@@ -238,7 +247,12 @@ async def _attach_royalty_stats(pool: Any, rows: list[dict]) -> None:
     for row in rows:
         stat = by_id.get(row["id"], {})
         origin = str(row.get("origin") or "ai_generated")
-        cap = int(document["ai" if origin == "ai_generated" else "original"]["max_royalty_streams"])
+        cap_key = "original" if origin == "original" else "ai"
+        cap = int(
+            (document.get(cap_key) or {}).get("max_royalty_streams")
+            or (document.get("caps") or {}).get("per_track_weighted_streams")
+            or 500_000
+        )
         valid = int(stat.get("valid_streams") or 0)
         unique = int(stat.get("unique_listeners") or 0)
         royalty = int(stat.get("royalty_streams") or 0)
