@@ -1166,6 +1166,10 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   expect(
     await page.locator(".se-lane").first().evaluate((element) => Math.round(element.getBoundingClientRect().x))
   ).toBe(378);
+  // S37: the composer moves into the assistant column.
+  expect(
+    await page.locator(".se-prompt").evaluate((element) => Math.round(element.getBoundingClientRect().x))
+  ).toBe(16);
   await expect(assistant.getByText(/Created Generated demo/)).toBeVisible({ timeout: 20_000 });
   expect(captured.model).toBe("v6-mini");
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(0);
