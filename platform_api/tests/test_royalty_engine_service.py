@@ -126,7 +126,7 @@ class _FakePool:
         return self._period
 
     async def fetchval(self, sql, *args):
-        if "reserve_release" in sql:
+        if "Reserve release" in sql:
             return self._already
         return self._reserve
 
@@ -205,3 +205,30 @@ async def test_release_due_reserves_skips_periods_it_cannot_release() -> None:
 
     assert released == 1
     assert service.release_reserve.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_release_reserve_uses_a_permitted_ledger_entry_type() -> None:
+    """The ledger check constraint allows 'release', not a made-up type."""
+    from datetime import date
+
+    a, b = uuid4(), uuid4()
+    conn = _FakeConn()
+    service = RoyaltyEngineService(
+        _FakePool(
+            conn,
+            period=_period(date(2020, 1, 31)),
+            reserve=1_000_000,
+            accruals=[
+                {"creator_id": a, "amount_micros": 50_000_000},
+                {"creator_id": b, "amount_micros": 50_000_000},
+            ],
+        )
+    )
+
+    await service.release_reserve(str(uuid4()))
+
+    ledger = [sql for sql, _ in conn.calls if "royalty_ledger" in sql]
+    assert ledger, "expected ledger writes"
+    assert all("'release'" in sql for sql in ledger)
+    assert not any("reserve_release" in sql for sql in ledger)

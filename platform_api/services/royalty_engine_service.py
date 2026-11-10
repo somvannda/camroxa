@@ -323,7 +323,8 @@ class RoyaltyEngineService:
               )
               AND NOT EXISTS (
                   SELECT 1 FROM royalty_ledger l
-                  WHERE l.period_id = p.id AND l.entry_type = 'reserve_release'
+                  WHERE l.period_id = p.id AND l.entry_type = 'release'
+                    AND l.reason LIKE 'Reserve release%'
               )
             """,
             str(RESERVE_HOLD_DAYS),
@@ -369,7 +370,8 @@ class RoyaltyEngineService:
             )
         released_before = await self._pool.fetchval(
             "SELECT 1 FROM royalty_ledger "
-            "WHERE period_id = $1 AND entry_type = 'reserve_release' LIMIT 1",
+            "WHERE period_id = $1 AND entry_type = 'release' "
+            "AND reason LIKE 'Reserve release%' LIMIT 1",
             period_id,
         )
         if released_before:
@@ -418,7 +420,7 @@ class RoyaltyEngineService:
                         INSERT INTO royalty_ledger (
                             period_id, policy_id, creator_id, entry_type,
                             amount_micros, reason
-                        ) VALUES ($1,$2,$3,'reserve_release',$4,$5)
+                        ) VALUES ($1,$2,$3,'release',$4,$5)
                         """,
                         period_id,
                         period["policy_id"],
