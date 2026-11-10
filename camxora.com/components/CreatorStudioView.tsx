@@ -13,7 +13,9 @@ import {
   CreatorPanel,
   CreatorSelect,
   CreatorTextarea,
+  CreatorToast,
   creatorButtonClass,
+  useCreatorToast,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -97,7 +99,7 @@ export function CreatorStudioView() {
   const [unauthorized, setUnauthorized] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { toast, showToast, dismiss } = useCreatorToast();
   const [handleCheck, setHandleCheck] = useState<{ available: boolean; reason: string | null; suggestions: string[] } | null>(null);
   const [checking, setChecking] = useState(false);
   const [uploading, setUploading] = useState<"avatar" | "banner" | null>(null);
@@ -143,14 +145,13 @@ export function CreatorStudioView() {
   async function onUpload(kind: "avatar" | "banner", file: File) {
     setUploading(kind);
     setError("");
-    setSuccess("");
     try {
       const { url } = await uploadCreatorMedia(kind, file);
       setForm((current) => ({
         ...current,
         [kind === "avatar" ? "avatar_url" : "banner_url"]: url,
       }));
-      setSuccess(kind === "avatar" ? "Avatar uploaded." : "Banner uploaded.");
+      showToast(kind === "avatar" ? "Avatar uploaded." : "Banner uploaded.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not upload image");
     } finally {
@@ -161,7 +162,6 @@ export function CreatorStudioView() {
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();    setSaving(true);
     setError("");
-    setSuccess("");
     try {
       const payload = toPayload(form);
       const data = studio?.profile
@@ -169,7 +169,7 @@ export function CreatorStudioView() {
         : await claimCreator(payload);
       setStudio(data);
       if (data.profile) setForm(formFromProfile(data.profile));
-      setSuccess(studio?.profile ? "Profile saved." : "Creator page created.");
+      showToast(studio?.profile ? "Profile saved." : "Creator page created.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save profile");
     } finally {
@@ -250,7 +250,6 @@ export function CreatorStudioView() {
       />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
-      {success ? <p className={styles.success} role="status">{success}</p> : null}
 
       {profile ? (
         <CreatorPanel title="Profile readiness" meta={`${completed} of 8 complete`}>
@@ -455,6 +454,7 @@ export function CreatorStudioView() {
           </CreatorButtonLink>
         </div>
       </CreatorPanel>
+      <CreatorToast toast={toast} onDismiss={dismiss} />
     </CreatorPage>
   );
 }

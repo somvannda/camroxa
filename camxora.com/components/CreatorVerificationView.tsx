@@ -15,6 +15,8 @@ import {
   CreatorSelect,
   CreatorStatus,
   CreatorTextarea,
+  CreatorToast,
+  useCreatorToast,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -57,7 +59,7 @@ export function CreatorVerificationView() {
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { toast, showToast, dismiss } = useCreatorToast();
   const [pitch, setPitch] = useState("");
   const [link, setLink] = useState("");
   const [rights, setRights] = useState(false);
@@ -96,7 +98,6 @@ export function CreatorVerificationView() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       await submitApplication({
         pitch: pitch.trim(),
@@ -104,7 +105,7 @@ export function CreatorVerificationView() {
         rights_attested: rights,
         requested_tier: "verified",
       });
-      setSuccess("Badge request submitted. You can keep publishing while we review.");
+      showToast("Badge request submitted. You can keep publishing while we review.");
       setPitch("");
       setLink("");
       setRights(false);
@@ -119,10 +120,9 @@ export function CreatorVerificationView() {
   async function onWithdraw() {
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       await withdrawApplication();
-      setSuccess("Application withdrawn.");
+      showToast("Application withdrawn.");
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not withdraw application");
@@ -135,10 +135,9 @@ export function CreatorVerificationView() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       await submitVerification({ kind: evidenceKind, evidence_ref: evidenceRef.trim() });
-      setSuccess("Verification evidence submitted.");
+      showToast("Verification evidence submitted.");
       setEvidenceRef("");
       await refresh();
     } catch (cause) {
@@ -222,7 +221,6 @@ export function CreatorVerificationView() {
       />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
-      {success ? <p className={styles.success} role="status">{success}</p> : null}
 
       <CreatorMetrics
         items={[
@@ -375,6 +373,7 @@ export function CreatorVerificationView() {
           </div>
         )}
       </CreatorPanel>
+      <CreatorToast toast={toast} onDismiss={dismiss} />
     </CreatorPage>
   );
 }

@@ -13,6 +13,8 @@ import {
   CreatorPanel,
   CreatorSelect,
   CreatorStatus,
+  CreatorToast,
+  useCreatorToast,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -49,7 +51,7 @@ export function CreatorPayoutsView() {
   const [unauthorized, setUnauthorized] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { toast, showToast, dismiss } = useCreatorToast();
 
   const [legalName, setLegalName] = useState("");
   const [dob, setDob] = useState("");
@@ -97,7 +99,6 @@ export function CreatorPayoutsView() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       await submitKyc({
         legal_name: legalName.trim(),
@@ -109,7 +110,7 @@ export function CreatorPayoutsView() {
         selfie_ref: selfieRef.trim() || undefined,
         tax_id: taxId.trim() || undefined,
       });
-      setSuccess("Payout verification submitted. We review it before your first payout.");
+      showToast("Payout verification submitted. We review it before your first payout.");
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not submit verification");
@@ -122,7 +123,6 @@ export function CreatorPayoutsView() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       await savePayoutAccount({
         method,
@@ -131,7 +131,7 @@ export function CreatorPayoutsView() {
         bank_code: bankCode.trim() || undefined,
         currency,
       });
-      setSuccess("Payout account saved. It needs verification before the first payout.");
+      showToast("Payout account saved. It needs verification before the first payout.");
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save payout account");
@@ -143,10 +143,9 @@ export function CreatorPayoutsView() {
   async function onRequest() {
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       await requestPayout();
-      setSuccess("Payout requested. Finance reviews it in the next cycle.");
+      showToast("Payout requested. Finance reviews it in the next cycle.");
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not request payout");
@@ -215,7 +214,6 @@ export function CreatorPayoutsView() {
       />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
-      {success ? <p className={styles.success} role="status">{success}</p> : null}
 
       <CreatorMetrics
         items={[
@@ -389,6 +387,7 @@ export function CreatorPayoutsView() {
           </div>
         )}
       </CreatorPanel>
+      <CreatorToast toast={toast} onDismiss={dismiss} />
     </CreatorPage>
   );
 }

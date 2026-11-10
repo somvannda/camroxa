@@ -3,11 +3,14 @@
 import * as Checkbox from "@radix-ui/react-checkbox";
 import * as Select from "@radix-ui/react-select";
 import Link from "next/link";
-import type {
-  ButtonHTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  TextareaHTMLAttributes,
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type TextareaHTMLAttributes,
 } from "react";
 import styles from "./creator-ui.module.css";
 
@@ -248,5 +251,58 @@ export function CreatorStatus({
       <span className={`${styles.dot} ${dot}`.trim()} aria-hidden="true" />
       {label}
     </span>
+  );
+}
+
+type ToastTone = "success" | "error" | "info";
+
+export function useCreatorToast() {
+  const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
+  const showToast = useCallback((message: string, tone: ToastTone = "success") => {
+    setToast({ message, tone });
+  }, []);
+  const dismiss = useCallback(() => setToast(null), []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  return { toast, showToast, dismiss };
+}
+
+export function CreatorToast({
+  toast,
+  onDismiss,
+}: {
+  toast: { message: string; tone: ToastTone } | null;
+  onDismiss: () => void;
+}) {
+  if (!toast) return null;
+  const toneClass =
+    toast.tone === "error"
+      ? styles.toastError
+      : toast.tone === "success"
+        ? styles.toastSuccess
+        : "";
+  return (
+    <div
+      className={`${styles.toast} ${toneClass}`.trim()}
+      role={toast.tone === "error" ? "alert" : "status"}
+      aria-live={toast.tone === "error" ? "assertive" : "polite"}
+    >
+      <span style={{ flex: 1 }}>{toast.message}</span>
+      <button type="button" onClick={onDismiss} aria-label="Dismiss notification">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path
+            d="M3 3l6 6M9 3l-6 6"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+    </div>
   );
 }

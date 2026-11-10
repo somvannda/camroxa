@@ -14,6 +14,8 @@ import {
   CreatorPanel,
   CreatorSelect,
   CreatorStatus,
+  CreatorToast,
+  useCreatorToast,
 } from "@/components/CreatorUI";
 import styles from "@/components/creator-ui.module.css";
 import {
@@ -96,7 +98,7 @@ export function CreatorReleasesView() {
   const [saving, setSaving] = useState(false);
   const [unauthorized, setUnauthorized] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { toast, showToast, dismiss } = useCreatorToast();
 
   const readyOptions = useMemo(() => {
     return generations.flatMap((generation) =>
@@ -157,7 +159,6 @@ export function CreatorReleasesView() {
     }
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       await createRelease({
         source_task_id: option.taskId,
@@ -171,7 +172,7 @@ export function CreatorReleasesView() {
           rights_attested: rights,
         },
       });
-      setSuccess("Draft created. Add it to review when you are ready.");
+      showToast("Draft created. Add it to review when you are ready.");
       setSelected("");
       setTitle("");
       setRights(false);
@@ -186,17 +187,16 @@ export function CreatorReleasesView() {
   async function onAction(release: CreatorRelease) {
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       if (["draft", "changes_requested"].includes(release.status)) {
         await submitRelease(release.id);
-        setSuccess("Published. Your release is live on Camxora.");
+        showToast("Published. Your release is live on Camxora.");
       } else if (["submitted", "in_review"].includes(release.status)) {
         await withdrawRelease(release.id);
-        setSuccess("Release returned to draft.");
+        showToast("Release returned to draft.");
       } else if (release.status === "published") {
         await unpublishRelease(release.id);
-        setSuccess("Release taken down.");
+        showToast("Release taken down.");
       }
       await refresh();
     } catch (cause) {
@@ -261,7 +261,6 @@ export function CreatorReleasesView() {
       />
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
-      {success ? <p className={styles.success} role="status">{success}</p> : null}
 
       <CreatorMetrics
         items={[
@@ -405,6 +404,7 @@ export function CreatorReleasesView() {
           </div>
         </div>
       </CreatorPanel>
+      <CreatorToast toast={toast} onDismiss={dismiss} />
     </CreatorPage>
   );
 }
