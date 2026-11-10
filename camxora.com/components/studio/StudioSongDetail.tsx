@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { Waveform } from "@/components/studio/Waveform";
 import type { WebMusicGeneration } from "@/lib/library-api";
+import {
+  addStudioProjectComment,
+  listStudioProjectComments,
+  type StudioShareComment,
+} from "@/lib/studio-api";
 
 /**
  * Song detail rail (extra capture, §100): double-clicking a library row swaps the list
@@ -27,6 +32,9 @@ export type StudioSongDetailProps = {
   onTogglePlay: (song: WebMusicGeneration) => void;
   onToggleLike: (song: WebMusicGeneration, next: boolean) => void;
   onToggleDislike: (song: WebMusicGeneration, next: boolean) => void;
+  /** Project the comments belong to (they are project notes, shown in this rail). */
+  projectId?: string | null;
+  commentAuthor?: string;
 };
 
 function primaryClipOf(song: WebMusicGeneration) {
@@ -49,13 +57,52 @@ function dateLabel(iso: string | null | undefined): string {
 
 export function StudioSongDetail(props: StudioSongDetailProps) {
   const { width, song, liked, disliked, playing, onBack, onClose } = props;
-  const { onTogglePlay, onToggleLike, onToggleDislike } = props;
+  const { onTogglePlay, onToggleLike, onToggleDislike, projectId, commentAuthor } = props;
   const [tab, setTab] = useState<"info" | "stems">("info");
   const [showStyles, setShowStyles] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [copied, setCopied] = useState<"" | "styles" | "lyrics">("");
+  const [commentsOpen, setCommentsOpen] = useState(true);
+  const [comments, setComments] = useState<StudioShareComment[] | null>(null);
+  const [commentBody, setCommentBody] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState("");
   const clip = primaryClipOf(song);
   const title = song.title || "Untitled song";
+
+  useEffect(() => {
+    if (!projectId) return;
+    let active = true;
+    listStudioProjectComments(projectId)
+      .then((result) => {
+        if (active) setComments(result.items ?? []);
+      })
+      .catch(() => {
+        if (active) setComments([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  async function submitComment() {
+    const body = commentBody.trim();
+    if (!body || !projectId || commentBusy) return;
+    setCommentBusy(true);
+    setCommentError("");
+    try {
+      const created = await addStudioProjectComment(projectId, {
+        authorName: commentAuthor || "You",
+        body,
+      });
+      setComments((current) => [created, ...(current ?? [])]);
+      setCommentBody("");
+    } catch (cause) {
+      setCommentError(cause instanceof Error ? cause.message : "Could not post the comment.");
+    } finally {
+      setCommentBusy(false);
+    }
+  }
 
   async function copy(kind: "styles" | "lyrics", value: string) {
     try {
@@ -225,19 +272,68 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
 
           <section className="se-song-section" aria-label="Comments and notes">
             <header>
-              <span>Comments and notes</span>
-            </header>
-            <div className="se-song-comment">
-              <input
-                type="text"
-                aria-label="Comment"
-                placeholder="Comments are not wired yet"
-                disabled
-              />
-              <button type="button" className="se-pill" disabled aria-label="Send comment">
-                Send
+              <button
+                type="button"
+                className="se-song-comments-toggle"
+                aria-expanded={commentsOpen}
+                onClick={() => setCommentsOpen((open) => !open)}
+              >
+                <Icon name={commentsOpen ? "fa-chevron-down" : "fa-chevron-right"} />
+                <span>Comments and notes</span>
               </button>
-            </div>
+            </header>
+            {commentsOpen ? (
+              <>
+                {comments === null ? (
+                  <p className="se-song-comment-note">Loading comments</p>
+                ) : comments.length === 0 ? (
+                  <p className="se-song-comment-note">No comments yet.</p>
+                ) : (
+                  <ul className="se-song-comment-list">
+                    {comments.map((comment) => (
+                      <li key={comment.id} className="se-song-comment-item">
+                        <span>
+                          <strong>{comment.author_name}</strong>{" "}
+                          <small>
+                            {comment.created_at
+                              ? new Date(comment.created_at).toLocaleString()
+                              : ""}
+                          </small>
+                        </span>
+                        <p>{comment.body}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {commentError ? (
+                  <p className="se-song-comment-note" role="alert">
+                    {commentError}
+                  </p>
+                ) : null}
+                <div className="se-song-comment">
+                  <input
+                    type="text"
+                    aria-label="Comment"
+                    placeholder="Write a comment"
+                    value={commentBody}
+                    disabled={!projectId || commentBusy}
+                    onChange={(event) => setCommentBody(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void submitComment();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="se-song-comment-send"
+                    aria-label="Send comment"
+                    disabled={!commentBody.trim() || !projectId || commentBusy}
+                    onClick={() => void submitComment()}
+                  >
+                    <Icon name="fa-arrow-up" />
+                  </button>
+                </div>
+              </>
+            ) : null}
           </section>
         </div>
       ) : (

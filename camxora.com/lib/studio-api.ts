@@ -508,6 +508,24 @@ export async function listStudioProjectComments(
   );
 }
 
+export async function addStudioProjectComment(
+  projectId: string,
+  input: { authorName: string; body: string; parentId?: string | null }
+): Promise<StudioShareComment> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        author_name: input.authorName || "You",
+        body: input.body,
+        parent_id: input.parentId || undefined,
+      }),
+    }
+  );
+}
+
 export async function forkStudioSharedProject(token: string): Promise<StudioProject> {
   return studioJson(
     `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/fork`,

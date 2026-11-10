@@ -675,6 +675,22 @@ async def list_studio_project_comments(
     )
 
 
+@router.post("/studio/projects/{project_id}/comments", status_code=201)
+async def add_studio_project_comment(
+    project_id: UUID,
+    body: StudioCommentCreateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.add_studio_project_comment(
+        UUID(ctx.user_id),
+        project_id,
+        author_name=body.author_name,
+        body=body.body,
+        parent_id=body.parent_id,
+    )
+
+
 @router.post("/studio/shares/{token}/fork", status_code=201)
 async def fork_studio_shared_project(
     token: str,

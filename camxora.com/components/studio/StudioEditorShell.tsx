@@ -3261,6 +3261,8 @@ export function StudioEditorShell() {
                 onTogglePlay={toggleSongPreview}
                 onToggleLike={(song, next) => void toggleSongLike(song, next)}
                 onToggleDislike={(song, next) => void toggleSongDislike(song, next)}
+                projectId={projectId}
+                commentAuthor={user?.email?.split("@")[0] || "You"}
               />
             );
           }

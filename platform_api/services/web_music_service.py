@@ -2624,6 +2624,60 @@ class WebMusicService:
         )
         return {"items": [self._studio_comment_payload(row) for row in rows]}
 
+    async def add_studio_project_comment(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        author_name: str,
+        body: str,
+        parent_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError(
+                "Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        safe_name = str(author_name or "").strip()[:80] or "You"
+        safe_body = str(body or "").strip()
+        if not safe_body:
+            raise ValidationError("Comment cannot be empty.", details={"field": "body"})
+        if len(safe_body) > 2000:
+            raise ValidationError(
+                "Comment must be 2000 characters or fewer.",
+                details={"field": "body"},
+            )
+        if parent_id is not None:
+            parent = await self._pool.fetchrow(
+                "SELECT id FROM studio_project_comments WHERE id = $1 AND project_id = $2",
+                parent_id,
+                project_id,
+            )
+            if parent is None:
+                raise ValidationError(
+                    "Reply target was not found.",
+                    details={"field": "parent_id"},
+                )
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_project_comments
+                (project_id, user_id, author_name, body, parent_id)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+            safe_name,
+            safe_body,
+            parent_id,
+        )
+        return self._studio_comment_payload(row)
+
     def _studio_upload_payload(self, row: Any, url: str) -> dict[str, Any]:
         return {
             "id": str(row["id"]),

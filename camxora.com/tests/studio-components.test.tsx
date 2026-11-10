@@ -16,8 +16,19 @@ import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import type { StudioTrack } from "@/lib/studio-tracks";
 import type { StudioProject, StudioUpload } from "@/lib/studio-api";
+import { addStudioProjectComment, listStudioProjectComments } from "@/lib/studio-api";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
+
+
+vi.mock("@/lib/studio-api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/studio-api")>("@/lib/studio-api");
+  return {
+    ...actual,
+    listStudioProjectComments: vi.fn(),
+    addStudioProjectComment: vi.fn(),
+  };
+});
 
 const noop = () => {};
 
@@ -817,6 +828,39 @@ describe("StudioSongDetail", () => {
     expect(onToggleDislike).toHaveBeenCalledWith(detailSong, true);
     await user.click(screen.getAllByRole("button", { name: "Play Sunlit One" })[0]);
     expect(onTogglePlay).toHaveBeenCalledWith(detailSong);
+  });
+
+  it("loads and posts project comments", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listStudioProjectComments).mockResolvedValue({
+      items: [
+        {
+          id: "c1",
+          parent_id: null,
+          author_name: "Sam",
+          body: "Old note",
+          created_at: "2026-11-10T00:00:00.000Z",
+        },
+      ],
+    });
+    vi.mocked(addStudioProjectComment).mockResolvedValue({
+      id: "c2",
+      parent_id: null,
+      author_name: "me",
+      body: "New note",
+      created_at: "2026-11-10T00:01:00.000Z",
+    });
+    render(
+      <StudioSongDetail {...detailProps({ projectId: "p1", commentAuthor: "me" })} />
+    );
+    expect(await screen.findByText("Old note")).toBeTruthy();
+    await user.type(screen.getByLabelText("Comment"), "New note");
+    await user.click(screen.getByLabelText("Send comment"));
+    expect(await screen.findByText("New note")).toBeTruthy();
+    expect(addStudioProjectComment).toHaveBeenCalledWith("p1", {
+      authorName: "me",
+      body: "New note",
+    });
   });
 
   it("explains the blocked Stems tab instead of pretending", async () => {
