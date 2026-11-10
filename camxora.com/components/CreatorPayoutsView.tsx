@@ -72,7 +72,6 @@ export function CreatorPayoutsView() {
 
   const [legalName, setLegalName] = useState("");
   const [dob, setDob] = useState("");
-  const [country, setCountry] = useState("KH");
   const [idType, setIdType] = useState<"passport" | "national_id" | "drivers_license">("national_id");
   const [idLast4, setIdLast4] = useState("");
   const [documentRef, setDocumentRef] = useState("");
@@ -80,7 +79,6 @@ export function CreatorPayoutsView() {
   const [docNames, setDocNames] = useState<{ id?: string; selfie?: string }>({});
   const [uploadingDoc, setUploadingDoc] = useState<"id" | "selfie" | null>(null);
   const [taxId, setTaxId] = useState("");
-  const [taxForm, setTaxForm] = useState<"w9" | "w8ben">("w8ben");
   const [statements, setStatements] = useState<CreatorTaxStatement[]>([]);
 
   const [method, setMethod] = useState<"aba" | "wing" | "khqr" | "bank" | "paypal" | "wise">("aba");
@@ -148,14 +146,14 @@ export function CreatorPayoutsView() {
       await submitKyc({
         legal_name: legalName.trim(),
         date_of_birth: dob,
-        country_code: country.trim().toUpperCase(),
+        country_code: "KH",
         id_type: idType,
         id_last4: idLast4.trim(),
         id_document_ref: documentRef.trim(),
         selfie_ref: selfieRef.trim() || undefined,
         tax_id: taxId.trim() || undefined,
-        tax_form: taxForm,
-        tax_country: country.trim().toUpperCase(),
+        tax_form: "w8ben",
+        tax_country: "KH",
       });
       showToast("Payout verification submitted. We review it before your first payout.");
       await refresh();
@@ -304,32 +302,17 @@ export function CreatorPayoutsView() {
               <CreatorField
                 label="Country"
                 htmlFor="kyc-country"
-                hint="Payouts are only available to creators in Cambodia for now."
-                error={fieldErrors.country_code}
+                hint="Payouts are only available to creators in Cambodia."
               >
-                <CreatorInput id="kyc-country" value={country} onChange={(event) => setCountry(event.target.value)} maxLength={2} required />
+                <div id="kyc-country" className={styles.readonlyValue}>Cambodia</div>
               </CreatorField>
-              <CreatorField
-                label="Tax form"
-                htmlFor="kyc-tax-form"
-                hint={
-                  taxForm === "w9"
-                    ? "US persons. No withholding when the country is US."
-                    : "Everyone else. 30% is withheld until a treaty rate is filed."
-                }
-                error={fieldErrors.tax_form}
-              >
-                <CreatorSelect
-                  id="kyc-tax-form"
-                  value={taxForm}
-                  onValueChange={(value) => setTaxForm(value as "w9" | "w8ben")}
-                  options={[
-                    { value: "w8ben", label: "W-8BEN — not a US person" },
-                    { value: "w9", label: "W-9 — US person" },
-                  ]}
-                  ariaLabel="Tax form"
-                />
-              </CreatorField>
+              <div className={styles.note}>
+                <Icon name="fa-circle-info" />
+                <span>
+                  Cambodia has no US tax treaty, so 30% is withheld from royalties.
+                  Submit a W-9 through support if you file as a US person.
+                </span>
+              </div>
               <CreatorField label="ID type" htmlFor="kyc-id-type" error={fieldErrors.id_type}>
                 <CreatorSelect
                   id="kyc-id-type"
