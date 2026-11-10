@@ -1180,11 +1180,11 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   await expect(page.locator(".se-tracks")).toBeHidden();
   expect(
     await page.locator(".se-lane").first().evaluate((element) => Math.round(element.getBoundingClientRect().x))
-  ).toBe(378);
+  ).toBe(392);
   // S37: the composer moves into the assistant column.
   expect(
     await page.locator(".se-prompt").evaluate((element) => Math.round(element.getBoundingClientRect().x))
-  ).toBe(16);
+  ).toBe(24);
   await expect(assistant.getByText(/Created Generated demo/)).toBeVisible({ timeout: 20_000 });
   expect(captured.model).toBe("v6-mini");
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(0);
@@ -1218,11 +1218,26 @@ test("prompt dock matches S36 and toggles the conversation", async ({ page }) =>
   ).toBeVisible();
   const dock = await bar.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    return { x: Math.round(rect.x), width: Math.round(rect.width), height: Math.round(rect.height) };
+    return {
+      x: Math.round(rect.x),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      bottomGap: Math.round(window.innerHeight - rect.bottom),
+    };
   });
-  expect(dock.x).toBe(16);
-  expect(dock.width).toBe(315);
+  expect(dock.x).toBe(24);
+  expect(dock.width).toBe(328);
   expect(dock.height).toBeGreaterThan(90);
+  // S36: the dock floats above the assistant column's lower edge (bottom 101).
+  expect(dock.bottomGap).toBe(101);
+  // S37: the assistant column is 360 px at x=8 and the arrangement starts at 392.
+  expect(
+    await assistant.evaluate((element) => Math.round(element.getBoundingClientRect().width))
+  ).toBe(360);
+  await expect(page.locator(".se-tracks")).toBeHidden();
+  expect(
+    await page.locator(".se-lane").first().evaluate((element) => Math.round(element.getBoundingClientRect().x))
+  ).toBe(392);
 
   // The expand glyph returns it to the centre and closes the conversation.
   await page.getByRole("button", { name: "Dock prompt to the centre" }).click();

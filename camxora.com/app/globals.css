@@ -4697,17 +4697,15 @@ html{color-scheme:dark}
 .se-model-menu button.on{background:hsl(var(--accent) / .14)}
 .se-model-menu strong{font-size:12px;font-weight:600}
 .se-model-menu small{font-size:11px;color:#8b90a6}
-.se-shell.has-assistant .se-head{padding-left:390px}
-.se-shell.has-assistant .se-body{padding-left:378px}
-.se-shell.has-assistant .se-foot{padding-left:390px}
+.se-shell.has-assistant .se-body{padding-left:392px}
 .se-shell.has-assistant .se-tracks{display:none}
-.se-shell.has-assistant .se-prompt{position:fixed;left:16px;right:auto;bottom:60px;transform:none;width:315px;z-index:80;padding:8px 12px 10px}
-.se-assistant{position:fixed;left:8px;top:8px;bottom:8px;z-index:75;display:flex;flex-direction:column;width:370px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
-.se-assistant-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
-.se-assistant-head strong{font-size:13px;font-weight:600}
+.se-shell.has-assistant .se-prompt{position:fixed;left:24px;right:auto;bottom:101px;transform:none;width:328px;z-index:80;padding:8px 12px 10px}
+.se-assistant{position:fixed;left:8px;top:52px;bottom:8px;z-index:5;display:flex;flex-direction:column;width:360px;border-radius:12px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden}
+.se-assistant-head{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
+.se-assistant-head .se-icon{width:24px;height:24px;margin-left:auto}
 .se-assistant-invite{margin:auto;max-width:240px;text-align:center;color:#8b90a6;font-size:12px;line-height:1.55}
-.se-assistant-note{margin:0;padding:10px 14px 4px;font-size:11px;color:#8b90a6}
-.se-assistant-log{display:flex;flex-direction:column;gap:10px;padding:10px 14px;overflow-y:auto}
+.se-assistant-note{display:flex;align-items:center;margin:0;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);font-size:11px;color:#c2c2c1}
+.se-assistant-log{display:flex;flex:1;min-height:0;flex-direction:column;gap:10px;padding:10px 14px 130px;overflow-y:auto}
 .se-assistant-msg{margin:0;font-size:13px;line-height:1.45}
 .se-assistant-msg.user{color:hsl(var(--foreground));font-weight:600}
 .se-assistant-msg.status{color:#8b90a6}

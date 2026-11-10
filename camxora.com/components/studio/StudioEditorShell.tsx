@@ -3775,7 +3775,7 @@ export function StudioEditorShell() {
       {assistantOpen ? (
         <aside className="se-assistant" aria-label="Studio assistant">
           <header className="se-assistant-head">
-            <strong>Studio assistant</strong>
+            <p className="se-assistant-note">Chat is powered by AI and can make mistakes</p>
             <button
               type="button"
               className="se-icon"
@@ -3785,7 +3785,6 @@ export function StudioEditorShell() {
               <Icon name="fa-xmark" />
             </button>
           </header>
-          <p className="se-assistant-note">Chat is powered by AI and can make mistakes.</p>
           <div className="se-assistant-log">
             {assistantMessages.length === 0 && !pendingSong && !designRequest && !designBuilt ? (
               <p className="se-assistant-invite">

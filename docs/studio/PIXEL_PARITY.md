@@ -32,7 +32,7 @@ functional controls the capture does not show (listed below).
 | Time ruler | 22 px `#1e1e20` band with dim labels (labels kept at AA contrast) | same |
 | Prompt bar | 645×97 card centred over the arrangement (x=652), 16 px above the shell body: attach +, panel/close tools, prompt line with a Tab hint, floating BETA at the top-right, model picker and send | same geometry; a removable track/clip chip and the v6 / v6-wild / v6-mini picker feed the assistant panel, where the take is auditioned or committed to the track (spends credits) |
 | Conversation dock (S36) | 315 px bar docked bottom-left, chip row with a panel glyph, one-line prompt, attach +, model and send; invitation copy in the empty conversation area | same: the panel glyph opens the assistant and docks the bar at x=16/315 px; expanding returns it to the centre |
-| Assistant panel | left column with the prompt, progress and per-take Commit/Audition actions (S37) | same; the shell reflows (tracks hidden, arrangement starts at 378 px) and the composer moves into the column |
+| Assistant panel | 360 px column inset 8 px under the header; the prompt, progress and per-take Commit/Audition actions (S37) | same; the shell reflows (tracks hidden, arrangement starts at 392 px) and the composer docks inside the column (24 px inset, 328 px wide, bottom 101) |
 | Playhead | 1 px `#4c4c4c` line with a cyan `#3dafff` ruler flag | same |
 | Lane | 86 px, starts y82 | same |
 | Clip | starts y84, 82 px tall, radius 10, label at +17 | same; waveform painted from the decoded clip audio (peaks cached per URL) |
