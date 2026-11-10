@@ -259,3 +259,38 @@ export function useCalculateRoyalty() {
     },
   });
 }
+
+export function useLockRoyaltyPeriod() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (periodId: string) => {
+      return httpClient.post(
+        `/api/v3/admin/creators/royalty/periods/${encodeURIComponent(periodId)}/lock`,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['royalty-periods'] });
+    },
+  });
+}
+
+export function useCreatePayoutRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { period_start: string; period_end: string }) => {
+      return httpClient.post('/api/v3/admin/creators/payouts/run', input);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creator-payouts'] });
+    },
+  });
+}
+
+export function useExportPayoutsCsv() {
+  return useMutation({
+    mutationFn: async (status?: string) =>
+      httpClient.get<string>('/api/v3/admin/creators/payouts/export', {
+        status: status && status !== 'all' ? status : undefined,
+      }),
+  });
+}

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from platform_api.services.royalty_engine_service import allocate_royalties
+import pytest
+
+from platform_api.services.royalty_engine_service import (
+    RoyaltyEngineService,
+    allocate_royalties,
+)
 
 
 def _policy(cap_pct: int = 40):
@@ -74,3 +80,17 @@ def test_no_eligible_tracks_returns_empty_allocation() -> None:
     assert result["allocations"] == []
     assert result["creator_totals"] == {}
     assert result["total_weighted_streams"] == 0
+
+
+@pytest.mark.asyncio
+async def test_lock_period_marks_it_locked() -> None:
+    period_id = uuid4()
+    service = RoyaltyEngineService(AsyncMock())
+    service._pool.fetchrow = AsyncMock(
+        side_effect=[
+            {"id": period_id, "status": "calculated"},
+            {"id": period_id, "status": "locked"},
+        ]
+    )
+    result = await service.lock_period(str(period_id))
+    assert result["period"]["status"] == "locked"

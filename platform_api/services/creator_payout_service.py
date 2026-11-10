@@ -301,6 +301,77 @@ class CreatorPayoutService:
         )
         return {"payout": dict(row)}
 
+    async def create_run(self, *, period_start: date, period_end: date) -> dict[str, Any]:
+        if period_end <= period_start:
+            raise ValidationError(
+                "period_end must be after period_start.",
+                details={"fields": {"period_end": "invalid"}},
+            )
+        rows = await self._pool.fetch(
+            """
+            SELECT e.creator_id,
+                   SUM(e.net_micros)::bigint AS amount_micros,
+                   a.method
+            FROM creator_earnings e
+            JOIN creator_kyc k
+              ON k.user_id = e.creator_id AND k.status = 'verified'
+            JOIN creator_payout_accounts a
+              ON a.user_id = e.creator_id AND a.is_default AND a.status = 'verified'
+            WHERE e.status = 'available'
+              AND NOT EXISTS (
+                  SELECT 1 FROM creator_payouts p
+                  WHERE p.creator_id = e.creator_id
+                    AND p.status IN ('requested','approved','processing')
+              )
+            GROUP BY e.creator_id, a.method
+            HAVING SUM(e.net_micros) >= $1
+            """,
+            MIN_PAYOUT_MICROS,
+        )
+        created = 0
+        skipped = 0
+        for row in rows:
+            payout_id = await self._pool.fetchval(
+                """
+                INSERT INTO creator_payouts (
+                    creator_id, period_start, period_end, amount_micros,
+                    currency, method, status
+                ) VALUES ($1,$2,$3,$4,'USD',$5,'requested')
+                ON CONFLICT (creator_id, period_start, period_end) DO NOTHING
+                RETURNING id
+                """,
+                row["creator_id"],
+                period_start,
+                period_end,
+                int(row["amount_micros"]),
+                row["method"],
+            )
+            if payout_id:
+                created += 1
+            else:
+                skipped += 1
+        return {
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "eligible_creators": len(rows),
+            "created": created,
+            "skipped": skipped,
+        }
+
+    async def export_rows(self, status: str | None = None) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT p.*, u.email, u.display_name AS user_display_name, cp.handle
+            FROM creator_payouts p
+            JOIN users u ON u.id = p.creator_id
+            LEFT JOIN creator_profiles cp ON cp.user_id = p.creator_id
+            WHERE ($1::text IS NULL OR p.status = $1)
+            ORDER BY p.created_at DESC
+            """,
+            status,
+        )
+        return [dict(row) for row in rows]
+
     # ------------------------------------------------------------------
     # Admin
     # ------------------------------------------------------------------

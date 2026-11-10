@@ -6,7 +6,7 @@ import json
 from datetime import date, datetime, timezone
 from typing import Any
 
-from platform_api.exceptions import ValidationError
+from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.services.royalty_policy_service import RoyaltyPolicyService
 
 MICROS_PER_USD = 1_000_000
@@ -298,3 +298,25 @@ class RoyaltyEngineService:
             max(1, min(limit, 100)),
         )
         return {"items": [dict(row) for row in rows]}
+
+    async def lock_period(self, period_id: str) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM royalty_periods WHERE id = $1", period_id
+        )
+        if row is None:
+            raise NotFoundError("Royalty period not found.")
+        if row["status"] not in {"calculated", "open"}:
+            raise ValidationError(
+                "Only calculated periods can be locked.",
+                details={"fields": {"period": "invalid status"}},
+            )
+        locked = await self._pool.fetchrow(
+            """
+            UPDATE royalty_periods
+            SET status = 'locked', locked_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            """,
+            period_id,
+        )
+        return {"period": dict(locked)}

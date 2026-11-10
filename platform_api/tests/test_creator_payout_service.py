@@ -122,3 +122,23 @@ async def test_kyc_approval_moves_eligible_tracks_to_earning() -> None:
     assert service._pool.execute.await_count == 2
     assert "creator_earning_eligibility" in service._pool.execute.await_args_list[0].args[0]
     assert "notification_queue" in service._pool.execute.await_args_list[1].args[0]
+
+
+@pytest.mark.asyncio
+async def test_payout_run_creates_one_payout_per_eligible_creator() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetch = AsyncMock(
+        return_value=[
+            {"creator_id": uuid4(), "amount_micros": 30_000_000, "method": "aba"},
+            {"creator_id": uuid4(), "amount_micros": 25_000_000, "method": "wing"},
+        ]
+    )
+    service._pool.fetchval = AsyncMock(side_effect=[uuid4(), None])
+
+    result = await service.create_run(
+        period_start=date(2026, 10, 1), period_end=date(2026, 11, 1)
+    )
+
+    assert result["eligible_creators"] == 2
+    assert result["created"] == 1
+    assert result["skipped"] == 1

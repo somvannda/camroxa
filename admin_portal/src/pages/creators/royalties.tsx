@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calculator, Loader2 } from 'lucide-react';
+import { Calculator, Loader2, Lock } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import {
   useCalculateRoyalty,
+  useLockRoyaltyPeriod,
   useRoyaltyPeriods,
   type RoyaltyPeriodRecord,
 } from '@/hooks/use-creators';
@@ -45,6 +46,7 @@ function statusBadge(status: RoyaltyPeriodRecord['status']) {
 export default function CreatorRoyaltiesPage() {
   const { data, isLoading, isError, refetch } = useRoyaltyPeriods();
   const calculate = useCalculateRoyalty();
+  const lock = useLockRoyaltyPeriod();
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [poolUsd, setPoolUsd] = useState('3000');
@@ -173,6 +175,7 @@ export default function CreatorRoyaltiesPage() {
                   <TableHead>Rate</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Calculated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -188,6 +191,37 @@ export default function CreatorRoyaltiesPage() {
                     </TableCell>
                     <TableCell>{statusBadge(period.status)}</TableCell>
                     <TableCell>{formatDate(period.calculated_at)}</TableCell>
+                    <TableCell className="text-right">
+                      {period.status === 'calculated' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            lock.mutate(period.id, {
+                              onSuccess: () =>
+                                toast({
+                                  title: 'Period locked',
+                                  description: 'Further corrections must be adjustment entries.',
+                                }),
+                              onError: (error) =>
+                                toast({
+                                  title: 'Could not lock period',
+                                  description: error instanceof Error ? error.message : 'Unknown error',
+                                  variant: 'destructive',
+                                }),
+                            })
+                          }
+                          disabled={lock.isPending}
+                        >
+                          {lock.isPending ? (
+                            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Lock className="mr-1 h-4 w-4" />
+                          )}
+                          Lock
+                        </Button>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

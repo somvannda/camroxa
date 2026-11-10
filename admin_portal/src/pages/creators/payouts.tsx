@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Loader2, Wallet } from 'lucide-react';
+import { CheckCircle2, Download, Loader2, Play, Wallet } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +32,9 @@ import {
 } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
 import {
+  useCreatePayoutRun,
   useCreatorPayouts,
+  useExportPayoutsCsv,
   useMarkPayoutPaid,
   type CreatorPayoutRecord,
 } from '@/hooks/use-creators';
@@ -62,10 +64,55 @@ export default function CreatorPayoutsPage() {
   const [status, setStatus] = useState('requested');
   const { data, isLoading, isError, refetch } = useCreatorPayouts(status);
   const markPaid = useMarkPayoutPaid();
+  const createRun = useCreatePayoutRun();
+  const exportCsv = useExportPayoutsCsv();
   const [paying, setPaying] = useState<CreatorPayoutRecord | null>(null);
   const [reference, setReference] = useState('');
 
   const items = data?.items ?? [];
+
+  function runPayouts() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const iso = (date: Date) => date.toISOString().slice(0, 10);
+    createRun.mutate(
+      { period_start: iso(start), period_end: iso(now) },
+      {
+        onSuccess: (result) => {
+          const payload = result as { created?: number; skipped?: number; eligible_creators?: number };
+          toast({
+            title: 'Payout run created',
+            description: `${payload.created ?? 0} payouts created · ${payload.skipped ?? 0} skipped · ${payload.eligible_creators ?? 0} eligible.`,
+          });
+        },
+        onError: (error) =>
+          toast({
+            title: 'Could not create payout run',
+            description: error instanceof Error ? error.message : 'Unknown error',
+            variant: 'destructive',
+          }),
+      },
+    );
+  }
+
+  async function downloadCsv() {
+    try {
+      const csv = await exportCsv.mutateAsync(status);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `creator-payouts-${status}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: 'Could not export payouts',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    }
+  }
 
   function submitPaid() {
     if (!paying || !reference.trim()) return;
@@ -97,19 +144,32 @@ export default function CreatorPayoutsPage() {
         title="Creator payouts"
         description="Review payout requests, record the bank reference, and mark each payout paid."
         actions={
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="requested">Requested</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="processing">Processing</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-              <SelectItem value="all">All</SelectItem>
-            </SelectContent>
-          </Select>
+          <>
+            <Button variant="outline" onClick={downloadCsv} disabled={exportCsv.isPending}>
+              <Download className="mr-1 h-4 w-4" /> Export CSV
+            </Button>
+            <Button variant="outline" onClick={runPayouts} disabled={createRun.isPending}>
+              {createRun.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-1 h-4 w-4" />
+              )}
+              Run payouts
+            </Button>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="requested">Requested</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="processing">Processing</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
         }
       />
 

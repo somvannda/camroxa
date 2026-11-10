@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, require_admin
@@ -94,6 +96,11 @@ class RoyaltyCalculateRequest(BaseModel):
     period_start: date
     period_end: date
     pool_usd: float | None = None
+
+
+class PayoutRunRequest(BaseModel):
+    period_start: date
+    period_end: date
 
 
 @router.get("/applications")
@@ -222,6 +229,78 @@ async def list_royalty_periods(
 ) -> dict:
     del ctx
     return await service.list_periods(limit=limit)
+
+
+@router.post("/royalty/periods/{period_id}/lock")
+async def lock_royalty_period(
+    period_id: str,
+    ctx: AdminDep,
+    service: RoyaltyEngineDep,
+) -> dict:
+    del ctx
+    return await service.lock_period(period_id)
+
+
+@router.post("/payouts/run")
+async def create_payout_run(
+    body: PayoutRunRequest,
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+) -> dict:
+    del ctx
+    return await service.create_run(
+        period_start=body.period_start, period_end=body.period_end
+    )
+
+
+@router.get("/payouts/export")
+async def export_payouts(
+    ctx: AdminDep,
+    service: PayoutServiceDep,
+    status: str | None = Query(default=None, max_length=20),
+) -> Response:
+    del ctx
+    rows = await service.export_rows(status=status)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "payout_id",
+            "creator",
+            "email",
+            "handle",
+            "amount_usd",
+            "currency",
+            "method",
+            "status",
+            "requested_at",
+            "paid_at",
+            "reference",
+        ]
+    )
+    for row in rows:
+        writer.writerow(
+            [
+                row.get("id"),
+                row.get("user_display_name") or "",
+                row.get("email") or "",
+                row.get("handle") or "",
+                f"{int(row.get('amount_micros') or 0) / 1_000_000:.2f}",
+                row.get("currency") or "USD",
+                row.get("method") or "",
+                row.get("status") or "",
+                row.get("requested_at").isoformat() if row.get("requested_at") else "",
+                row.get("paid_at").isoformat() if row.get("paid_at") else "",
+                row.get("payment_ref") or "",
+            ]
+        )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="creator-payouts.csv"',
+        },
+    )
 
 
 @router.get("/kyc")
