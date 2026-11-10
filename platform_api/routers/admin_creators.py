@@ -101,7 +101,7 @@ class RoyaltyCalculateRequest(BaseModel):
 class PayoutRunRequest(BaseModel):
     period_start: date
     period_end: date
-    fx_rate: float | None = Field(default=None, gt=0, le=100_000)
+    fx_rate: float | None = Field(default=None, ge=3500, le=5000)
 
 
 @router.get("/applications")

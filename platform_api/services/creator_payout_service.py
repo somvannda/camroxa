@@ -32,6 +32,11 @@ DEFAULT_WITHHOLDING_BPS = 3000
 # now, so there is no treaty table to maintain.
 USD_KHR_RATE = float(os.environ.get("CREATOR_USD_KHR_RATE", "4100"))
 
+# The riel has traded in a narrow band for years. Anything outside this range is
+# a typo (410 for 4100, or 41000) and would mispay every KHR creator at once.
+KHR_RATE_MIN = 3500.0
+KHR_RATE_MAX = 5000.0
+
 
 def withholding_bps_for(tax_form: str | None, tax_country: str | None) -> int:
     """US royalties withholding rate, in basis points.
@@ -547,6 +552,11 @@ class CreatorPayoutService:
             if currency not in CURRENCIES:
                 currency = "USD"
             rate = 1.0 if currency == "USD" else float(fx_rate or USD_KHR_RATE)
+            if currency == "KHR" and not (KHR_RATE_MIN <= rate <= KHR_RATE_MAX):
+                raise ValidationError(
+                    f"The KHR rate must be between {KHR_RATE_MIN:.0f} and {KHR_RATE_MAX:.0f} per USD.",
+                    details={"fields": {"fx_rate": "out of range"}},
+                )
             payout_id = await self._pool.fetchval(
                 """
                 INSERT INTO creator_payouts (

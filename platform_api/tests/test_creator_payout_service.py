@@ -394,3 +394,31 @@ async def test_reconciliation_flags_genuine_drift() -> None:
 
     assert result["totals"]["variance_micros"] == 1_000_000
     assert result["totals"]["balanced"] is False
+
+
+@pytest.mark.asyncio
+async def test_payout_run_rejects_an_implausible_khr_rate() -> None:
+    service = CreatorPayoutService(AsyncMock())
+    service._pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "creator_id": uuid4(),
+                "amount_micros": 21_000_000,
+                "method": "wing",
+                "currency": "KHR",
+                "withholding_rate_bps": 0,
+            }
+        ]
+    )
+    service._pool.fetchval = AsyncMock(return_value=uuid4())
+
+    with pytest.raises(ValidationError) as exc:
+        await service.create_run(
+            period_start=date(2026, 10, 1),
+            period_end=date(2026, 11, 1),
+            created_by=str(uuid4()),
+            fx_rate=410,
+        )
+
+    assert (exc.value.details or {}).get("fields", {}).get("fx_rate")
+    service._pool.fetchval.assert_not_awaited()

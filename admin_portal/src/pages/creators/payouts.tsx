@@ -178,7 +178,9 @@ export default function CreatorPayoutsPage() {
                 onChange={(event) => setFxRate(event.target.value)}
                 className="w-24"
               />
-              <span className="text-xs text-slate-500">៛/USD</span>
+              <span className="text-xs text-slate-500" title="Allowed: 3,500–5,000 KHR per USD">
+                ៛/USD
+              </span>
             </div>
             <Button variant="outline" onClick={downloadCsv} disabled={exportCsv.isPending}>
               <Download className="mr-1 h-4 w-4" /> Export CSV
