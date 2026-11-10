@@ -32,6 +32,7 @@ import {
   Activity,
   Wallet,
   AlertTriangle,
+  ShieldCheck,
 } from 'lucide-react';
 import { Mail } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -81,6 +82,13 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'User Spent', path: '/user-spent', icon: Wallet },
       { label: 'Finance', path: '/finance', icon: DollarSign },
       { label: 'Failed Refunds', path: '/failed-refunds', icon: AlertTriangle },
+    ],
+  },
+  {
+    label: 'Creators',
+    items: [
+      { label: 'Payout Verification', path: '/creators/kyc', icon: ShieldCheck },
+      { label: 'Creator Payouts', path: '/creators/payouts', icon: Wallet },
     ],
   },
   {

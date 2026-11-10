@@ -77,6 +77,8 @@ const MarketplacePage = React.lazy(() => import('@/pages/marketplace/index'));
 const StreamingCatalogPage = React.lazy(() => import('@/pages/streaming/catalog'));
 const StreamingPlaybackAuditPage = React.lazy(() => import('@/pages/streaming/playback-audit'));
 const StreamingUploadJobsPage = React.lazy(() => import('@/pages/streaming/upload-jobs'));
+const CreatorKycPage = React.lazy(() => import('@/pages/creators/kyc'));
+const CreatorPayoutsPage = React.lazy(() => import('@/pages/creators/payouts'));
 
 function LoadingFallback() {
   return (
@@ -140,6 +142,8 @@ function App() {
                     <Route path="/streaming" element={<StreamingCatalogPage />} />
                     <Route path="/streaming/playback-audit" element={<StreamingPlaybackAuditPage />} />
                     <Route path="/streaming/upload-jobs" element={<StreamingUploadJobsPage />} />
+                    <Route path="/creators/kyc" element={<CreatorKycPage />} />
+                    <Route path="/creators/payouts" element={<CreatorPayoutsPage />} />
                   </Route>
                 </Route>
 
