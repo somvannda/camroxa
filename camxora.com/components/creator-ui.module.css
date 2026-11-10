@@ -635,6 +635,36 @@
   gap: 12px;
 }
 
+.progressRow {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 420px;
+}
+
+.progressHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progressTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--lav);
+}
+
 @keyframes creatorShimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }

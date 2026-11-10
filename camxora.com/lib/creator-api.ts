@@ -314,3 +314,41 @@ export async function unpublishRelease(releaseId: string): Promise<{ release: Cr
     { method: "POST" }
   );
 }
+
+export type CreatorEligibilityItem = {
+  track_id: string;
+  creator_id: string;
+  status: "not_eligible" | "eligible" | "pending_verification" | "earning" | "suspended";
+  valid_streams: number;
+  unique_listeners: number;
+  threshold_streams: number;
+  threshold_listeners: number;
+  notified_half_at?: string | null;
+  notified_eligible_at?: string | null;
+  eligible_at?: string | null;
+  earning_started_at?: string | null;
+  title?: string;
+  origin?: string;
+  publish_status?: string;
+};
+
+export type CreatorEligibilityResponse = {
+  items: CreatorEligibilityItem[];
+  summary: {
+    tracks: number;
+    eligible: number;
+    earning: number;
+    valid_streams: number;
+  };
+};
+
+export async function fetchEligibility(): Promise<CreatorEligibilityResponse> {
+  return studioJson<CreatorEligibilityResponse>("/api/v3/creator/eligibility");
+}
+
+export async function refreshEligibility(): Promise<CreatorEligibilityResponse & { refreshed: number }> {
+  return studioJson<CreatorEligibilityResponse & { refreshed: number }>(
+    "/api/v3/creator/eligibility/refresh",
+    { method: "POST" }
+  );
+}

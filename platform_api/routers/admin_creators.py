@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.services.creator_program_service import CreatorProgramService
 from platform_api.services.creator_release_service import CreatorReleaseService
+from platform_api.services.creator_eligibility_service import CreatorEligibilityService
 
 router = APIRouter(prefix="/admin/creators", tags=["creator-admin"])
 
@@ -25,8 +26,13 @@ async def _get_release_service() -> CreatorReleaseService:
     raise NotImplementedError("CreatorReleaseService dependency not configured.")
 
 
+async def _get_eligibility_service() -> CreatorEligibilityService:
+    raise NotImplementedError("CreatorEligibilityService dependency not configured.")
+
+
 ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
 ReleaseServiceDep = Annotated[CreatorReleaseService, Depends(_get_release_service)]
+EligibilityServiceDep = Annotated[CreatorEligibilityService, Depends(_get_eligibility_service)]
 
 
 class ApplicationDecisionRequest(BaseModel):
@@ -137,6 +143,16 @@ async def decide_release(
         reviewer_id=ctx.user_id,
         reason=body.reason,
     )
+
+
+@router.post("/eligibility/refresh")
+async def refresh_eligibility(
+    ctx: AdminDep,
+    service: EligibilityServiceDep,
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> dict:
+    del ctx
+    return {"refreshed": await service.refresh_all(limit=limit)}
 
 
 @router.post("/{user_id}/badges")

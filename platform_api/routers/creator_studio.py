@@ -13,6 +13,7 @@ from platform_api.routers.creators_public import CreatorLink, CreatorPublicProfi
 from platform_api.services.creator_profile_service import CreatorProfileService
 from platform_api.services.creator_program_service import CreatorProgramService
 from platform_api.services.creator_release_service import CreatorReleaseService
+from platform_api.services.creator_eligibility_service import CreatorEligibilityService
 
 router = APIRouter(prefix="/creator", tags=["creator-studio"])
 
@@ -29,9 +30,14 @@ async def _get_release_service() -> CreatorReleaseService:
     raise NotImplementedError("CreatorReleaseService dependency not configured.")
 
 
+async def _get_eligibility_service() -> CreatorEligibilityService:
+    raise NotImplementedError("CreatorEligibilityService dependency not configured.")
+
+
 CreatorServiceDep = Annotated[CreatorProfileService, Depends(_get_creator_service)]
 ProgramServiceDep = Annotated[CreatorProgramService, Depends(_get_program_service)]
 ReleaseServiceDep = Annotated[CreatorReleaseService, Depends(_get_release_service)]
+EligibilityServiceDep = Annotated[CreatorEligibilityService, Depends(_get_eligibility_service)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -262,3 +268,19 @@ async def unpublish_release(
     release_id: str, ctx: CurrentUserDep, service: ReleaseServiceDep
 ) -> dict:
     return {"release": await service.unpublish(ctx.user_id, release_id)}
+
+
+@router.get("/eligibility")
+async def get_eligibility(
+    ctx: CurrentUserDep, service: EligibilityServiceDep
+) -> dict:
+    return await service.list_creator(ctx.user_id)
+
+
+@router.post("/eligibility/refresh")
+async def refresh_eligibility(
+    ctx: CurrentUserDep, service: EligibilityServiceDep
+) -> dict:
+    refreshed = await service.refresh_creator(ctx.user_id)
+    payload = await service.list_creator(ctx.user_id)
+    return {"refreshed": refreshed, **payload}

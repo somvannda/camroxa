@@ -209,6 +209,9 @@ export function CreatorStudioView() {
             <CreatorButtonLink href="/creator/releases" variant="ghost">
               <Icon name="fa-record-vinyl" /> Releases
             </CreatorButtonLink>
+            <CreatorButtonLink href="/creator/earnings" variant="ghost">
+              <Icon name="fa-chart-line" /> Earnings
+            </CreatorButtonLink>
             <CreatorButtonLink href="/creator/verification" variant="ghost">
               <Icon name="fa-circle-check" /> Verification
             </CreatorButtonLink>
