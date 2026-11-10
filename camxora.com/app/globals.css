@@ -4743,7 +4743,8 @@ html{color-scheme:dark}
 .se-prompt.is-design .se-prompt-attach{border-color:hsl(var(--accent) / .4);color:hsl(var(--accent))}
 .se-prompt-context.is-plugin{background:hsl(var(--accent) / .3);padding-left:9px}
 .se-prompt-context.is-plugin > .icon{width:11px;height:11px;color:hsl(var(--accent))}
-.se-prompt-send.is-active,.se-prompt-send:not(:disabled){background:#f7f4ef;color:#111111}
+.se-prompt-send:not(:disabled){background:#f7f4ef;color:#111111}
+.se-prompt.is-design .se-prompt-send.is-active{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}
 .se-design-actions{display:flex;gap:8px;padding:10px 0 2px}
 .se-design-card{display:flex;align-items:center;gap:10px;width:100%;min-height:72px;margin:10px 0;padding:12px 14px;border-radius:10px;background:hsl(222 30% 13%);border:1px solid rgba(255,255,255,.08);cursor:grab}
 .se-design-card:active{cursor:grabbing}
