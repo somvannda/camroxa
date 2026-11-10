@@ -4684,10 +4684,10 @@ html{color-scheme:dark}
 .se-midi-keys{position:sticky;left:0;z-index:2;width:44px;flex:none;background:#141416;border-right:1px solid rgba(255,255,255,.06)}
 .se-midi-key{display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;font-size:11px;line-height:1;overflow:hidden;color:#8b90a6}
 .se-midi-key.black{background:#0c0c0e}
-.se-midi-grid{position:relative;flex:none;background:#111111;cursor:crosshair}
+.se-midi-grid{position:relative;flex:none;background:hsl(var(--background));cursor:crosshair}
 .se-midi-row{position:absolute;left:0;right:0;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.03)}
-.se-midi-row.black{background:rgba(255,255,255,.02)}
-.se-midi-row.out{background:#0d0d0f}
+.se-midi-row.black{background:rgba(255,255,255,.035)}
+.se-midi-row.out{background:rgba(0,0,0,.35)}
 .se-midi-note{position:absolute;height:10px;padding:0;border:0;border-radius:3px;cursor:grab}
 .se-midi-note:hover{filter:brightness(1.15)}
 .se-midi-velocity{position:relative;height:64px;border-top:1px solid rgba(255,255,255,.06);cursor:ns-resize}
@@ -5100,3 +5100,45 @@ html{color-scheme:dark}
 .se-stem-status.off{color:hsl(var(--destructive))}
 
 .se-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ------------------------------------------------------------------ */
+/* D-025 brand surfaces: CAMXORA navy replaces the captured grays.     */
+/* Geometry and type stay at the captured values; only colour moves.   */
+/* ------------------------------------------------------------------ */
+.se-shell{background:hsl(var(--background));color:hsl(var(--foreground))}
+.se-body,.se-timeline{background:hsl(var(--background))}
+.se-head,.se-foot{background:hsl(224 45% 5%)}
+.se-tracks,.se-library,.se-inspector,.sp-dock,.se-midi{background:hsl(222 34% 9%)}
+.se-ruler-bars,.se-ruler-time{background:hsl(222 34% 9%)}
+.se-master-strip{background:hsl(222 34% 9%)}
+.se-lib-tile,.se-lib-row,.se-lib-song,.se-lib-upload,.se-project-card,.sp-slot,.sp-card,
+.se-export-menu,.se-learn-menu,.se-track-menu,.se-add-menu,.se-project-menu,.se-clip-menu,
+.se-toast,.se-dialog,.se-history,.se-prompt,.se-lib-chip,.se-lib-tool,.se-band-select,
+.se-chain-chip,.se-song-mini,.se-song-section,.se-clip-card,.se-clip-hero{background:hsl(var(--card))}
+.se-track-slider::-webkit-slider-runnable-track,
+.se-track-slider.pan::-webkit-slider-runnable-track{background:hsl(222 30% 15%)}
+.se-track-slider::-moz-range-track,
+.se-track-slider.pan::-moz-range-track{background:hsl(222 30% 15%)}
+.se-track.selected{background:hsl(222 28% 18%)}
+.se-lib-search-wrap input,.se-projects-search,.se-slot input{background:transparent}
+.se-gate,.se-desktop-gate{background:hsl(var(--background))}
+.sp-dot,.sp-bypass{background:hsl(var(--accent))}
+.sp-modes button.on{background:hsl(var(--accent) / .18);border-color:hsl(var(--accent) / .55);color:hsl(var(--foreground))}
+.sp-param input{accent-color:hsl(var(--accent))}
+.sp-update{background:linear-gradient(100deg,hsl(265 90% 55%),hsl(var(--accent)))}
+.sp-preset:hover:not(:disabled),.sp-card:hover{border-color:hsl(var(--accent) / .45)}
+.se-clip-menu-colors,.se-track-menu-colors,.se-lib-reset{background:hsl(var(--card))}
+
+/* Plugin controls follow the product accent (D-025). */
+.sp-add-inline:hover,.sp-add:hover{background:hsl(var(--accent) / .16);color:hsl(var(--foreground))}
+.sp-preset:hover:not(:disabled){border-color:hsl(var(--accent) / .5)}
+.sp-modes button:hover:not(:disabled){background:hsl(var(--accent) / .12)}
+.sp-search:focus-within{box-shadow:0 0 0 1px hsl(var(--accent) / .6)}
+.se-midi-velocity-bar,.se-midi-velocity-dot{background:hsl(var(--accent))}
+.se-midi-velocity-bar.is-active{background:hsl(var(--foreground))}
+.se-midi-keys{background:#dedad2;border-right:1px solid rgba(0,0,0,.35)}
+.se-midi-key{position:relative;box-sizing:border-box;height:12px;border-bottom:1px solid #b9b4aa;
+  color:#3a3630;padding-right:4px;font-size:11px;line-height:1;display:flex;align-items:center;
+  justify-content:flex-end;overflow:hidden}
+.se-midi-key.black{width:62%;margin-left:auto;background:#14171f;border-bottom:0;
+  border-radius:0 0 2px 2px;transform:translateY(-4px);z-index:1}

@@ -13,6 +13,7 @@ Playwright gate at the capture viewport (1689×1277). Targets live in
 
 | Area | What landed |
 |---|---|
+| **Brand palette** | Surfaces and plugin accents use the CAMXORA navy/purple tokens (D-025); captured geometry and type unchanged |
 | **Frame** | `#111111` body, 52 px header/footer `#0a0a0a`, 260 px track panel `#141416`, 360 px library rail `#101012`, text `#f7f4ef` |
 | **Header** | 36 px pill groups (project, undo/redo, transport, time, tempo), `120 BPM 4/4`, ellipsis project chip |
 | **Tracks** | 85 px rows on `#141416` with `#1c1c1e` fader capsules, pan arch, 24 px controls, colour strip, `#262628` selection, pinned `Main` strip, wired all-controls head toggle and a 44 px panel-collapse rail |

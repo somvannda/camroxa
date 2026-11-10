@@ -370,18 +370,25 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         {lane === "velocity" ? (
           <>
             <span className="se-midi-velocity-baseline" aria-hidden="true" />
-            {shown.map((note) => (
-              <span
-                key={note.id}
-                className={`se-midi-velocity-bar${
-                  velocityDrag?.id === note.id ? " is-active" : ""
-                }`}
-                style={{
-                  left: 44 + (note.start / duration) * width,
-                  height: Math.max(2, (note.velocity / 127) * 52),
-                }}
-              />
-            ))}
+            {shown.map((note) => {
+              const height = Math.max(2, (note.velocity / 127) * 52);
+              return (
+                <span key={note.id}>
+                  <span
+                    className={`se-midi-velocity-bar${
+                      velocityDrag?.id === note.id ? " is-active" : ""
+                    }`}
+                    style={{ left: 44 + (note.start / duration) * width, height }}
+                  />
+                  <span
+                    className={`se-midi-velocity-dot${
+                      velocityDrag?.id === note.id ? " is-active" : ""
+                    }`}
+                    style={{ left: 44 + (note.start / duration) * width + 1, bottom: 8 + height }}
+                  />
+                </span>
+              );
+            })}
           </>
         ) : (
           <svg

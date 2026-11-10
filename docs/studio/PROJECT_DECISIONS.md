@@ -607,3 +607,18 @@ with a toast. It is disabled while a remix is running and when the song has no s
 
 **Consequences.** Remix spends credits like any generation; it only starts on an explicit
 click. The result is a new generation, not an in-place edit of the original.
+
+
+---
+
+## D-025 — CAMXORA palette across the Studio surfaces
+
+**Date:** 2026-11-10 **Status:** accepted (supersedes the palette part of D-022)
+
+**Decision.** Studio surfaces use the product palette (`--background`, `--card`, `--accent`)
+instead of the captured near-blacks and pink/yellow accents: navy shell/panels, brand
+purple for plugin buttons, curves, knobs, lane points and the prompt badge. Layout,
+spacing, control geometry and type scale stay at the captured values.
+
+**Consequences.** The pixel gate asserts the brand token colours (e.g. body `#0b0f19`,
+cards `#131826`, accent `#ad77f8`). Any future colour change must go through the tokens.

@@ -46,11 +46,11 @@ test("global frame matches the captured metrics", async ({ page }) => {
   });
 
   // §1 frame.
-  expect(frame.head).toMatchObject({ height: 52, background: "rgb(10, 10, 10)" });
-  expect(frame.tracks).toMatchObject({ width: 260, background: "rgb(20, 20, 22)" });
-  expect(frame.foot).toMatchObject({ height: 52, background: "rgb(10, 10, 10)" });
-  expect(frame.body).toMatchObject({ background: "rgb(17, 17, 17)" });
-  expect(frame.shell?.color).toBe("rgb(247, 244, 239)");
+  expect(frame.head).toMatchObject({ height: 52, background: "rgb(7, 10, 18)" });
+  expect(frame.tracks).toMatchObject({ width: 260, background: "rgb(15, 20, 31)" });
+  expect(frame.foot).toMatchObject({ height: 52, background: "rgb(7, 10, 18)" });
+  expect(frame.body).toMatchObject({ background: "rgb(11, 15, 25)" });
+  expect(frame.shell?.color).toBe("rgb(248, 250, 252)");
 
   // §52.1 row rhythm.
   expect(frame.track?.height).toBe(85);
@@ -124,7 +124,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
         : null,
     };
   });
-  expect(timeline.ruler).toMatchObject({ height: 30, background: "rgb(16, 16, 18)" });
+  expect(timeline.ruler).toMatchObject({ height: 30, background: "rgb(15, 20, 31)" });
   expect(timeline.lane?.y).toBe(82);
   expect(timeline.clip).toMatchObject({ y: 84, height: 82 });
   expect(timeline.radius).toBe("10px");
@@ -193,7 +193,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
     };
   });
   expect(timeRuler.height).toBe(22);
-  expect(timeRuler.background).toBe("rgb(30, 30, 32)");
+  expect(timeRuler.background).toBe("rgb(15, 20, 31)");
   expect(timeRuler.labelColor).toBe("rgb(139, 144, 166)");
 });
 
@@ -285,7 +285,7 @@ test("Learn menu matches the captured popover", async ({ page }) => {
   // S13: 206 px wide, #1c1c1e, 12 px radius, 44 px rows in the captured order.
   expect(info.width).toBe(206);
   expect(info.radius).toBe("12px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows.map((row) => row.text)).toEqual([
     "Keyboard Shortcuts shift ?",
     "YouTube Tutorials",
@@ -320,7 +320,7 @@ test("track options menu matches the captured popover", async ({ page }) => {
   // S19: 164 px card on #1c1c1e, 12 px radius, 33 px rows inside the 260 px panel.
   expect(info.width).toBe(164);
   expect(info.radius).toBe("12px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.right).toBeLessThanOrEqual(260);
   expect(info.rows.map((row) => row.text)).toEqual([
     "Rename track",
@@ -361,7 +361,7 @@ test("add-track menu matches the captured popover", async ({ page }) => {
   // S20: 208 px card on #1c1c1e, 50 px rows, 24 px coloured icon squares.
   expect(info.width).toBe(208);
   expect(info.radius).toBe("12px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows.map((row) => row.text)).toEqual(["Audio A", "MIDI M", "Upload U"]);
   expect(info.rows.every((row) => row.height === 50)).toBe(true);
   expect(info.rows.every((row) => row.icon === 24)).toBe(true);
@@ -391,7 +391,7 @@ test("project menu matches the captured popover", async ({ page }) => {
   // S07: 212 px card on #1c1c1e, 12 px radius, 34 px icon rows.
   expect(info.width).toBe(212);
   expect(info.radius).toBe("12px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows).toHaveLength(9);
   expect(info.rows[0]?.text).toBe("New Project");
   expect(info.rows[7]?.text).toBe("Studio Settings ctrl shift ,");
@@ -429,7 +429,7 @@ test("clip context menu matches the captured popover", async ({ page }) => {
   // S26: 158 px card on #1c1c1e, 12 px radius, 38 px icon rows, 11 px hints.
   expect(info.width).toBe(158);
   expect(info.radius).toBe("12px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows.map((row) => row.text)).toEqual([
     "Copy Ctrl C",
     "Paste Ctrl V",
@@ -478,7 +478,7 @@ test("share dialog matches the captured surface", async ({ page }) => {
   expect(info.width).toBe(480);
   expect(info.radius).toBe("24px");
   expect(info.padding).toBe("32px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.titleSize).toBe("24px");
   expect(info.titleWeight).toBe("700");
   expect(info.actionHeight).toBe(44);
@@ -530,7 +530,7 @@ test("selecting a track highlights its panel row and lane", async ({ page }) => 
   // S25: the selected track tints both the gutter row and its lane.
   expect(info.rowSelected).toBe(true);
   expect(info.laneSelected).toBe(true);
-  expect(info.rowBackground).toBe("rgb(38, 38, 40)");
+  expect(info.rowBackground).toBe("rgb(33, 41, 59)");
   expect(info.laneBackground).toBe("rgba(255, 255, 255, 0.05)");
 });
 
@@ -581,7 +581,7 @@ test("export toast matches the captured banner", async ({ page }) => {
   expect(box.width).toBe(888);
   expect(box.left).toBe(24);
   expect(box.radius).toBe("16px");
-  expect(box.background).toBe("rgb(28, 28, 30)");
+  expect(box.background).toBe("rgb(19, 24, 38)");
   expect(box.fontSize).toBe("22px");
 });
 
@@ -640,11 +640,11 @@ test("clip info rail follows the captured anatomy", async ({ page }) => {
     x: REFERENCE_VIEWPORT.width - 368,
     width: 360,
     radius: "12px",
-    background: "rgb(16, 16, 18)",
+    background: "rgb(15, 20, 31)",
     art: 48,
     tabHeight: 38,
     cardRadius: "12px",
-    cardBackground: "rgb(20, 20, 22)",
+    cardBackground: "rgb(19, 24, 38)",
   });
 });
 
@@ -683,7 +683,7 @@ test("song detail rail follows the captured anatomy", async ({ page }) => {
     radius: "12px",
     art: 52,
     tabHeight: 38,
-    cardBackground: "rgb(20, 20, 22)",
+    cardBackground: "rgb(19, 24, 38)",
     cardRadius: "12px",
   });
 });
@@ -712,7 +712,7 @@ test("plugin dock sits above the footer on the captured surface", async ({ page 
   expect(info).not.toBeNull();
   expect(info?.dockWidth).toBe(REFERENCE_VIEWPORT.width);
   expect(info?.dockBottom).toBe(info?.footTop);
-  expect(info?.background).toBe("rgb(16, 16, 18)");
+  expect(info?.background).toBe("rgb(15, 20, 31)");
   expect(info?.addHeight).toBe(36);
 });
 
@@ -743,7 +743,7 @@ test("plugin catalog dialog matches the captured surface", async ({ page }) => {
     width: 760,
     radius: "16px",
     background: "rgb(23, 23, 23)",
-    cardBackground: "rgb(28, 28, 30)",
+    cardBackground: "rgb(19, 24, 38)",
     cardRadius: "12px",
     label: "Audio effects",
     labelSize: "11px",
@@ -793,7 +793,7 @@ test("clip colour opens the captured submenu", async ({ page }) => {
   // S28: a 196 px card to the right of the row, Auto + five swatches.
   expect(info.width).toBe(196);
   expect(info.radius).toBe("12px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.leftOfMenu).toBeGreaterThanOrEqual(3);
   expect(info.leftOfMenu).toBeLessThanOrEqual(16);
   expect(info.auto).toBe("Auto");
@@ -883,7 +883,7 @@ test("history drawer sits under the header on the captured surface", async ({ pa
     width: 300,
     bottom: 8,
     radius: "12px",
-    background: "rgb(16, 16, 18)",
+    background: "rgb(19, 24, 38)",
   });
 });
 
@@ -1003,7 +1003,7 @@ test("filtered library shows the captured empty state", async ({ page }) => {
   // S58: centred notice with a 38 px pill Reset all filters.
   expect(box.height).toBe(38);
   expect(box.radius).toBe("999px");
-  expect(box.background).toBe("rgb(28, 28, 30)");
+  expect(box.background).toBe("rgb(19, 24, 38)");
   await reset.click();
   await expect(library.getByLabel("Search library")).toHaveValue("");
 });
@@ -1057,7 +1057,7 @@ test("My Projects modal matches the captured layout", async ({ page }) => {
   // S04: 786 px modal, pill search, Projects/Recently Deleted tabs, New Project first.
   expect(info.width).toBe(786);
   expect(info.radius).toBe("24px");
-  expect(info.background).toBe("rgb(28, 28, 30)");
+  expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.searchHeight).toBe(40);
   expect(info.tabs).toEqual(["Projects", "Recently Deleted"]);
   expect(info.newCard).toBe(true);
@@ -1092,7 +1092,7 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
     centered: 0,
     bottomGap: 16,
     radius: "16px",
-    background: "rgb(28, 28, 30)",
+    background: "rgb(19, 24, 38)",
   });
   await expect(page.getByRole("button", { name: "Generate this part" })).toBeDisabled();
 
@@ -1159,7 +1159,7 @@ test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
     y: 8,
     bottom: REFERENCE_VIEWPORT.height - 8,
     radius: "12px",
-    background: "rgb(16, 16, 18)",
+    background: "rgb(15, 20, 31)",
   });
 
   // The shell shrinks while the rail is open: header and footer stop at the card edge.

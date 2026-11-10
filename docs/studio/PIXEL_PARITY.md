@@ -1,5 +1,11 @@
 # Pixel parity log (D-022)
 
+> **Palette override (D-025, 2026-11-10):** the surfaces and interactive accents now use
+> the CAMXORA palette — navy background/cards, product purple for controls — instead of
+> the captured grays and pink/yellow. Geometry, spacing and type remain the captured
+> values, and the pixel gate asserts the brand tokens.
+
+
 Reference captures: `reference/screens/*.jpeg` at **1689×1277, DPR 1** (S52 for the
 editor frame, S05 for the empty project, EXTRA-library-uploads for level-2 rows).
 Targets live in `reference/METRICS.json`; the runtime probe reads
