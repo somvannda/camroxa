@@ -4451,6 +4451,11 @@ html{color-scheme:dark}
 .sp-slot.is-popped{position:fixed;right:24px;bottom:88px;z-index:90;width:460px;max-height:calc(100dvh - 160px);overflow:auto;box-shadow:0 24px 64px rgba(0,0,0,.6)}
 .sp-slot.is-popped.sp-slot-eq{width:520px}
 .sp-slot.is-bypassed{opacity:.55}
+.sp-preset-wrap{position:relative;display:inline-flex}
+.sp-preset-menu{position:absolute;left:0;top:30px;z-index:30;display:flex;flex-direction:column;min-width:150px;padding:6px;border-radius:10px;background:hsl(var(--card));border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 48px rgba(0,0,0,.45)}
+.sp-preset-menu button{display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.sp-preset-menu button:hover{background:rgba(255,255,255,.06)}
+.sp-preset-menu button.on{color:hsl(var(--accent))}
 .sp-slot-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .sp-slot-head strong{font-size:13px;font-weight:600;color:#f7f4ef;white-space:nowrap}
 .sp-dot{width:8px;height:8px;border-radius:50%;background:#a855f7;flex:none}

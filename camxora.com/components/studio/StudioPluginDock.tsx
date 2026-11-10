@@ -1,17 +1,26 @@
 "use client";
 
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { Icon } from "@/components/Icon";
 import { ParamKnob } from "@/components/studio/ParamKnob";
 import {
   STUDIO_PLUGINS,
+  defaultParams,
   getPlugin,
+  presetsFor,
   type PluginChainEntry,
   type PluginId,
 } from "@/lib/studio-plugins";
 import {
   addPlugin,
+  applyPreset,
   commitPreset,
   movePlugin,
   removePlugin,
@@ -306,6 +315,7 @@ function PluginPreview({ id }: { id: string }) {
 export function StudioPluginDock({ chain, onChange, trackName }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [presetMenu, setPresetMenu] = useState<string | null>(null);
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -351,14 +361,68 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
               <header className="sp-slot-head">
                 <span className="sp-dot" aria-hidden="true" />
                 <strong>{plugin.name}</strong>
-                <button
-                  type="button"
-                  className="sp-preset"
-                  onClick={() => onChange(commitPreset(chain, entry.entryId))}
-                  title={entry.dirty ? "Save changes to this preset" : entry.presetName}
-                >
-                  {entry.dirty ? "Custom" : entry.presetName}
-                </button>
+                <span className="sp-preset-wrap">
+                  <button
+                    type="button"
+                    className="sp-preset"
+                    aria-haspopup="menu"
+                    aria-expanded={presetMenu === entry.entryId}
+                    title="Presets"
+                    onClick={() =>
+                      setPresetMenu((current) =>
+                        current === entry.entryId ? null : entry.entryId
+                      )
+                    }
+                  >
+                    {entry.dirty ? "Custom" : entry.presetName}
+                  </button>
+                  {presetMenu === entry.entryId ? (
+                    <div
+                      className="sp-preset-menu"
+                      role="menu"
+                      aria-label={`${plugin.name} presets`}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={!entry.dirty && entry.presetName === "Default" ? "on" : undefined}
+                        onClick={() => {
+                          onChange(
+                            applyPreset(chain, entry.entryId, {
+                              id: null,
+                              name: "Default",
+                              params: defaultParams(plugin.id),
+                            })
+                          );
+                          setPresetMenu(null);
+                        }}
+                      >
+                        Default
+                      </button>
+                      {presetsFor(plugin.id).map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          role="menuitem"
+                          className={entry.presetId === preset.id ? "on" : undefined}
+                          onClick={() => {
+                            onChange(
+                              applyPreset(chain, entry.entryId, {
+                                id: preset.id,
+                                name: preset.name,
+                                params: preset.params,
+                                mode: preset.mode,
+                              })
+                            );
+                            setPresetMenu(null);
+                          }}
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </span>
                 {entry.dirty ? (
                   <button
                     type="button"

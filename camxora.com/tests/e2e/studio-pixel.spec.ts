@@ -1157,6 +1157,28 @@ test("prompt bar matches the capture and generates inline", async ({ page }) => 
   await expect(page.locator(".se-clip", { hasText: "Generated demo" })).toHaveCount(1);
 });
 
+test("plugin cards offer the captured preset menu", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel presets" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Compressor/ })
+    .first()
+    .click();
+
+  const slot = page.locator(".sp-slot").first();
+  await slot.getByRole("button", { name: "Default" }).click();
+  const menu = page.getByRole("menu", { name: "Compressor presets" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveText(["Default", "Vocal", "Drum Bus", "Gentle"]);
+
+  await menu.getByRole("menuitem", { name: "Vocal" }).click();
+  await expect(slot.getByRole("slider", { name: "Thresh" })).toHaveValue("-20");
+  await expect(slot.getByRole("button", { name: "Vocal" })).toBeVisible();
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

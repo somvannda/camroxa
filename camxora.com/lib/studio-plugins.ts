@@ -195,6 +195,81 @@ export const STUDIO_PLUGINS: readonly PluginDef[] = [
   },
 ] as const;
 
+
+export type PluginPreset = {
+  id: string;
+  name: string;
+  params: Record<string, number>;
+  mode?: string;
+};
+
+/** Starter presets for the captured cards; values are ours, names generic. */
+const PLUGIN_PRESETS: Partial<Record<PluginId, PluginPreset[]>> = {
+  compressor: [
+    {
+      id: "vocal",
+      name: "Vocal",
+      params: { threshold: -20, ratio: 4, knee: 8, attack: 8, release: 120, gain: 3 },
+    },
+    {
+      id: "drum-bus",
+      name: "Drum Bus",
+      params: { threshold: -24, ratio: 8, knee: 4, attack: 25, release: 80, gain: 4 },
+    },
+    {
+      id: "gentle",
+      name: "Gentle",
+      params: { threshold: -28, ratio: 2.5, knee: 12, attack: 20, release: 200, gain: 2 },
+    },
+  ],
+  delay: [
+    {
+      id: "slap",
+      name: "Slap",
+      params: { time: 90, feedback: 15, mix: 18, lowCut: 180, highCut: 9000 },
+    },
+    {
+      id: "eighth",
+      name: "Eighth",
+      params: { time: 250, feedback: 35, mix: 22, lowCut: 120, highCut: 12000 },
+    },
+    {
+      id: "dub",
+      name: "Dub",
+      params: { time: 375, feedback: 55, mix: 30, lowCut: 250, highCut: 6000 },
+    },
+  ],
+  reverb: [
+    {
+      id: "room",
+      name: "Room",
+      params: { time: 1.2, mix: 18, width: 100, damping: 55, predelay: 10, lowCut: 120, highCut: 14000 },
+    },
+    {
+      id: "hall",
+      name: "Hall",
+      params: { time: 3.2, mix: 28, width: 120, damping: 40, predelay: 25, lowCut: 120, highCut: 12000 },
+    },
+    {
+      id: "plate",
+      name: "Plate",
+      params: { time: 1.8, mix: 22, width: 90, damping: 30, predelay: 5, lowCut: 150, highCut: 16000 },
+    },
+  ],
+  limiter: [
+    { id: "loud", name: "Loud", params: { lookahead: 3, preGain: 6, attack: 1, release: 50 } },
+    { id: "transparent", name: "Transparent", params: { lookahead: 5, preGain: 0, attack: 3, release: 120 } },
+  ],
+  gate: [
+    { id: "tight", name: "Tight", params: { threshold: -40, floor: -70, attack: 1, hold: 30 } },
+    { id: "slow", name: "Slow", params: { threshold: -50, floor: -60, attack: 10, hold: 120 } },
+  ],
+};
+
+export function presetsFor(id: string): PluginPreset[] {
+  return PLUGIN_PRESETS[id as PluginId] ?? [];
+}
+
 const BY_ID = new Map<string, PluginDef>(STUDIO_PLUGINS.map((plugin) => [plugin.id, plugin]));
 
 export function getPlugin(id: string): PluginDef | undefined {
