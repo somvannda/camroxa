@@ -60,8 +60,10 @@ The full run also caught dimmed Radix menu items (`aria-disabled`) at 2.38:1 —
 exempts disabled controls, but the labels are still read out, so `.s-menu` disabled items
 now use `--s-text3` instead of the faded tone.
 
-`tests/e2e/create-a11y.spec.ts` audits `/create` (signed in) and the marketing trio
-`/`, `/pricing`, `/discover`, so the global landmark fix is pinned on the public pages too.
+`tests/e2e/create-a11y.spec.ts` audits `/create` (signed in) and the signed-in `/account`,
+plus the public pages `/`, `/pricing`, `/discover` and a playlist page, so the global
+landmark fix is pinned across the site. All were already clean once the shared shell was
+fixed.
 
 ## Tests
 
@@ -69,8 +71,9 @@ now use `--s-text3` instead of the faded tone.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run check:ui` | compliant |
+| `npm run build` | all routes build |
 | Vitest | **268 passed** (29 files) |
-| Playwright | **126 passed / 2 skipped** — Studio a11y + pixel gates, Library a11y (page, menu, uploads tab, dialog), Create and marketing pages |
+| Playwright | **127 passed / 2 skipped** — Studio a11y + pixel gates, Library a11y (page, menu, uploads tab, dialog), Create, Account and the public pages |
 
 ## Follow-ups
 

@@ -61,9 +61,21 @@ test("the create page has no axe violations", async ({ page }) => {
 
 test("the marketing pages have no axe violations", async ({ page }) => {
   test.setTimeout(180_000);
-  for (const route of ["/", "/pricing", "/discover"]) {
+  for (const route of ["/", "/pricing", "/discover", "/playlists/khmer-hits"]) {
     await page.goto(route);
     await expect(page.getByRole("main")).toBeVisible({ timeout: 30_000 });
     expect(await audit(page), route).toEqual([]);
   }
+});
+
+test("the account page has no axe violations", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signIn(page);
+  await page.goto("/account");
+  await expect(page.getByRole("main")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({
+    timeout: 30_000,
+  });
+
+  expect(await audit(page)).toEqual([]);
 });
