@@ -802,6 +802,70 @@ class TestExecuteWithFailover:
         assert fake_repo._entries[key_a.id].status == KeyStatus.EXHAUSTED
 
     @pytest.mark.asyncio
+    async def test_401_rotates_to_next_key_and_parks_temporarily(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        fake_redis: FakeRedis,
+    ) -> None:
+        """A 401 parks the rejected key for a cooldown and tries the next key.
+
+        Out-of-balance provider accounts answer 401 (SLAI returns AUTH_002), so
+        the key must stay recoverable: ``exhausted`` never auto-recovers and a
+        top-up would not bring it back.
+        """
+        key_a = _make_entry(encryption, provider="slai", label="key-A", priority=10, key_value="value-A")
+        key_b = _make_entry(encryption, provider="slai", label="key-B", priority=20, key_value="value-B")
+        fake_repo._entries[key_a.id] = key_a
+        fake_repo._entries[key_b.id] = key_b
+
+        async def execute_fn(key: str) -> dict[str, str]:
+            if key == "value-A":
+                raise _make_http_status_error(401, "AUTH_002 Invalid API key")
+            return {"result": "ok", "key_used": key}
+
+        result = await service.execute_with_failover("slai", execute_fn)
+
+        assert result == {"result": "ok", "key_used": "value-B"}
+        assert fake_repo._entries[key_a.id].status == KeyStatus.RATE_LIMITED
+        assert fake_repo._entries[key_b.id].status == KeyStatus.ACTIVE
+        assert f"key_pool:slai:cooldown:{key_a.id}" in fake_redis._store
+
+    @pytest.mark.asyncio
+    async def test_wrapped_401_rotates_to_next_key(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+    ) -> None:
+        """Provider-wrapped 401s (ExternalServiceError) must rotate too."""
+        from platform_api.exceptions import ExternalServiceError
+
+        key_a = _make_entry(encryption, provider="slai", label="key-A", priority=10, key_value="value-A")
+        key_b = _make_entry(encryption, provider="slai", label="key-B", priority=20, key_value="value-B")
+        fake_repo._entries[key_a.id] = key_a
+        fake_repo._entries[key_b.id] = key_b
+
+        async def execute_fn(key: str) -> dict[str, str]:
+            if key == "value-A":
+                raise ExternalServiceError(
+                    "SLAI error 401: generate_image",
+                    is_retryable=False,
+                    details={
+                        "provider": "slai",
+                        "status_code": 401,
+                        "reason": "AUTH_002 Invalid API key",
+                    },
+                )
+            return {"result": "ok", "key_used": key}
+
+        result = await service.execute_with_failover("slai", execute_fn)
+
+        assert result == {"result": "ok", "key_used": "value-B"}
+        assert fake_repo._entries[key_a.id].status == KeyStatus.RATE_LIMITED
+
+    @pytest.mark.asyncio
     async def test_max_3_retries_then_raises(
         self, service: KeyPoolService, fake_repo: FakeKeyPoolRepository, encryption: KeyEncryption
     ) -> None:
