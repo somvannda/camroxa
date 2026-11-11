@@ -117,6 +117,7 @@ test("library, its filter menu and the uploads tab have no axe violations", asyn
   expect(await auditWithin(page, menu)).toEqual([]);
 
   await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
   await page.getByRole("tab", { name: "Uploads" }).click();
   await expect(page.getByRole("button", { name: /demo-loop\.wav/ })).toBeVisible();
   expect(await audit(page)).toEqual([]);

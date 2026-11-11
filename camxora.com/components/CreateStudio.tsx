@@ -3388,7 +3388,7 @@ export function CreateStudio() {
                       sideOffset={6}
                       style={{ width: 320 }}
                       trigger={
-                        <button type="button" className="s-model" aria-label="Model">
+                        <button type="button" className="s-model" aria-label={`Model: ${shortModel}`}>
                           {shortModel}
                           <Icon name="fa-chevron-down" />
                         </button>
