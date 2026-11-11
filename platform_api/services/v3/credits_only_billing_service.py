@@ -381,6 +381,9 @@ class CreditsOnlyBillingService:
             "op": quote.op,
             "operation": quote.op,
             "quote_source": quote.source,
+            # The charge is priced from the routed assignment before the call;
+            # a fallback settle later records pricing_basis="executed".
+            "pricing_basis": "routed",
         }
         if product:
             # Product context makes web vs desktop attribution provable for
@@ -538,6 +541,7 @@ class CreditsOnlyBillingService:
             "routed_model": routed_model,
             "purpose": reason,
             "hold_settle": True,
+            "pricing_basis": "executed",
         }
         if actual < charged:
             await self._credit_repo.refund(

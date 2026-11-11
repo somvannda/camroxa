@@ -768,3 +768,41 @@ async def test_user_snapshot_sql_counts_admin_topups(
 
 
 
+
+
+def test_model_label_maps_image_ids() -> None:
+    from platform_api.services.telegram_ops_alert_service import _model_label
+
+    assert _model_label("CX/GPT-IMAGE-2.5") == "GPT-Image 2.5"
+    assert _model_label("grok-imagine-image-2-0/text-to-image") == "Grok Imagine 2.0"
+
+
+def test_notify_wallet_spend_labels_pricing_basis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_alert_service as svc
+
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        svc, "_schedule_enriched", lambda kind, **kwargs: calls.append((kind, kwargs))
+    )
+
+    svc.notify_wallet_spend(
+        user_id="u1",
+        amount_units=60000,
+        reason="v3_image",
+        metadata={"model": "CX/GPT-IMAGE-2.5", "pricing_basis": "routed"},
+    )
+    assert "pricing: quoted (routed model)" in calls[0][1]["extra_lines"]
+
+    calls.clear()
+    svc.notify_wallet_spend(
+        user_id="u1",
+        amount_units=20000,
+        reason="background_image_fallback_settle",
+        metadata={
+            "model": "grok-imagine-image-2-0/text-to-image",
+            "pricing_basis": "executed",
+        },
+    )
+    assert "pricing: settled to executed model" in calls[0][1]["extra_lines"]
