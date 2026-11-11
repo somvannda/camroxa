@@ -205,6 +205,29 @@ class WebMusicChargeBridge:
             reference_id=charge.ref_id,
         )
 
+    async def settle_text(
+        self,
+        *,
+        user_id: UUID,
+        operation: str,
+        charged_units: int,
+        executed_provider: str,
+        executed_model: str | None,
+        routed_provider: str | None = None,
+        routed_model: str | None = None,
+    ) -> int:
+        """Reconcile a web-music text charge with the executed text model."""
+        return await self._billing.settle_executed_charge(
+            user_id=user_id,
+            op=operation,
+            operation=operation,
+            charged_units=charged_units,
+            executed_provider=executed_provider,
+            executed_model=executed_model,
+            routed_provider=routed_provider,
+            routed_model=routed_model,
+        )
+
     async def spendable_credits(self, user_id: UUID) -> tuple[int, int, bool]:
         """Return (spendable, music_credits, has_paid_web)."""
         await self._grant.ensure_daily_grant(user_id)
