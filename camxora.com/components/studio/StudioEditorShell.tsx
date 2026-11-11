@@ -14,6 +14,7 @@ import {
   requestStudioRemaster,
   requestStudioAddVocals,
   requestStudioAddInstrumental,
+  requestStudioMashup,
   getStudioPricing,
   type StudioOperation,
 } from "@/lib/studio-api";
@@ -261,10 +262,14 @@ export function StudioEditorShell() {
   /** Stem separation request state for the selected clip (W4.2). */
   const [stems, setStems] = useState<{ status: string; message?: string } | null>(null);
   /** Clip transform in flight + the optional Cover prompt (D-033). */
-  const [transformBusy, setTransformBusy] = useState<null | "extend" | "cover" | "remaster" | "vocals" | "instrumental">(null);
-  const [transformPrompt, setTransformPrompt] = useState<
-    { clipId: string; kind: "cover" | "vocals" | "instrumental" } | null
+  const [transformBusy, setTransformBusy] = useState<
+    null | "extend" | "cover" | "remaster" | "vocals" | "instrumental" | "mashup"
   >(null);
+  const [transformPrompt, setTransformPrompt] = useState<
+    { clipId: string; kind: "cover" | "vocals" | "instrumental" | "mashup" } | null
+  >(null);
+  /** The two clips a mashup will combine (captured when the dialog opens). */
+  const [mashupIds, setMashupIds] = useState<string[]>([]);
   const [transformValue, setTransformValue] = useState("");
   /** Credit price for one clip transform, from the pricing endpoint (never hard-coded). */
   const [transformCost, setTransformCost] = useState<number | null>(null);
@@ -2161,6 +2166,74 @@ export function StudioEditorShell() {
     }
   }
 
+  /**
+   * Mashup (D-033): two selected clips with a source generation become one new song on
+   * its own track, starting where the earliest source clip starts.
+   */
+  async function runMashup(clipIds: string[], prompt = "") {
+    if (transformBusy) return;
+    const sources = clipIds
+      .map((id) => clipsRef.current.find((entry) => entry.id === id))
+      .filter((entry): entry is ClipLike => Boolean(entry?.songId));
+    if (sources.length !== 2) return;
+    setClipMenu(null);
+    setTransformBusy("mashup");
+    setExportToast("Mashup queued…");
+    try {
+      const operation = await requestStudioMashup({
+        clips: sources.map((entry) => ({ taskId: entry.songId as string, variant: "ok" })),
+        prompt,
+        projectId,
+      });
+      const current = await pollOperation(operation);
+      if (current.status !== "done") {
+        throw new Error(current.error_message ?? "Mashup failed.");
+      }
+      const result = current.result?.clips?.[0];
+      if (!result) throw new Error("No audio came back.");
+      const stamp = Date.now().toString(36);
+      const data = currentData() as Record<string, unknown>;
+      const start = Math.min(...sources.map((entry) => entry.start ?? 0));
+      const lane: ClipLike = {
+        id: `mash-${stamp}`,
+        title: "Mashup",
+        start,
+        duration: resultDuration(result, sources[0].duration ?? 8),
+        volume: 1,
+        pan: 0,
+        audioUrl: resultAudioUrl(result),
+      };
+      const track: StudioTrack = {
+        id: `mash-track-${stamp}`,
+        name: "Mashup",
+        color: colorForTrackName("mashup"),
+        index: tracks.length,
+        volume: 80,
+        pan: 0,
+        muted: false,
+        solo: false,
+        hidden: false,
+        collapsed: false,
+        groupId: null,
+        chain: [],
+        clipIds: [lane.id],
+      };
+      const nextTracks = [...tracks, track];
+      writeProjectData(
+        { ...data, lanes: [...clipsRef.current, lane], tracks: nextTracks },
+        "the mashup",
+        nextTracks
+      );
+      setSelectedTrack(track.id);
+      setSelectedClip(lane.id);
+      setExportToast("Mashup added as a new track.");
+    } catch (cause) {
+      setExportToast(cause instanceof Error ? cause.message : "Mashup failed.");
+    } finally {
+      setTransformBusy(null);
+    }
+  }
+
   /** Toggle a boolean track flag and persist it (G21: mute, solo). */
   function toggleTrackFlag(trackId: string, flag: "muted" | "solo") {
     const next = tracks.map((track) =>
@@ -2601,7 +2674,9 @@ export function StudioEditorShell() {
     event.preventDefault();
     event.stopPropagation();
     setSelectedClip(clip.id);
-    setSelectedIds([clip.id]);
+    // Right-clicking a clip inside a multi-selection keeps it, so group actions
+    // (mashup) can run from the menu.
+    if (!selectedIds.includes(clip.id)) setSelectedIds([clip.id]);
     setClipColorOpen(false);
     setClipMenu({ clipId: clip.id, x: event.clientX, y: event.clientY });
   }
@@ -4853,6 +4928,10 @@ export function StudioEditorShell() {
             )
               .map((id) => clips.find((item) => item.id === id))
               .filter((item) => Boolean(item?.midi?.notes?.length));
+            const mashupSources = (selectedIds.length >= 2 ? selectedIds : [])
+              .map((id) => clips.find((item) => item.id === id))
+              .filter((item) => Boolean(item?.songId));
+            const canMashup = mashupSources.length === 2;
             return (
               <div
                 className="se-clip-menu"
@@ -5085,6 +5164,28 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-wave-square" /> Instrumental…
                 </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canMashup || Boolean(transformBusy)}
+                  title={
+                    canMashup
+                      ? `Combine the two selected clips${transformCost != null ? ` (${transformCost} credits)` : ""}`
+                      : "Select two clips that have a source generation"
+                  }
+                  onClick={() => {
+                    setClipMenu(null);
+                    setTransformValue("");
+                    setMashupIds(
+                      mashupSources
+                        .map((item) => item?.id)
+                        .filter((id): id is string => Boolean(id))
+                    );
+                    setTransformPrompt({ clipId: clip.id, kind: "mashup" });
+                  }}
+                >
+                  <Icon name="fa-shuffle" /> Mashup…
+                </button>
                 <div className="se-clip-menu-sep" />
                 <button
                   type="button"
@@ -5247,16 +5348,28 @@ export function StudioEditorShell() {
                       placeholder: "e.g. warm female lead, close harmony",
                       action: "Add vocals",
                     }
-                  : {
+                : kind === "instrumental"
+                  ? {
                       title: "Add an instrumental",
                       label: "Instrument instructions",
                       aria: "Instrument instructions",
                       placeholder: "e.g. acoustic guitar, upright bass",
                       action: "Add instrumental",
+                    }
+                  : {
+                      title: "Mashup two clips",
+                      label: "Instructions (optional)",
+                      aria: "Mashup instructions",
+                      placeholder: "e.g. keep the drums, blend the vocals",
+                      action: "Create mashup",
                     };
             const submit = () => {
               const target = transformPrompt;
               setTransformPrompt(null);
+              if (kind === "mashup") {
+                void runMashup(mashupIds, transformValue);
+                return;
+              }
               void runTransform(kind, target.clipId, transformValue);
             };
             return (

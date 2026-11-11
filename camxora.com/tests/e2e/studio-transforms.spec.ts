@@ -130,6 +130,76 @@ test("Cover lands as a new take on the source clip", async ({ page }) => {
   expect(take).toMatchObject({ title: "Cover", audioUrl: "/seed/demo-loop.wav", active: true });
 });
 
+test("Mashup combines the two selected clips on a new track", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.route("**/api/v3/web-music/studio/mashup", (route) =>
+    route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "op-mash", status: "queued" }),
+    })
+  );
+  await page.route("**/api/v3/web-music/studio/operations/op-mash", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "op-mash",
+        status: "done",
+        result: { clips: [{ audio_url: "/seed/demo-loop.wav", duration_seconds: 4 }] },
+      }),
+    })
+  );
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, {
+    title: `Mashup ${tag}`,
+    clips: [
+      { ...CLIP, id: "clip-a", title: "First", start: 0, duration: 2 },
+      { ...CLIP, id: "clip-b", title: "Second", start: 2, duration: 2 },
+    ],
+  });
+
+  // Marquee both clips (the lane starts empty past the second clip).
+  const lane = page.locator(".se-lanes");
+  const box = await lane.boundingBox();
+  if (!box) throw new Error("lanes have no box");
+  await page.mouse.move(box.x + 300, box.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 8, box.y + 40, { steps: 10 });
+  await page.mouse.up();
+  await expect(page.locator(".se-clip.selected")).toHaveCount(2);
+
+  await page.locator(".se-clip").first().click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "Clip options" });
+  const mashup = menu.getByRole("menuitem", { name: /Mashup/ });
+  await expect(mashup).toBeEnabled();
+  await mashup.click();
+
+  const dialog = page.getByRole("dialog", { name: "Mashup two clips" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Mashup instructions").fill("keep the drums, blend the vocals");
+  await dialog.getByRole("button", { name: "Create mashup" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Mashup added as a new track");
+
+  const document = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    return (await response.json()) as {
+      data: {
+        tracks: Array<{ name: string; clipIds: string[] }>;
+        lanes: Array<{ id: string; title?: string; start?: number; audioUrl?: string | null }>;
+      };
+    };
+  }, projectId);
+
+  await expect
+    .poll(async () => document.data.tracks.length, { timeout: 15_000, intervals: [250] })
+    .toBeGreaterThanOrEqual(2);
+  const mashupTrack = document.data.tracks.find((track) => track.name === "Mashup");
+  expect(mashupTrack).toBeTruthy();
+});
+
 test("Add vocals shows the credit price and lands as a take", async ({ page }) => {
   test.setTimeout(120_000);
   await mockOperation(page, "add-vocals", "/seed/demo-loop.wav");
