@@ -30,6 +30,14 @@ import {
 } from "@/lib/library-api";
 import { listStudioUploads, type StudioUpload } from "@/lib/studio-api";
 import {
+  getStudioProject,
+  listStudioProjects,
+  updateStudioProject,
+  type StudioProject,
+  type StudioProjectData,
+} from "@/lib/studio-api";
+import { placeUploadInProject } from "@/lib/studio-upload-place";
+import {
   addWebMusicPlaylistItem,
   createWebMusicPlaylist,
   createWebMusicWorkspace,
@@ -175,6 +183,11 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const [uploads, setUploads] = useState<StudioUpload[]>([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [uploadsError, setUploadsError] = useState("");
+  /** Upload awaiting a destination project. */
+  const [uploadTarget, setUploadTarget] = useState<StudioUpload | null>(null);
+  const [uploadProjects, setUploadProjects] = useState<StudioProject[] | null>(null);
+  const [uploadAddBusy, setUploadAddBusy] = useState(false);
+  const [uploadAddError, setUploadAddError] = useState("");
 
   const [trashMode, setTrashMode] = useState(false);
   const [trashItems, setTrashItems] = useState<WebMusicGeneration[]>([]);
@@ -536,6 +549,50 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       duration: Math.max(1, Math.round(upload.duration_seconds || 60)),
       audioUrl: upload.url,
     });
+  }
+
+  /** Pick a Studio project for an upload; the list loads when the dialog opens. */
+  async function openUploadPicker(upload: StudioUpload) {
+    setUploadTarget(upload);
+    setUploadProjects(null);
+    setUploadAddError("");
+    try {
+      const page = await listStudioProjects(20);
+      setUploadProjects(page.items);
+    } catch (cause) {
+      setUploadAddError(
+        cause instanceof Error ? cause.message : "Could not load your Studio projects."
+      );
+    }
+  }
+
+  /** Append the upload to the chosen project's document, respecting its version. */
+  async function addUploadToProject(project: StudioProject) {
+    if (!uploadTarget || uploadAddBusy) return;
+    setUploadAddBusy(true);
+    setUploadAddError("");
+    try {
+      const fresh = await getStudioProject(project.id);
+      const placed = placeUploadInProject(
+        fresh.data ?? {},
+        uploadTarget,
+        Date.now().toString(36)
+      );
+      await updateStudioProject(project.id, {
+        data: placed.data as StudioProjectData,
+        expectedUpdatedAt: fresh.updated_at ?? null,
+      });
+      setToast(`Added ${uploadTarget.filename} to ${fresh.title}.`);
+      setUploadTarget(null);
+    } catch (cause) {
+      setUploadAddError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not add the upload to that project."
+      );
+    } finally {
+      setUploadAddBusy(false);
+    }
   }
 
   function playClip(song: WebMusicGeneration, clip: WebMusicClip) {
@@ -1545,25 +1602,37 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             );
       }
       return (
-        <div className="s-playlists">
-          {filteredUploads.map((upload) => (
-            <button
-              key={upload.id}
-              type="button"
-              className="s-playlist"
-              onClick={() => playUpload(upload)}
-            >
-              <span className="s-playlist-cover">
-                <Icon name="fa-music" />
-              </span>
-              <b>{upload.filename}</b>
-              <small>
-                {upload.duration_seconds ? `${formatClipDuration(upload.duration_seconds)} · ` : ""}
-                Play
-              </small>
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="s-playlists">
+            {filteredUploads.map((upload) => (
+              <div key={upload.id} className="s-playlist">
+                <button
+                  type="button"
+                  className="s-playlist-open"
+                  onClick={() => playUpload(upload)}
+                >
+                  <span className="s-playlist-cover">
+                    <Icon name="fa-music" />
+                  </span>
+                  <b>{upload.filename}</b>
+                  <small>
+                    {upload.duration_seconds
+                      ? `${formatClipDuration(upload.duration_seconds)} · `
+                      : ""}
+                    Play
+                  </small>
+                </button>
+                <button
+                  type="button"
+                  className="s-btn s-btn-sm"
+                  onClick={() => void openUploadPicker(upload)}
+                >
+                  Add to project
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
       );
     }
 
@@ -2370,6 +2439,55 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           onClose={() => setShareTarget(null)}
           onToast={setToast}
         />
+      ) : null}
+
+      {uploadTarget ? (
+        <div
+          className="s-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add upload to a project"
+        >
+          <div className="s-modal">
+            <div className="s-modal-head">
+              <h3>Add {uploadTarget.filename} to a project</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-sm s-btn-ghost"
+                aria-label="Close"
+                onClick={() => setUploadTarget(null)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-modal-body">
+              {uploadAddError ? (
+                <p className="s-error" role="alert">
+                  {uploadAddError}
+                </p>
+              ) : null}
+              {uploadProjects === null && !uploadAddError ? (
+                <p className="s-note">Loading projects…</p>
+              ) : uploadProjects && uploadProjects.length > 0 ? (
+                <div className="s-playlist-picker">
+                  {uploadProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      className="s-menu-item"
+                      disabled={uploadAddBusy}
+                      onClick={() => void addUploadToProject(project)}
+                    >
+                      {project.title}
+                    </button>
+                  ))}
+                </div>
+              ) : uploadProjects ? (
+                <p className="s-note">No Studio projects yet — create one in Studio first.</p>
+              ) : null}
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {reportTarget ? (
