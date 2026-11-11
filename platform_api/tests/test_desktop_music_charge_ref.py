@@ -2,7 +2,8 @@
 
 Refunds are keyed by ``ref_id=song_id`` but the debit itself had no ``ref_id``,
 so a charged-but-failed desktop generation could never be matched back to its
-song. ``deduct_for_operation`` now forwards the reference to the v3 charge.
+song. ``deduct_for_operation`` now forwards the reference to the v3 charge and
+tags it with the provider that actually ran.
 """
 
 from __future__ import annotations
@@ -34,7 +35,11 @@ async def test_deduct_for_operation_forwards_ref_id() -> None:
 
     assert charged == 100_000
     service._charge_via_v3.assert_awaited_once_with(
-        user_id, "music", ref_id="song-1", model="V6"
+        user_id,
+        "music",
+        ref_id="song-1",
+        model="V6",
+        provider="suno",
     )
 
 
