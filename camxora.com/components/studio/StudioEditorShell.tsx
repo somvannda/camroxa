@@ -4678,6 +4678,9 @@ export function StudioEditorShell() {
 
       <StudioMetricsProbe />
 
+      {/* Floating menus live outside <main>; a named region keeps them inside a
+          landmark for assistive tech (axe: region rule). */}
+      <div role="region" aria-label="Editor menus">
       {clipMenu
         ? (() => {
             const clip = clips.find((item) => item.id === clipMenu.clipId);
@@ -4943,6 +4946,7 @@ export function StudioEditorShell() {
             );
           })()
         : null}
+      </div>
 
       {clipRename ? (
         <div className="se-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Rename clip">

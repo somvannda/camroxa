@@ -62,3 +62,32 @@ test("library drawer has no axe violations", async ({ page }) => {
 
   expect(await audit(page)).toEqual([]);
 });
+
+test("the clip editor and range menu have no axe violations", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, {
+    title: "A11y clip editor probe",
+    clips: [
+      { id: "loop", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" },
+    ],
+  });
+
+  // Clip Settings (S30/§81) is a dense control surface: audit it while open.
+  await page.locator(".se-clip").first().dblclick();
+  await expect(page.getByRole("region", { name: "Clip settings" })).toBeVisible();
+  await page.getByRole("radio", { name: "On Beat" }).click();
+  await expect(page.locator(".se-warp-head").first()).toBeVisible();
+  expect(await audit(page)).toEqual([]);
+
+  // The time-selection menu (N-01).
+  const ruler = page.locator(".se-ruler-bars");
+  const box = await ruler.boundingBox();
+  if (!box) throw new Error("ruler has no box");
+  await page.mouse.move(box.x + 100, box.y + box.height - 8);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 292, box.y + box.height - 8, { steps: 8 });
+  await page.mouse.up();
+  await page.mouse.click(box.x + 200, box.y + box.height - 8, { button: "right" });
+  await expect(page.getByRole("menu", { name: "Time selection options" })).toBeVisible();
+  expect(await audit(page)).toEqual([]);
+});

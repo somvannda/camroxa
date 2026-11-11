@@ -81,7 +81,9 @@ verified-source path once the branch reaches `main`.
 New coverage worth naming: exported RMS at 0 dB vs −12 dB proves clip gain reaches the
 mix; a routed click-track WAV proves transient markers land on attacks; the MIDI spec
 parses the downloaded bytes; a stale `main` test expecting the old v3 charge call shape
-was corrected (`provider=ai_service`).
+was corrected (`provider=ai_service`). The axe gate now also audits the open clip editor
+and the time-selection menu, which is what caught the floating menus sitting outside a
+landmark (they now render inside a named region).
 
 ## Follow-ups
 
