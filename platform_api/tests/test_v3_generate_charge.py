@@ -362,3 +362,67 @@ async def test_v3_settle_keeps_charge_when_wallet_cannot_cover_delta() -> None:
 
     assert settled == credits_to_units(6)
     assert credit_repo.refunds == []
+
+
+@pytest.mark.asyncio
+async def test_v3_settle_works_for_any_fallback_provider() -> None:
+    """Settlement is generic: fal keeps its own list price after a fallback."""
+    from platform_api.services.usage_enforcement_service import OperationHold
+
+    credit_repo = FakeCreditRepo()
+    service = _settle_service(
+        rows={
+            ("fal", "background_image", "flux-pro"): {
+                "credits_per_operation": credits_to_units(40)
+            }
+        },
+        credit_repo=credit_repo,
+    )
+    hold = OperationHold(
+        held_units=credits_to_units(6), plan_covered=False, source="v3", v3_op="image"
+    )
+
+    settled = await service.finalize_held_operation(
+        USER_ID,
+        "background_image",
+        "fal",
+        sub_model="flux-pro",
+        hold=hold,
+        routed_provider="slai",
+        routed_model="cx/gpt-image-2.5",
+        executed_provider="fal",
+        executed_model="flux-pro",
+    )
+
+    assert settled == credits_to_units(40)
+    assert credit_repo.deducts[0]["amount"] == credits_to_units(34)
+    assert credit_repo.deducts[0]["metadata"]["provider"] == "fal"
+    assert credit_repo.deducts[0]["metadata"]["model"] == "flux-pro"
+
+
+@pytest.mark.asyncio
+async def test_v3_settle_keeps_held_when_executed_model_has_no_pricing() -> None:
+    """An unconfigured fallback model cannot be priced; keep the quoted charge."""
+    from platform_api.services.usage_enforcement_service import OperationHold
+
+    credit_repo = FakeCreditRepo()
+    service = _settle_service(rows={}, credit_repo=credit_repo)
+    hold = OperationHold(
+        held_units=credits_to_units(6), plan_covered=False, source="v3", v3_op="image"
+    )
+
+    settled = await service.finalize_held_operation(
+        USER_ID,
+        "background_image",
+        "cala",
+        sub_model=None,
+        hold=hold,
+        routed_provider="slai",
+        routed_model="cx/gpt-image-2.5",
+        executed_provider="cala",
+        executed_model=None,
+    )
+
+    assert settled == credits_to_units(6)
+    assert credit_repo.deducts == []
+    assert credit_repo.refunds == []
