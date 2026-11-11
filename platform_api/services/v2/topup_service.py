@@ -408,9 +408,18 @@ class TopupService:
         }
 
     async def _fulfill_topup_payment(self, topup_id: str, *, payment_id: str | None = None) -> None:
-        """Mark a pending top-up completed so the DB trigger grants credits."""
+        """Settle a pending top-up, then mint its v3 pack.
+
+        The ``pending -> completed`` update is the settlement gate: only the
+        caller that actually flips the row mints. The payment webhook and the
+        client's status poll routinely arrive together, and before this gate
+        every caller ran the pack mint — the wallet was credited once but the
+        lot ledger grew a duplicate for each extra caller (42,300 phantom
+        credits by 2026-11-10). ``after_topup_fulfill``'s lot insert is now
+        idempotent per purchase reference as well.
+        """
         if payment_id:
-            await self._db.execute(
+            settled = await self._db.fetch_one(
                 """
                 UPDATE topup_purchases
                 SET payment_status = 'completed',
@@ -418,22 +427,55 @@ class TopupService:
                 WHERE id = $1
                   AND payment_status = 'pending'
                   AND external_payment_id = $2
+                RETURNING id
                 """,
                 topup_id,
                 payment_id,
             )
         else:
-            await self._db.execute(
+            settled = await self._db.fetch_one(
                 """
                 UPDATE topup_purchases
                 SET payment_status = 'completed',
                     completed_at = NOW()
                 WHERE id = $1
                   AND payment_status = 'pending'
+                RETURNING id
                 """,
                 topup_id,
             )
-        logger.info("Completed top-up %s", topup_id)
+        if settled is None:
+            # Either another caller won the transition, or the payment id does
+            # not belong to this row. Refuse mismatches; for an already
+            # completed row still run the (idempotent) mint so a crash between
+            # the update and the grant cannot leave a paid top-up uncredited.
+            row = await self._db.fetch_one(
+                """
+                SELECT payment_status, external_payment_id
+                FROM topup_purchases
+                WHERE id = $1
+                """,
+                topup_id,
+            )
+            if row is None:
+                logger.warning("Top-up %s not found; nothing to settle", topup_id)
+                return
+            if payment_id and str(row.get("external_payment_id") or "") != payment_id:
+                logger.error(
+                    "Refusing to settle top-up %s: payment id does not match the row",
+                    topup_id,
+                )
+                return
+            if str(row.get("payment_status") or "") != "completed":
+                logger.warning(
+                    "Top-up %s is %s, not completed; skipping mint",
+                    topup_id,
+                    row.get("payment_status"),
+                )
+                return
+            logger.info("Top-up %s already settled; verifying pack mint", topup_id)
+        else:
+            logger.info("Completed top-up %s", topup_id)
         await self._sync_v3_pack(topup_id)
 
     async def _sync_v3_pack(self, topup_id: str) -> None:
@@ -616,8 +658,10 @@ class TopupService:
     async def _handle_topup_completed(self, data: dict):
         """Handle completed top-up payment.
 
-        Credits are granted by the trigger in migration 091_topup_purchases.py.
-        Lookup is by the bound CutLuy payment id, not client-influenced metadata.
+        Settlement (status flip + pack mint) is done by ``_fulfill_topup_payment``;
+        the legacy migration-091 trigger that also granted credits was dropped in
+        197. Lookup is by the bound CutLuy payment id, not client-influenced
+        metadata.
         """
         try:
             payment_id = validate_payment_id(str(data.get("id") or data.get("payment_id") or ""))
