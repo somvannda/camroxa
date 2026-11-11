@@ -811,7 +811,9 @@ different music after the boundary, so it belongs on the timeline, not in the ta
 **Consequences.** The take-lanes band opens on arrival, and the clip's `audioUrl` follows
 the active take, so playback and export hear the new result immediately. Mashup combines
 the two selected clips into one new song on its own "Mashup" track; right-clicking a clip
-inside a multi-selection keeps the selection so the group action is reachable. Add-vocals
-and add-instrumental reuse the same dialog and placement; replace-section is next and can
-reuse the same polling helper. The transform dialog reads the credit price from
-`GET /studio/pricing` (never a hard-coded constant) before spending anything.
+inside a multi-selection keeps the selection so the group action is reachable, and a
+right-click no longer clears the time range (Replace Section needs that range to stay
+alive). Replace Section rewrites the N-01 range with new lyrics and lands as a take. A
+refused charge raises the "Not enough credits" card with a plans link instead of a toast
+that disappears. The transform dialog reads the credit price from `GET /studio/pricing`
+(never a hard-coded constant) before spending anything.

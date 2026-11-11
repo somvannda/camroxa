@@ -92,7 +92,7 @@ functional controls the capture does not show (listed below).
 | Clip label colour | dark on pastel fills, white on the saturated reference fills (contrast-safe; the capture only shows white on purple) |
 | Bounce row in the track menu | the reference strings name `Bounce` / `Exporting on track #` but the menu itself was never captured row by row; the action renders the track and downloads the mixdown until storage allows render-in-place (D-031) |
 | Download MIDI row in the clip menu | N-05's strings name the action but the captured clip menu only shows `Get MIDI` (conversion); the row sits after Download WAV and keeps the 158 px menu width by carrying no hint text |
-| Generate rows in the clip menu | Extend / Cover… / Remaster come from the reference's operation strings (GEN-014…GEN-019), but its clip menu was never captured; they follow our take model instead (D-033) and stay disabled for clips with no source generation |
+| Generate rows in the clip menu | Extend / Cover… / Remaster / Vocals… / Instrumental… / Mashup… / Replace… come from the reference's operation strings (GEN-014…GEN-019), but its clip menu was never captured; they follow our take model instead (D-033) and stay disabled when the required source or range is missing |
 
 ## Still to measure
 

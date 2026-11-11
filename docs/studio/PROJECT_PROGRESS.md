@@ -13,6 +13,8 @@ operations and lands the result on the arrangement (D-033).
 | **Cover… / Remaster** | arrive as a new active take on the source clip (the S29 take model), with the take band opening and `audioUrl` following the active take |
 | **Vocals… / Instrumental…** | the same prompt dialog and take placement for add-vocals and add-instrumental |
 | **Mashup…** | combines the two selected clips into a new song on its own track, at the earliest source start |
+| **Replace…** | rewrites the N-01 time range with new lyrics and lands as a take; the row stays disabled until a range overlaps the clip |
+| **Refusal card** | a refused charge shows "Not enough credits" with View plans instead of a disappearing toast |
 | **Credit price on the action** | the dialog reads `GET /studio/pricing` and says what the operation spends before it runs |
 | **Cover dialog** | captured dialog shape: title, optional style field, Cancel / Generate cover |
 | **Guardrails** | rows are disabled without a source generation; nothing is placed until the operation reports `done`; provider failures surface in the toast |

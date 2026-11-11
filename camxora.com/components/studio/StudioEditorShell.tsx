@@ -15,6 +15,7 @@ import {
   requestStudioAddVocals,
   requestStudioAddInstrumental,
   requestStudioMashup,
+  requestStudioReplaceSection,
   getStudioPricing,
   type StudioOperation,
 } from "@/lib/studio-api";
@@ -263,10 +264,16 @@ export function StudioEditorShell() {
   const [stems, setStems] = useState<{ status: string; message?: string } | null>(null);
   /** Clip transform in flight + the optional Cover prompt (D-033). */
   const [transformBusy, setTransformBusy] = useState<
-    null | "extend" | "cover" | "remaster" | "vocals" | "instrumental" | "mashup"
+    null | "extend" | "cover" | "remaster" | "vocals" | "instrumental" | "mashup" | "replace"
   >(null);
   const [transformPrompt, setTransformPrompt] = useState<
-    { clipId: string; kind: "cover" | "vocals" | "instrumental" | "mashup" } | null
+    { clipId: string; kind: "cover" | "vocals" | "instrumental" | "mashup" | "replace" } | null
+  >(null);
+  /** Lyrics for Replace Section (the provider needs them, unlike the prompt-only edits). */
+  const [transformLyrics, setTransformLyrics] = useState("");
+  /** Refusal card for a paid transform that could not run (credits / provider). */
+  const [transformNotice, setTransformNotice] = useState<
+    null | { kind: "credits" | "failed"; text: string }
   >(null);
   /** The two clips a mashup will combine (captured when the dialog opens). */
   const [mashupIds, setMashupIds] = useState<string[]>([]);
@@ -453,6 +460,8 @@ export function StudioEditorShell() {
     trackId: string
   ) {
     event.stopPropagation();
+    // A right-click opens the menu; it must not clear the time range or start a drag.
+    if (event.button !== 0) return;
     // Selection is contextual (spec §2): a clip press replaces a time range.
     setTimeSelection(null);
     setRangeMenu(null);
@@ -2042,9 +2051,18 @@ export function StudioEditorShell() {
     }
   }
 
+  /** Surface a paid-operation failure: credits get the purchase card, anything else the reason. */
+  function reportTransformFailure(cause: unknown, fallback: string) {
+    const message = cause instanceof Error ? cause.message : fallback;
+    setTransformNotice({
+      kind: /credit|insufficient|balance|402/i.test(message) ? "credits" : "failed",
+      text: message,
+    });
+    setExportToast(null);
+  }
+
   /** Poll a Studio operation until it settles (or the deadline passes). */
-  async function pollOperation(
-    operation: StudioOperation,
+  async function pollOperation(    operation: StudioOperation,
     timeoutMs = 120_000
   ): Promise<StudioOperation> {
     const deadline = Date.now() + timeoutMs;
@@ -2160,7 +2178,7 @@ export function StudioEditorShell() {
         setExportToast(`${label} added as a new take.`);
       }
     } catch (cause) {
-      setExportToast(cause instanceof Error ? cause.message : `${label} failed.`);
+      reportTransformFailure(cause, `${label} failed.`);
     } finally {
       setTransformBusy(null);
     }
@@ -2228,7 +2246,68 @@ export function StudioEditorShell() {
       setSelectedClip(lane.id);
       setExportToast("Mashup added as a new track.");
     } catch (cause) {
-      setExportToast(cause instanceof Error ? cause.message : "Mashup failed.");
+      reportTransformFailure(cause, "Mashup failed.");
+    } finally {
+      setTransformBusy(null);
+    }
+  }
+
+  /**
+   * Replace Section (GEN-018): the N-01 time range is rewritten with new lyrics. The
+   * provider returns the whole arrangement with that span re-sung, so it lands as a take
+   * on the source clip like the other variant transforms.
+   */
+  async function runReplaceSection(clipId: string, lyrics: string) {
+    if (transformBusy) return;
+    const clip = clipsRef.current.find((entry) => entry.id === clipId);
+    const songId = (clip as { songId?: string } | undefined)?.songId;
+    const range = timeSelection;
+    if (!clip || !songId || !range) return;
+    if (!lyrics.trim()) {
+      setTransformNotice({ kind: "failed", text: "Replace section needs lyrics." });
+      return;
+    }
+    const clipStart = clip.start ?? 0;
+    const clipEnd = clipStart + (clip.duration ?? 0);
+    const from = Math.max(range.start, clipStart);
+    const to = Math.min(range.end, clipEnd);
+    if (to - from < 0.05) {
+      setTransformNotice({
+        kind: "failed",
+        text: "Select a time range inside the clip first.",
+      });
+      return;
+    }
+    const offset = (clip as { offset?: number }).offset ?? 0;
+    setClipMenu(null);
+    setTransformBusy("replace");
+    setExportToast("Replace section queued…");
+    try {
+      const operation = await requestStudioReplaceSection({
+        taskId: songId,
+        variant: "ok",
+        startS: Math.max(0, offset + (from - clipStart)),
+        endS: Math.max(0, offset + (to - clipStart)),
+        lyrics,
+        projectId,
+      });
+      const current = await pollOperation(operation);
+      if (current.status !== "done") {
+        throw new Error(current.error_message ?? "Replace section failed.");
+      }
+      const result = current.result?.clips?.[0];
+      if (!result) throw new Error("No audio came back.");
+      const stamp = Date.now().toString(36);
+      const data = currentData() as Record<string, unknown>;
+      const lanes = clipsRef.current.map((entry) =>
+        entry.id === clip.id ? withTransformTake(entry, "Replace section", result, stamp) : entry
+      );
+      writeProjectData({ ...data, lanes }, "the replaced section");
+      setSelectedClip(clip.id);
+      setTakeLanesOpen(true);
+      setExportToast("Replaced section added as a new take.");
+    } catch (cause) {
+      reportTransformFailure(cause, "Replace section failed.");
     } finally {
       setTransformBusy(null);
     }
@@ -4932,6 +5011,15 @@ export function StudioEditorShell() {
               .map((id) => clips.find((item) => item.id === id))
               .filter((item) => Boolean(item?.songId));
             const canMashup = mashupSources.length === 2;
+            const clipStart = clip.start ?? 0;
+            const clipEnd = clipStart + (clip.duration ?? 4);
+            const canReplace = Boolean(
+              clip.songId &&
+                timeSelection &&
+                timeSelection.end > timeSelection.start &&
+                Math.min(timeSelection.end, clipEnd) - Math.max(timeSelection.start, clipStart) >
+                  0.05
+            );
             return (
               <div
                 className="se-clip-menu"
@@ -5186,6 +5274,24 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-shuffle" /> Mashup…
                 </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canReplace || Boolean(transformBusy)}
+                  title={
+                    canReplace
+                      ? `Rewrite the selected range with new lyrics${transformCost != null ? ` (${transformCost} credits)` : ""}`
+                      : "Select a time range over this clip first"
+                  }
+                  onClick={() => {
+                    setClipMenu(null);
+                    setTransformValue("");
+                    setTransformLyrics("");
+                    setTransformPrompt({ clipId: clip.id, kind: "replace" });
+                  }}
+                >
+                  <Icon name="fa-scissors" /> Replace…
+                </button>
                 <div className="se-clip-menu-sep" />
                 <button
                   type="button"
@@ -5356,18 +5462,30 @@ export function StudioEditorShell() {
                       placeholder: "e.g. acoustic guitar, upright bass",
                       action: "Add instrumental",
                     }
-                  : {
-                      title: "Mashup two clips",
-                      label: "Instructions (optional)",
-                      aria: "Mashup instructions",
-                      placeholder: "e.g. keep the drums, blend the vocals",
-                      action: "Create mashup",
-                    };
+                  : kind === "mashup"
+                    ? {
+                        title: "Mashup two clips",
+                        label: "Instructions (optional)",
+                        aria: "Mashup instructions",
+                        placeholder: "e.g. keep the drums, blend the vocals",
+                        action: "Create mashup",
+                      }
+                    : {
+                        title: "Replace section",
+                        label: "New lyrics for the selected range",
+                        aria: "New lyrics",
+                        placeholder: "Write what the new section should sing…",
+                        action: "Replace section",
+                      };
             const submit = () => {
               const target = transformPrompt;
               setTransformPrompt(null);
               if (kind === "mashup") {
                 void runMashup(mashupIds, transformValue);
+                return;
+              }
+              if (kind === "replace") {
+                void runReplaceSection(target.clipId, transformLyrics);
                 return;
               }
               void runTransform(kind, target.clipId, transformValue);
@@ -5384,19 +5502,34 @@ export function StudioEditorShell() {
                   <label className="se-dialog-note" htmlFor="se-transform-prompt">
                     {copy.label}
                   </label>
-                  <input
-                    id="se-transform-prompt"
-                    className="se-pill"
-                    value={transformValue}
-                    autoFocus
-                    aria-label={copy.aria}
-                    placeholder={copy.placeholder}
-                    onChange={(event) => setTransformValue(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") submit();
-                      if (event.key === "Escape") setTransformPrompt(null);
-                    }}
-                  />
+                  {kind === "replace" ? (
+                    <textarea
+                      id="se-transform-prompt"
+                      className="se-dialog-area"
+                      value={transformLyrics}
+                      autoFocus
+                      aria-label={copy.aria}
+                      placeholder={copy.placeholder}
+                      onChange={(event) => setTransformLyrics(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setTransformPrompt(null);
+                      }}
+                    />
+                  ) : (
+                    <input
+                      id="se-transform-prompt"
+                      className="se-pill"
+                      value={transformValue}
+                      autoFocus
+                      aria-label={copy.aria}
+                      placeholder={copy.placeholder}
+                      onChange={(event) => setTransformValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") submit();
+                        if (event.key === "Escape") setTransformPrompt(null);
+                      }}
+                    />
+                  )}
                   {transformCost != null ? (
                     <p className="se-dialog-note">This spends {transformCost} credits.</p>
                   ) : null}
@@ -5527,6 +5660,32 @@ export function StudioEditorShell() {
       ) : null}
 
       {error ? <div className="se-error" role="alert">{error}</div> : null}
+      {transformNotice ? (
+        <div className={`se-transform-notice ${transformNotice.kind}`} role="alert">
+          <strong>
+            {transformNotice.kind === "credits" ? "Not enough credits" : "That edit did not run"}
+          </strong>
+          <span>
+            {transformNotice.kind === "credits"
+              ? "This edit spends credits your balance does not cover."
+              : "The operation failed before anything was placed."}
+          </span>
+          {transformNotice.kind === "credits" ? (
+            <a className="se-pill on" href="/pricing">
+              View plans
+            </a>
+          ) : null}
+          <button
+            type="button"
+            className="se-icon"
+            aria-label="Dismiss"
+            onClick={() => setTransformNotice(null)}
+          >
+            <Icon name="fa-xmark" />
+          </button>
+          <small>{transformNotice.text}</small>
+        </div>
+      ) : null}
       {recordError ? (
         <div className="se-error" role="alert">
           {recordError}

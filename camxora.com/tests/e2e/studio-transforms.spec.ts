@@ -130,8 +130,98 @@ test("Cover lands as a new take on the source clip", async ({ page }) => {
   expect(take).toMatchObject({ title: "Cover", audioUrl: "/seed/demo-loop.wav", active: true });
 });
 
-test("Mashup combines the two selected clips on a new track", async ({ page }) => {
+test("Replace section rewrites the selected range as a take", async ({ page }) => {
   test.setTimeout(120_000);
+  await page.route("**/api/v3/web-music/studio/generations/*/replace-section", (route) =>
+    route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "op-replace", status: "queued" }),
+    })
+  );
+  await page.route("**/api/v3/web-music/studio/operations/op-replace", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "op-replace",
+        status: "done",
+        result: { clips: [{ audio_url: "/seed/demo-loop.wav", duration_seconds: 4 }] },
+      }),
+    })
+  );
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, {
+    title: `Replace ${tag}`,
+    clips: [CLIP],
+  });
+
+  // Bars 2–3 (2 s → 4 s at the default zoom) inside the clip.
+  const ruler = page.locator(".se-ruler-bars");
+  const box = await ruler.boundingBox();
+  if (!box) throw new Error("ruler has no box");
+  const y = box.y + box.height - 8;
+  await page.mouse.move(box.x + 100, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 192, y, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId("se-range")).toBeVisible();
+
+  await page.locator(".se-clip").first().click({ button: "right", position: { x: 20, y: 40 } });
+  const item = page
+    .getByRole("menu", { name: "Clip options" })
+    .getByRole("menuitem", { name: /Replace/ });
+  await expect(item).toBeEnabled();
+  await item.click();
+
+  const dialog = page.getByRole("dialog", { name: "Replace section" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("New lyrics").fill("A brand new verse about the river");
+  await dialog.getByRole("button", { name: "Replace section" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Replaced section added as a new take");
+
+  await expect
+    .poll(
+      async () => {
+        const lanes = await savedLanes(page, projectId);
+        return lanes.find((lane) => lane.id === "clip-a")?.takes?.[0]?.title ?? null;
+      },
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toBe("Replace section");
+});
+
+test("a refused charge shows the credits card instead of a toast", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.route("**/api/v3/web-music/studio/generations/*/extend", (route) =>
+    route.fulfill({
+      status: 402,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "INSUFFICIENT_CREDITS", message: "Insufficient credits for this operation." },
+      }),
+    })
+  );
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, { title: `Refused ${tag}`, clips: [CLIP] });
+
+  await page.locator(".se-clip").first().click({ button: "right" });
+  await page
+    .getByRole("menu", { name: "Clip options" })
+    .getByRole("menuitem", { name: "Extend" })
+    .click();
+
+  const notice = page.getByRole("alert").filter({ hasText: "Not enough credits" });
+  await expect(notice).toBeVisible();
+  await expect(notice.getByRole("link", { name: "View plans" })).toBeVisible();
+  // Nothing was placed, and the paid action did not leave a spinner behind.
+  await expect(page.locator(".se-clip")).toHaveCount(1);
+});
+
+test("Mashup combines the two selected clips on a new track", async ({ page }) => {  test.setTimeout(120_000);
   await page.route("**/api/v3/web-music/studio/mashup", (route) =>
     route.fulfill({
       status: 202,
