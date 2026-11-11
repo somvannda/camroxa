@@ -20,6 +20,8 @@ from platform_api.models.enums import KeyStatus, SelectionStrategy
 from platform_api.services.key_encryption import KeyEncryption
 from platform_api.services.key_pool_service import KeyPoolService
 
+import platform_api.services.key_pool_service as key_pool_module
+
 
 # ---------------------------------------------------------------------------
 # Fake Redis for unit-testing without a real server
@@ -893,6 +895,81 @@ class TestExecuteWithFailover:
             await service.execute_with_failover("slai", execute_fn)
 
         assert fake_repo._entries[key.id].status == KeyStatus.DISABLED
+
+    @pytest.mark.asyncio
+    async def test_401_invalid_key_sends_disable_alert(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Auto-disabling a key must page ops, with the key label included."""
+        alerts: list[str] = []
+        monkeypatch.setattr(key_pool_module, "_schedule_ops_alert", alerts.append)
+
+        key_a = _make_entry(encryption, provider="slai", label="key-A", priority=10, key_value="value-A")
+        key_b = _make_entry(encryption, provider="slai", label="key-B", priority=20, key_value="value-B")
+        fake_repo._entries[key_a.id] = key_a
+        fake_repo._entries[key_b.id] = key_b
+
+        async def execute_fn(key: str) -> dict[str, str]:
+            if key == "value-A":
+                raise _make_http_status_error(401, "AUTH_002 Invalid API key")
+            return {"result": "ok", "key_used": key}
+
+        await service.execute_with_failover("slai", execute_fn)
+
+        assert len(alerts) == 1
+        assert "disabled" in alerts[0]
+        assert "key-A" in alerts[0]
+
+    @pytest.mark.asyncio
+    async def test_no_active_keys_alerts_once_within_cooldown(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An empty pool pages once, not once per parallel song."""
+        alerts: list[str] = []
+        monkeypatch.setattr(key_pool_module, "_schedule_ops_alert", alerts.append)
+
+        disabled = _make_entry(encryption, label="disabled", status=KeyStatus.DISABLED)
+        fake_repo._entries[disabled.id] = disabled
+
+        async def execute_fn(_key: str) -> dict[str, str]:
+            return {"result": "ok"}
+
+        for _ in range(3):
+            with pytest.raises(NoAvailableKeysError):
+                await service.execute_with_failover("suno", execute_fn)
+
+        assert len(alerts) == 1
+        assert "no active keys" in alerts[0]
+        assert "disabled=1" in alerts[0]
+
+    @pytest.mark.asyncio
+    async def test_get_key_alerts_when_pool_is_empty(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The direct get_key path must alert too, not just failover."""
+        alerts: list[str] = []
+        monkeypatch.setattr(key_pool_module, "_schedule_ops_alert", alerts.append)
+
+        disabled = _make_entry(encryption, label="disabled", status=KeyStatus.DISABLED)
+        fake_repo._entries[disabled.id] = disabled
+
+        with pytest.raises(NoAvailableKeysError):
+            await service.get_key("suno")
+
+        assert len(alerts) == 1
+        assert "no active keys" in alerts[0]
 
     @pytest.mark.asyncio
     async def test_wrapped_401_rotates_to_next_key(
