@@ -47,6 +47,7 @@ bucket is configured).
 | Track bounce (N-06) | track menu renders that track through its chain and places a `(bounced)` track with the source muted; when uploads are unavailable it downloads the WAV and the toast says why — `tests/e2e/studio-bounce.spec.ts` |
 | MIDI download (N-05) | selected MIDI clips become one `.mid` (format 0, 480 PPQ) — `lib/studio-midi-file.ts` |
 | Clip transforms | Extend / Cover… / Remaster / Vocals… / Instrumental… / Mashup… / Replace… run the Studio operation API and land as a lane after the clip or as a take, with the credit price shown and a refusal card on a failed charge — `lib/studio-transforms.ts` (D-033) |
+| Plugin presets (S46) | Clear all settings, Save preset… (project-scoped, survives reload) and saved presets in the card menu — `lib/studio-plugins.ts`, `StudioPluginDock` |
 | Library filters + uploads | honest filter menu (`lib/library-filters.ts`), Uploads tab listing Studio imports, and add-to-project placement (`lib/studio-upload-place.ts`) |
 | Site accessibility | `<main>` landmark on every `(site)` page, named player region, decorative images, `h2` ordering, readable disabled menu items; axe gates now cover Studio, Library, Create, `/`, `/pricing` and `/discover` |
 
@@ -147,17 +148,22 @@ not persisted (D-029).
 
 ## Next moves, in order
 
-1. **Ship the branch**: open a PR from `feat/studio-rebuild` to `main`. The branch is
-   main-synced and green, so this is a review step rather than a reconciliation step.
-   `gh auth login -h github.com` is required first (the local token is invalid).
-2. **Give the running sandbox API storage**: configure a bucket (or re-save the streaming
-   settings in admin, B-006/B-007). The upload + in-place bounce path is already verified
-   against moto with a disposable DB; this step makes the *local* dev stack match.
-3. **Optional library follow-ups**: uploads rename/delete (needs a mutation endpoint);
-   covers/remasters filters (need generation↔`studio_operations` attribution).
-4. **S60/S61** and the §100 detail-rail image when a reference session is available.
+**The feature queue is empty.** Every row in `SUNO_STUDIO_FEATURE_INVENTORY.md` is
+implemented, and every capture-backed area is covered by tests. What remains is
+environment access, not code:
+
+1. **Ship the branch**: `gh auth login -h github.com`, then
+   `gh pr create --base main --head feat/studio-rebuild`. The branch is main-synced and
+   green (134 browser tests / 2 skipped, 277 vitest, 3354 backend).
+2. **Give the running dev API storage**: its `PLATFORM_STUDIO_INTERNAL_TOKEN` was supplied
+   by the launching shell and is not recoverable from the process, so a restart must
+   include it. With moto on `:9000` and the B-006 env, run
+   `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100 npx playwright test tests/e2e/studio-bounce.spec.ts`
+   to verify uploads against the live API, then the uploads tab can drop its mock.
+3. **S60/S61** and the §100 detail-rail image when a signed-in reference session is
+   available.
+4. **Key/BPM rows** stay blocked on the corpus (D-016) — no field exists to show.
 
 Everything else in the documented gap list is built: the §81 column shipped as D-032, the
-selection model as D-029, warp markers as D-030, bounce as D-031 and MIDI export as N-05.
-The merged task branches were deleted from `origin` on 2026-11-11; only
-`feat/studio-rebuild` carries this work.
+selection model as D-029, warp markers as D-030, bounce as D-031, MIDI export as N-05,
+the clip transforms as D-033 and the S46 preset menu in `docs/changelog`.
