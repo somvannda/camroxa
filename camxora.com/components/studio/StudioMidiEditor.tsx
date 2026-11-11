@@ -172,14 +172,12 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
       });
     };
     const onUp = () => {
-      setDrag((current) => {
-        if (current && preview) {
-          onChangeNotes(
-            current.notes.map((note) => (note.id === current.id ? { ...preview } : note))
-          );
-        }
-        return null;
-      });
+      if (drag && preview) {
+        onChangeNotes(
+          drag.notes.map((note) => (note.id === drag.id ? { ...preview } : note))
+        );
+      }
+      setDrag(null);
       setPreview(null);
     };
     window.addEventListener("pointermove", onMove);
