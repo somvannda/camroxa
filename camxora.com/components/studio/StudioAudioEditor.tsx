@@ -4,12 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { Waveform } from "@/components/studio/Waveform";
+import {
+  GAIN_DB_MAX,
+  GAIN_DB_MIN,
+  PITCH_MAX,
+  PITCH_MIN,
+  QUANTIZE_GRIDS,
+  quantizeStep,
+  sanitizeClipAudio,
+  type ClipAudioSettings,
+  type QuantizeGrid,
+} from "@/lib/studio-clip-audio";
 import { computePeaks } from "@/lib/studio-peaks";
 import {
   WARP_MODES,
   generateWarpMarkers,
   moveWarpMarker,
   quantiseWarpMarkers,
+  quantiseWarpMarkersToStep,
   sanitizeWarp,
   type WarpMarker,
   type WarpMode,
@@ -38,6 +50,8 @@ export type AudioEditorClip = {
   offset?: number;
   audioUrl?: string | null;
   warp?: unknown;
+  /** Volume / Loop / Reverse / Pitch / Speed, parsed by `sanitizeClipAudio`. */
+  audio?: unknown;
 };
 
 export type StudioAudioEditorProps = {
@@ -47,18 +61,27 @@ export type StudioAudioEditorProps = {
   /** Absolute transport position, so the playhead lands on the clip. */
   playhead: number;
   onWarp: (next: WarpState) => void;
+  onAudio?: (next: ClipAudioSettings) => void;
   onClose: () => void;
 };
 
 const WAVE_HEIGHT = 150;
 const MIN_WAVE_WIDTH = 720;
 
+/** The captured readout prints a signed dB value with one decimal. */
+function formatDb(value: number): string {
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)} dB`;
+}
+
 export function StudioAudioEditor(props: StudioAudioEditorProps) {
-  const { clip, secondsPerBar, beatsPerBar, playhead, onWarp, onClose } = props;
+  const { clip, secondsPerBar, beatsPerBar, playhead, onWarp, onAudio = () => {}, onClose } = props;
   const duration = Math.max(0.1, clip.duration ?? 4);
   const warp = useMemo(() => sanitizeWarp(clip.warp), [clip.warp]);
+  const settings = useMemo(() => sanitizeClipAudio(clip.audio), [clip.audio]);
   const [peaks, setPeaks] = useState<number[] | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [quantizeGrid, setQuantizeGrid] = useState<QuantizeGrid>("1/8");
+  const [triplets, setTriplets] = useState(false);
   const [preview, setPreview] = useState<WarpMarker[] | null>(null);
   const previewRef = useRef<WarpMarker[] | null>(null);
   const dragRef = useRef<{ id: string; startX: number; origin: number } | null>(null);
@@ -197,6 +220,60 @@ export function StudioAudioEditor(props: StudioAudioEditorProps) {
 
       <div className="se-audio-body">
         <div className="se-audio-settings">
+          <label className="se-audio-volume">
+            <span>Volume</span>
+            <input
+              type="range"
+              min={GAIN_DB_MIN}
+              max={GAIN_DB_MAX}
+              step={0.5}
+              value={settings.gainDb}
+              aria-label="Volume"
+              onChange={(event) =>
+                onAudio({ ...settings, gainDb: Number(event.target.value) })
+              }
+            />
+            <output>{formatDb(settings.gainDb)}</output>
+          </label>
+
+          <div className="se-audio-pair">
+            <button
+              type="button"
+              aria-pressed={settings.loop}
+              onClick={() => onAudio({ ...settings, loop: !settings.loop })}
+            >
+              <Icon name="fa-repeat" /> Loop
+            </button>
+            <button
+              type="button"
+              aria-pressed={settings.reverse}
+              onClick={() => onAudio({ ...settings, reverse: !settings.reverse })}
+            >
+              <Icon name="fa-backward" /> Reverse
+            </button>
+          </div>
+
+          <div className="se-audio-stepper">
+            <span>Pitch</span>
+            <button
+              type="button"
+              aria-label="Lower pitch"
+              disabled={settings.pitch <= PITCH_MIN}
+              onClick={() => onAudio({ ...settings, pitch: settings.pitch - 1 })}
+            >
+              −
+            </button>
+            <output>{settings.pitch > 0 ? `+${settings.pitch}` : settings.pitch}</output>
+            <button
+              type="button"
+              aria-label="Raise pitch"
+              disabled={settings.pitch >= PITCH_MAX}
+              onClick={() => onAudio({ ...settings, pitch: settings.pitch + 1 })}
+            >
+              +
+            </button>
+          </div>
+
           <div className="se-audio-title">
             <span>Stretch</span>
             <button
@@ -249,6 +326,69 @@ export function StudioAudioEditor(props: StudioAudioEditorProps) {
             />
             <output>{warp.formant}%</output>
           </label>
+
+          <div className="se-audio-speed">
+            <span>Speed</span>
+            <button
+              type="button"
+              aria-pressed={settings.speed === 50}
+              onClick={() =>
+                onAudio({ ...settings, speed: settings.speed === 50 ? 100 : 50 })
+              }
+            >
+              ×½
+            </button>
+            <button
+              type="button"
+              aria-pressed={settings.speed === 200}
+              onClick={() =>
+                onAudio({ ...settings, speed: settings.speed === 200 ? 100 : 200 })
+              }
+            >
+              ×2
+            </button>
+            <output>{settings.speed}%</output>
+          </div>
+
+          <div className="se-audio-quantize">
+            <span>Quantize</span>
+            <div className="se-audio-grid" role="group" aria-label="Quantize grid">
+              {QUANTIZE_GRIDS.map((grid) => (
+                <button
+                  key={grid.value}
+                  type="button"
+                  aria-pressed={quantizeGrid === grid.value}
+                  onClick={() => setQuantizeGrid(grid.value)}
+                >
+                  {grid.label}
+                </button>
+              ))}
+            </div>
+            <div className="se-audio-quantize-actions">
+              <button
+                type="button"
+                aria-pressed={triplets}
+                onClick={() => setTriplets((value) => !value)}
+              >
+                Triplets
+              </button>
+              <button
+                type="button"
+                disabled={warp.markers.length === 0}
+                onClick={() =>
+                  onWarp({
+                    ...warp,
+                    markers: quantiseWarpMarkersToStep(
+                      warp.markers,
+                      quantizeStep(secondsPerBar, quantizeGrid, triplets)
+                    ),
+                  })
+                }
+              >
+                Quantize
+              </button>
+            </div>
+          </div>
 
           <p className="se-audio-hint">
             {warp.on

@@ -10,6 +10,14 @@
  */
 
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
+import {
+  clipRate,
+  dbToGain,
+  planClipPlayback,
+  reverseBuffer,
+  sanitizeClipAudio,
+  type ClipAudioSettings,
+} from "@/lib/studio-clip-audio";
 import { normaliseChannels } from "@/lib/studio-normalise";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
 import { sanitizePoints, scheduleMidiNote, valueAt, type MidiNote } from "@/lib/studio-midi";
@@ -23,6 +31,8 @@ export type ExportClip = {
   offset?: number;
   /** Fade-in length in seconds (S25). */
   fadeIn?: number;
+  /** Clip Settings: volume, loop, reverse, pitch, speed (S30/§81). */
+  audio?: Partial<ClipAudioSettings>;
   audioUrl?: string | null;
   midi?: {
     notes?: MidiNote[];
@@ -167,9 +177,35 @@ export async function renderMix(
     if (playable <= 0) continue;
 
     const source = context.createBufferSource();
-    source.buffer = buffer;
+    const settings = sanitizeClipAudio(clip.audio);
+    const rate = clipRate(settings);
+    const plan = planClipPlayback({
+      bufferDuration: buffer.duration,
+      clipDuration: duration,
+      intoClip: offset,
+      offset: Math.max(0, clip.offset ?? 0),
+      rate,
+      reverse: settings.reverse,
+      loop: settings.loop,
+    });
+    source.buffer = settings.reverse ? reverseBuffer(context, buffer) : buffer;
+    // The export tests drive a minimal AudioContext stub; a real one always has this.
+    if (source.playbackRate) source.playbackRate.value = rate;
+    if (plan.loop) {
+      source.loop = true;
+      source.loopStart = plan.loopStart;
+      source.loopEnd = plan.loopEnd;
+    }
     const trackInputNode = trackInput(track?.id ?? clip.id, track?.volume ?? 80);
     const fadeIn = Math.min(clip.fadeIn ?? 0, duration);
+    // Volume is a separate node so the fade automation stays a clean 0→1 ramp.
+    let nodeInput: AudioNode = trackInputNode;
+    if (settings.gainDb !== 0) {
+      const volume = context.createGain();
+      volume.gain.value = dbToGain(settings.gainDb);
+      volume.connect(trackInputNode);
+      nodeInput = volume;
+    }
     if (fadeIn > 0) {
       const clipGain = context.createGain();
       const intoClip = Math.max(0, from - start);
@@ -178,13 +214,19 @@ export async function renderMix(
       if (intoClip < fadeIn) {
         clipGain.gain.linearRampToValueAtTime(1, when + (fadeIn - intoClip));
       }
-      clipGain.connect(trackInputNode);
+      clipGain.connect(nodeInput);
       source.connect(clipGain);
     } else {
-      source.connect(trackInputNode);
+      source.connect(nodeInput);
     }
     const node = source as AudioBufferSourceNode & { start: (w: number, o?: number, d?: number) => void };
-    node.start(when, Math.max(0, clip.offset ?? 0) + offset, playable);
+    if (plan.loop) {
+      node.start(when, plan.bufferStart);
+      // A looped clip still ends with its timeline length.
+      source.stop(when + Math.max(0.05, playable));
+    } else {
+      node.start(when, plan.bufferStart, Math.max(0.001, plan.bufferLength ?? playable));
+    }
   }
 
   // MIDI clips render through the same track inputs, so chains/mix apply to them too.

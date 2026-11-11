@@ -40,6 +40,14 @@ import { fetchGeneration, generateSong } from "@/lib/create-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import {
+  clipRate,
+  dbToGain,
+  planClipPlayback,
+  reverseBuffer,
+  sanitizeClipAudio,
+  type ClipAudioSettings,
+} from "@/lib/studio-clip-audio";
+import {
   deleteTimeRange,
   duplicateTimeRange,
   normaliseRange,
@@ -138,6 +146,8 @@ type ClipLike = {
   fadeIn?: number;
   /** Warp markers + stretch mode (S30); parsed by `sanitizeWarp`. */
   warp?: unknown;
+  /** Clip Settings audio state (S30/§81); parsed by `sanitizeClipAudio`. */
+  audio?: unknown;
   midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
   /** Alternate takes (S29), newest first; the active one mirrors `audioUrl`. */
   takes?: Array<{
@@ -445,6 +455,16 @@ export function StudioEditorShell() {
     );
   }
 
+  /** Persist Volume / Loop / Reverse / Pitch / Speed onto the clip (§81). */
+  function commitClipAudio(clipId: string, audio: ClipAudioSettings) {
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      { ...data, lanes: lanes.map((clip) => (clip.id === clipId ? { ...clip, audio } : clip)) },
+      "the clip settings"
+    );
+  }
+
   const [exporting, setExporting] = useState(false);
   /** N-06: the track whose bounce is rendering right now. */
   const [bouncingTrack, setBouncingTrack] = useState<string | null>(null);
@@ -548,6 +568,8 @@ export function StudioEditorShell() {
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(0);
   const loopDragRef = useRef(false);
+  /** Reversed source buffers, keyed by clip id + URL so Reverse is computed once. */
+  const reversedBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   /** Time selection (N-01), created by dragging on the bar ruler; not persisted. */
   const [timeSelection, setTimeSelection] = useState<TimeRange | null>(null);
   const [rangeMenu, setRangeMenu] = useState<{ x: number; y: number } | null>(null);
@@ -2389,6 +2411,7 @@ export function StudioEditorShell() {
         offset: item.offset,
         fadeIn: item.fadeIn,
         audioUrl: item.audioUrl ?? null,
+        audio: item.audio as Partial<ClipAudioSettings> | undefined,
       }));
       const exportTracks = tracks.map((track) => ({
         id: track.id,
@@ -3038,35 +3061,76 @@ export function StudioEditorShell() {
       const volume = audible ? (track?.volume ?? 80) : 0;
 
       const when = now + Math.max(0, start - from) / playbackRate;
-      const offset = Math.max(0, from - start);
+      const intoClip = Math.max(0, from - start);
+      const settings = sanitizeClipAudio((clip as { audio?: unknown }).audio);
+      const rate = playbackRate * clipRate(settings);
+      let sourceBuffer = buffer;
+      if (settings.reverse) {
+        const key = `${clip.id}:${url ?? ""}`;
+        const cached = reversedBuffersRef.current.get(key);
+        if (cached) {
+          sourceBuffer = cached;
+        } else {
+          const reversed = reverseBuffer(context, buffer);
+          reversedBuffersRef.current.set(key, reversed);
+          sourceBuffer = reversed;
+        }
+      }
+      const plan = planClipPlayback({
+        bufferDuration: buffer.duration,
+        clipDuration: duration,
+        intoClip,
+        offset: Math.max(0, (clip as { offset?: number }).offset ?? 0),
+        rate,
+        reverse: settings.reverse,
+        loop: settings.loop,
+      });
       const source = context.createBufferSource();
-      source.buffer = buffer;
-      // Audition speed (G17): playbackRate scales both the scheduling offset and
-      // how long the buffer takes to play, so clips stay in sync with each other.
-      source.playbackRate.value = playbackRate;
+      source.buffer = sourceBuffer;
+      // Audition speed (G17) and the clip's pitch/speed all scale the source, so clips
+      // stay in sync with each other.
+      source.playbackRate.value = rate;
+      if (plan.loop) {
+        source.loop = true;
+        source.loopStart = plan.loopStart;
+        source.loopEnd = plan.loopEnd;
+      }
       const destination = trackInput(track?.id ?? clip.id, volume);
+      // Volume is its own node so the fade automation stays a 0→1 ramp.
+      let nodeInput: AudioNode = destination;
+      if (settings.gainDb !== 0) {
+        const volumeNode = context.createGain();
+        volumeNode.gain.value = dbToGain(settings.gainDb);
+        volumeNode.connect(destination);
+        nodeInput = volumeNode;
+      }
       const fadeIn = Math.min(
         (clip as { fadeIn?: number }).fadeIn ?? 0,
         duration
       );
       if (fadeIn > 0) {
         const clipGain = context.createGain();
-        const intoClip = Math.max(0, from - start);
         const initial = intoClip >= fadeIn ? 1 : intoClip / fadeIn;
         clipGain.gain.setValueAtTime(initial, when);
         if (intoClip < fadeIn) {
           clipGain.gain.linearRampToValueAtTime(1, when + (fadeIn - intoClip) / playbackRate);
         }
-        clipGain.connect(destination);
+        clipGain.connect(nodeInput);
         source.connect(clipGain);
       } else {
-        source.connect(destination);
+        source.connect(nodeInput);
       }
-      source.start(
-        when,
-        Math.max(0, (clip as { offset?: number }).offset ?? 0) + offset,
-        Math.max(0.05, duration - offset)
-      );
+      if (plan.loop) {
+        source.start(when, plan.bufferStart);
+        // A looped clip still ends with its timeline length.
+        source.stop(when + Math.max(0.05, (duration - intoClip) / playbackRate));
+      } else {
+        source.start(
+          when,
+          plan.bufferStart,
+          Math.max(0.05, plan.bufferLength ?? duration - intoClip)
+        );
+      }
       audioRef.current?.sources.push(source);
     }
 
@@ -3179,6 +3243,7 @@ export function StudioEditorShell() {
         offset: (clip as { offset?: number }).offset,
         fadeIn: (clip as { fadeIn?: number }).fadeIn,
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
+        audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
       }));
       const exportTracks: ExportTrack[] = tracks.map((track) => ({
@@ -3261,6 +3326,7 @@ export function StudioEditorShell() {
         offset: (clip as { offset?: number }).offset,
         fadeIn: (clip as { fadeIn?: number }).fadeIn,
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
+        audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
       }));
       const exportTracks: ExportTrack[] = tracks.map((candidate) => ({
@@ -4889,6 +4955,7 @@ export function StudioEditorShell() {
           beatsPerBar={beatsPerBar}
           playhead={playhead}
           onWarp={(next) => commitWarp(audioClip.id, next)}
+          onAudio={(next) => commitClipAudio(audioClip.id, next)}
           onClose={() => setAudioClipId(null)}
         />
       ) : masterSelected ? (

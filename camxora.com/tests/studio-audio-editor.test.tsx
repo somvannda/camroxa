@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { StudioAudioEditor, type AudioEditorClip } from "@/components/studio/StudioAudioEditor";
@@ -106,5 +106,102 @@ describe("StudioAudioEditor", () => {
     expect(onWarp).toHaveBeenCalledWith(
       expect.objectContaining({ on: false, formant: 20, markers: warp.markers })
     );
+  });
+
+  it("writes the captured clip settings", async () => {
+    const user = userEvent.setup();
+    const onAudio = vi.fn();
+    const { rerender } = render(
+      <StudioAudioEditor {...baseProps} clip={clip()} onWarp={() => {}} onAudio={onAudio} />
+    );
+
+    fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "-6" } });
+    expect(onAudio).toHaveBeenLastCalledWith(expect.objectContaining({ gainDb: -6 }));
+
+    await user.click(screen.getByRole("button", { name: /Loop/ }));
+    expect(onAudio).toHaveBeenLastCalledWith(expect.objectContaining({ loop: true }));
+
+    rerender(
+      <StudioAudioEditor
+        {...baseProps}
+        clip={clip({ audio: { loop: true, reverse: false, gainDb: -6 } })}
+        onWarp={() => {}}
+        onAudio={onAudio}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: /Reverse/ }));
+    expect(onAudio).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reverse: true, loop: true })
+    );
+  });
+
+  it("steps pitch within the captured range", async () => {
+    const user = userEvent.setup();
+    const onAudio = vi.fn();
+    render(
+      <StudioAudioEditor {...baseProps} clip={clip()} onWarp={() => {}} onAudio={onAudio} />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Raise pitch" }));
+    expect(onAudio).toHaveBeenLastCalledWith(expect.objectContaining({ pitch: 1 }));
+
+    cleanup();
+    render(
+      <StudioAudioEditor
+        {...baseProps}
+        clip={clip({ audio: { pitch: 12 } })}
+        onWarp={() => {}}
+        onAudio={onAudio}
+      />
+    );
+    expect(
+      (screen.getByRole("button", { name: "Raise pitch" }) as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
+  it("toggles the speed presets and their readout", async () => {
+    const user = userEvent.setup();
+    const onAudio = vi.fn();
+    const { rerender } = render(
+      <StudioAudioEditor {...baseProps} clip={clip()} onWarp={() => {}} onAudio={onAudio} />
+    );
+
+    await user.click(screen.getByRole("button", { name: "×½" }));
+    expect(onAudio).toHaveBeenLastCalledWith(expect.objectContaining({ speed: 50 }));
+
+    rerender(
+      <StudioAudioEditor
+        {...baseProps}
+        clip={clip({ audio: { speed: 50 } })}
+        onWarp={() => {}}
+        onAudio={onAudio}
+      />
+    );
+    expect(screen.getByText("50%")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "×½" }));
+    expect(onAudio).toHaveBeenLastCalledWith(expect.objectContaining({ speed: 100 }));
+  });
+
+  it("quantizes markers onto the picked grid", async () => {
+    const user = userEvent.setup();
+    const onWarp = vi.fn();
+    const warp: WarpState = {
+      on: true,
+      mode: "transients",
+      formant: 0,
+      markers: [
+        { id: "a", time: 0.1, source: 0.1 },
+        { id: "b", time: 0.6, source: 0.6 },
+        { id: "c", time: 1.4, source: 1.4 },
+      ],
+    };
+    render(<StudioAudioEditor {...baseProps} clip={clip({ warp })} onWarp={onWarp} />);
+
+    await user.click(screen.getByRole("button", { name: "1/4" }));
+    await user.click(screen.getByRole("button", { name: "Quantize" }));
+
+    const next = onWarp.mock.calls.at(-1)?.[0] as WarpState;
+    // 2 s bars in 4/4: a 1/4 grid is 0.5 s.
+    expect(next.markers.map((marker) => marker.time)).toEqual([0, 0.5, 1.5]);
   });
 });

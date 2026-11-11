@@ -11,7 +11,6 @@
  */
 
 import { detectOnsets } from "@/lib/studio-peaks";
-import { snapToGrid } from "@/lib/studio-snap";
 
 export type WarpMode = "beat" | "transients" | "start-end";
 
@@ -172,10 +171,19 @@ export function quantiseWarpMarkers(
   secondsPerBar: number,
   beatsPerBar: number
 ): WarpMarker[] {
+  return quantiseWarpMarkersToStep(markers, secondsPerBar / Math.max(1, beatsPerBar));
+}
+
+/** Quantize to an explicit step (the clip editor's grid chips, triplets included). */
+export function quantiseWarpMarkersToStep(
+  markers: WarpMarker[],
+  step: number
+): WarpMarker[] {
+  if (!Number.isFinite(step) || step <= 0) return markers;
   const seen = new Set<number>();
   const next: WarpMarker[] = [];
   for (const marker of markers) {
-    const time = round(snapToGrid(marker.time, secondsPerBar, beatsPerBar));
+    const time = round(Math.round(marker.time / step) * step);
     const key = Math.round(time * 1000);
     if (seen.has(key)) continue;
     seen.add(key);
