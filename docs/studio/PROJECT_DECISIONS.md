@@ -728,3 +728,26 @@ now owns the decode cache so the timeline waveform and the clip editor analyse t
 peaks. Dragging a head changes `time` only, so the audio keeps its source alignment
 until `Shift Q` snaps the timeline positions to the grid. The rest of the settings
 column is tracked as a follow-up rather than hidden in the panel.
+
+## D-031 - Bounce renders the track; placing it back waits for storage
+
+**Date:** 2026-11-11 **Status:** accepted (in-place half blocked)
+
+**Decision.** "Bounce track" in the track menu renders that track's clips through its
+own effect chain (solo-aware like playback, with the master chain and unity master gain
+— the same shape as the per-track export) and hands the WAV to the browser, reporting
+`Bounce on <track> started!` the way the reference reports `Exporting on track #`.
+
+**Why not replace the track in place yet.** In-place bounce needs the rendered audio to
+live somewhere the project can point at. The only storage path is
+`POST /studio/uploads`, which currently answers `storage_not_configured` on the running
+sandbox API (B-006 has the moto env that fixes it, but the API was not started with
+it). Storing a PCM data URL inside the project document was rejected: a 4-bar stereo
+bounce is already ~1.4 MB of base64, and documents are JSONB rows that every save
+rewrites.
+
+**Consequences.** The captured gesture exists, the render is real, and the result is a
+file the user can immediately import back through Uploads. When storage is configured,
+the in-place variant is a small follow-up: upload the WAV, add a `(bounced)` track with
+one clip at the source track's span, and mute the source. Recorded in
+`PROJECT_BLOCKERS.md`.

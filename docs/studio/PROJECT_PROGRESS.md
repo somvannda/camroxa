@@ -2,6 +2,29 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-11 — Bounce a track (N-06)
+
+The track menu can render one track on its own, on top of the warp-marker branch
+(`feat/studio-bounce`).
+
+| Area | What landed |
+|---|---|
+| **Bounce** | "Bounce track" in the track options menu renders that track's clips through its own effect chain (master chain included, unity master gain) and hands back a `<project> - <track> (bounce).wav` |
+| **Reporting** | the toast follows the reference's `Exporting on track #`: `Bouncing <track>…` while it renders, then `Bounce on <track> started!`; the menu row disables with a reason when the track has no clips |
+| **Solo rule** | a bounce ignores the other tracks' solo state, so bouncing a soloed-out track is never silent (same rule as the per-track export, G39) |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, vitest **234/234**, full studio e2e includes
+the new bounce spec: a real 4 s clip downloads a valid RIFF of the expected size, and an
+emptied track disables the action.
+
+### Blocked
+
+True render-in-place needs the rendered file stored: `POST /studio/uploads` answers
+`storage_not_configured` on the running sandbox API. The in-place half is recorded in
+D-031 and `PROJECT_BLOCKERS.md`; the mixdown form is what the captured strings describe.
+
 ## Session 2026-11-11 — Warp markers (S30)
 
 The audio clip editor and its warp markers are in, on top of the time-selection branch

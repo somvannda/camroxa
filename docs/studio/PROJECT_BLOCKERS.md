@@ -138,6 +138,19 @@ variables to return to the previous behaviour.
 **Do not** stub the endpoint to return a fake upload: the Add button would then place a
 clip whose URL 404s.
 
+## B-007 — Render-in-place needs configured storage
+
+**Blocks:** the in-place half of N-06 (D-031). Bounce currently renders the track and
+downloads the WAV.
+
+**State:** the running sandbox API answers `POST /api/v3/web-music/studio/uploads` with
+`502 storage_not_configured`, so a bounced clip has no URL the project can point at.
+The mixdown path is unaffected.
+
+**Unblock:** start `platform_api` with the moto/streaming env from B-006 (or a real
+bucket), then upload the bounce, add a `(bounced)` track with one clip over the source
+track's span and mute the source. The write path already exists (`uploadStudioAudio`).
+
 ## Closed
 
 | ID | Was | Closed by |

@@ -90,6 +90,7 @@ functional controls the capture does not show (listed below).
 | Add is an icon button in rows | D-016 keeps Add next to drag without widening the measured row |
 | Heal Edits / Get MIDI / Remove FX | present in the captured order but disabled with reasons; the behaviours are not built |
 | Clip label colour | dark on pastel fills, white on the saturated reference fills (contrast-safe; the capture only shows white on purple) |
+| Bounce row in the track menu | the reference strings name `Bounce` / `Exporting on track #` but the menu itself was never captured row by row; the action renders the track and downloads the mixdown until storage allows render-in-place (D-031) |
 
 ## Still to measure
 
