@@ -80,6 +80,8 @@ DEPLOY_FILES = (
     "scripts/ops/audit_failed_music_refunds.py",
     "scripts/ops/refund_failed_music_charges.py",
     "scripts/ops/cap_usage.py",
+    # Read-only image fallback/pricing reconciliation (manual ops report).
+    "scripts/ops/image_fallback_billing_report.py",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [
