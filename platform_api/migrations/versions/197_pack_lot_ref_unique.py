@@ -19,7 +19,7 @@ Existing rows are untouched (all current pack lots have a unique reference or
 NULL), so this migration does not move any wallet balance.
 
 Revision ID: 197
-Revises: 196
+Revises: 185
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "197"
-down_revision = "196"
+down_revision = "185"
 branch_labels = None
 depends_on = None
 

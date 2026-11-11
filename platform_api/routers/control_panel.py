@@ -102,8 +102,6 @@ def _coerce_payload(value: Any) -> dict[str, Any]:
 
 def _notification_category(event_type: str) -> str:
     normalized = event_type.lower()
-    if normalized.startswith("creator_"):
-        return "creator"
     if "billing" in normalized or "redeem" in normalized:
         return "billing"
     if "desktop" in normalized or "download" in normalized:
@@ -115,30 +113,6 @@ def _notification_category(event_type: str) -> str:
 
 def _notification_copy(event_type: str, payload: dict[str, Any]) -> tuple[str, str]:
     normalized = event_type.lower()
-    if normalized == "creator_earning_halfway":
-        title = str(payload.get("title") or "Your track")
-        valid = int(payload.get("valid_streams") or 0)
-        listeners = int(payload.get("unique_listeners") or 0)
-        need_streams = int(payload.get("threshold_streams") or 500)
-        need_listeners = int(payload.get("threshold_listeners") or 50)
-        return (
-            "Halfway to earning",
-            f"{title} has {valid:,} valid streams and {listeners:,} unique listeners. "
-            f"At {need_streams:,} streams and {need_listeners:,} listeners it becomes eligible to earn.",
-        )
-    if normalized == "creator_earning_eligible":
-        title = str(payload.get("title") or "Your track")
-        return (
-            f"{title} is eligible to earn",
-            "Complete payout verification to unlock your earnings.",
-        )
-    if normalized == "creator_release_taken_down":
-        title = str(payload.get("title") or "Your release")
-        reason = str(payload.get("reason") or "Policy review")
-        return (
-            "Release taken down",
-            f"{title} was unpublished: {reason}.",
-        )
     if normalized == "suno_task_completed":
         status = str(payload.get("status") or "completed").replace("_", " ")
         task_id = str(payload.get("task_id") or "")[:8]

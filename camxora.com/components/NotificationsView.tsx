@@ -26,7 +26,6 @@ function categoryIcon(category: string): string {
   if (category === "billing") return "fa-credit-card";
   if (category === "security") return "fa-shield-halved";
   if (category === "generation") return "fa-music";
-  if (category === "creator") return "fa-chart-line";
   return "fa-bell";
 }
 
@@ -129,14 +128,6 @@ export function NotificationsView() {
                 </div>
                 <h3>{item.title}</h3>
                 <p>{item.message}</p>
-                {item.category === "creator" ? (
-                  <Link
-                    href="/creator/earnings"
-                    style={{ display: "inline-block", marginTop: 6, fontSize: 12, color: "var(--lav)" }}
-                  >
-                    View earnings
-                  </Link>
-                ) : null}
               </div>
             </article>
           ))}

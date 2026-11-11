@@ -47,19 +47,6 @@
   (`/admin/pricing`) — never hardcode a price in a route.
 - New schema changes ship as a new ordered migration file; never edit an applied migration.
 
-## UI craft (mandatory — unslop)
-Every UI change in `camxora.com/`, `admin_portal/`, and any future creator/admin surface must use the **`unslop`** skill before it is called done.
-
-1. Load the `unslop` skill and audit the screen against `references/signs.md`.
-2. Write the five-line direction (product, character, world, moments, signature) from the product itself — not from a trend.
-3. Run the passes in order: spacing, color, icons, copy, type, layout, details, visuals, motion.
-4. Do not add purple/violet hue gradients on chrome, gradient text, glows, colored shadows, emoji labels, uppercase tracked labels, looping motion, or `transition-all`.
-5. One accent, one bright content moment, quiet chrome. Use the product's real data, never `[X]` or `123,456`.
-6. Report the audit, direction, and what changed. If the screen is already good, say so and make only small refinements.
-7. **Creator screens must use the primitives in `camxora.com/components/CreatorUI.tsx` and the rules in `docs/creator-program/UI_SYSTEM.md`.** Never place content directly inside `className="panel"` (it has no padding), and never use bare `.btn` / `.auth-input` / `.auth-field` in creator screens. `CreatorPanel`, `CreatorField`, `CreatorButton`, and `styles.form` own the padding, gaps, and control heights.
-
-Skill source: `https://github.com/heydamir/unslop` — CC BY 4.0, created by Damir Sokolovsky ([@heydamir](https://x.com/heydamir)). Keep the credit in copies/adaptations.
-
 ## Legacy design system (Python/Electron only — NOT the active product)
 
 The rules below apply only to the legacy PyQt6 desktop app. Do not apply them to `musicapi/`.

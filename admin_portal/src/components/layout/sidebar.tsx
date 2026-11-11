@@ -32,8 +32,6 @@ import {
   Activity,
   Wallet,
   AlertTriangle,
-  ShieldCheck,
-  BadgeCheck,
 } from 'lucide-react';
 import { Mail } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -83,17 +81,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'User Spent', path: '/user-spent', icon: Wallet },
       { label: 'Finance', path: '/finance', icon: DollarSign },
       { label: 'Failed Refunds', path: '/failed-refunds', icon: AlertTriangle },
-    ],
-  },
-  {
-    label: 'Creators',
-    items: [
-      { label: 'Payout Verification', path: '/creators/kyc', icon: ShieldCheck },
-      { label: 'Badge Requests', path: '/creators/applications', icon: BadgeCheck },
-      { label: 'Release Moderation', path: '/creators/releases', icon: Radio },
-      { label: 'Royalty Periods', path: '/creators/royalties', icon: Coins },
-      { label: 'Creator Payouts', path: '/creators/payouts', icon: Wallet },
-      { label: 'Money Audit', path: '/creators/audit', icon: ScrollText },
     ],
   },
   {
@@ -158,12 +145,12 @@ export function Sidebar() {
         {!collapsed && (
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-800 text-sm font-semibold text-violet-300">
-                C
+              <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-violet-300/20 bg-gradient-to-br from-fuchsia-600/28 via-violet-500/24 to-indigo-500/24 text-violet-100">
+                <Sparkles className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-slate-100">Admin Portal</div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
                   Control center
                 </div>
               </div>
@@ -194,7 +181,7 @@ export function Sidebar() {
                 <Separator className="my-1 bg-white/8" />
               )
             ) : (
-              <div className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-slate-500">
+              <div className="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                 {group.label}
               </div>
             )}
@@ -206,9 +193,9 @@ export function Sidebar() {
                 <Link
                   to={item.path}
                   className={cn(
-                    'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150',
+                    'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-150',
                     isActive
-                      ? 'bg-slate-800 text-white shadow-[inset_2px_0_0_#8b5cf6]'
+                      ? 'bg-gradient-to-r from-fuchsia-600/18 via-violet-500/16 to-indigo-500/16 text-white shadow-[inset_0_0_0_1px_rgba(167,139,250,0.24)]'
                       : 'text-slate-400 hover:bg-slate-900/90 hover:text-slate-100',
                     collapsed && 'justify-center px-0'
                   )}

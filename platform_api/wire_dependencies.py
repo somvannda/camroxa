@@ -586,67 +586,6 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[streaming_admin_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_library_catalog] = real_streaming_catalog_service
 
-    # --- creators_public.py / creator_studio.py ---
-    from platform_api.routers.creator_studio import _get_creator_service as studio_creator_service
-    from platform_api.routers.creator_studio import _get_program_service as studio_program_service
-    from platform_api.routers.creator_studio import _get_release_service as studio_release_service
-    from platform_api.routers.creator_studio import _get_eligibility_service as studio_eligibility_service
-    from platform_api.routers.creator_studio import _get_payout_service as studio_payout_service
-    from platform_api.routers.creators_public import _get_creator_service as public_creator_service
-    from platform_api.routers.admin_creators import _get_program_service as admin_program_service
-    from platform_api.routers.admin_creators import _get_release_service as admin_release_service
-    from platform_api.routers.admin_creators import _get_eligibility_service as admin_eligibility_service
-    from platform_api.routers.admin_creators import _get_payout_service as admin_payout_service
-    from platform_api.routers.admin_creators import _get_royalty_engine_service as admin_royalty_service
-    from platform_api.services.creator_profile_service import CreatorProfileService
-    from platform_api.services.creator_program_service import CreatorProgramService
-    from platform_api.services.creator_release_service import CreatorReleaseService
-    from platform_api.services.creator_eligibility_service import CreatorEligibilityService
-    from platform_api.services.creator_payout_service import CreatorPayoutService
-    from platform_api.services.royalty_engine_service import RoyaltyEngineService
-
-    async def real_creator_profile_service() -> CreatorProfileService:
-        from platform_api.dependencies import get_db_pool
-
-        return CreatorProfileService(get_db_pool())
-
-    async def real_creator_program_service() -> CreatorProgramService:
-        from platform_api.dependencies import get_db_pool
-
-        return CreatorProgramService(get_db_pool())
-
-    async def real_creator_release_service() -> CreatorReleaseService:
-        from platform_api.dependencies import get_db_pool
-
-        return CreatorReleaseService(get_db_pool())
-
-    async def real_creator_eligibility_service() -> CreatorEligibilityService:
-        from platform_api.dependencies import get_db_pool
-
-        return CreatorEligibilityService(get_db_pool())
-
-    async def real_creator_payout_service() -> CreatorPayoutService:
-        from platform_api.dependencies import get_db_pool
-
-        return CreatorPayoutService(get_db_pool())
-
-    async def real_royalty_engine_service() -> RoyaltyEngineService:
-        from platform_api.dependencies import get_db_pool
-
-        return RoyaltyEngineService(get_db_pool())
-
-    app.dependency_overrides[public_creator_service] = real_creator_profile_service
-    app.dependency_overrides[studio_creator_service] = real_creator_profile_service
-    app.dependency_overrides[studio_program_service] = real_creator_program_service
-    app.dependency_overrides[admin_program_service] = real_creator_program_service
-    app.dependency_overrides[studio_release_service] = real_creator_release_service
-    app.dependency_overrides[admin_release_service] = real_creator_release_service
-    app.dependency_overrides[studio_eligibility_service] = real_creator_eligibility_service
-    app.dependency_overrides[admin_eligibility_service] = real_creator_eligibility_service
-    app.dependency_overrides[studio_payout_service] = real_creator_payout_service
-    app.dependency_overrides[admin_payout_service] = real_creator_payout_service
-    app.dependency_overrides[admin_royalty_service] = real_royalty_engine_service
-
     from platform_api.routers.web_music import _get_web_music_service as web_music_get_svc
     from platform_api.services.web_music_service import WebMusicService
 
