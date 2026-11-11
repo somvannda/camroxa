@@ -540,6 +540,10 @@ class KeyPoolService:
             A dict with total_keys, active_keys, rate_limited_keys,
             exhausted_keys, disabled_keys, and health_indicator.
         """
+        # Recover keys whose cooldown already expired before reporting. Selection
+        # also recovers, but health/admin reads must not keep showing a stale
+        # "critical" after the cooldown window has passed.
+        await self._check_and_recover_keys(provider)
         all_keys = await self._repo.list_by_provider(provider)
         status_counts = self._compute_status_counts(all_keys)
 
