@@ -96,13 +96,15 @@ async def deduct_split_draft_billing(
     include_title: bool = True,
     include_album: bool = True,
     pricing: PricingLookup | None = None,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, list[tuple[str, int]]]:
     """Deduct plan meter / wallet for each LLM draft slot (matches batch billing).
 
     Returns:
-        (charged_credit_units, list_credit_units, billed_slots) — charged is wallet
-        spend (0 on plan allowance); list is sum of pricing list units for COGS;
-        billed_slots is how many draft meter increments were applied.
+        (charged_credit_units, list_credit_units, billed_slots, slot_charges) —
+        charged is wallet spend (0 on plan allowance); list is sum of pricing
+        list units for COGS; billed_slots is how many draft meter increments
+        were applied; slot_charges is ``(operation, charged_units)`` per slot so
+        callers can settle a fallback to the model that actually ran.
     """
     slots = draft_billing_slots(
         draft_routing,
@@ -112,6 +114,7 @@ async def deduct_split_draft_billing(
     charged_total = 0
     list_total = 0
     billed_slots = 0
+    slot_charges: list[tuple[str, int]] = []
     try:
         for operation_type, provider, sub_model in slots:
             charged = await enforcement.deduct_for_operation(
@@ -122,7 +125,9 @@ async def deduct_split_draft_billing(
                 sub_model=sub_model,
             )
             billed_slots += 1
-            charged_total += int(charged or 0)
+            charged_units = int(charged or 0)
+            slot_charges.append((operation_type, charged_units))
+            charged_total += charged_units
             if charged > 0:
                 list_total += int(charged)
             elif pricing is not None:
@@ -133,7 +138,7 @@ async def deduct_split_draft_billing(
                     list_total += int(list_price or 0)
                 except Exception:
                     pass
-        return charged_total, list_total, billed_slots
+        return charged_total, list_total, billed_slots, slot_charges
     except Exception:
         if billed_slots > 0:
             try:

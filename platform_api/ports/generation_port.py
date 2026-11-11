@@ -126,6 +126,7 @@ class GenerationServicePort(Protocol):
         provider: str,
         model: str,
         skip_pricing: bool = False,
+        executed_out: dict[str, tuple[str, str]] | None = None,
     ) -> SongDraft:
         """Generate a song draft (title, album, lyrics) via LLM.
 
