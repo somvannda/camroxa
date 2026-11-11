@@ -7,6 +7,15 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.8] - 2026-11-11
+
+### Added
+
+- **Wrong-channel warning.** Settings → Profiles now compares the connected channel title with the
+  profile name and shows an amber warning when they do not match (case and spacing ignored). This is
+  the failure that sent Bass Gravity's videos to the Bass Prime channel; it is now visible before an
+  upload instead of after one.
+
 ## [1.6.7] - 2026-11-11
 
 ### Added
