@@ -4879,7 +4879,7 @@ html{color-scheme:dark}
 .se-clip:hover .se-fade-handle,.se-clip:focus-visible .se-fade-handle{opacity:1}
 .se-fade{position:absolute;left:0;top:0;bottom:0;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.55),transparent)}
 .se-clip-menu{position:fixed;z-index:70;display:flex;flex-direction:column;min-width:158px;padding:6px;border-radius:12px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45)}
-.se-clip-menu button{display:flex;align-items:center;gap:8px;justify-content:flex-start;min-height:38px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left}
+.se-clip-menu button{display:flex;align-items:center;gap:8px;justify-content:flex-start;min-height:38px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left;white-space:nowrap}
 .se-clip-menu button:hover:not(:disabled){background:rgba(255,255,255,.06)}
 .se-clip-menu .icon{width:12px;height:12px}
 .se-clip-menu button span{margin-left:auto;font-size:11px;opacity:.55}
@@ -5241,6 +5241,14 @@ html{color-scheme:dark}
 
 .se-loop-band{position:absolute;top:0;bottom:0;background:hsl(var(--accent));opacity:.12;pointer-events:none;z-index:1}
 .se-loop-handle{position:absolute;top:0;width:8px;height:16px;margin-left:-4px;border-radius:3px;background:hsl(var(--accent));z-index:5;cursor:ew-resize;padding:0}
+.se-range{position:absolute;top:0;bottom:0;z-index:2;pointer-events:none}
+.se-range-fill{position:absolute;inset:0;background:hsl(var(--accent) / .07);border-left:1px solid hsl(var(--accent) / .55);border-right:1px solid hsl(var(--accent) / .55)}
+.se-range-handle{position:absolute;top:0;bottom:0;width:14px;padding:0;border:0;background:transparent;pointer-events:auto;cursor:ew-resize;z-index:1}
+.se-range-handle.start{left:-7px}
+.se-range-handle.end{right:-7px}
+.se-range-handle::after{content:"";position:absolute;top:6px;bottom:6px;left:6px;width:2px;border-radius:1px;background:hsl(var(--accent) / .85)}
+.se-range-ruler{position:absolute;top:0;bottom:0;background:hsl(var(--accent) / .18);border-bottom:2px solid hsl(var(--accent) / .8);pointer-events:none}
+.se-clip-menu-head{padding:4px 8px 8px;font-size:11px;color:#8b90a6;font-variant-numeric:tabular-nums}
 
 .se-lib-head-title{display:flex;align-items:center;gap:8px;color:#f7f4ef}
 .se-lib-head-title .icon{width:14px;height:14px}

@@ -39,6 +39,12 @@ import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { fetchGeneration, generateSong } from "@/lib/create-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
+import {
+  deleteTimeRange,
+  duplicateTimeRange,
+  normaliseRange,
+  type TimeRange,
+} from "@/lib/studio-time";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
 import { EXPORT_TARGET_PEAK_DB } from "@/lib/studio-normalise";
@@ -321,6 +327,9 @@ export function StudioEditorShell() {
       moved: false,
       hit: [],
     };
+    // Clicking empty space is "no selection" (spec §2), so the range goes too.
+    setTimeSelection(null);
+    setRangeMenu(null);
     setSelectedIds([]);
     setSelectedClip(null);
     seekTo(Math.max(0, Math.min(duration, (x / barWidth) * secondsPerBar)));
@@ -381,12 +390,16 @@ export function StudioEditorShell() {
     writeProjectData({ ...data, lanes: updated }, "trimming the clip");
   }
 
-  /** Press on a clip: select it (or keep the group) and start a drag session (G7/G8). */  function handleClipPointerDown(
+  /** Press on a clip: select it (or keep the group) and start a drag session (G7/G8). */
+  function handleClipPointerDown(
     event: React.PointerEvent<HTMLButtonElement>,
     clip: ClipLike,
     trackId: string
   ) {
     event.stopPropagation();
+    // Selection is contextual (spec §2): a clip press replaces a time range.
+    setTimeSelection(null);
+    setRangeMenu(null);
     setSelectedTrack(trackId);
     setSelectedClip(clip.id);
     // Selecting an audio clip leaves the MIDI editor; a MIDI clip opens it.
@@ -499,6 +512,15 @@ export function StudioEditorShell() {
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(0);
   const loopDragRef = useRef(false);
+  /** Time selection (N-01), created by dragging on the bar ruler; not persisted. */
+  const [timeSelection, setTimeSelection] = useState<TimeRange | null>(null);
+  const [rangeMenu, setRangeMenu] = useState<{ x: number; y: number } | null>(null);
+  const rangeDragRef = useRef<{
+    anchor: number;
+    startX: number;
+    moved: boolean;
+    edge: "start" | "end" | null;
+  } | null>(null);
   const [metronome, setMetronome] = useState(false);
   const [bpm, setBpm] = useState(120);
   /** Meter (H-13): editable in the header, persisted in the project columns. */
@@ -1563,6 +1585,164 @@ export function StudioEditorShell() {
       window.removeEventListener("pointerup", up);
     };
   });
+  /** Convert a pointer position into a project time, using the lane grid. */
+  function timeAtClientX(clientX: number): number | null {
+    const lanes = document.querySelector(".se-lanes-inner");
+    if (!lanes) return null;
+    const rect = lanes.getBoundingClientRect();
+    return Math.max(0, ((clientX - rect.left) / barWidth) * secondsPerBar);
+  }
+
+  /** Snap a time to the project grid and keep it inside the arrangement. */
+  function snapProjectTime(seconds: number): number {
+    return Math.max(0, Math.min(duration, snapToGrid(seconds, secondsPerBar, beatsPerBar)));
+  }
+
+  /**
+   * Press on the bar ruler: a click seeks, a drag selects a time range (N-01, spec §2).
+   * Shift-click extends the existing range instead of starting a new one.
+   */
+  function handleRulerPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    const at = timeAtClientX(event.clientX);
+    if (at === null) return;
+    const snapped = snapProjectTime(at);
+    setSelectedIds([]);
+    setSelectedClip(null);
+    if (event.shiftKey) {
+      const step = secondsPerBar / beatsPerBar;
+      setTimeSelection((current) => {
+        if (!current) return normaliseRange(snapped, snapped + step);
+        // The far edge stays put; the clicked end moves to the pointer.
+        const anchor = snapped < current.start ? current.end : current.start;
+        return normaliseRange(anchor, snapped) ?? current;
+      });
+      rangeDragRef.current = null;
+      return;
+    }
+    rangeDragRef.current = { anchor: snapped, startX: event.clientX, moved: false, edge: null };
+    seekTo(snapped);
+  }
+
+  /** Grab an edge of the time selection to resize it. */
+  function handleRangeHandleDown(
+    event: React.PointerEvent<HTMLButtonElement>,
+    edge: "start" | "end"
+  ) {
+    event.stopPropagation();
+    event.preventDefault();
+    if (!timeSelection) return;
+    setSelectedIds([]);
+    setSelectedClip(null);
+    rangeDragRef.current = {
+      anchor: edge === "start" ? timeSelection.end : timeSelection.start,
+      startX: event.clientX,
+      moved: false,
+      edge,
+    };
+  }
+
+  /** Right-click on the ruler opens the range verbs when a selection exists. */
+  function handleRulerContextMenu(event: React.MouseEvent<HTMLDivElement>) {
+    if (!timeSelection) return;
+    event.preventDefault();
+    setRangeMenu({ x: event.clientX, y: event.clientY });
+  }
+
+  /** Follow a ruler / handle drag on the window, then commit it on release. */
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const session = rangeDragRef.current;
+      if (!session) return;
+      if (!session.moved && !isDrag(event.clientX - session.startX)) return;
+      session.moved = true;
+      const at = timeAtClientX(event.clientX);
+      if (at === null) return;
+      setTimeSelection(normaliseRange(session.anchor, snapProjectTime(at)));
+    };
+    const up = () => {
+      rangeDragRef.current = null;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  });
+
+  /** Shift+arrow grows the selection one grid step at a time (spec §36). */
+  function extendTimeSelection(direction: "left" | "right") {
+    const step = secondsPerBar / beatsPerBar;
+    setSelectedIds([]);
+    setSelectedClip(null);
+    setTimeSelection((current) => {
+      if (!current) {
+        const at = snapProjectTime(playheadRef.current);
+        return direction === "right"
+          ? normaliseRange(at, Math.min(duration, at + step))
+          : normaliseRange(Math.max(0, at - step), at);
+      }
+      const next =
+        direction === "right"
+          ? { start: current.start, end: Math.min(duration, current.end + step) }
+          : { start: Math.max(0, current.start - step), end: current.end };
+      return normaliseRange(next.start, next.end);
+    });
+  }
+
+  function clearTimeSelection() {
+    setTimeSelection(null);
+    setRangeMenu(null);
+  }
+
+  /**
+   * Delete the selected time and ripple the later clips left (N-01).
+   * `scope: "track"` is the reference's "Delete Time on Selected Tracks".
+   */
+  function deleteSelectedTime(scope: "all" | "track") {
+    const range = timeSelection;
+    if (!range || !projectId) return;
+    const trackIds = scope === "track" ? (selectedTrack ? [selectedTrack] : []) : undefined;
+    if (trackIds && trackIds.length === 0) return;
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const next = deleteTimeRange({ lanes, tracks }, range, trackIds);
+    writeProjectData(
+      { ...data, lanes: next.lanes, tracks: next.tracks },
+      "deleting time",
+      next.tracks
+    );
+    setRangeMenu(null);
+  }
+
+  /** Copy the selected time after itself and push later clips right (N-01). */
+  function duplicateSelectedTime() {
+    const range = timeSelection;
+    if (!range || !projectId) return;
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const next = duplicateTimeRange({ lanes, tracks }, range);
+    writeProjectData(
+      { ...data, lanes: next.lanes, tracks: next.tracks },
+      "duplicating time",
+      next.tracks
+    );
+    setRangeMenu(null);
+  }
+
+  /** Point the loop at the time selection (N-09: "Loop selection"). */
+  function loopTimeSelection() {
+    if (!timeSelection) return;
+    setLoopStart(timeSelection.start);
+    setLoopEnd(timeSelection.end);
+    setLoop(true);
+    commitLoopRange(timeSelection.start, timeSelection.end);
+    setRangeMenu(null);
+  }
+
   function zoomBy(direction: 1 | -1) {
     setBarWidth((current) => {
       const index = ZOOM_LEVELS.indexOf(current);
@@ -2207,6 +2387,25 @@ export function StudioEditorShell() {
     };
   }, [clipMenu]);
 
+  /** Dismiss the time-selection menu the same way. */
+  useEffect(() => {
+    if (!rangeMenu) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".se-clip-menu")) return;
+      setRangeMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRangeMenu(null);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [rangeMenu]);
+
   /** CTRL/CMD + C / V / D on the arrangement (spec §36). */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2220,8 +2419,26 @@ export function StudioEditorShell() {
         return;
       }
 
-      // BACKSPACE / DELETE remove the selection (spec §36).
-      if (event.key === "Backspace" || event.key === "Delete") {
+      // Escape drops the time range; dialogs and menus handle their own dismissal.
+      if (
+        event.key === "Escape" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        timeSelection &&
+        !document.querySelector('[role="dialog"], [role="alertdialog"]')
+      ) {
+        event.preventDefault();
+        clearTimeSelection();
+        return;
+      }
+
+      // BACKSPACE / DELETE remove the selection (spec §36). The CTRL variants below
+      // are time edits, so they are left alone here.
+      if (
+        (event.key === "Backspace" || event.key === "Delete") &&
+        !event.metaKey &&
+        !event.ctrlKey
+      ) {
         if (activeClipIds().length === 0) return;
         event.preventDefault();
         deleteSelection();
@@ -2269,6 +2486,12 @@ export function StudioEditorShell() {
         if (event.altKey) return;
 
         if (event.shiftKey) {
+          // N-01: SHIFT ←/→ grows the time selection one grid step at a time.
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            extendTimeSelection(event.key === "ArrowRight" ? "right" : "left");
+            return;
+          }
           if (letter === "c") {
             event.preventDefault();
             setMetronome((value) => {
@@ -2342,6 +2565,17 @@ export function StudioEditorShell() {
 
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // N-01: destructive time edits act on the selected range.
+      if (event.key === "Backspace") {
+        event.preventDefault();
+        deleteSelectedTime(event.shiftKey ? "all" : "track");
+        return;
+      }
+      if (key === "d" && event.shiftKey) {
+        event.preventDefault();
+        duplicateSelectedTime();
+        return;
+      }
       // Toggle loop (spec §36: CTRL L).
       if (key === "l") {
         event.preventDefault();
@@ -2907,14 +3141,15 @@ export function StudioEditorShell() {
         download(wav, `${project.title || "mix"}.wav`, "audio/wav");
         setExportToast("Full mix download started!");
       } else if (scope === "range") {
-        // Exports exactly the loop range, the reference's "Selected Time Range" (§87).
+        // Exports the time selection, or the loop range as the reference fallback (§87).
+        const bounds = timeSelection ?? { start: loopStart, end: loopEnd };
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
           chains: trackChains,
           normalise,
           masterGain,
-          from: loopStart,
-          to: loopEnd,
+          from: bounds.start,
+          to: bounds.end,
         });
         download(wav, `${project.title || "mix"} - selection.wav`, "audio/wav");
         setExportToast("Selection download started!");
@@ -3629,7 +3864,7 @@ export function StudioEditorShell() {
         onCycleSpeed={() => setPlaybackRate((current) => (current === 1 ? 0.5 : current === 0.5 ? 2 : 1))}
         exportOpen={exportOpen}
         exporting={exporting}
-        rangeReady={loopEnd > loopStart}
+        rangeReady={Boolean(timeSelection) || loopEnd > loopStart}
         onToggleExport={() => setExportOpen((open) => !open)}
         onExport={(scope) => void runExport(scope)}
         normalise={exportNormalise}
@@ -3753,6 +3988,7 @@ export function StudioEditorShell() {
           loop={loop}
           loopStart={loopStart}
           loopEnd={loopEnd}
+          timeSelection={timeSelection}
           viewWidth={view.width}
           viewLeft={view.left}
           trimPreview={trimPreview}
@@ -3764,7 +4000,9 @@ export function StudioEditorShell() {
             if (event.dataTransfer.types.includes(SONG_DRAG_TYPE)) event.preventDefault();
           }}
           onLaneDrop={(event, trackId) => dropSongOnLane(event, trackId)}
-          onRulerSeek={(seconds) => seekTo(Math.max(0, Math.min(duration, seconds)))}
+          onRulerPointerDown={handleRulerPointerDown}
+          onRulerContextMenu={handleRulerContextMenu}
+          onRangeHandleDown={handleRangeHandleDown}
           onClipPointerDown={handleClipPointerDown}
           onClipContextMenu={handleClipContextMenu}
           onTrimPointerDown={handleTrimPointerDown}
@@ -4358,6 +4596,70 @@ export function StudioEditorShell() {
                   title="Clips carry no plugin chain in this editor"
                 >
                   <Icon name="fa-xmark" /> Remove FX
+                </button>
+              </div>
+            );
+          })()
+        : null}
+
+      {rangeMenu && timeSelection
+        ? (() => {
+            const from = clock(timeSelection.start).slice(0, 5);
+            const to = clock(timeSelection.end).slice(0, 5);
+            return (
+              <div
+                className="se-clip-menu"
+                role="menu"
+                aria-label="Time selection options"
+                style={{
+                  left: Math.min(rangeMenu.x, Math.max(8, window.innerWidth - 250)),
+                  top: Math.min(rangeMenu.y, Math.max(8, window.innerHeight - 320)),
+                }}
+              >
+                <div className="se-clip-menu-head">
+                  {from} – {to}
+                </div>
+                <button type="button" role="menuitem" onClick={loopTimeSelection}>
+                  <Icon name="fa-repeat" /> Loop selection
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => duplicateSelectedTime()}
+                >
+                  <Icon name="fa-clone" /> Duplicate time <span>Ctrl Shift D</span>
+                </button>
+                <div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => deleteSelectedTime("all")}
+                >
+                  <Icon name="fa-trash" /> Delete time <span>Ctrl Shift ⌫</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!selectedTrack}
+                  title={selectedTrack ? undefined : "Focus a track first"}
+                  onClick={() => deleteSelectedTime("track")}
+                >
+                  <Icon name="fa-trash" /> Delete time on this track
+                  <span>Ctrl ⌫</span>
+                </button>
+                <div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setRangeMenu(null);
+                    void runExport("range");
+                  }}
+                >
+                  <Icon name="fa-download" /> Export selection <span>WAV</span>
+                </button>
+                <button type="button" role="menuitem" onClick={clearTimeSelection}>
+                  <Icon name="fa-xmark" /> Clear selection <span>Esc</span>
                 </button>
               </div>
             );

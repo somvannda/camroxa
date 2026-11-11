@@ -38,6 +38,9 @@ export type TimelineDrag = {
 
 export type TimelineMarquee = { x1: number; y1: number; x2: number; y2: number };
 
+/** A time range dragged on the ruler (N-01); separate from the clip selection. */
+export type TimelineRange = { start: number; end: number };
+
 /**
  * Clip label colour for a clip fill. Pastel track colours (the editor's default
  * palette) need dark text to stay readable; the saturated reference colours keep
@@ -79,6 +82,8 @@ export type StudioTimelineProps = {
   loop: boolean;
   loopStart: number;
   loopEnd: number;
+  /** The time selection, if the user dragged one on the ruler (N-01). */
+  timeSelection?: TimelineRange | null;
   viewWidth: number;
   viewLeft: number;
   /** Live geometry while a trim grip is dragged. */
@@ -94,8 +99,12 @@ export type StudioTimelineProps = {
   onLaneDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void;
   /** Dropping a library song on a lane. */
   onLaneDrop?: (event: ReactDragEvent<HTMLDivElement>, trackId: string) => void;
-  /** Clicking the bar ruler moves the playhead (the lanes are covered by clips). */
-  onRulerSeek: (seconds: number) => void;
+  /** Clicking the bar ruler moves the playhead; dragging on it selects a time range. */
+  onRulerPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  /** Right-click on the ruler opens the time-selection menu when a range exists. */
+  onRulerContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  /** Grabbing either edge of the time selection. */
+  onRangeHandleDown?: (event: ReactPointerEvent<HTMLButtonElement>, edge: "start" | "end") => void;
   onClipPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, clip: TimelineClip, trackId: string) => void;
   onClipContextMenu: (event: React.MouseEvent<HTMLButtonElement>, clip: TimelineClip) => void;
   onTrimPointerDown: (
@@ -126,6 +135,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
     loop,
     loopStart,
     loopEnd,
+    timeSelection,
     viewWidth,
     viewLeft,
     trimPreview,
@@ -135,13 +145,18 @@ export function StudioTimeline(props: StudioTimelineProps) {
     onLanePointerDown,
     onLaneDragOver,
     onLaneDrop,
-    onRulerSeek,
+    onRulerPointerDown,
+    onRulerContextMenu,
+    onRangeHandleDown,
     onClipPointerDown,
     onClipContextMenu,
     onTrimPointerDown,
     onFadePointerDown,
     onLoopHandleDown,
   } = props;
+
+  const range =
+    timeSelection && timeSelection.end > timeSelection.start ? timeSelection : null;
 
   return (
     <div
@@ -155,17 +170,22 @@ export function StudioTimeline(props: StudioTimelineProps) {
       <div
         className="se-ruler-bars"
         aria-hidden="true"
-        onPointerDown={(event) => {
-          const inner = event.currentTarget.querySelector(".se-ruler-inner");
-          if (!(inner instanceof HTMLElement)) return;
-          const rect = inner.getBoundingClientRect();
-          onRulerSeek(Math.max(0, ((event.clientX - rect.left) / barWidth) * secondsPerBar));
-        }}
+        onPointerDown={onRulerPointerDown}
+        onContextMenu={onRulerContextMenu}
       >
         <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
           {Array.from({ length: barCount }).map((_, bar) => (
             <span key={`line-${bar}`} className="se-bar-line" style={{ left: bar * barWidth }} />
           ))}
+          {range ? (
+            <span
+              className="se-range-ruler"
+              style={{
+                left: (range.start / secondsPerBar) * barWidth,
+                width: ((range.end - range.start) / secondsPerBar) * barWidth,
+              }}
+            />
+          ) : null}
           {Array.from({ length: barCount }).map((_, bar) => {
             // Labels thin out as the zoom drops so numbers never collide (S05/S19 show
             // every second bar at the captured zoom).
@@ -320,6 +340,33 @@ export function StudioTimeline(props: StudioTimelineProps) {
             style={{ left: (playhead / secondsPerBar) * barWidth }}
             aria-hidden="true"
           />
+
+          {range ? (
+            <div
+              className="se-range"
+              style={{
+                left: (range.start / secondsPerBar) * barWidth,
+                width: ((range.end - range.start) / secondsPerBar) * barWidth,
+              }}
+              data-testid="se-range"
+            >
+              <span className="se-range-fill" aria-hidden="true" />
+              <button
+                type="button"
+                className="se-range-handle start"
+                aria-label="Selection start"
+                tabIndex={-1}
+                onPointerDown={(event) => onRangeHandleDown?.(event, "start")}
+              />
+              <button
+                type="button"
+                className="se-range-handle end"
+                aria-label="Selection end"
+                tabIndex={-1}
+                onPointerDown={(event) => onRangeHandleDown?.(event, "end")}
+              />
+            </div>
+          ) : null}
 
           {loop && loopEnd > loopStart ? (
             <>

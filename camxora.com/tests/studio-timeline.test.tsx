@@ -48,7 +48,7 @@ function props(overrides: Partial<StudioTimelineProps> = {}): StudioTimelineProp
     viewLeft: 0,
     onScroll: () => {},
     onLanePointerDown: () => {},
-    onRulerSeek: () => {},
+    onRulerPointerDown: () => {},
     onClipPointerDown: () => {},
     onClipContextMenu: () => {},
     onTrimPointerDown: () => {},
@@ -101,6 +101,22 @@ describe("StudioTimeline", () => {
 
     rerender(<StudioTimeline {...props({ loop: true, loopStart: 4, loopEnd: 4 })} />);
     expect(container.querySelector(".se-loop-band")).toBeNull();
+  });
+
+  it("draws the time selection band and its edge grips", () => {
+    const { container, rerender } = render(
+      <StudioTimeline {...props({ timeSelection: { start: 2, end: 6 } })} />
+    );
+    const band = container.querySelector(".se-range") as HTMLElement;
+    expect(band.style.left).toBe("96px");
+    expect(band.style.width).toBe("192px");
+    expect(container.querySelectorAll(".se-range-handle")).toHaveLength(2);
+    // The ruler mirrors the range so the drag origin is visible.
+    const ruler = container.querySelector(".se-range-ruler") as HTMLElement;
+    expect(ruler.style.width).toBe("192px");
+
+    rerender(<StudioTimeline {...props({ timeSelection: { start: 4, end: 4 } })} />);
+    expect(container.querySelector(".se-range")).toBeNull();
   });
 
   it("renders the marquee and snap line from the sessions it is given", () => {
