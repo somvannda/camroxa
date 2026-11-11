@@ -726,8 +726,8 @@ markers are the part S30 is about, and they are fully functional.
 **Consequences.** `lib/studio-warp.ts` is pure and unit-tested; `lib/studio-peaks.ts`
 now owns the decode cache so the timeline waveform and the clip editor analyse the same
 peaks. Dragging a head changes `time` only, so the audio keeps its source alignment
-until `Shift Q` snaps the timeline positions to the grid. The rest of the settings
-column is tracked as a follow-up rather than hidden in the panel.
+until `Shift Q` snaps the timeline positions to the grid. **Superseded in part:**
+D-032 shipped the rest of the settings column.
 
 ## D-031 - Bounce renders the track; placing it back waits for storage
 
@@ -751,3 +751,31 @@ file the user can immediately import back through Uploads. When storage is confi
 the in-place variant is a small follow-up: upload the WAV, add a `(bounced)` track with
 one clip at the source track's span, and mute the source. Recorded in
 `PROJECT_BLOCKERS.md`.
+
+## D-032 - Clip settings run through one playback planner
+
+**Date:** 2026-11-11 **Status:** accepted
+
+**Decision.** The captured §81 column is now real: Volume (dB), Loop, Reverse, Pitch,
+Speed and Quantize are stored on the clip as `audio` and applied by a single pure
+planner (`lib/studio-clip-audio.ts`) that both live playback and `renderMix` call. That
+is what keeps "bounce what you hear" true for clips as well as tracks.
+
+Semantics, chosen so the engine can honour them exactly:
+
+- **Volume** is a per-clip gain node in dB (−24…+12). It sits before the fade automation
+  so the fade stays a clean 0→1 ramp, and before the track gain/chain.
+- **Loop** repeats the source from the clip's stored offset to the end of the file to
+  fill the clip's timeline length; the clip still ends where the arrangement says.
+- **Reverse** plays a mirrored copy of the decoded buffer, with the start position and
+  the loop region mirrored too.
+- **Pitch and Speed both map to `playbackRate`.** Pitch is semitones (2× at +12), speed
+  is a percent (50–200). The engine has no time-stretcher, so pitching also changes
+  speed — the panel says so and D-030's deferral of this column is closed by this entry.
+- **Quantize** snaps the warp markers to the chosen grid (1/2…1/32, optional triplets),
+  reusing the S30 marker model rather than introducing a second one.
+
+**Consequences.** Defaults are exact no-ops (gain 0 dB adds no node, rate 1, no loop),
+so existing exports stay byte-identical — the export unit tests and the byte-level e2e
+specs pin that. `tests/e2e/studio-audio-settings.spec.ts` proves the gain reaches the
+mix by comparing exported RMS at 0 dB and −12 dB.

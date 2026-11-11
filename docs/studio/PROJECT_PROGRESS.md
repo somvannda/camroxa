@@ -2,6 +2,26 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-11 — Audio clip settings (§81)
+
+The captured Clip Settings column is fully live on top of the S30 editor
+(`feat/studio-audio-settings`), through one shared playback planner (D-032).
+
+| Area | What landed |
+|---|---|
+| **Volume** | per-clip gain in signed dB (−24…+12), a separate node so fades stay a clean ramp; heard in playback, export, bounce and per-clip download |
+| **Loop / Reverse** | Loop repeats the source from the clip's offset to the end of the file; Reverse plays a mirrored buffer with the start and loop region mirrored |
+| **Pitch / Speed** | Pitch stepper in semitones, Speed ×½/×2 with a % readout; both scale `playbackRate`, which the panel and D-032 state honestly (no time-stretch) |
+| **Quantize** | grid chips 1/2…1/32 plus Triplets and a Quantize button, snapping the S30 warp markers to the chosen step |
+| **Shared planner** | `lib/studio-clip-audio.ts` computes rate, reversed start, loop region and drain length for both live playback and `renderMix`, so bounce matches what you hear |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, vitest **255/255** (27 files), full studio e2e
+**116 passed / 1 skipped**. The new spec persists every control and compares exported
+RMS at 0 dB and −12 dB (ratio ≈ 0.25) to prove the gain reaches the mix; the existing
+byte-level export specs stay green because default settings are an exact no-op.
+
 ## Session 2026-11-11 — MIDI download (N-05)
 
 The clip menu can hand back the selected MIDI clips as one Standard MIDI file

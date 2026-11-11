@@ -30,8 +30,8 @@ browser tests, and the branch is main-synced.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run check:ui` | compliant |
-| `npm test` (vitest) | **238 / 238**, 26 files |
-| `npx playwright test` | **114 passed / 1 skipped** |
+| `npm test` (vitest) | **255 / 255**, 27 files |
+| `npx playwright test` | **116 passed / 1 skipped** |
 
 The single skip is the uploads spec's optional branch (`STUDIO_EXPECT_UPLOADS=1` when a
 bucket is configured).
@@ -42,6 +42,7 @@ bucket is configured).
 |---|---|
 | Time selection (N-01) | ruler drag/Shift-click, edge grips, range menu, delete/duplicate time with ripple, scoped delete, loop selection, range export unlock — `lib/studio-time.ts`, `tests/e2e/studio-time-selection.spec.ts` |
 | Warp markers (S30) | audio clip editor on double-click, Stretch switch + 3 captured modes + Formant, pennant markers over the waveform, drag/select/quantize — `lib/studio-warp.ts`, `components/studio/StudioAudioEditor.tsx` |
+| Clip settings (§81) | the whole captured column is live: Volume dB, Loop/Reverse, Pitch, Speed, Quantize; one planner drives playback and export — `lib/studio-clip-audio.ts` (D-032) |
 | Track bounce (N-06) | track menu renders that track through its chain and downloads a WAV, solo-aware — `tests/e2e/studio-bounce.spec.ts` |
 | MIDI download (N-05) | selected MIDI clips become one `.mid` (format 0, 480 PPQ) — `lib/studio-midi-file.ts` |
 
@@ -54,7 +55,6 @@ track; in-place waits for storage).
 | Item | Why | Where |
 |---|---|---|
 | Render-in-place bounce | `POST /studio/uploads` answers `storage_not_configured` on the running API; data-URL clips were rejected as document bloat | D-031, B-007 |
-| §81 settings column: Volume, Loop/Reverse, Pitch, Speed, Quantize | needs real audio behaviour the engine does not have yet | D-030 |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
 | Stems tile/upload halves of G12 | stems needs a genuinely generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
 | S60 / S61 captures | need a signed-in Suno reference session with a real moderation/no-credit trigger | `reference/CAPTURE_GAPS.md` |
@@ -91,7 +91,7 @@ Helpers in `scripts/`:
 | unit | `npm test` | snap, time edits, warp markers/onsets, MIDI file, meter, export, plugins, … |
 | component | `npm test` | header, footer, library, timeline, track panel, audio editor, MIDI editor |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | 43 specs, 114 passing |
+| e2e | `npm run test:e2e` | 43 specs, 116 passing |
 
 CI jobs on any PR touching `camxora.com`: `camxora-web-checks` (typecheck, `check:ui`,
 `npm test`, `npm run build`) and `camxora-e2e` (Postgres, Redis, musicapi,
