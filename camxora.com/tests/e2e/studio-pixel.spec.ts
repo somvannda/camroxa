@@ -791,7 +791,7 @@ test("the master chain shows the captured Limiter and remembers it", async ({ pa
 test("the compressor offers the captured sidechain routing", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
-  await createStudioProject(page, { title: "Pixel sidechain" });
+  const projectId = await createStudioProject(page, { title: "Pixel sidechain" });
   await page.getByRole("button", { name: "Track 1", exact: true }).click();
   await page.locator(".sp-add-inline").click();
   await page.getByRole("dialog", { name: "Add a track plugin" })
@@ -806,6 +806,24 @@ test("the compressor offers the captured sidechain routing", async ({ page }) =>
   const menu = page.getByRole("menu", { name: "Sidechain routing" });
   await menu.getByRole("menuitem", { name: /Track 1 .*Post-fader/ }).click();
   await expect(routing).toHaveText(/Track 1 .*Post-fader/);
+
+  // The write is asynchronous; wait for the document so the reload keeps the routing.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const project = (await response.json()) as {
+            data?: {
+              chains?: Record<string, Array<{ sidechain?: { tap?: string } | null }>>;
+            };
+          };
+          const chain = project.data?.chains?.["fixture-track"];
+          return chain?.[0]?.sidechain?.tap ?? null;
+        }, projectId),
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toBe("post");
 
   await page.reload();
   await page.getByRole("button", { name: "Track 1", exact: true }).click();
@@ -1506,7 +1524,14 @@ test("plugin cards offer the captured preset menu", async ({ page }) => {
   await slot.getByRole("button", { name: "Default" }).click();
   const menu = page.getByRole("menu", { name: "Compressor presets" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem")).toHaveText(["Default", "Vocal", "Drum Bus", "Gentle"]);
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "Clear all settings",
+    "Save preset…",
+    "Default",
+    "Vocal",
+    "Drum Bus",
+    "Gentle",
+  ]);
 
   await menu.getByRole("menuitem", { name: "Vocal" }).click();
   await expect(slot.getByRole("slider", { name: "Thresh" })).toHaveValue("-20");

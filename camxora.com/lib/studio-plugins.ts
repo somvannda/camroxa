@@ -291,6 +291,38 @@ export function presetsFor(id: string): PluginPreset[] {
   return PLUGIN_PRESETS[id as PluginId] ?? [];
 }
 
+/** A preset saved from the card's own menu (S46 "Save preset…"). */
+export type UserPreset = {
+  id: string;
+  name: string;
+  pluginId: string;
+  params: Record<string, number>;
+  mode?: string;
+};
+
+export function userPresetsFor(
+  presets: UserPreset[] | undefined,
+  pluginId: string
+): UserPreset[] {
+  return (presets ?? []).filter((preset) => preset.pluginId === pluginId);
+}
+
+export function makeUserPreset(
+  pluginId: string,
+  name: string,
+  params: Record<string, number>,
+  mode?: string,
+  stamp = Date.now().toString(36)
+): UserPreset {
+  return {
+    id: `preset-${stamp}`,
+    name: name.trim() || "My preset",
+    pluginId,
+    params: { ...params },
+    ...(mode ? { mode } : {}),
+  };
+}
+
 const BY_ID = new Map<string, PluginDef>(STUDIO_PLUGINS.map((plugin) => [plugin.id, plugin]));
 
 export function getPlugin(id: string): PluginDef | undefined {

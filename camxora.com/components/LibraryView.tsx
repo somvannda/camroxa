@@ -1098,7 +1098,11 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
         <button
           type="button"
           className="s-cover"
-          aria-label={ready ? `Play ${title}` : "Song not ready"}
+          aria-label={
+            ready
+              ? `Play ${title}${duration ? ` (${formatClipDuration(duration)})` : ""}`
+              : "Song not ready"
+          }
           onClick={(event) => {
             event.stopPropagation();
             if (ready) playClip(song, clip);

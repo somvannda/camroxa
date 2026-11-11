@@ -2,6 +2,24 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-11 — Plugin presets (S46) and two test races
+
+The preset menu now carries the captured three-part model: clear, save, browse.
+
+| Area | What landed |
+|---|---|
+| **Clear all settings** | top of the menu, no confirmation; resets the slot to its defaults and reads "Custom" |
+| **Save preset…** | inline name field; the current params (and mode) are copied into the project document's `pluginPresets`, so a preset survives reload and travels with the project |
+| **Saved presets** | listed under the starter sets and re-applied with their params/mode; `lib/studio-plugins.ts` owns the copy/normalise helpers with unit tests |
+| **Test races found** | the sidechain pixel test reloaded before its async save landed (now polls the document first), and the Library axe gate caught a real name mismatch: the cover button's label omitted the visible duration, so it now reads `Play <title> (<time>)` |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, vitest **277/277** (31 files), full studio e2e
+**134 passed / 2 skipped**, including the new preset spec and the repaired sidechain and
+Library a11y cases.
+
+
 ## Session 2026-11-11 — Clip transforms (Extend / Cover / Remaster)
 
 Generation is no longer Create-only in the editor: the clip menu runs paid Studio

@@ -16,11 +16,14 @@ import {
   customParamMap,
   defaultParams,
   getPlugin,
+  makeUserPreset,
   presetsFor,
+  userPresetsFor,
   type CustomPlugin,
   type ParamDef,
   type PluginChainEntry,
   type PluginId,
+  type UserPreset,
 } from "@/lib/studio-plugins";
 import {
   addCustomPlugin,
@@ -54,6 +57,14 @@ type Props = {
   onDesignPlugin?: () => void;
   /** Tracks available as a compressor sidechain key (S43). */
   tracks?: Array<{ id: string; name: string }>;
+  /** Presets saved from the card menu (S46 "Save preset…"). */
+  userPresets?: UserPreset[];
+  onSavePreset?: (
+    pluginId: string,
+    name: string,
+    params: Record<string, number>,
+    mode?: string
+  ) => void;
 };
 
 /**
@@ -543,10 +554,14 @@ export function StudioPluginDock({
   customPlugins = [],
   onDesignPlugin,
   tracks = [],
+  userPresets = [],
+  onSavePreset,
 }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [presetMenu, setPresetMenu] = useState<string | null>(null);
+  const [savePresetFor, setSavePresetFor] = useState<string | null>(null);
+  const [savePresetName, setSavePresetName] = useState("");
   const [sidechainMenu, setSidechainMenu] = useState<{ id: string; left: number; top: number } | null>(
     null
   );
@@ -637,6 +652,77 @@ export function StudioPluginDock({
                       <button
                         type="button"
                         role="menuitem"
+                        className="danger"
+                        onClick={() => {
+                          onChange(
+                            applyPreset(chain, entry.entryId, {
+                              id: null,
+                              name: "Custom",
+                              params: entry.custom
+                                ? { ...entry.custom.defaults }
+                                : defaultParams(plugin.id as PluginId),
+                            })
+                          );
+                          setPresetMenu(null);
+                        }}
+                      >
+                        Clear all settings
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={!onSavePreset}
+                        onClick={() => {
+                          setSavePresetFor(entry.entryId);
+                          setSavePresetName("");
+                        }}
+                      >
+                        Save preset…
+                      </button>
+                      {savePresetFor === entry.entryId ? (
+                        <div className="sp-preset-save">
+                          <input
+                            aria-label="Preset name"
+                            value={savePresetName}
+                            autoFocus
+                            placeholder="Preset name"
+                            onChange={(event) => setSavePresetName(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                onSavePreset?.(
+                                  plugin.id,
+                                  savePresetName,
+                                  entry.params,
+                                  entry.mode
+                                );
+                                setSavePresetFor(null);
+                                setSavePresetName("");
+                                setPresetMenu(null);
+                              }
+                              if (event.key === "Escape") setSavePresetFor(null);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSavePreset?.(
+                                plugin.id,
+                                savePresetName,
+                                entry.params,
+                                entry.mode
+                              );
+                              setSavePresetFor(null);
+                              setSavePresetName("");
+                              setPresetMenu(null);
+                            }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        role="menuitem"
                         className={!entry.dirty && entry.presetName === "Default" ? "on" : undefined}
                         onClick={() => {
                           onChange(
@@ -654,6 +740,27 @@ export function StudioPluginDock({
                         Default
                       </button>
                       {presetsFor(plugin.id).map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          role="menuitem"
+                          className={entry.presetId === preset.id ? "on" : undefined}
+                          onClick={() => {
+                            onChange(
+                              applyPreset(chain, entry.entryId, {
+                                id: preset.id,
+                                name: preset.name,
+                                params: preset.params,
+                                mode: preset.mode,
+                              })
+                            );
+                            setPresetMenu(null);
+                          }}
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                      {userPresetsFor(userPresets, plugin.id).map((preset) => (
                         <button
                           key={preset.id}
                           type="button"

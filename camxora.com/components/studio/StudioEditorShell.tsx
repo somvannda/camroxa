@@ -91,9 +91,11 @@ import { buildPluginChain } from "@/lib/studio-plugin-audio";
 import { addCustomPlugin } from "@/lib/studio-plugin-chain";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import {
+  makeUserPreset,
   sanitizeCustomPlugin,
   type CustomPlugin,
   type PluginChainEntry,
+  type UserPreset,
 } from "@/lib/studio-plugins";
 import {
   DESIGN_CARD_SUBTITLE,
@@ -2483,6 +2485,25 @@ export function StudioEditorShell() {
     setLocalChains(merged);
     const base = currentData() as Record<string, unknown>;
     writeProjectData({ ...base, chains: merged }, "the plugin chain");
+  }
+
+  /** S46 "Save preset…": the current slot settings become a reusable project preset. */
+  function savePluginPreset(
+    pluginId: string,
+    name: string,
+    params: Record<string, number>,
+    mode?: string
+  ) {
+    const data = currentData() as Record<string, unknown>;
+    const existing = Array.isArray(data.pluginPresets)
+      ? (data.pluginPresets as UserPreset[])
+      : [];
+    const preset = makeUserPreset(pluginId, name, params, mode);
+    writeProjectData(
+      { ...data, pluginPresets: [...existing, preset] },
+      "a preset"
+    );
+    setExportToast(`Preset “${preset.name}” saved.`);
   }
 
   /** Persist new start positions for one or more clips (drag result). */
@@ -5610,6 +5631,12 @@ export function StudioEditorShell() {
           trackName={tracks.find((track) => track.id === selectedTrack)?.name}
           customPlugins={customPlugins}
           tracks={tracks.map((track) => ({ id: track.id, name: track.name }))}
+          userPresets={
+            Array.isArray((currentData() as { pluginPresets?: unknown }).pluginPresets)
+              ? ((currentData() as { pluginPresets?: UserPreset[] }).pluginPresets ?? [])
+              : []
+          }
+          onSavePreset={savePluginPreset}
           onDesignPlugin={openPluginDesigner}
           onChange={(next) => commitChain(selectedTrack, next)}
         />

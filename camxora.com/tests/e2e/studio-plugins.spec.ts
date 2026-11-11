@@ -185,3 +185,58 @@ test("turning an EQ knob while playing changes the live level", async ({ page })
 
   await page.getByLabel("Pause", { exact: true }).click();
 });
+
+test("a plugin card clears its settings and saves a preset", async ({ page }) => {
+  test.setTimeout(120_000);
+  const tag = Math.random().toString(36).slice(2, 8);
+  const title = `Presets ${tag}`;
+  const projectId = await createStudioProject(page, { title });
+
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  await page
+    .getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Compressor/ })
+    .first()
+    .click();
+
+  const slot = page.locator(".sp-slot").first();
+
+  // Clear all settings (captured, top of the menu, no confirmation).
+  await slot.getByRole("button", { name: "Default" }).click();
+  await page
+    .getByRole("menu", { name: "Compressor presets" })
+    .getByRole("menuitem", { name: "Clear all settings" })
+    .click();
+  await expect(slot.getByRole("button", { name: "Custom" })).toBeVisible();
+
+  // Save the current settings as a named preset.
+  await slot.getByRole("button", { name: "Custom" }).click();
+  const menu = page.getByRole("menu", { name: "Compressor presets" });
+  await menu.getByRole("menuitem", { name: "Save preset…" }).click();
+  await menu.getByLabel("Preset name").fill("My Glue");
+  await menu.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toContainText("saved");
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const project = (await response.json()) as {
+            data?: { pluginPresets?: Array<{ name: string; pluginId: string }> };
+          };
+          return project.data?.pluginPresets ?? [];
+        }, projectId),
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toEqual([expect.objectContaining({ name: "My Glue", pluginId: "compressor" })]);
+
+  // The saved preset appears in the same menu and can be re-applied.
+  await slot.getByRole("button", { name: /Custom|My Glue/ }).click();
+  await expect(
+    page
+      .getByRole("menu", { name: "Compressor presets" })
+      .getByRole("menuitem", { name: "My Glue" })
+  ).toBeVisible();
+});
