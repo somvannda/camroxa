@@ -442,13 +442,15 @@ async def generate_draft(
         draft_billing_slots,
     )
 
-    draft_charged, draft_list_units, draft_billed_slots = await deduct_split_draft_billing(
-        enforcement_service,
-        user_id=UUID(ctx.user_id),
-        channel_profile_id=request.channel_profile_id,
-        draft_routing=draft_routing,
-        include_title=not request.forced_title,
-        include_album=not request.forced_album,
+    draft_charged, draft_list_units, draft_billed_slots, draft_slot_charges = (
+        await deduct_split_draft_billing(
+            enforcement_service,
+            user_id=UUID(ctx.user_id),
+            channel_profile_id=request.channel_profile_id,
+            draft_routing=draft_routing,
+            include_title=not request.forced_title,
+            include_album=not request.forced_album,
+        )
     )
     draft_slots = draft_billing_slots(
         draft_routing,
@@ -456,6 +458,7 @@ async def generate_draft(
         include_album=not request.forced_album,
     )
 
+    executed_slots: dict[str, tuple[str, str]] = {}
     try:
         draft = await generation_service.submit_draft(
             ctx.user_id,
@@ -464,6 +467,7 @@ async def generate_draft(
             model=draft_routing.lyric.sub_model or "",
             draft_routing=draft_routing,
             skip_pricing=True,
+            executed_out=executed_slots,
         )
     except Exception:
         refund = getattr(enforcement_service, "refund_failed_operation", None)
@@ -481,6 +485,32 @@ async def generate_draft(
                 count=int(draft_billed_slots or len(draft_slots)),
             )
         raise
+
+    routed_by_slot = {
+        operation: (str(provider), model)
+        for operation, provider, model in draft_slots
+    }
+    for operation, charged_slot in draft_slot_charges:
+        executed = executed_slots.get(operation)
+        if charged_slot <= 0 or not executed:
+            continue
+        routed_provider, routed_model = routed_by_slot.get(
+            operation, (None, None)
+        )
+        try:
+            await enforcement_service.settle_text_charge(
+                user_id=UUID(ctx.user_id),
+                operation_type=operation,
+                charged_units=int(charged_slot),
+                routed_provider=routed_provider,
+                routed_model=routed_model,
+                executed_provider=executed[0],
+                executed_model=executed[1],
+            )
+        except Exception:
+            logger.debug(
+                "Draft slot settle failed for %s", operation, exc_info=True
+            )
 
     return DraftGenerationResponse(
         title=draft.title,
