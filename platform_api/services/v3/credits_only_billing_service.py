@@ -306,6 +306,7 @@ class CreditsOnlyBillingService:
         product: str | None = None,
         model: str | None = None,
         operation: str | None = None,
+        provider: str | None = None,
     ) -> dict[str, Any]:
         quote = await self.quote(
             op=op,
@@ -350,6 +351,11 @@ class CreditsOnlyBillingService:
             # Product context makes web vs desktop attribution provable for
             # image/lyric/title charges, which share the same reason strings.
             metadata["product"] = str(product)[:32]
+        if provider:
+            # The routed provider that will run the operation. Finance and the
+            # ops feed read this to attribute COGS and spend to the right
+            # backend (image charges share one reason string across providers).
+            metadata["provider"] = str(provider).strip().lower()[:32]
         if model:
             # Suno model (V6 / V6_WILD / V6_MINI) so ops can see which version
             # a spend actually bought.

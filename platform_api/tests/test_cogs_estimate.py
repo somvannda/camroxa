@@ -35,6 +35,55 @@ def test_resolve_cost_credits_prefers_exact_model() -> None:
     assert resolve_cost_credits(pricing, "music_generation", "suno", None) == 7.0
 
 
+def test_resolve_cost_credits_image_v3_op_and_uppercase_model() -> None:
+    """v3 image charges log op "image" and an uppercased model id.
+
+    Pricing rows are keyed by background_image/thumbnail_image, so the COGS
+    estimate must alias the generic op and match the model case-insensitively;
+    otherwise image spend silently reports no COGS in User Spent.
+    """
+    pricing = [
+        {
+            "ai_service": "slai",
+            "operation_type": "background_image",
+            "sub_model": "cx/gpt-image-2.5",
+            "external_cost_cents": 2 * CREDIT_SCALE,
+        },
+        {
+            "ai_service": "slai",
+            "operation_type": "thumbnail_image",
+            "sub_model": "cx/gpt-image-2.5",
+            "external_cost_cents": 2 * CREDIT_SCALE,
+        },
+        {
+            "ai_service": "kie",
+            "operation_type": "background_image",
+            "sub_model": "grok-imagine-image-2-0/text-to-image",
+            "external_cost_cents": 4 * CREDIT_SCALE,
+        },
+        {
+            "ai_service": "kie",
+            "operation_type": "thumbnail_image",
+            "sub_model": "grok-imagine-image-2-0/text-to-image",
+            "external_cost_cents": 4 * CREDIT_SCALE,
+        },
+    ]
+
+    assert resolve_cost_credits(pricing, "image", "", "CX/GPT-IMAGE-2.5") == 2.0
+    assert (
+        resolve_cost_credits(
+            pricing, "image", "KIE", "GROK-IMAGINE-IMAGE-2-0/TEXT-TO-IMAGE"
+        )
+        == 4.0
+    )
+    assert (
+        resolve_cost_credits(
+            pricing, "background_image", "slai", "cx/gpt-image-2.5"
+        )
+        == 2.0
+    )
+
+
 def test_resolve_model_cost_usd_averages_provider_rows() -> None:
     costs = [
         {"ai_service": "openai", "operation_type": "lyric", "sub_model": "a", "cost_usd": 0.02},

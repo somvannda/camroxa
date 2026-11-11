@@ -121,6 +121,12 @@ def _model_label(model: Any) -> str:
         "V6_MINI": "v6 mini",
         "V5_5": "v5.5",
         "V5": "v5",
+        # Image models share the same spend feed; keep their product names
+        # readable instead of the raw registry id.
+        "CX/GPT_IMAGE_2_5": "GPT-Image 2.5",
+        "CX/GPT_6_SOL_IMAGE": "GPT-6 Sol Image",
+        "GROK_IMAGINE_IMAGE_2_0/TEXT_TO_IMAGE": "Grok Imagine 2.0",
+        "GROK_IMAGINE_IMAGE_2_0": "Grok Imagine 2.0",
     }
     return labels.get(key, key.lower().replace("_", " "))
 
