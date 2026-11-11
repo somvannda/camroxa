@@ -1655,6 +1655,7 @@ class UsageEnforcementService:
             executed_model=model,
         )
         metadata["hold_settle"] = True
+        metadata["pricing_basis"] = "executed"
 
         if actual_units < held:
             delta = held - actual_units
