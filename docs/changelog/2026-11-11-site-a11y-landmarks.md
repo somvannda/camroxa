@@ -50,6 +50,19 @@ so every `(site)` page benefits, not just the Library.
 
 None. Markup and CSS only.
 
+## Create and marketing (same day)
+
+Axe on `/create` found one more naming defect: the model picker's visible value (`v6`)
+was not part of its accessible name (`"Model"`), so voice control could not address what
+it saw. The trigger is now labelled `Model: <value>`.
+
+The full run also caught dimmed Radix menu items (`aria-disabled`) at 2.38:1 — WCAG
+exempts disabled controls, but the labels are still read out, so `.s-menu` disabled items
+now use `--s-text3` instead of the faded tone.
+
+`tests/e2e/create-a11y.spec.ts` audits `/create` (signed in) and the marketing trio
+`/`, `/pricing`, `/discover`, so the global landmark fix is pinned on the public pages too.
+
 ## Tests
 
 | Layer | Result |
@@ -57,7 +70,7 @@ None. Markup and CSS only.
 | `npm run typecheck` | clean |
 | `npm run check:ui` | compliant |
 | Vitest | **268 passed** (29 files) |
-| Playwright | **124 passed / 2 skipped** — the two new axe cases plus the existing Studio a11y and pixel gates |
+| Playwright | **126 passed / 2 skipped** — Studio a11y + pixel gates, Library a11y (page, menu, uploads tab, dialog), Create and marketing pages |
 
 ## Follow-ups
 
