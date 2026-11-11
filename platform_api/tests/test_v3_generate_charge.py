@@ -426,3 +426,60 @@ async def test_v3_settle_keeps_held_when_executed_model_has_no_pricing() -> None
     assert settled == credits_to_units(6)
     assert credit_repo.deducts == []
     assert credit_repo.refunds == []
+
+
+@pytest.mark.asyncio
+async def test_text_charge_settles_to_executed_fallback_model() -> None:
+    """Lyric routed to SLAI (2) but served by openai-mini must be refunded."""
+    credit_repo = FakeCreditRepo()
+    service = _settle_service(
+        rows={
+            ("openai", "lyric", "gpt-4o-mini"): {
+                "credits_per_operation": 216
+            }
+        },
+        credit_repo=credit_repo,
+    )
+
+    settled = await service.settle_text_charge(
+        user_id=USER_ID,
+        operation_type="lyric",
+        charged_units=credits_to_units(2),
+        routed_provider="slai",
+        routed_model="xiaomi/mimo-v2.5-pro",
+        executed_provider="openai",
+        executed_model="gpt-4o-mini",
+    )
+
+    assert settled == 216
+    assert credit_repo.deducts == []
+    assert len(credit_repo.refunds) == 1
+    assert credit_repo.refunds[0]["amount"] == credits_to_units(2) - 216
+    assert credit_repo.refunds[0]["metadata"]["provider"] == "openai"
+
+
+@pytest.mark.asyncio
+async def test_text_charge_unchanged_when_same_price() -> None:
+    credit_repo = FakeCreditRepo()
+    service = _settle_service(
+        rows={
+            ("deepseek", "lyric", "deepseek-v4-flash"): {
+                "credits_per_operation": credits_to_units(2)
+            }
+        },
+        credit_repo=credit_repo,
+    )
+
+    settled = await service.settle_text_charge(
+        user_id=USER_ID,
+        operation_type="lyric",
+        charged_units=credits_to_units(2),
+        routed_provider="slai",
+        routed_model="xiaomi/mimo-v2.5-pro",
+        executed_provider="deepseek",
+        executed_model="deepseek-v4-flash",
+    )
+
+    assert settled == credits_to_units(2)
+    assert credit_repo.deducts == []
+    assert credit_repo.refunds == []

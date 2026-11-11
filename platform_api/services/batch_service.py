@@ -1248,11 +1248,13 @@ class BatchService:
             )
 
             draft_billed_slots = 0
+            draft_slot_charges: list[tuple[str, int]] = []
             if self._enforcement_service is not None:
                 (
                     draft_charged,
                     draft_list_units,
                     draft_billed_slots,
+                    draft_slot_charges,
                 ) = await self._deduct_split_draft_billing(
                     user_id=user_id,
                     channel_profile_id=channel_profile_id,
@@ -1279,6 +1281,7 @@ class BatchService:
                         )
                         secondary_draft_attributed = True
 
+            executed_slots: dict[str, tuple[str, str]] = {}
             draft = await self._generation_service.submit_draft(
                 user_id,
                 prepared_request,
@@ -1292,7 +1295,46 @@ class BatchService:
                     batch_index=song.batch_index,
                 ),
                 skip_pricing=self._enforcement_service is not None,
+                executed_out=executed_slots,
             )
+
+            if draft_slot_charges and self._enforcement_service is not None:
+                routed_by_slot = {
+                    "lyric": (
+                        str(draft_routing.lyric.provider),
+                        draft_routing.lyric.sub_model,
+                    ),
+                    "title": (
+                        str(draft_routing.title.provider),
+                        draft_routing.title.sub_model,
+                    ),
+                    "album": (
+                        str(draft_routing.album.provider),
+                        draft_routing.album.sub_model,
+                    ),
+                }
+                for operation, charged_slot in draft_slot_charges:
+                    executed = executed_slots.get(operation)
+                    if charged_slot <= 0 or not executed:
+                        continue
+                    routed_provider, routed_model = routed_by_slot.get(
+                        operation, (None, None)
+                    )
+                    try:
+                        await self._enforcement_service.settle_text_charge(
+                            user_id=UUID(user_id),
+                            operation_type=operation,
+                            charged_units=int(charged_slot),
+                            routed_provider=routed_provider,
+                            routed_model=routed_model,
+                            executed_provider=executed[0],
+                            executed_model=executed[1],
+                        )
+                    except Exception:
+                        logger.debug(
+                            "Batch draft settle failed for %s", operation,
+                            exc_info=True,
+                        )
 
             if use_content_pools and claimed_items:
                 for item in claimed_items:
@@ -4887,16 +4929,18 @@ class BatchService:
         channel_profile_id: UUID | None,
         draft_routing: Any,
         draft_request: DraftRequest,
-    ) -> tuple[int, int, int]:
+    ) -> tuple[int, int, int, list[tuple[str, int]]]:
         """Apply subscription quota or wallet billing for each LLM draft slot.
 
         Returns:
-            (charged_credit_units, list_credit_units, billed_slots) — charged is wallet
-            spend (0 on plan allowance); list is sum of pricing list units for COGS;
-            billed_slots is how many draft meter increments were applied.
+            (charged_credit_units, list_credit_units, billed_slots, slot_charges)
+            — charged is wallet spend (0 on plan allowance); list is sum of
+            pricing list units for COGS; billed_slots is how many draft meter
+            increments were applied; slot_charges is (operation, charged_units)
+            per slot for fallback settlement.
         """
         if self._enforcement_service is None:
-            return 0, 0, 0
+            return 0, 0, 0, []
 
         from platform_api.services.draft_billing import deduct_split_draft_billing
 
@@ -5193,9 +5237,7 @@ class BatchService:
                         batch.ok_profile_id,
                         "lyric",
                         bill_provider,
-                        charged_credit_units=int(
-                            getattr(charged, "charged_credit_units", 0) or 0
-                        ),
+                        charged_credit_units=int(charged or 0),
                         sub_model=bill_model or None,
                         reason="auto_suno_rewrite_failed",
                         ref_id=str(song.id),
@@ -5208,6 +5250,20 @@ class BatchService:
                 str(exc)[:200],
             )
             return False
+
+        if charged is not None and self._enforcement_service is not None:
+            try:
+                await self._enforcement_service.settle_text_charge(
+                    user_id=UUID(user_id),
+                    operation_type="lyric",
+                    charged_units=int(charged or 0),
+                    routed_provider=bill_provider,
+                    routed_model=bill_model or None,
+                )
+            except Exception:
+                logger.debug(
+                    "Auto-rewrite settle failed for song %s", song.id, exc_info=True
+                )
 
         cleaned = str(polished or "").strip()
         if not cleaned or cleaned == lyrics:

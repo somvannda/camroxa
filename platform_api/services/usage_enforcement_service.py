@@ -1692,6 +1692,61 @@ class UsageEnforcementService:
             return held
         return actual_units
 
+    async def settle_text_charge(
+        self,
+        *,
+        user_id: UUID,
+        operation_type: str,
+        charged_units: int,
+        routed_provider: str | None = None,
+        routed_model: str | None = None,
+        executed_provider: str | None = None,
+        executed_model: str | None = None,
+    ) -> int:
+        """Reconcile an up-front text charge with the model that served it.
+
+        Text is charged before generation. When the fallback chain advances to
+        another provider/model, the charge follows the routed model while the
+        executed one may cost a different amount. Adjust the difference (collect
+        or refund) when v3 billing is enabled; otherwise leave the charge alone.
+        """
+        charged = int(charged_units or 0)
+        if charged <= 0:
+            return charged
+        try:
+            if await self._v3_op_if_enabled(operation_type) is None:
+                return charged
+        except Exception:
+            return charged
+
+        provider = str(executed_provider or "").strip()
+        model = executed_model
+        if not provider:
+            try:
+                from platform_api.ai.providers.text.gateway import get_executed_text
+
+                executed = get_executed_text()
+            except Exception:
+                executed = None
+            if executed is None:
+                return charged
+            provider, model = executed[0], executed[1] or None
+        if not provider:
+            return charged
+
+        hold = OperationHold(held_units=charged, plan_covered=False, source="v3")
+        return await self._settle_v3_fallback(
+            user_id=user_id,
+            operation_type=operation_type,
+            ai_service=provider,
+            sub_model=model,
+            hold=hold,
+            routed_provider=routed_provider,
+            routed_model=routed_model,
+            executed_provider=provider,
+            executed_model=model,
+        )
+
     async def deduct_for_operation(
         self,
         user_id: UUID,

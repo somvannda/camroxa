@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from platform_api.ai.providers.text.gateway import TextProviderGateway
+from platform_api.ai.providers.text.gateway import TextProviderGateway, get_executed_text
 from platform_api.ai.parsing.response_parser import extract_chat_content
 from platform_api.exceptions import ExternalServiceError
 from platform_api.services.ai_routing_service import (
@@ -105,3 +105,4 @@ async def test_chat_completion_with_fallback_advances_on_non_retryable_400() -> 
     )
     assert response["choices"][0]["message"]["content"] == "ok:deepseek-v4-pro"
     assert client.models == ["deepseek-v4-flash", "deepseek-v4-pro"]
+    assert get_executed_text() == ("deepseek", "deepseek-v4-pro")

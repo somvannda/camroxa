@@ -1753,6 +1753,22 @@ class _ImageUrlResponse(Exception):
         super().__init__(url)
 
 
+def _remember_executed_text(
+    executed_out: dict[str, tuple[str, str]] | None, operation: str
+) -> None:
+    """Record which (provider, model) served a text slot, when tracking is on."""
+    if executed_out is None:
+        return
+    try:
+        from platform_api.ai.providers.text.gateway import get_executed_text
+
+        executed = get_executed_text()
+    except Exception:
+        return
+    if executed is not None:
+        executed_out[operation] = executed
+
+
 class GenerationService:
     """Orchestrates AI generation requests with credit management.
 
@@ -2051,6 +2067,7 @@ class GenerationService:
         draft_routing: DraftRouting | None = None,
         skip_pricing: bool = False,
         billing_context: DraftBillingContext | None = None,
+        executed_out: dict[str, tuple[str, str]] | None = None,
     ) -> SongDraft:
         """Generate a song draft (title, album, lyrics) via LLM.
 
@@ -2132,6 +2149,7 @@ class GenerationService:
             price=price,
             ref_id=ref_id,
             usage_metadata=usage_metadata,
+            executed_out=executed_out,
         )
 
     async def _submit_split_draft(
@@ -2146,6 +2164,7 @@ class GenerationService:
         price: int,
         ref_id: str,
         usage_metadata: dict[str, Any] | None = None,
+        executed_out: dict[str, tuple[str, str]] | None = None,
     ) -> SongDraft:
         """Generate title, album, and lyrics via their dedicated routing slots."""
         from platform_api.ai.parsing.response_parser import parse_string_field
@@ -2325,6 +2344,7 @@ class GenerationService:
                             provider_chain=album_chain,
                         )
                         album_calls += 1
+                        _remember_executed_text(executed_out, "album")
                         album = sanitize_metadata_name(
                             parse_string_field(album_raw, "album"),
                             field="album",
@@ -2409,6 +2429,7 @@ class GenerationService:
                             provider_chain=title_chain,
                         )
                         title_calls += 1
+                        _remember_executed_text(executed_out, "title")
                         title = sanitize_metadata_name(
                             parse_string_field(title_raw, "title"),
                             field="title",
@@ -2522,6 +2543,7 @@ class GenerationService:
                             provider_chain=lyric_chain,
                         )
                         lyric_calls += 1
+                        _remember_executed_text(executed_out, "lyric")
                         draft_lyrics = parse_plain_lyric_text(draft_raw)
                 except ExternalServiceError as exc:
                     last_failure_reason = f"Lyric LLM error on attempt {lyric_attempt}: {exc}"
@@ -2618,6 +2640,7 @@ class GenerationService:
                                 provider_chain=lyric_chain,
                             )
                             lyric_calls += 1
+                            _remember_executed_text(executed_out, "lyric")
                         except ExternalServiceError as exc:
                             last_failure_reason = (
                                 f"Lyric shape LLM error on attempt {lyric_attempt}: {exc}"
