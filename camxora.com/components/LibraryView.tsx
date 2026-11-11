@@ -18,6 +18,11 @@ import {
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
 import {
+  LIBRARY_FILTERS,
+  matchesLibraryFilters,
+  type LibraryFilterId,
+} from "@/lib/library-filters";
+import {
   fetchLikedTracks,
   type LikedTrack,
   type WebMusicClip,
@@ -93,18 +98,7 @@ type LibTab = (typeof TABS)[number]["id"];
 
 type FeedSort = "new" | "old" | "most" | "least";
 
-type FeedFilter =
-  | "liked"
-  | "disliked"
-  | "public"
-  | "private"
-  | "uploads"
-  | "full"
-  | "cover"
-  | "voice"
-  | "downloads"
-  | "hideDisliked"
-  | "hideStems";
+type FeedFilter = LibraryFilterId;
 
 type LibRow = {
   song: WebMusicGeneration;
@@ -123,19 +117,13 @@ type ConfirmState =
   | { kind: "playlist"; playlist: WebMusicPlaylistSummary }
   | null;
 
-const filterOptions: Array<{ id: FeedFilter; label: string; disabled?: boolean }> = [
-  { id: "liked", label: "Liked" },
-  { id: "disliked", label: "Disliked" },
-  { id: "public", label: "Public", disabled: true },
-  { id: "private", label: "Private", disabled: true },
-  { id: "uploads", label: "Uploads", disabled: true },
-  { id: "full", label: "Full song" },
-  { id: "cover", label: "Cover", disabled: true },
-  { id: "voice", label: "Voice", disabled: true },
-  { id: "downloads", label: "Downloads" },
-  { id: "hideDisliked", label: "Hide Disliked" },
-  { id: "hideStems", label: "Hide Stems", disabled: true },
-];
+const filterOptions: Array<{ id: FeedFilter; label: string; disabled?: boolean; reason?: string }> =
+  LIBRARY_FILTERS.map((filter) => ({
+    id: filter.id,
+    label: filter.label,
+    disabled: Boolean(filter.reason),
+    reason: filter.reason,
+  }));
 
 const SORT_OPTIONS: Array<{ id: FeedSort; label: string }> = [
   { id: "new", label: "Newest" },
@@ -426,12 +414,16 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
         `${row.title} ${row.song.style || ""} ${row.song.lyrics || ""}`.toLowerCase();
       if (!haystack.includes(searchTerm)) return false;
     }
-    if (filters.includes("liked") && !row.liked) return false;
-    if (filters.includes("disliked") && !row.disliked) return false;
-    if (filters.includes("hideDisliked") && row.disliked) return false;
-    if (filters.includes("downloads") && !row.ready) return false;
-    if (filters.includes("full") && row.duration > 0 && row.duration < 60) return false;
-    return true;
+    return matchesLibraryFilters(
+      {
+        liked: row.liked,
+        disliked: row.disliked,
+        ready: row.ready,
+        duration: row.duration,
+        instrumental: Boolean(row.song.instrumental),
+      },
+      filters
+    );
   });
 
   const sortedRows = [...filteredRows].sort((a, b) => {
@@ -1782,6 +1774,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                     className={on ? "on" : undefined}
                     checked={on}
                     disabled={option.disabled}
+                    title={option.reason}
                     onCheckedChange={() =>
                       setFilters((current) =>
                         current.includes(option.id)
@@ -1794,6 +1787,12 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                   </SMenuCheckboxItem>
                 );
               })}
+              {filters.length > 0 ? (
+                <>
+                  <div className="s-menu-sep" role="separator" />
+                  <SMenuItem onSelect={() => setFilters([])}>Clear filters</SMenuItem>
+                </>
+              ) : null}
             </SMenu>
           </div>
 
