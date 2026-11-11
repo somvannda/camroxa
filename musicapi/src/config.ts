@@ -60,6 +60,27 @@ export const config = {
   model: process.env.SUNO_MODEL ?? "chirp-hawk",
   captchaToken: process.env.SUNO_CAPTCHA_TOKEN ?? "",
   twoCaptchaKey: process.env.TWOCAPTCHA_KEY ?? "",
+  /**
+   * 2Captcha throttling. Suno requires a fresh Cloudflare Turnstile token for
+   * every generation, and 2Captcha answers `ERROR_NO_SLOT_AVAILABLE` when the
+   * account already has too many solves in flight. Cap concurrent solves so a
+   * batch retry cannot exceed the account's thread budget, and pause once
+   * before giving up so a momentary queue rejection does not fail the song.
+   *
+   * A rejection that survives the pause is surfaced as
+   * `CaptchaUnavailableError`; `sunoError.isCapacityExhaustionError` treats it
+   * as transient capacity, so the job is deferred with backoff instead of
+   * failed and refunded.
+   */
+  captcha: {
+    /** Maximum solves talking to 2Captcha at once, across the whole process. */
+    maxConcurrent: Math.max(1, Number(process.env.TWOCAPTCHA_MAX_CONCURRENT ?? 2)),
+    /** Pause before retrying a no-slot rejection once (0 disables the retry). */
+    noSlotRetryDelayMs: Math.max(
+      0,
+      Number(process.env.TWOCAPTCHA_NOSLOT_RETRY_DELAY_MS ?? 2_000),
+    ),
+  },
   /** Cloudflare Turnstile sitekey Suno mounts on its generation gate. */
   turnstileSitekey: process.env.SUNO_TURNSTILE_SITEKEY ?? "0x4AAAAAADI7xDNyj-3LcIbi",
   /** Page URL the Turnstile widget is served on (sent to 2Captcha). */

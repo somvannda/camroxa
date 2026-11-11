@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import { apiHeaders, baseHeaders, makeBrowserTokenHeader } from "./auth.js";
-import { solveCaptchaForAccount } from "./captcha.js";
+import { isCaptchaUnavailableError, solveCaptchaForAccount } from "./captcha.js";
 import { normalizeModel } from "./models.js";
 import { randomUUID } from "node:crypto";
 import { sunoHttpError } from "./sunoError.js";
@@ -347,6 +347,9 @@ export class SunoClient {
       }
       return "";
     } catch (e) {
+      // A full 2Captcha queue is transient capacity, not "captcha required":
+      // keep the typed error so the job can be deferred with backoff.
+      if (isCaptchaUnavailableError(e)) throw e;
       const msg = e instanceof Error ? e.message : String(e);
       if (/TWOCAPTCHA_KEY|2captcha|captcha/i.test(msg)) {
         throw new Error("captcha required: " + msg);

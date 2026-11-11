@@ -85,6 +85,21 @@ export function isInsufficientCreditsError(err: unknown): boolean {
 }
 
 /**
+ * Whether a failed submit means 2Captcha refuses to solve right now
+ * (`ERROR_NO_SLOT_AVAILABLE`: the account's solve queue is full).
+ *
+ * Captcha exhaustion is shared by every pooled Suno account, so retrying on a
+ * different account cannot help; the job must wait instead.
+ */
+export function isCaptchaUnavailableError(err: unknown): boolean {
+  if (err instanceof Error && err.name === "CaptchaUnavailableError") return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /captcha unavailable|ERROR_NO_SLOT_AVAILABLE|no slot available|captcha[^.]{0,80}maximum capacity|captcha queue (?:is )?full/i.test(
+    message,
+  );
+}
+
+/**
  * Whether a failed submit means the pool is dry *right now* rather than the job
  * being bad.
  *
@@ -95,6 +110,7 @@ export function isInsufficientCreditsError(err: unknown): boolean {
  */
 export function isCapacityExhaustionError(err: unknown): boolean {
   if (isInsufficientCreditsError(err)) return true;
+  if (isCaptchaUnavailableError(err)) return true;
   const message = err instanceof Error ? err.message : String(err);
   return /no suno account with available credits|no usable account|no paid suno account is available/i.test(
     message,
