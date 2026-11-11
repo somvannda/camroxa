@@ -3058,10 +3058,38 @@ class SettingsView(QWidget):
             return
         self._start_publish_connection(profile_id)
 
+    @staticmethod
+    def _channel_matches_profile(profile_name: str, channel_title: str) -> bool:
+        """True when the connected channel plausibly belongs to this profile.
+
+        "Bass Drive" vs "BASS DRIVE" is a match; "Bass Prime" vs "Bass Gravity"
+        is not, which is exactly the mix-up that sent videos to the wrong channel.
+        """
+        import re
+
+        def norm(value: object) -> str:
+            return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+        profile_key = norm(profile_name)
+        channel_key = norm(channel_title)
+        if not profile_key or not channel_key:
+            return True
+        return (
+            profile_key == channel_key
+            or profile_key in channel_key
+            or channel_key in profile_key
+        )
+
+    def _set_youtube_note(self, text: str, *, warning: bool = False) -> None:
+        self._profile_youtube_note.setText(text)
+        self._profile_youtube_note.setStyleSheet(
+            "color: #f59e0b; font-weight: 600;" if warning else ""
+        )
+
     def _refresh_profile_youtube_card(self) -> None:
         profile_id = self._selected_profile_id()
         if not profile_id:
-            self._profile_youtube_note.setText(
+            self._set_youtube_note(
                 "YouTube: Save this profile first before connecting a channel."
             )
             self._profile_youtube_connect_btn.setEnabled(False)
@@ -3079,19 +3107,43 @@ class SettingsView(QWidget):
                 or getattr(account, "username", None)
                 or "YouTube channel"
             )
-            self._profile_youtube_note.setText(f"YouTube connected: {name}")
+            profile_name = str(
+                getattr(self._selected_profile(), "name", "") or ""
+            )
+            if self._channel_matches_profile(profile_name, str(name)):
+                self._set_youtube_note(f"YouTube connected: {name}")
+            else:
+                self._set_youtube_note(
+                    f"YouTube connected to “{name}”, which does not match this "
+                    f"profile ({profile_name}). Reconnect and pick the right channel "
+                    "before uploading.",
+                    warning=True,
+                )
             self._profile_youtube_connect_btn.setText("Reconnect YouTube")
             self._profile_youtube_disconnect_btn.setEnabled(True)
         else:
             connection = self._youtube_connection_for(profile_id)
             if connection is not None and connection.status == "connected" and connection.channel_title:
-                self._profile_youtube_note.setText(
-                    f"YouTube connected: {connection.channel_title}"
+                profile_name = str(
+                    getattr(self._selected_profile(), "name", "") or ""
                 )
+                if self._channel_matches_profile(
+                    profile_name, str(connection.channel_title)
+                ):
+                    self._set_youtube_note(
+                        f"YouTube connected: {connection.channel_title}"
+                    )
+                else:
+                    self._set_youtube_note(
+                        f"YouTube connected to “{connection.channel_title}”, which "
+                        f"does not match this profile ({profile_name}). Reconnect "
+                        "and pick the right channel before uploading.",
+                        warning=True,
+                    )
                 self._profile_youtube_connect_btn.setText("Reconnect YouTube")
                 self._profile_youtube_disconnect_btn.setEnabled(True)
             else:
-                self._profile_youtube_note.setText("YouTube: Not connected")
+                self._set_youtube_note("YouTube: Not connected")
                 self._profile_youtube_connect_btn.setText("Connect YouTube")
                 self._profile_youtube_disconnect_btn.setEnabled(False)
         self._profile_youtube_connect_btn.setEnabled(True)
