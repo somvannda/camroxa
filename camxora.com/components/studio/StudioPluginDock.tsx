@@ -547,6 +547,9 @@ export function StudioPluginDock({
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [presetMenu, setPresetMenu] = useState<string | null>(null);
+  const [sidechainMenu, setSidechainMenu] = useState<{ id: string; left: number; top: number } | null>(
+    null
+  );
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -780,38 +783,96 @@ export function StudioPluginDock({
                 </div>
               )}
               {plugin.id === "compressor" ? (
-                <label className="sp-sidechain">
+                <div className="sp-sidechain">
                   <span>Sidechain</span>
-                  <select
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={sidechainMenu?.id === entry.entryId}
                     aria-label="Sidechain"
-                    value={
-                      entry.sidechain ? `${entry.sidechain.trackId}:${entry.sidechain.tap}` : "none"
-                    }
                     disabled={Boolean(entry.bypassed)}
-                    onChange={(event) => {
-                      const [trackId, tap] = event.target.value.split(":");
-                      onChange(
-                        setSidechain(
-                          chain,
-                          entry.entryId,
-                          trackId && (tap === "pre" || tap === "post")
-                            ? { trackId, tap }
-                            : null
-                        )
-                      );
+                    onClick={(event) => {
+                      if (sidechainMenu?.id === entry.entryId) {
+                        setSidechainMenu(null);
+                        return;
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setSidechainMenu({
+                        id: entry.entryId,
+                        left: rect.left,
+                        top: Math.max(8, rect.top - 320),
+                      });
                     }}
                   >
-                    <option value="none">None</option>
-                    {tracks.flatMap((track) => [
-                      <option key={`${track.id}:pre`} value={`${track.id}:pre`}>
-                        {track.name} — Pre-fx
-                      </option>,
-                      <option key={`${track.id}:post`} value={`${track.id}:post`}>
-                        {track.name} — Post-fader
-                      </option>,
-                    ])}
-                  </select>
-                </label>
+                    <span>
+                      {entry.sidechain
+                        ? `${
+                            tracks.find((track) => track.id === entry.sidechain?.trackId)?.name ??
+                            "Track"
+                          } — ${entry.sidechain.tap === "pre" ? "Pre-fx" : "Post-fader"}`
+                        : "None"}
+                    </span>
+                    <Icon name="fa-chevron-down" />
+                  </button>
+                  {sidechainMenu?.id === entry.entryId ? (
+                    <div
+                      className="sp-sidechain-menu"
+                      role="menu"
+                      aria-label="Sidechain routing"
+                      style={{ left: sidechainMenu.left, top: sidechainMenu.top }}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={!entry.sidechain ? "on" : undefined}
+                        onClick={() => {
+                          onChange(setSidechain(chain, entry.entryId, null));
+                          setSidechainMenu(null);
+                        }}
+                      >
+                        None
+                      </button>
+                      {tracks.flatMap((track) => [
+                        <button
+                          key={`${track.id}:pre`}
+                          type="button"
+                          role="menuitem"
+                          className={
+                            entry.sidechain?.trackId === track.id && entry.sidechain.tap === "pre"
+                              ? "on"
+                              : undefined
+                          }
+                          onClick={() => {
+                            onChange(
+                              setSidechain(chain, entry.entryId, { trackId: track.id, tap: "pre" })
+                            );
+                            setSidechainMenu(null);
+                          }}
+                        >
+                          {track.name} — Pre-fx
+                        </button>,
+                        <button
+                          key={`${track.id}:post`}
+                          type="button"
+                          role="menuitem"
+                          className={
+                            entry.sidechain?.trackId === track.id && entry.sidechain.tap === "post"
+                              ? "on"
+                              : undefined
+                          }
+                          onClick={() => {
+                            onChange(
+                              setSidechain(chain, entry.entryId, { trackId: track.id, tap: "post" })
+                            );
+                            setSidechainMenu(null);
+                          }}
+                        >
+                          {track.name} — Post-fader
+                        </button>,
+                      ])}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </article>
           );

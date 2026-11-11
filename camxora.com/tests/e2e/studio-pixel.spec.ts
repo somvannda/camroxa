@@ -776,16 +776,18 @@ test("the compressor offers the captured sidechain routing", async ({ page }) =>
     .click();
 
   const slot = page.locator(".sp-slot").first();
-  const select = slot.getByLabel("Sidechain");
-  await expect(select).toHaveValue("none");
-  await select.selectOption({ label: "Track 1 — Post-fader" });
-  await expect(select).toHaveValue("fixture-track:post");
+  const routing = slot.getByRole("button", { name: "Sidechain" });
+  await expect(routing).toHaveText(/None/);
+  await routing.click();
+  const menu = page.getByRole("menu", { name: "Sidechain routing" });
+  await menu.getByRole("menuitem", { name: /Track 1 .*Post-fader/ }).click();
+  await expect(routing).toHaveText(/Track 1 .*Post-fader/);
 
   await page.reload();
   await page.getByRole("button", { name: "Track 1", exact: true }).click();
-  await expect(page.locator(".sp-slot").first().getByLabel("Sidechain")).toHaveValue(
-    "fixture-track:post"
-  );
+  await expect(
+    page.locator(".sp-slot").first().getByRole("button", { name: "Sidechain" })
+  ).toHaveText(/Post-fader/);
 });
 
 test("the convolution card loads an impulse response from the library", async ({ page }) => {
