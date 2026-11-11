@@ -333,7 +333,11 @@ NEXT_PUBLIC_CAMXORA_ENV=production
 NEXT_PUBLIC_SITE_URL=https://camxora.com
 NEXT_PUBLIC_USER_PORTAL_URL=https://camxora.com
 ENVEOF
-  npm run build
+  attempt=1
+  until npm run build; do
+    if [ \"\$attempt\" -ge 2 ]; then echo 'ERROR: website build failed after retry'; exit 1; fi
+    attempt=\$((attempt+1)); echo 'website build failed; retrying in 10s'; sleep 10
+  done
 "
 
 log "Building music web (public streaming)..."
@@ -352,7 +356,11 @@ NEXT_PUBLIC_WEBSITE_URL=https://camxora.com
 NEXT_PUBLIC_CAMXORA_ENV=production
 NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
 ENVEOF
-  npm run build
+  attempt=1
+  until npm run build; do
+    if [ \"\$attempt\" -ge 2 ]; then echo 'ERROR: music_web build failed after retry'; exit 1; fi
+    attempt=\$((attempt+1)); echo 'music_web build failed; retrying in 10s'; sleep 10
+  done
 "
 
 log "Installing systemd units..."
