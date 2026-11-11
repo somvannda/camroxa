@@ -48,8 +48,10 @@ WHERE ct.reason = 'v3_music'
   AND NOT EXISTS (
         SELECT 1 FROM credit_transactions r
         WHERE r.user_id = ct.user_id
-          AND r.direction IN ('credit', 'refund')
-          AND r.reason ILIKE '%refund%'
+          -- Automatic refunds are named suno_generation_failed /
+          -- web_music_generation_failed; requiring '%refund%' in the reason hid
+          -- them and made this tool refund the same charge twice.
+          AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
           AND (r.ref_id = ct.ref_id
                OR r.ref_id = t.id::text
                OR r.ref_id = t.song_id::text))

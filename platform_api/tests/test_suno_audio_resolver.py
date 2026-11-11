@@ -667,8 +667,8 @@ async def test_poll_suno_generate_tries_next_key_on_owner_403(
     from platform_api.exceptions import ExternalServiceError
     from platform_api.services import suno_audio_resolver as resolver
 
-    async def fake_keys(_pool: object, provider: str | None = None) -> list[str]:
-        return ["owner", "other"]
+    async def fake_keys(_pool: object, provider: str | None = None) -> list[tuple[str, str]]:
+        return [(f"00000000-0000-0000-0000-00000000000{i}", value) for i, value in enumerate(["owner", "other"], start=1)]
 
     calls: list[str] = []
 
@@ -689,7 +689,7 @@ async def test_poll_suno_generate_tries_next_key_on_owner_403(
             },
         }
 
-    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+    monkeypatch.setattr(resolver, "active_suno_key_entries", fake_keys)
     monkeypatch.setattr(SunoClient, "check_status", fake_check_status)
 
     parsed = await resolver.poll_suno_generate_with_pool(object(), "task-1")

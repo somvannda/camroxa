@@ -4,10 +4,23 @@
 A failed generation must not keep the user's credits. Charges and refunds are
 keyed by the same reference, but *which* reference differs by product: web music
 uses the task id, desktop uses the batch song id. ``suno_tasks`` carries both
-(``id`` and ``song_id``), so match either — joining on only one of them produced
-a large false-positive list on 2026-11-04.
+(``id`` and ``song_id``), so a per-reference count works for both.
 
-Read-only.
+Matching is deliberately count-based, because a desktop song is charged once per
+attempt under the same song id and is retried after a failure:
+
+* every ``v3_music`` debit for the reference counts as a charge;
+* every refund for the reference (``direction='refund'`` or a ``%refund%``
+  reason — the automatic paths are named ``suno_generation_failed`` and
+  ``web_music_generation_failed``) counts as settled;
+* every **successful** task for the reference settles one charge too.
+
+The reference is reported only when charges > refunds + successes, it has a
+terminal failure, and no task on it is still in flight. That keeps a successful
+retry from being flagged as an unrefunded failure.
+
+Read-only. Charges with ``ref_id IS NULL`` (old desktop builds) cannot be
+matched by key and are counted separately as unverifiable.
 
 Exit codes: 0 = every failed charge was refunded, 1 = something is unrefunded,
 2 = error.
@@ -27,44 +40,96 @@ import asyncpg
 UNITS_PER_CREDIT = 10_000
 
 SQL = """
+WITH debits AS (
+    SELECT ct.user_id,
+           ct.ref_id AS ref,
+           count(*) AS charges,
+           sum(ct.amount) AS units
+    FROM credit_transactions ct
+    WHERE ct.reason = 'v3_music'
+      AND ct.direction = 'debit'
+      AND ct.ref_id IS NOT NULL
+      AND ct.created_at >= now() - ($1 || ' days')::interval
+    GROUP BY ct.user_id, ct.ref_id
+), refunds AS (
+    SELECT r.user_id, r.ref_id AS ref, count(*) AS settled
+    FROM credit_transactions r
+    WHERE (r.direction = 'refund' OR r.reason ILIKE '%refund%')
+      AND r.ref_id IS NOT NULL
+    GROUP BY r.user_id, r.ref_id
+), successes AS (
+    SELECT t.user_id, t.id::text AS ref, count(*) AS settled
+    FROM suno_tasks t
+    WHERE lower(t.status) = 'success'
+    GROUP BY t.user_id, t.id::text
+    UNION ALL
+    SELECT t.user_id, t.song_id::text AS ref, count(*) AS settled
+    FROM suno_tasks t
+    WHERE lower(t.status) = 'success' AND t.song_id IS NOT NULL
+    GROUP BY t.user_id, t.song_id::text
+)
 SELECT u.email,
-       t.status,
-       count(*) AS charges,
-       sum(ct.amount) AS units
-FROM credit_transactions ct
-JOIN users u ON u.id = ct.user_id
-JOIN suno_tasks t
-  ON ct.ref_id = t.id::text OR ct.ref_id = t.song_id::text
-WHERE ct.reason = 'v3_music'
-  AND ct.direction = 'debit'
-  AND lower(t.status) IN ('failed', 'error')
-  AND ct.created_at >= now() - ($1 || ' days')::interval
+       a.ref,
+       a.charges - COALESCE(rf.settled, 0) - COALESCE(su.settled, 0) AS charges,
+       a.units,
+       a.charges AS total_charges,
+       (SELECT string_agg(DISTINCT t.status, ',' ORDER BY t.status)
+        FROM suno_tasks t
+        WHERE t.user_id = a.user_id
+          AND (t.id::text = a.ref OR t.song_id::text = a.ref)) AS statuses
+FROM debits a
+JOIN users u ON u.id = a.user_id
+LEFT JOIN refunds rf ON rf.user_id = a.user_id AND rf.ref = a.ref
+LEFT JOIN successes su ON su.user_id = a.user_id AND su.ref = a.ref
+WHERE a.charges - COALESCE(rf.settled, 0) - COALESCE(su.settled, 0) > 0
+  -- A reference only counts once it has a terminal failure...
+  AND EXISTS (
+      SELECT 1 FROM suno_tasks t
+      WHERE t.user_id = a.user_id
+        AND (t.id::text = a.ref OR t.song_id::text = a.ref)
+        AND lower(t.status) IN ('failed', 'error'))
+  -- ...and nothing is still in flight on it.
   AND NOT EXISTS (
-        SELECT 1 FROM credit_transactions r
-        WHERE r.user_id = ct.user_id
-          AND r.direction IN ('credit', 'refund')
-          AND r.reason ILIKE '%refund%'
-          -- Charges and refunds are keyed differently by product: web uses the
-          -- task id, desktop uses the batch song id. A refund under either key
-          -- (or the charge's own) settles the attempt.
-          AND (r.ref_id = ct.ref_id
-               OR r.ref_id = t.id::text
-               OR r.ref_id = t.song_id::text))
-GROUP BY u.email, t.status
-ORDER BY sum(ct.amount) DESC;
+      SELECT 1 FROM suno_tasks t
+      WHERE t.user_id = a.user_id
+        AND (t.id::text = a.ref OR t.song_id::text = a.ref)
+        AND lower(t.status) NOT IN ('failed', 'error', 'success'))
+ORDER BY a.units DESC
+"""
+
+UNVERIFIABLE_SQL = """
+SELECT count(*) AS charges, COALESCE(sum(amount), 0) AS units
+FROM credit_transactions
+WHERE reason = 'v3_music'
+  AND direction = 'debit'
+  AND ref_id IS NULL
+  AND created_at >= now() - ($1 || ' days')::interval
 """
 
 
+def _owed_units(row: dict) -> int:
+    units = int(row["units"] or 0)
+    total = int(row["total_charges"] or 0)
+    owed = int(row["charges"] or 0)
+    if total <= 0:
+        return 0
+    return round(units * owed / total)
+
+
 async def run(dsn: str, days: int, as_json: bool) -> int:
+    window = str(max(1, days))
     conn = await asyncpg.connect(dsn=dsn)
     try:
-        rows = await conn.fetch(SQL, str(max(1, days)))
+        rows = await conn.fetch(SQL, window)
+        unverifiable = await conn.fetchrow(UNVERIFIABLE_SQL, window)
     finally:
         await conn.close()
 
-    total_units = sum(int(r["units"] or 0) for r in rows)
-    total_credits = Decimal(total_units) / UNITS_PER_CREDIT
     charges = sum(int(r["charges"] or 0) for r in rows)
+    total_units = sum(_owed_units(dict(r)) for r in rows)
+    total_credits = Decimal(total_units) / UNITS_PER_CREDIT
+    unverifiable_charges = int(unverifiable["charges"] or 0)
+    unverifiable_credits = Decimal(int(unverifiable["units"] or 0)) / UNITS_PER_CREDIT
 
     if as_json:
         print(
@@ -72,12 +137,15 @@ async def run(dsn: str, days: int, as_json: bool) -> int:
                 {
                     "unrefunded_failed_charges": charges,
                     "credits": float(total_credits),
+                    "unverifiable_null_ref_charges": unverifiable_charges,
                     "rows": [
                         {
                             "email": r["email"],
-                            "status": r["status"],
+                            "status": r["statuses"],
                             "charges": int(r["charges"] or 0),
-                            "credits": float(Decimal(int(r["units"] or 0)) / UNITS_PER_CREDIT),
+                            "credits": float(
+                                Decimal(_owed_units(dict(r))) / UNITS_PER_CREDIT
+                            ),
                         }
                         for r in rows
                     ],
@@ -92,8 +160,15 @@ async def run(dsn: str, days: int, as_json: bool) -> int:
         )
         for r in rows:
             print(
-                f"  {r['email']:34} {str(r['status']):8} "
-                f"{int(r['charges'] or 0):4}  {Decimal(int(r['units'] or 0)) / UNITS_PER_CREDIT:>8} credits"
+                f"  {r['email']:34} {str(r['statuses']):14} "
+                f"{int(r['charges'] or 0):4}  "
+                f"{Decimal(_owed_units(dict(r))) / UNITS_PER_CREDIT:>8} credits"
+            )
+        if unverifiable_charges:
+            print(
+                f"  note: {unverifiable_charges} unkeyed desktop charge(s) "
+                f"({unverifiable_credits} credits) cannot be matched by key; "
+                "see the admin failed-refunds audit"
             )
 
     return 1 if rows else 0

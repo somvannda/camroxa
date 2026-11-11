@@ -697,6 +697,23 @@ class KeyPoolService:
                         status_code,
                         provider,
                     )
+                elif status_code == 401:
+                    # The provider rejected this key. A 401 is key-specific in
+                    # practice (revoked key, or an account in arrears until it
+                    # is topped up), so park it for one cooldown and try the
+                    # next key instead of failing the whole request.
+                    await self._handle_auth_failed(
+                        provider, selected, status_code, response_body
+                    )
+                    logger.warning(
+                        "Failover [attempt %d/%d] key %s (%s) rejected (401) "
+                        "for provider '%s'. Retrying with next key.",
+                        attempt + 1,
+                        max_retries,
+                        selected.id,
+                        selected.label,
+                        provider,
+                    )
                 else:
                     # Other HTTP errors — report failure and re-raise immediately
                     await self.report_key_failure(
@@ -758,6 +775,7 @@ class KeyPoolService:
         """Report a failed API call — triggers status transitions and logging.
 
         For HTTP 429: marks key as rate_limited and sets cooldown.
+        For HTTP 401: parked as rate_limited by ``_handle_auth_failed``.
         For HTTP 402/403: marks key as exhausted.
         For other errors: increments failure counter without status change.
 
@@ -776,8 +794,9 @@ class KeyPoolService:
             await self._repo.increment_counters(
                 key_id, success=False, rate_limited=True
             )
-        elif status_code in (402, 403):
-            # Handled by _handle_exhausted in execute_with_failover
+        elif status_code in (401, 402, 403):
+            # Handled by _handle_auth_failed / _handle_exhausted in
+            # execute_with_failover
             await self._repo.increment_counters(key_id, success=False)
         else:
             # General failure — just increment counters
@@ -854,6 +873,46 @@ class KeyPoolService:
         )
 
         # Invalidate cache
+        await self._invalidate_cache(provider)
+
+    async def _handle_auth_failed(
+        self,
+        provider: str,
+        key_entry: ApiKeyEntry,
+        status_code: int,
+        response_body: str,
+    ) -> None:
+        """Park a key the provider rejected with 401 and rotate to the next one.
+
+        A 401 is key-specific in practice: the key was revoked, or the upstream
+        account is in arrears and rejects calls until it is topped up. Marking
+        it ``exhausted`` would remove it permanently (exhausted keys never
+        auto-recover), so park it as ``rate_limited`` for one provider cooldown
+        instead. When the cooldown expires the key is retried and a topped-up
+        account rejoins the pool without an admin action.
+        """
+        previous_status = key_entry.status
+        config = await self._get_provider_config(provider)
+
+        key_entry.status = KeyStatus.RATE_LIMITED
+        key_entry.rate_limited_at = datetime.utcnow()
+        await self._repo.update(key_entry)
+
+        cooldown_key = f"key_pool:{provider}:cooldown:{key_entry.id}"
+        await self._redis.set(cooldown_key, "1", ex=config.cooldown_seconds)
+
+        await self._repo.increment_counters(key_entry.id, success=False)
+
+        await self._record_status_event(
+            key_entry=key_entry,
+            provider=provider,
+            previous_status=previous_status,
+            new_status=KeyStatus.RATE_LIMITED,
+            trigger_reason=f"auth_rejected_{status_code}",
+            http_status_code=status_code,
+            response_summary=response_body[:200] if response_body else None,
+        )
+
         await self._invalidate_cache(provider)
 
     async def _handle_exhausted(

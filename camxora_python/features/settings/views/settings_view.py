@@ -1231,6 +1231,17 @@ class SettingsView(QWidget):
         self._pub_playlist.currentTextChanged.connect(self._on_publication_field_changed)
         form.addWidget(form_row("Playlist", self._pub_playlist))
 
+        self._pub_new_playlist = QLineEdit()
+        self._pub_new_playlist.setPlaceholderText("New playlist name")
+        self._pub_create_playlist_btn = QPushButton("Create playlist")
+        self._pub_create_playlist_btn.clicked.connect(self._create_playlist_from_ui)
+        new_playlist_row = QWidget()
+        new_playlist_layout = QHBoxLayout(new_playlist_row)
+        new_playlist_layout.setContentsMargins(0, 0, 0, 0)
+        new_playlist_layout.addWidget(self._pub_new_playlist, 1)
+        new_playlist_layout.addWidget(self._pub_create_playlist_btn)
+        form.addWidget(form_row("Add playlist", new_playlist_row))
+
         self._pub_description = self._make_text_edit(min_height=120)
         self._pub_keywords = QLineEdit()
         self._pub_tags = QLineEdit()
@@ -2528,6 +2539,33 @@ class SettingsView(QWidget):
                 break
         self._profile_list.blockSignals(False)
 
+    def _create_playlist_from_ui(self) -> None:
+        profile_id = str(self._publication_profile.currentData() or "").strip()
+        title = str(self._pub_new_playlist.text() or "").strip()
+        if not profile_id:
+            self._show_error("Select a channel profile first.")
+            return
+        if not title:
+            self._show_error("Type a playlist name first.")
+            return
+        try:
+            created = self._api.create_youtube_playlist(profile_id, title=title)
+        except Exception as exc:  # noqa: BLE001 - reported to the user
+            self._show_error(f"Could not create the playlist: {exc}")
+            return
+        self._pub_new_playlist.clear()
+        if getattr(created, "id", ""):
+            self._publication_draft.playlist = created.id
+            self._playlists_loaded_key = ""
+            self._load_publication_playlists(force=True)
+            index = self._pub_playlist.findData(created.id)
+            if index >= 0:
+                self._pub_playlist.setCurrentIndex(index)
+        self._show_save_success(
+            f"Playlist “{getattr(created, 'title', title)}” created. "
+            "Save Publication to use it for every upload."
+        )
+
     def _load_publication_playlists(self, *, force: bool = False) -> None:
         """Populate the Playlist dropdown for the selected profile's channel."""
         profile_id = self._publication_profile.currentData()
@@ -3224,7 +3262,11 @@ class SettingsView(QWidget):
             self._pub_category.setCurrentIndex(category_index)
         self._pub_playlist.clear()
         self._pub_playlist.addItem("No playlist", "")
-        self._pub_playlist.setEditText(self._publication_draft.playlist)
+        if self._publication_draft.playlist:
+            # Keep the saved id selectable until the channel's playlists load,
+            # otherwise the selection looks lost while the tab is opening.
+            self._pub_playlist.addItem("Saved playlist", self._publication_draft.playlist)
+            self._pub_playlist.setCurrentIndex(1)
         self._pub_made_for_kids.setChecked(self._publication_draft.made_for_kids)
         ai_index = self._pub_ai_use.findData(self._publication_draft.ai_use)
         if ai_index >= 0:
@@ -3641,7 +3683,7 @@ class SettingsView(QWidget):
             made_for_kids=self._pub_made_for_kids.isChecked(),
             ai_use=bool(self._pub_ai_use.currentData()),
             category=str(self._pub_category.currentData() or "10"),
-            playlist=self._pub_playlist.currentText(),
+            playlist=str(self._pub_playlist.currentData() or ""),
             title_template=self._pub_title_template.text(),
             description_template=self._pub_description_template.toPlainText(),
         )
@@ -3832,6 +3874,14 @@ class SettingsView(QWidget):
         profile = self._profile_by_id(profile_id)
         if not profile:
             return
+        chosen = str(self._publication_draft.playlist or "").strip()
+        if chosen and self._pub_playlist.count() > 1:
+            if self._pub_playlist.findData(chosen) < 0:
+                self._show_error(
+                    "That playlist no longer exists on the channel. Pick another one, "
+                    "or create a new playlist, then save."
+                )
+                return
         youtube_config = build_publication_payload(self._publication_draft, dict(profile.youtube_config or {}))
         worker = SaveProfileWorker(
             self._api,

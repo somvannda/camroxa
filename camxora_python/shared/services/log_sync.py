@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QThread, Signal
@@ -28,6 +30,35 @@ def build_client_log_payload() -> dict[str, Any] | None:
         "appVersion": get_app_version(),
         "clientLabel": "desktop",
     }
+
+
+def write_diagnostics_snapshot(directory: Path | None = None) -> Path | None:
+    """Save the same redacted snapshot the uploader uses to a local text file.
+
+    Works while signed out, unlike the upload: support can ask the user to attach
+    this file to a ticket when the session is already gone.
+    """
+    payload = build_client_log_payload()
+    if payload is None:
+        return None
+    target = Path(directory) if directory is not None else Path.home() / "Downloads"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        target = Path.home()
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = target / f"Camxora-diagnostics-{stamp}.txt"
+    header = (
+        "Camxora diagnostics\n"
+        f"Version: {get_app_version()}\n"
+        f"Saved: {datetime.now().isoformat(timespec='seconds')}\n"
+        f"{'-' * 60}\n"
+    )
+    try:
+        path.write_text(header + str(payload.get("content") or ""), encoding="utf-8")
+    except OSError:
+        return None
+    return path
 
 
 class SyncLogsWorker(QThread):

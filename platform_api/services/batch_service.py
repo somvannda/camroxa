@@ -3817,6 +3817,23 @@ class BatchService:
                     status=TaskStatus.FAILED,
                     error_message=str(poll_result.error or "").strip() or None,
                 )
+            else:
+                # Web Create tasks have no song/batch row, so the batch refund
+                # path cannot see them. Without this, a missed callback left the
+                # 10-credit charge in place forever.
+                source = str(row.get("source") or "").strip().lower()
+                if source == "web_music" and row.get("user_id"):
+                    from platform_api.dependencies import get_db_pool
+                    from platform_api.services.web_music_refund import (
+                        refund_web_music_generation_on_failure,
+                    )
+
+                    await refund_web_music_generation_on_failure(
+                        get_db_pool(),
+                        user_id=str(row["user_id"]),
+                        task_id=task_id,
+                        prior_status=row.get("status"),
+                    )
             reconciled += 1
         for batch_id in batches_to_run_images:
             await self._schedule_image_jobs_run(user_id=user_id, batch_id=batch_id)

@@ -6,6 +6,61 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-10] - Creator Program: publishing, royalties, payouts and tax
+
+### Added
+
+- `POST /api/v3/creator/releases/quick-publish` creates the artist profile on
+  first use and publishes a generation in one call. Publishing never requires an
+  application.
+- Royalty periods with a 10% reserve, creator earnings with a holdback that
+  releases hourly, and reserve release after a 90-day dispute window (daily job).
+- Payouts in KHR or USD with `gross_micros`, `withheld_micros`, `fx_rate` and
+  `payout_amount_minor`; the ledger stays in USD micros.
+- 30% US royalty withholding (Cambodia has no treaty), annual statements, and a
+  worker-checked `creator_money_audit` trail that rejects UPDATE and DELETE.
+- KYC documents encrypted at rest with a purpose-scoped key and served only
+  through an authenticated endpoint.
+
+### Fixed
+
+- Payout reconciliation compares earnings against payout gross, so withheld tax
+  is no longer reported as drift.
+- Reserve release uses the ledger's permitted `release` entry type; it previously
+  wrote an entry type the check constraint rejected, failing every release.
+
+See `docs/changelog/2026-11-10-creator-program.md`.
+
+## [2026-11-09] - YouTube quota counts retries on the day they happen
+
+### Fixed
+
+- `quota_status()` counted upload jobs by `created_at` only. Each `(batch, profile, role)` slot keeps one row (`record_upload_result` updates it), so re-uploading an older slot did not count toward the daily cap and Google rejected the transfer with `uploadLimitExceeded`. The query now counts a row when either its creation or its latest attempt (`updated_at`) falls inside the Pacific quota day. No schema change.
+
+## [2026-11-09] - Progress reports the real stage, export, merge, and YouTube state
+
+### Fixed
+
+- Progress mixed a `(batch, profile, role)` upload slot with a **batch-wide** YouTube aggregate, so one channel's successful upload marked its sibling Published and forced the stage to `Done`. Each slot now collapses to its newest attempt, a stale success URL is cleared on a later failure, and the batch fallback is limited to legacy rows with no slot. Terminal rows report Export and Merge as `Completed` instead of `Waiting for image assets`/`—`, a successful upload keeps the row at stage/status `Completed` (the YouTube column carries `Published`), and a failed upload becomes stage `YouTube` / status `Failed`. `record_upload_result` never downgrades a published slot. See `docs/changelog/2026-11-09-progress-status-truth.md`.
+
+## [2026-11-09] - Startup maintenance waits for the restart burst
+
+### Changed
+
+- The studio sweeper, streaming auto-retry and credit-grant maintenance ran immediately at startup, competing with every reconnecting client; the pool looked saturated for 8 minutes after the 2026-11-08 restart. They now start after a 60s grace. See `docs/changelog/2026-11-09-startup-background-grace.md`.
+
+## [2026-11-09] - LRC background tasks no longer log shutdown tracebacks
+
+### Fixed
+
+- Restarts logged `Task exception was never retrieved` / `InterfaceError('pool is closing')` from the fire-and-forget `_upload_web_music_lrc` task. A done-callback now consumes cancelled/successful tasks and downgrades the expected pool-closing case to debug, while still warning on real failures. See `docs/changelog/2026-11-09-lrc-task-hygiene.md`.
+
+## [2026-11-09] - Suno polls remember the owning key
+
+### Changed
+
+- Suno's record-info endpoint is account-scoped, so every poll used to try all 3 active keys (two guaranteed 403s). Polls now read `suno_tasks.suno_key_id` (migration `185`) and try that key first, falling back to a scan and re-pinning if it was rotated. Best-effort: lookup/update failures fall back to the old scan. See `docs/changelog/2026-11-09-suno-owner-key-pinning.md`.
+
 ## [2026-11-08] - DB pool acquire timeout + saturation warnings
 
 ### Fixed

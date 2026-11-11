@@ -318,6 +318,9 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.retry_drafts_requested.connect(self._retry_failed_drafts)
         self._rows_card.retry_suno_requested.connect(self._retry_failed_suno)
         self._rows_card.upload_youtube_requested.connect(self._upload_row_to_youtube)
+        self._rows_card.upload_youtube_with_playlist_requested.connect(
+            self._upload_row_to_youtube_with_playlist
+        )
         self._rows_card.cancel_publish_upload_requested.connect(self._cancel_publish_upload)
         self._rows_card.force_export_regenerate_requested.connect(
             lambda row: self._run_video_pipeline_action(row, "force_export")
@@ -730,6 +733,35 @@ class ProgressView(PollablePageMixin, QScrollArea):
             self._detail_card.set_syncing_batch_id(self._syncing_batch_id)
             self._rows_card.set_rows(filtered)
         self._update_meta_label(len(filtered))
+        self._sync_selected_detail(filtered)
+
+    def _sync_selected_detail(self, entries: list[EffectiveProgressRow]) -> None:
+        """Refresh the inspector from the current rows.
+
+        Polls and the 1s upload tick rebuild the table; if the selected row is
+        still present, re-bind it so live YouTube text and server state update
+        without requiring a new mouse click.
+        """
+        current = self._selected_entry
+        if current is None:
+            return
+        meta = current.row.meta
+        wanted = (
+            str(meta.batch_id or ""),
+            str(meta.profile_id or ""),
+            str(meta.role or "").strip().upper(),
+        )
+        for entry in entries:
+            emeta = entry.row.meta
+            key = (
+                str(emeta.batch_id or ""),
+                str(emeta.profile_id or ""),
+                str(emeta.role or "").strip().upper(),
+            )
+            if key == wanted:
+                self._selected_entry = entry
+                self._detail_card.set_entry(entry)
+                return
 
     def _update_meta_label(self, visible_count: int) -> None:
         stage_label = self._stage_filter.currentText()
@@ -750,7 +782,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         # Stats follow Active + Stage (same set as the table before Limit).
         entries = self._matching_effective_rows()
         active = sum(
-            1 for entry in entries if entry.effective_stage.lower() not in {"done", "error"}
+            1 for entry in entries if entry.effective_stage.lower() not in {"done", "completed", "error"}
         )
         converter = sum(
             1
@@ -1275,7 +1307,38 @@ class ProgressView(PollablePageMixin, QScrollArea):
         worker.requestInterruption()
         self._show_retry_notice("Cancelling the YouTube upload…", tone="neutral")
 
-    def _upload_row_to_youtube(self, row: object, merged_path: str) -> None:
+    def _upload_row_to_youtube_with_playlist(self, row: object, merged_path: str) -> None:
+        """Let the user override the playlist for this single upload."""
+        from PySide6.QtWidgets import QInputDialog
+
+        meta = getattr(row, "meta", None)
+        profile_id = str(getattr(meta, "profile_id", "") or "").strip()
+        options = ["Profile default", "No playlist"]
+        values = ["", "__none__"]
+        try:
+            for item in self._api.list_youtube_playlists(profile_id):
+                title = str(getattr(item, "title", "") or "").strip()
+                playlist_id = str(getattr(item, "id", "") or "").strip()
+                if playlist_id:
+                    options.append(title or playlist_id)
+                    values.append(playlist_id)
+        except Exception as exc:  # noqa: BLE001 - still allow the default
+            self._show_retry_notice(
+                f"Could not load playlists ({exc}); using the profile default.",
+                tone="warning",
+            )
+        choice, accepted = QInputDialog.getItem(
+            self, "Upload to YouTube", "Playlist for this video:", options, 0, False
+        )
+        if not accepted:
+            return
+        index = options.index(choice) if choice in options else 0
+        override = None if index == 0 else values[index]
+        self._upload_row_to_youtube(row, merged_path, playlist_id=override)
+
+    def _upload_row_to_youtube(
+        self, row: object, merged_path: str, *, playlist_id: str | None = None
+    ) -> None:
         """Manual publish for one finished merge (Progress row action)."""
         from features.workflow.lib.workflow_steps import format_upload_status
         from shared.lib.publish_auto import discover_merged_path, manual_publish_context
@@ -1313,6 +1376,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
                 batch_id=str(context.get("batch_id") or ""),
                 role=str(context.get("role") or "OK"),
                 merged_path=str(context.get("merged_path") or ""),
+                playlist_id=playlist_id,
                 parent=self,
             )
             worker.status_changed.connect(

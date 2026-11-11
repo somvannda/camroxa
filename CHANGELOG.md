@@ -7,6 +7,63 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.7] - 2026-11-11
+
+### Added
+
+- **Create a playlist from Settings** — Publication has a name field and *Create playlist*; the new
+  playlist is created on the connected channel and selected immediately (needs `youtube.force-ssl`).
+- **Per-upload playlist choice** — Progress → right-click → *Upload to YouTube (choose playlist)…*
+  offers the profile default, no playlist, or any playlist on the channel for that one video.
+
+### Fixed
+
+- The Publication **Playlist** dropdown saved the playlist title instead of its id, so every upload
+  sent a name where YouTube expects an id and `playlistItems.insert` could never match. It now stores
+  the id, keeps it selected while the channel's playlists load, and restores it by id.
+- Saving a playlist that no longer exists on the channel is refused with a clear message instead of
+  failing silently at upload time.
+
+### Notes
+
+- The playlist is **per profile**: every upload from that profile uses the selected playlist unless a
+  single upload overrides it.
+
+## [1.6.6] - 2026-11-09
+
+### Fixed
+
+- **ROW DETAIL follows a live YouTube upload.** The inspector read only the
+  server row, which does not exist until the transfer finishes, so a row that
+  the table showed as `Sending 73%` said `YouTube: Not started` on the right.
+  The inspector now reads the same live activity registry as the row and footer
+  and re-binds on every poll/upload tick.
+- **Stage stays `Completed` after publishing**, and `Published` is green in the
+  YouTube column. Publishing is the delivery step, not a separate `Done` stage.
+
+## [1.6.5] - 2026-11-09
+
+### Fixed
+
+- **Progress now reports the real YouTube, Export, Merge and completion state.**
+  A single channel upload no longer marks its sibling row Published, quota
+  failures are recorded as Failed instead of disappearing, finished rows report
+  Export/Merge as Completed, Completed rows report 100%, and Active Runs no
+  longer counts finished pipelines. The API side is live; this build adds the
+  desktop label, failure-reporting and Active-count changes. See
+  `docs/changelog/2026-11-09-progress-status-truth.md`.
+
+## [1.6.4] - 2026-11-09
+
+### Added
+
+- **"Save diagnostics file" on the sign-in screen.** The upload path needs a
+  session, which is exactly what is gone after an "Unauthenticated" sign-out.
+  This writes the same redacted log snapshot to
+  `~/Downloads/Camxora-diagnostics-<timestamp>.txt` (and opens the folder) so
+  support can get evidence while signed out. See
+  `docs/changelog/2026-11-09-desktop-save-diagnostics.md`.
+
 ## [1.6.3] - 2026-11-08
 
 ### Fixed

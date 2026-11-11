@@ -49,6 +49,25 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+
+def _log_background_task_error(task: "asyncio.Task[Any]") -> None:
+    """Consume fire-and-forget task errors so shutdown cannot log tracebacks.
+
+    LRC uploads are scheduled after the MP3 lands. If the app stops first, the
+    task hits ``asyncpg.InterfaceError('pool is closing')`` and, because nobody
+    retrieved it, shows up as "Task exception was never retrieved" on every
+    deploy.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is None:
+        return
+    if "pool is closing" in str(exc):
+        logger.debug("LRC upload stopped with the database pool closing.")
+    else:
+        logger.warning("LRC upload task failed: %s", exc)
+
 WEB_MUSIC_B2_BACKFILL_COOLDOWN_S = 20.0
 
 _IMAGE_HEADERS = {
@@ -1009,7 +1028,7 @@ class StreamingUploadService:
             logger.info("Web music MP3 uploaded to B2: task=%s variant=%s key=%s size=%d", 
                        suno_task_id, variant, storage_key, len(data))
             
-            asyncio.create_task(self._upload_web_music_lrc(
+            _lrc_task = asyncio.create_task(self._upload_web_music_lrc(
                 context=context,
                 variant=variant,
                 suno_task_id=suno_task_id,
@@ -1017,6 +1036,7 @@ class StreamingUploadService:
                 user_id=user_id,
                 refreshed=refreshed,
             ))
+            _lrc_task.add_done_callback(_log_background_task_error)
             # WAV is intentionally NOT scheduled here. Doing so made every
             # generation convert and store a ~28-33 MiB WAV for both variants
             # regardless of whether anyone downloaded one. It is produced on
@@ -2210,9 +2230,11 @@ class StreamingUploadService:
         return await self.run_backfill_sweep()
 
 
-async def run_streaming_auto_retry_loop(pool: Any) -> None:
+async def run_streaming_auto_retry_loop(pool: Any, *, startup_delay: float = 0.0) -> None:
     """Background loop (started by main startup) that auto-retries failed mp3
     uploads and keeps web-music companion assets (wav/lrc/srt/package) on B2."""
+    if startup_delay > 0:
+        await asyncio.sleep(startup_delay)
     service = StreamingUploadService(pool)
     while True:
         try:

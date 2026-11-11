@@ -70,6 +70,18 @@ def test_format_youtube_compact_uses_meta_counts() -> None:
     assert format_youtube_compact(row) == "Completed ✓"
 
 
+def test_compute_stage_progress_percent_completed_row_is_100() -> None:
+    row = _row()
+    assert (
+        compute_stage_progress_percent(
+            row,
+            effective_stage="Completed",
+            effective_status="Completed",
+        )
+        == "100%"
+    )
+
+
 def test_compute_stage_progress_percent_for_music_and_merger() -> None:
     row = _row()
     row.meta.saved = 1

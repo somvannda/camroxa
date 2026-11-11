@@ -173,6 +173,48 @@ def _export_assets_verified(
     return any(bool(path) and not _is_synthetic_asset_path(path) for path in paths)
 
 
+_YOUTUBE_PENDING_STATUSES = frozenset(
+    {
+        "pending",
+        "pending_upload",
+        "pending_payment",
+        "uploading",
+        "running",
+        "queued",
+        "processing",
+    }
+)
+_YOUTUBE_FAILED_STATUSES = frozenset({"failed", "cancelled", "refunded", "error"})
+
+
+def _empty_youtube_group() -> dict[str, Any]:
+    return {
+        "success": 0,
+        "pending": 0,
+        "failed": 0,
+        "latest_status": "",
+        "youtube_url": None,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+def _finalize_youtube_group(group: dict[str, Any]) -> None:
+    """Collapse one upload slot to its newest attempt.
+
+    Each row owns a single merged upload, so the newest job decides the state.
+    Counting every historical attempt made a late quota failure look published
+    (the earlier success won) and a single success mark the whole batch done.
+    """
+    latest = str(group.get("latest_status") or "").strip().lower()
+    group["success"] = 1 if latest == "success" else 0
+    group["pending"] = 1 if latest in _YOUTUBE_PENDING_STATUSES else 0
+    group["failed"] = 1 if latest in _YOUTUBE_FAILED_STATUSES else 0
+    if latest != "success":
+        # A stale URL from an older attempt must not read as "Published".
+        group["youtube_url"] = None
+
+
 def _progress_batch_fetch_limit(*, limit: int, active_only: bool) -> int:
     """How many batches to load before OK/ALT expansion and row slicing."""
     resolved = max(1, int(limit))
@@ -220,6 +262,7 @@ def _build_row(
     channel_assets: dict[tuple[str, str, str], dict[str, Any]],
     youtube_groups: dict[tuple[str, str, str], dict[str, Any]],
     youtube_batch_groups: dict[str, dict[str, Any]],
+    youtube_legacy_batches: frozenset[str] = frozenset(),
 ) -> ProgressRow:
     batch_id = str(batch["id"])
     key = (batch_id, profile_id, role)
@@ -273,7 +316,12 @@ def _build_row(
     download_pending = max(0, download_ready - saved)
     song_failed = int(song_stats.get("draft_failed", 0) or 0) + int(song_stats.get("suno_failed", 0) or 0)
     music_pending = min(int(suno_stats.get("pending", 0) or 0), cap)
-    youtube = youtube_groups.get(key, youtube_batch_groups.get(batch_id, {}))
+    youtube = youtube_groups.get(key)
+    if youtube is None and batch_id in youtube_legacy_batches:
+        # Only pre-slot upload rows (no profile/role) may fall back to the batch
+        # aggregate. A sibling channel's upload must never publish this row.
+        youtube = youtube_batch_groups.get(batch_id)
+    youtube = youtube or {}
     youtube_success = int(youtube.get("success", 0) or 0)
     youtube_pending = int(youtube.get("pending", 0) or 0)
     youtube_failed = int(youtube.get("failed", 0) or 0)
@@ -308,13 +356,15 @@ def _build_row(
         status = "Failed"
         notes = "One or more generation steps failed. Right-click this row for recovery actions."
     elif youtube_success > 0 or youtube_url:
-        stage = "Done"
-        status = "Done"
-        notes = "Completed"
+        # Publishing is the delivery step, not a second pipeline stage: keep
+        # the row at Completed and let the YouTube column say Published.
+        stage = "Completed"
+        status = "Completed"
+        notes = "Published to YouTube."
     elif pipeline_complete:
         stage = "Completed"
         status = "Completed"
-        if youtube_failed > 0 or youtube_status == "FAILED":
+        if youtube_failed > 0 or youtube_status.lower() in _YOUTUBE_FAILED_STATUSES:
             notes = (
                 "Media pipeline completed. The YouTube upload failed — "
                 "right-click → Upload to YouTube to retry (the hosted copy is reused)."
@@ -335,10 +385,13 @@ def _build_row(
         stage = "YouTube"
         status = "Blocked"
         notes = "YouTube upload is blocked until this profile is connected and credentials are valid."
-    elif youtube_failed > 0 or youtube_status == "FAILED":
-        stage = "Error"
+    elif youtube_failed > 0 or youtube_status.lower() in _YOUTUBE_FAILED_STATUSES:
+        stage = "YouTube"
         status = "Failed"
-        notes = "YouTube upload failed. Retry tooling is not exposed in the API yet."
+        notes = (
+            "YouTube upload failed — retry it from Progress "
+            "(daily quota failures clear at midnight Pacific)."
+        )
     elif saved < max(1, expected):
         stage = "Music"
         if download_pending > 0:
@@ -367,7 +420,11 @@ def _build_row(
         )
 
     assets_ready = export_assets_ready
-    if stage == "Completed":
+    if stage in {"Completed", "Done", "YouTube"}:
+        # A published video (Done) or an upload in flight (YouTube) can only
+        # exist after a merged file, so export and merge are complete even
+        # though the API host cannot list the desktop run folder. Reporting
+        # "Waiting for image assets" here made finished rows read "Not started".
         converter_text = "Completed"
         merge_text = "Completed"
     elif image_generation_complete and not _is_terminal_progress_stage(stage):
@@ -397,23 +454,18 @@ def _build_row(
     else:
         converter_text = "Waiting for image assets"
         merge_text = "—"
-    youtube_text = (
-        "Ready"
-        if youtube_success > 0
-        else (
-            "Blocked"
-            if youtube_status == "BLOCKED"
-            else (
-                "Queued"
-                if youtube_status == "PENDING"
-                else (
-                    "Uploading"
-                    if (youtube_pending > 0 or youtube_status in {"RUNNING", "PROCESSING"})
-                    else ("Failed" if youtube_failed > 0 or youtube_status == "FAILED" else "—")
-                )
-            )
-        )
-    )
+    if youtube_success > 0:
+        youtube_text = "Ready"
+    elif youtube_status == "BLOCKED":
+        youtube_text = "Blocked"
+    elif youtube_status == "PENDING":
+        youtube_text = "Queued"
+    elif youtube_pending > 0 or youtube_status in {"RUNNING", "PROCESSING"}:
+        youtube_text = "Uploading"
+    elif youtube_failed > 0 or youtube_status.lower() in _YOUTUBE_FAILED_STATUSES:
+        youtube_text = "Failed"
+    else:
+        youtube_text = "—"
 
     latest_image_started = min(
         [value for value in [bg_group.get("first_created_at"), th_group.get("first_created_at")] if value is not None],
@@ -893,91 +945,44 @@ async def list_progress_rows(
             profile_id = str(row["profile_id"] or "").strip()
             role = str(row["role"] or "").strip().upper()
             exact_key = (batch_id, profile_id, role) if profile_id and role else None
-            group = (
-                youtube_groups.setdefault(
-                    exact_key,
-                    {
-                        "success": 0,
-                        "pending": 0,
-                        "failed": 0,
-                        "latest_status": "",
-                        "youtube_url": None,
-                        "created_at": None,
-                        "updated_at": None,
-                    },
-                )
+            target = (
+                youtube_groups.setdefault(exact_key, _empty_youtube_group())
                 if exact_key is not None
-                else youtube_batch_groups.setdefault(
-                    batch_id,
-                    {
-                        "success": 0,
-                        "pending": 0,
-                        "failed": 0,
-                        "latest_status": "",
-                        "youtube_url": None,
-                        "created_at": None,
-                        "updated_at": None,
-                    },
-                )
-            )
-            if exact_key is not None:
-                youtube_batch_groups.setdefault(
-                    batch_id,
-                    {
-                        "success": 0,
-                        "pending": 0,
-                        "failed": 0,
-                        "latest_status": "",
-                        "youtube_url": None,
-                        "created_at": None,
-                        "updated_at": None,
-                    },
-                )
-            batch_group = youtube_batch_groups.setdefault(
-                batch_id,
-                {
-                    "success": 0,
-                    "pending": 0,
-                    "failed": 0,
-                    "latest_status": "",
-                    "youtube_url": None,
-                    "created_at": None,
-                    "updated_at": None,
-                },
+                else youtube_batch_groups.setdefault(batch_id, _empty_youtube_group())
             )
             status = str(row["status"] or "").lower()
-            target_groups = [group] if group is batch_group else [group, batch_group]
-            for target_group in target_groups:
-                if status == "success":
-                    # The newest job wins: a video that eventually published
-                    # must not keep showing an earlier failed attempt.
-                    target_group["success"] += 1
-                    target_group["failed"] = 0
-                    target_group["pending"] = 0
-                elif status in {
-                    "pending",
-                    "pending_upload",
-                    "pending_payment",
-                    "uploading",
-                    "running",
-                    "queued",
-                    "processing",
-                }:
-                    target_group["pending"] += 1
-                else:
-                    target_group["failed"] += 1
+            updated_at = row["updated_at"]
+            created_at = row["created_at"]
+            # Newest attempt wins for this slot; counts are derived afterwards.
+            if target["updated_at"] is None or (
+                updated_at is not None and updated_at >= target["updated_at"]
+            ):
+                target["updated_at"] = updated_at
+                target["latest_status"] = status.upper()
                 if row["youtube_video_id"]:
-                    target_group["youtube_url"] = f"https://www.youtube.com/watch?v={row['youtube_video_id']}"
+                    target["youtube_url"] = (
+                        f"https://www.youtube.com/watch?v={row['youtube_video_id']}"
+                    )
                 elif row["youtube_url"]:
-                    target_group["youtube_url"] = str(row["youtube_url"])
-                if target_group["created_at"] is None or row["created_at"] > target_group["created_at"]:
-                    target_group["created_at"] = row["created_at"]
-                if target_group["updated_at"] is None or row["updated_at"] >= target_group["updated_at"]:
-                    target_group["updated_at"] = row["updated_at"]
-                    target_group["latest_status"] = status.upper()
+                    target["youtube_url"] = str(row["youtube_url"])
+                else:
+                    target["youtube_url"] = None
+            if created_at is not None and (
+                target["created_at"] is None or created_at > target["created_at"]
+            ):
+                target["created_at"] = created_at
+        for group in (*youtube_groups.values(), *youtube_batch_groups.values()):
+            _finalize_youtube_group(group)
     except Exception:
         youtube_groups = {}
         youtube_batch_groups = {}
+
+    # Slot-less (legacy) upload rows are a fallback only for batches that have
+    # no per-slot rows at all; otherwise a sibling channel's upload could still
+    # leak into this row.
+    youtube_legacy_batches = frozenset(youtube_batch_groups) - {
+        key[0] for key in youtube_groups
+    }
 
     rows: list[ProgressRow] = []
     for batch in batch_rows:
@@ -1004,6 +1009,7 @@ async def list_progress_rows(
                     channel_assets=channel_assets,
                     youtube_groups=youtube_groups,
                     youtube_batch_groups=youtube_batch_groups,
+                    youtube_legacy_batches=youtube_legacy_batches,
                 )
             )
 
@@ -1020,6 +1026,7 @@ async def list_progress_rows(
                     channel_assets=channel_assets,
                     youtube_groups=youtube_groups,
                     youtube_batch_groups=youtube_batch_groups,
+                    youtube_legacy_batches=youtube_legacy_batches,
                 )
             )
 

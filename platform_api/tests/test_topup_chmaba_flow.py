@@ -178,6 +178,8 @@ async def test_settle_chmaba_topup_credits_once(monkeypatch) -> None:
     db.fetch_one = AsyncMock(
         side_effect=[
             {"id": "11111111-1111-1111-1111-111111111111", "payment_status": "pending"},
+            # Settlement gate: the pending -> completed update returns the row once.
+            {"id": "11111111-1111-1111-1111-111111111111"},
             {"id": "11111111-1111-1111-1111-111111111111", "payment_status": "completed"},
         ]
     )
@@ -196,7 +198,9 @@ async def test_settle_chmaba_topup_credits_once(monkeypatch) -> None:
     assert second["processed"] is True
     assert "already" in second["message"].lower()
     status_updates = [
-        call for call in db.execute.await_args_list if "payment_status = 'completed'" in call.args[0]
+        call
+        for call in db.fetch_one.await_args_list
+        if "payment_status = 'completed'" in call.args[0]
     ]
     assert len(status_updates) == 1
 
@@ -232,3 +236,45 @@ async def test_settle_chmaba_topup_rejects_non_uuid_reference() -> None:
 
     assert result["processed"] is False
     db.fetch_one.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fulfill_refuses_a_mismatched_payment_id(monkeypatch) -> None:
+    """A webhook for a different payment must never mint credits on this row."""
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(
+        side_effect=[
+            None,  # the pending -> completed update matched nothing
+            {"payment_status": "completed", "external_payment_id": "pay_real"},
+        ]
+    )
+    sync = AsyncMock()
+    monkeypatch.setattr(TopupService, "_sync_v3_pack", sync)
+    service = TopupService(db, cutluy=AsyncMock())
+
+    await service._fulfill_topup_payment(
+        "33333333-3333-3333-3333-333333333333", payment_id="pay_other"
+    )
+
+    sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fulfill_heals_an_already_settled_row(monkeypatch) -> None:
+    """A crash between the status flip and the mint must still be repairable."""
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(
+        side_effect=[
+            None,
+            {"payment_status": "completed", "external_payment_id": "pay_real"},
+        ]
+    )
+    sync = AsyncMock()
+    monkeypatch.setattr(TopupService, "_sync_v3_pack", sync)
+    service = TopupService(db, cutluy=AsyncMock())
+
+    await service._fulfill_topup_payment(
+        "33333333-3333-3333-3333-333333333333", payment_id="pay_real"
+    )
+
+    sync.assert_awaited_once()

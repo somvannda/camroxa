@@ -2891,6 +2891,7 @@ class YouTubeDirectUploadWorker(QThread):
         batch_id: str,
         role: str,
         merged_path: str,
+        playlist_id: str | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -2899,7 +2900,31 @@ class YouTubeDirectUploadWorker(QThread):
         self._batch_id = str(batch_id or "").strip()
         self._role = str(role or "OK").strip().upper() or "OK"
         self._merged_path = str(merged_path or "").strip()
+        self._playlist_override = playlist_id
         self._activity_key = ""
+        self._upload_title = Path(self._merged_path).name if self._merged_path else ""
+
+    def _report_failure(self, message: str) -> None:
+        """Persist a failed attempt so Progress stops showing "Not started".
+
+        Quota/cap failures happen before the upload starts, so without this the
+        row kept an older state (or published a sibling row) while YouTube had
+        refused the video.
+        """
+        try:
+            self._api.report_youtube_upload(
+                batch_id=self._batch_id,
+                profile_id=self._profile_id,
+                role=self._role,
+                video_id="",
+                video_url=None,
+                title=self._upload_title,
+                status="failed",
+                error_message=str(message or "YouTube upload failed.")[:500],
+            )
+        except Exception:
+            # A bookkeeping failure must not replace the real upload error.
+            pass
 
     def run(self) -> None:
         from shared.lib import youtube_direct as yt
@@ -2914,6 +2939,7 @@ class YouTubeDirectUploadWorker(QThread):
         key = slot_key(self._batch_id, self._profile_id, self._role)
         self._activity_key = key
         path = Path(self._merged_path)
+        video_id = ""
         try:
             if not path.is_file():
                 raise RuntimeError("The merged video is not on disk any more.")
@@ -2927,6 +2953,10 @@ class YouTubeDirectUploadWorker(QThread):
             if profile is None:
                 raise RuntimeError("The channel profile for this upload was not found.")
             meta = yt.build_metadata(profile, path)
+            if self._playlist_override is not None:
+                override = str(self._playlist_override).strip()
+                meta["playlist"] = "" if override == "__none__" else override
+            self._upload_title = str(meta.get("title") or self._upload_title or path.name)
             self.status_changed.emit(f"Preparing “{meta['title']}”…")
 
             try:
@@ -3015,7 +3045,12 @@ class YouTubeDirectUploadWorker(QThread):
             if self.isInterruptionRequested():
                 self.failed.emit("Upload cancelled.")
             else:
-                self.failed.emit(str(exc) or "YouTube upload failed.")
+                message = str(exc) or "YouTube upload failed."
+                if not video_id:
+                    # Only failed-before-publish attempts are recorded; a live
+                    # video whose bookkeeping write failed must stay published.
+                    self._report_failure(message)
+                self.failed.emit(message)
         finally:
             finish(key)
 

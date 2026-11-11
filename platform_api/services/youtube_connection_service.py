@@ -430,6 +430,49 @@ class YouTubeConnectionService:
         credentials = await self._build_refreshed_credentials(account)
         return self._fetch_playlists(credentials)
 
+    async def create_playlist(
+        self,
+        *,
+        user_id: UUID,
+        profile_id: UUID,
+        title: str,
+        privacy_status: str = "private",
+    ) -> dict[str, str]:
+        """Create a playlist on the connected channel (needs youtube.force-ssl)."""
+        normalized = str(title or "").strip()
+        if not normalized:
+            raise ValidationError("A playlist name is required.")
+        if len(normalized) > 150:
+            raise ValidationError("Playlist names are limited to 150 characters.")
+        privacy = str(privacy_status or "private").strip().lower()
+        if privacy not in {"private", "public", "unlisted"}:
+            privacy = "private"
+        credentials = await self.build_refreshed_credentials_for_profile(
+            user_id=user_id, profile_id=profile_id
+        )
+        return await asyncio.to_thread(
+            self._insert_playlist, credentials, normalized, privacy
+        )
+
+    def _insert_playlist(self, credentials: Any, title: str, privacy: str) -> dict[str, str]:
+        try:
+            from googleapiclient.discovery import build
+        except Exception as exc:
+            raise RuntimeError(f"Missing Google API client libraries: {exc}") from exc
+
+        service = build("youtube", "v3", credentials=credentials, cache_discovery=False)
+        response = service.playlists().insert(
+            part="snippet,status",
+            body={
+                "snippet": {"title": title},
+                "status": {"privacyStatus": privacy},
+            },
+        ).execute()
+        playlist_id = str((response or {}).get("id") or "").strip()
+        if not playlist_id:
+            raise RuntimeError("YouTube did not return a playlist id.")
+        return {"id": playlist_id, "title": title}
+
     async def enqueue_upload_for_merge(
         self,
         *,
@@ -527,6 +570,12 @@ class YouTubeConnectionService:
         YouTube charges videos.insert 1,600 of the project's 10,000 daily units,
         so the practical ceiling is six uploads. Counting here means a customer
         sees "resumes tomorrow" instead of a provider rejection mid-transfer.
+
+        A slot keeps one job row: ``record_upload_result`` updates it instead of
+        inserting a new one, so a re-upload of an older slot has an old
+        ``created_at``. Count the row when either its creation or its latest
+        attempt (``updated_at``) falls inside the quota day, otherwise retries
+        silently escape the cap.
         """
         from datetime import datetime, time as dtime, timezone as _tz
         from zoneinfo import ZoneInfo
@@ -546,9 +595,11 @@ class YouTubeConnectionService:
             """
             SELECT count(*) FROM youtube_upload_jobs
             WHERE user_id = $1::uuid
-              AND created_at >= $2
-              AND created_at < $3
               AND status <> 'cancelled'
+              AND (
+                    (created_at >= $2 AND created_at < $3)
+                 OR (updated_at >= $2 AND updated_at < $3)
+              )
             """,
             str(user_id),
             start_utc,

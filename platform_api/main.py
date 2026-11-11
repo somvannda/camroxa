@@ -80,6 +80,12 @@ async def _global_exception_handler(request: Request, exc: Exception) -> JSONRes
 # Keep in sync with create_pool(max_size=...) in the lifespan below.
 _DB_POOL_MAX_SIZE = 8
 
+# Background maintenance that used to run the instant the API started. After a
+# restart every client reconnects at once, so letting these scans run first made
+# the pool look saturated for ~8 minutes (observed 2026-11-08). A short grace
+# keeps the restart burst on the request path.
+_STARTUP_BACKGROUND_GRACE_SECONDS = 60.0
+
 
 def _pool_is_saturated(pool: Any, *, max_size: int) -> bool:
     """True when every pooled connection is checked out."""
@@ -426,6 +432,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             studio_sweeper = WebMusicService(db_pool, None)  # type: ignore[arg-type]
 
             async def _studio_operation_sweep_loop() -> None:
+                await asyncio.sleep(_STARTUP_BACKGROUND_GRACE_SECONDS)
                 while True:
                     try:
                         swept = await studio_sweeper.sweep_studio_operations()
@@ -501,7 +508,10 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.info("Streaming upload auto-retry is disabled by env.")
             else:
                 auto_retry_task = asyncio.create_task(
-                    _streaming_svc.run_streaming_auto_retry_loop(db_pool),
+                    _streaming_svc.run_streaming_auto_retry_loop(
+                        db_pool,
+                        startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                    ),
                     name="streaming-auto-retry",
                 )
                 logger.info("Streaming upload auto-retry loop started.")
@@ -553,7 +563,10 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.info("Credit grant maintenance is disabled by env.")
             else:
                 asyncio.create_task(
-                    _grant_maint.run_grant_maintenance_loop(db_pool),
+                    _grant_maint.run_grant_maintenance_loop(
+                        db_pool,
+                        startup_delay=_STARTUP_BACKGROUND_GRACE_SECONDS,
+                    ),
                     name="credit-grant-maintenance",
                 )
                 logger.info("Credit grant maintenance loop started.")

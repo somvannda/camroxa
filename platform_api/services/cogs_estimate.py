@@ -10,7 +10,7 @@ from typing import Any
 
 
 def _norm(value: str | None) -> str:
-    return (value or "").strip()
+    return (value or "").strip().lower()
 
 
 def operation_aliases(operation: str) -> list[str]:
@@ -19,6 +19,10 @@ def operation_aliases(operation: str) -> list[str]:
         return []
     if op in {"music", "music_generation", "suno"}:
         return ["music", "music_generation"]
+    if op == "image":
+        # The ledger records the v3 op ("image"), while pricing rows are keyed
+        # by the concrete image operation.
+        return ["background_image", "thumbnail_image", "image"]
     return [op]
 
 

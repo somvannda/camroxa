@@ -146,6 +146,8 @@ _STAGE_BADGE_COLORS = {
 }
 _STATUS_COLORS = {
     "completed": "#00C878",
+    "published": "#00C878",
+    "uploaded": "#00C878",
     "pending": "#F59E0B",
     "not started": "#60758C",
     "failed": "#F43F5E",
@@ -202,6 +204,7 @@ class OperationalRowsCard(StudioPanel):
     start_merge_requested = Signal(object)
     upload_youtube_requested = Signal(object, str)
     cancel_publish_upload_requested = Signal(str)
+    upload_youtube_with_playlist_requested = Signal(object, str)
     change_run_folder_requested = Signal(object)
     download_missing_mp3s_requested = Signal(object)
     cancel_job_requested = Signal(object)
@@ -715,6 +718,18 @@ class OperationalRowsCard(StudioPanel):
                     )
                     action.triggered.connect(
                         partial(self.upload_youtube_requested.emit, entry.row, merged_path)
+                    )
+                    pick = menu.addAction("Upload to YouTube (choose playlist)…")
+                    pick.setToolTip(
+                        "Use the profile playlist, no playlist, or one specific playlist "
+                        "for this video only."
+                    )
+                    pick.triggered.connect(
+                        partial(
+                            self.upload_youtube_with_playlist_requested.emit,
+                            entry.row,
+                            merged_path,
+                        )
                     )
                 cancel_upload = menu.addAction("Cancel YouTube upload")
                 cancel_upload.setToolTip("Stop this row's upload.")

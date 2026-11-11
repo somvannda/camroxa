@@ -68,9 +68,8 @@ WHERE NOT EXISTS (
   AND NOT EXISTS (
         SELECT 1 FROM credit_transactions r
         WHERE r.user_id = d.user_id
-          AND r.direction IN ('credit', 'refund')
+          AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
           AND r.ref_id = d.ref_id
-          AND r.reason ILIKE '%refund%'
       )
 ORDER BY d.created_at DESC;
 """

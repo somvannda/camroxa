@@ -225,6 +225,18 @@ class AuthView(QFrame):
         self._loading_label.clear()
         self._loading_label.hide()
 
+    def _save_diagnostics(self) -> None:
+        """Write a redacted log file for support; works while signed out."""
+        from shared.services.log_sync import write_diagnostics_snapshot
+
+        path = write_diagnostics_snapshot()
+        if path is None:
+            self._diag_hint.setText("Nothing to save yet — use the app a little, then try again.")
+        else:
+            self._diag_hint.setText(f"Saved {path.name}")
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
+        self._diag_hint.show()
+
     def set_busy(self, busy: bool) -> None:
         self._login_btn.setEnabled(not busy)
         self._login_btn.setText("Signing in…" if busy else "Sign In")
@@ -329,6 +341,25 @@ class AuthView(QFrame):
         self._google_btn.setFont(studio_font(14, QFont.Weight.Medium))
         self._google_btn.clicked.connect(self._request_google_signin)
         layout.addWidget(self._google_btn)
+
+        layout.addSpacing(8)
+        self._diag_btn = QPushButton("Save diagnostics file")
+        self._diag_btn.setObjectName("auth_forgot_button")
+        self._diag_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._diag_btn.setFlat(True)
+        self._diag_btn.setFont(studio_font(13, QFont.Weight.Medium))
+        self._diag_btn.setToolTip(
+            "Save a redacted copy of this app's recent logs for a support ticket. "
+            "Works without signing in."
+        )
+        self._diag_btn.clicked.connect(self._save_diagnostics)
+        layout.addWidget(self._diag_btn)
+        self._diag_hint = QLabel("")
+        self._diag_hint.setObjectName("auth_section_label")
+        self._diag_hint.setFont(studio_font(12))
+        self._diag_hint.setWordWrap(True)
+        self._diag_hint.hide()
+        layout.addWidget(self._diag_hint)
 
         if REGISTRATION_ENABLED:
             layout.addSpacing(12)

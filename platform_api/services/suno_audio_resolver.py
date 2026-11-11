@@ -342,8 +342,10 @@ async def _keys_outside_cooldown(pool: Any, rows: list[Any], provider: str) -> l
     ]
 
 
-async def active_suno_key_values(pool: Any, provider: str | None = None) -> list[str]:
-    """Decrypt every active key for a Suno-compatible provider, best-effort.
+async def active_suno_key_entries(
+    pool: Any, provider: str | None = None
+) -> list[tuple[str, str]]:
+    """Return ``(api_key_entries.id, decrypted key)`` for every active key.
 
     Read endpoints (record-info / recovery / details) are scoped to the account
     that created the task. With a multi-account pool we must try each key until
@@ -395,13 +397,50 @@ async def active_suno_key_values(pool: Any, provider: str | None = None) -> list
     if not master_key:
         return []
     encryption = KeyEncryption(master_key=master_key)
-    keys: list[str] = []
+    entries: list[tuple[str, str]] = []
     for row in rows:
         try:
-            keys.append(encryption.decrypt(bytes(row["encrypted_key_value"])))
+            entries.append(
+                (str(row["id"]), encryption.decrypt(bytes(row["encrypted_key_value"])))
+            )
         except Exception:
             continue
-    return keys
+    return entries
+
+
+async def active_suno_key_values(pool: Any, provider: str | None = None) -> list[str]:
+    """Decrypted key values only, for callers that do not pin an owner."""
+    return [value for _key_id, value in await active_suno_key_entries(pool, provider)]
+
+
+async def _pinned_suno_key_id(pool: Any, external_task_id: str) -> str | None:
+    """The key id that last polled this task successfully, when recorded."""
+    try:
+        row = await pool.fetchrow(
+            "SELECT suno_key_id FROM suno_tasks "
+            "WHERE external_task_id = $1 AND suno_key_id IS NOT NULL LIMIT 1",
+            external_task_id,
+        )
+    except Exception:
+        # Column missing (pre-migration) or transient DB error: fall back to a scan.
+        return None
+    value = row["suno_key_id"] if row is not None else None
+    return str(value) if value else None
+
+
+async def _remember_suno_key_owner(pool: Any, external_task_id: str, key_id: str) -> None:
+    """Record the owning key so later polls hit one account instead of three."""
+    from uuid import UUID
+
+    try:
+        await pool.execute(
+            "UPDATE suno_tasks SET suno_key_id = $2 WHERE external_task_id = $1",
+            external_task_id,
+            UUID(key_id),
+        )
+    except Exception:
+        # Pinning is an optimisation; never fail a poll because of it.
+        return
 
 
 async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> dict[str, str]:
@@ -550,9 +589,15 @@ async def poll_suno_generate_with_pool(
     if not task_id:
         return SunoGeneratePollResult(state="failed", error="Missing Suno task id.")
 
-    api_keys = await active_suno_key_values(pool, provider=provider)
+    api_keys = await active_suno_key_entries(pool, provider=provider)
     if not api_keys:
         return SunoGeneratePollResult(state="failed", error="No active Suno API key configured.")
+
+    # Try the recorded owner first: the pool is small, but this saves the 403
+    # round-trips on every poll and avoids touching other accounts.
+    pinned_key_id = await _pinned_suno_key_id(pool, task_id)
+    if pinned_key_id:
+        api_keys.sort(key=lambda entry: 0 if entry[0] == pinned_key_id else 1)
 
     settings = SimpleNamespace(
         suno_api_base_url=os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com").strip(),
@@ -561,7 +606,7 @@ async def poll_suno_generate_with_pool(
     )
     client = SunoClient(settings)
     last_owner_error: ExternalServiceError | None = None
-    for api_key in api_keys:
+    for key_id, api_key in api_keys:
         try:
             response = await client.check_status(task_id, api_key=api_key)
         except ExternalServiceError as exc:
@@ -570,6 +615,8 @@ async def poll_suno_generate_with_pool(
                 last_owner_error = exc
                 continue
             raise
+        if key_id != pinned_key_id:
+            await _remember_suno_key_owner(pool, task_id, key_id)
         return parse_suno_generate_poll(response)
     if last_owner_error is not None:
         raise last_owner_error
