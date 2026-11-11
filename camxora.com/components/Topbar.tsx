@@ -51,7 +51,7 @@ export function Topbar() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="account" type="button">
-                  <img src={user.avatar_url || "/hero.png"} alt={user.display_name} />
+                  <img src={user.avatar_url || "/hero.png"} alt="" />
                   <span className="account-text">
                     <strong>{user.display_name}</strong>
                   </span>

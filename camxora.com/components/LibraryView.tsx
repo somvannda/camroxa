@@ -2450,7 +2450,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
         >
           <div className="s-modal">
             <div className="s-modal-head">
-              <h3>Add {uploadTarget.filename} to a project</h3>
+              <h2>Add {uploadTarget.filename} to a project</h2>
               <button
                 type="button"
                 className="s-btn s-btn-sm s-btn-ghost"

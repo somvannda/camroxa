@@ -14,7 +14,7 @@ export default function SiteLayout({
         <div className="main">
           <Topbar />
           <div className="content">
-            {children}
+            <main className="content-main">{children}</main>
             <Footer />
           </div>
           <Player />
