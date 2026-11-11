@@ -47,7 +47,7 @@ export const LIBRARY_FILTERS: LibraryFilterOption[] = [
   { id: "disliked", label: "Disliked" },
   { id: "public", label: "Public", reason: "Songs stay private; publishing is not built yet." },
   { id: "private", label: "Private", reason: "Every song is private today, so this filter cannot narrow anything." },
-  { id: "uploads", label: "Uploads", reason: "Imported audio lives in Studio ▸ Library ▸ Uploads." },
+  { id: "uploads", label: "Uploads", reason: "Uploaded audio has its own tab." },
   { id: "full", label: "Full song" },
   {
     id: "cover",

@@ -28,6 +28,7 @@ import {
   type WebMusicClip,
   type WebMusicGeneration,
 } from "@/lib/library-api";
+import { listStudioUploads, type StudioUpload } from "@/lib/studio-api";
 import {
   addWebMusicPlaylistItem,
   createWebMusicPlaylist,
@@ -90,6 +91,7 @@ const TABS = [
   { id: "covers", label: "Cover Art" },
   { id: "hooks", label: "Hooks" },
   { id: "likedHooks", label: "Liked Hooks" },
+  { id: "uploads", label: "Uploads" },
   { id: "history", label: "History" },
   { id: "trash", label: "Trash" },
 ] as const;
@@ -169,6 +171,10 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const [likedTracks, setLikedTracks] = useState<LikedTrack[]>([]);
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
+  /** Audio imported in Studio (B-006/B-007), listed here so it is not Studio-only. */
+  const [uploads, setUploads] = useState<StudioUpload[]>([]);
+  const [uploadsLoading, setUploadsLoading] = useState(false);
+  const [uploadsError, setUploadsError] = useState("");
 
   const [trashMode, setTrashMode] = useState(false);
   const [trashItems, setTrashItems] = useState<WebMusicGeneration[]>([]);
@@ -286,6 +292,29 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
 
   useEffect(() => {
     setTrashMode(tab === "trash");
+  }, [tab]);
+
+  // Uploads live in Studio's storage; the Library lists them read-only.
+  useEffect(() => {
+    if (tab !== "uploads") return;
+    let active = true;
+    setUploadsLoading(true);
+    listStudioUploads(100)
+      .then((payload) => {
+        if (!active) return;
+        setUploads(payload.items);
+        setUploadsError("");
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setUploadsError(cause instanceof Error ? cause.message : "Could not load uploads.");
+      })
+      .finally(() => {
+        if (active) setUploadsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [tab]);
 
   useEffect(() => {
@@ -407,6 +436,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   );
 
   const searchTerm = search.trim().toLowerCase();
+  const filteredUploads = uploads.filter(
+    (upload) => !searchTerm || upload.filename.toLowerCase().includes(searchTerm)
+  );
 
   const filteredRows = allRows.filter((row) => {
     if (searchTerm) {
@@ -493,6 +525,18 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     !bootLoading &&
     (tab === "songs" || tab === "history" || tab === "covers" || tab === "likedHooks") &&
     activeCount > 0;
+
+  function playUpload(upload: StudioUpload) {
+    if (!upload.url) return;
+    const title = upload.filename.replace(/\.[a-z0-9]{2,5}$/i, "");
+    playTrack({
+      title,
+      artist: "Upload",
+      cover: "",
+      duration: Math.max(1, Math.round(upload.duration_seconds || 60)),
+      audioUrl: upload.url,
+    });
+  }
 
   function playClip(song: WebMusicGeneration, clip: WebMusicClip) {
     if (!clipIsReady(song, clip)) return;
@@ -1479,6 +1523,50 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       return <div className="s-grid">{coverRows.map(renderGridCard)}</div>;
     }
 
+    if (tab === "uploads") {
+      if (uploadsLoading) return skeletonRows;
+      if (uploadsError) {
+        return (
+          <p className="s-error" role="alert">
+            {uploadsError}
+          </p>
+        );
+      }
+      if (!filteredUploads.length) {
+        return hasSearch
+          ? noResults
+          : renderEmpty(
+              "fa-upload",
+              "No uploads yet",
+              "Audio you import in Studio appears here, ready to audition.",
+              <Link className="s-btn" href="/studio">
+                Open Studio
+              </Link>
+            );
+      }
+      return (
+        <div className="s-playlists">
+          {filteredUploads.map((upload) => (
+            <button
+              key={upload.id}
+              type="button"
+              className="s-playlist"
+              onClick={() => playUpload(upload)}
+            >
+              <span className="s-playlist-cover">
+                <Icon name="fa-music" />
+              </span>
+              <b>{upload.filename}</b>
+              <small>
+                {upload.duration_seconds ? `${formatClipDuration(upload.duration_seconds)} · ` : ""}
+                Play
+              </small>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
     if (tab === "playlists") {
       return (
         <>
@@ -1752,7 +1840,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             />
           </label>
 
-          <div className="s-anchor">
+          {tab !== "uploads" ? (
+            <>
+              <div className="s-anchor">
             <SMenu
               align="end"
               sideOffset={6}
@@ -1842,11 +1932,13 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           >
             Public
           </button>
+            </>
+          ) : null}
           <button
             type="button"
-            className="s-pill"
-            disabled
-            title="Uploads are not available yet"
+            className={`s-pill${tab === "uploads" ? " on" : ""}`}
+            aria-pressed={tab === "uploads"}
+            onClick={() => setTab("uploads")}
           >
             Uploads
           </button>
