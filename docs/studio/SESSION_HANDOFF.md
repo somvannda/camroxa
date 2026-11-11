@@ -31,7 +31,8 @@ browser tests, and the branch is main-synced.
 | `npm run typecheck` | clean |
 | `npm run check:ui` | compliant |
 | `npm test` (vitest) | **255 / 255**, 27 files |
-| `npx playwright test` | **116 passed / 1 skipped** |
+| `npx playwright test` | **118 passed / 1 skipped** |
+| python -m pytest platform_api/tests -q (merged main) | **3352 passed**, 2 known warnings |
 
 The single skip is the uploads spec's optional branch (`STUDIO_EXPECT_UPLOADS=1` when a
 bucket is configured).
@@ -43,18 +44,18 @@ bucket is configured).
 | Time selection (N-01) | ruler drag/Shift-click, edge grips, range menu, delete/duplicate time with ripple, scoped delete, loop selection, range export unlock — `lib/studio-time.ts`, `tests/e2e/studio-time-selection.spec.ts` |
 | Warp markers (S30) | audio clip editor on double-click, Stretch switch + 3 captured modes + Formant, pennant markers over the waveform, drag/select/quantize — `lib/studio-warp.ts`, `components/studio/StudioAudioEditor.tsx` |
 | Clip settings (§81) | the whole captured column is live: Volume dB, Loop/Reverse, Pitch, Speed, Quantize; one planner drives playback and export — `lib/studio-clip-audio.ts` (D-032) |
-| Track bounce (N-06) | track menu renders that track through its chain and downloads a WAV, solo-aware — `tests/e2e/studio-bounce.spec.ts` |
+| Track bounce (N-06) | track menu renders that track through its chain and places a `(bounced)` track with the source muted; when uploads are unavailable it downloads the WAV and the toast says why — `tests/e2e/studio-bounce.spec.ts` |
 | MIDI download (N-05) | selected MIDI clips become one `.mid` (format 0, 480 PPQ) — `lib/studio-midi-file.ts` |
 
-Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pairs; the
-rest of the captured §81 settings column is deferred), **D-031** (bounce renders the
-track; in-place waits for storage).
+Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pairs),
+**D-031** (bounce renders the track; in-place placement with a download fallback),
+**D-032** (clip settings run through one planner; pitch and speed share the rate).
 
 ## Still blocked or deferred
 
 | Item | Why | Where |
 |---|---|---|
-| Render-in-place bounce | `POST /studio/uploads` answers `storage_not_configured` on the running API; data-URL clips were rejected as document bloat | D-031, B-007 |
+| Real-bucket verification of in-place bounce | the running API has no upload storage, so the fallback is what executes locally; placement is covered against a stubbed upload | D-031, B-007 |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
 | Stems tile/upload halves of G12 | stems needs a genuinely generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
 | S60 / S61 captures | need a signed-in Suno reference session with a real moderation/no-credit trigger | `reference/CAPTURE_GAPS.md` |
@@ -91,7 +92,7 @@ Helpers in `scripts/`:
 | unit | `npm test` | snap, time edits, warp markers/onsets, MIDI file, meter, export, plugins, … |
 | component | `npm test` | header, footer, library, timeline, track panel, audio editor, MIDI editor |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | 43 specs, 116 passing |
+| e2e | `npm run test:e2e` | 43 specs, 118 passing |
 
 CI jobs on any PR touching `camxora.com`: `camxora-web-checks` (typecheck, `check:ui`,
 `npm test`, `npm run build`) and `camxora-e2e` (Postgres, Redis, musicapi,
@@ -145,11 +146,15 @@ not persisted (D-029).
 
 1. **Ship the branch**: open a PR from `feat/studio-rebuild` to `main`. The branch is
    main-synced and green, so this is a review step rather than a reconciliation step.
-2. **Delete the four merged remote branches** after review
-   (`feat/studio-time-selection`, `-warp-markers`, `-bounce`, `-midi-export`); their
-   commits are all contained in `feat/studio-rebuild`.
-3. **Unblock render-in-place** by starting the API with the moto env (B-006/B-007), then
-   upload the bounce and add the `(bounced)` track.
-4. **Audio settings pass** — the captured §81 column (Volume, Loop/Reverse, Pitch,
-   Speed, Quantize) on top of the clip editor built for S30 (D-030).
-5. **S60/S61** and the §100 detail-rail image when a reference session is available.
+   `gh auth login -h github.com` is required first (the local token is invalid).
+2. **Delete the merged remote branches** after review — the stack branches
+   (`feat/studio-time-selection`, `-warp-markers`, `-bounce`, `-midi-export`,
+   `-audio-settings`, `-bounce-in-place`, `-a11y-panels`) are all contained in
+   `feat/studio-rebuild`.
+3. **Verify in-place bounce on a real bucket**: start the API with the moto env
+   (B-006/B-007), re-run `studio-bounce.spec.ts` without the stubbed upload, and confirm
+   the bounced track plays after a reload.
+4. **S60/S61** and the §100 detail-rail image when a reference session is available.
+
+Everything else in the documented gap list is built: the §81 column shipped as D-032, the
+selection model as D-029, warp markers as D-030, bounce as D-031 and MIDI export as N-05.
