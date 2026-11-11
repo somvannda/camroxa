@@ -452,6 +452,7 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Clip Color",
     "Get Stems",
     "Download WAV",
+    "Download MIDI",
     "Get MIDI",
     "Remove FX",
   ]);

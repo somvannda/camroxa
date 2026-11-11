@@ -86,6 +86,7 @@ import { StudioMidiEditor } from "@/components/studio/StudioMidiEditor";
 import { StudioAudioEditor } from "@/components/studio/StudioAudioEditor";
 import type { WarpState } from "@/lib/studio-warp";
 import { sanitizeNotes, sanitizePoints, scheduleMidiNote, valueAt, type MidiNote } from "@/lib/studio-midi";
+import { buildMidiFile } from "@/lib/studio-midi-file";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -2354,6 +2355,27 @@ export function StudioEditorShell() {
   }
 
   /** Clip menu ▸ Download .WAV: render just this clip, at unity. */
+  /**
+   * Download the selected MIDI clips as one Standard MIDI file (N-05). The captured
+   * string is explicit that the unit is the selection, so several clips keep their
+   * timeline positions in a single file.
+   */
+  function downloadMidi(fallbackClipId: string) {
+    setClipMenu(null);
+    const ids = activeClipIds();
+    const pool = ids.length > 0 ? ids : [fallbackClipId];
+    const chosen = pool
+      .map((id) => clipsRef.current.find((clip) => clip.id === id))
+      .filter((clip): clip is ClipLike => Boolean(clip?.midi?.notes?.length));
+    if (chosen.length === 0) return;
+    const bytes = buildMidiFile(chosen, { bpm });
+    const suffix = chosen.length === 1 ? "MIDI" : `MIDI (${chosen.length} clips)`;
+    download(bytes, `${project?.title || "studio"} - ${suffix}.mid`, "audio/midi");
+    setExportToast(
+      `MIDI download started${chosen.length > 1 ? ` for ${chosen.length} clips` : ""}!`
+    );
+  }
+
   async function downloadClipWav(clipId: string) {
     setClipMenu(null);
     try {
@@ -4525,6 +4547,11 @@ export function StudioEditorShell() {
             const start = clip.start ?? 0;
             const duration = clip.duration ?? 4;
             const canSplit = playhead > start + 0.001 && playhead < start + duration - 0.001;
+            const midiSelection = (
+              activeClipIds().length > 0 ? activeClipIds() : [clip.id]
+            )
+              .map((id) => clips.find((item) => item.id === id))
+              .filter((item) => Boolean(item?.midi?.notes?.length));
             return (
               <div
                 className="se-clip-menu"
@@ -4680,6 +4707,19 @@ export function StudioEditorShell() {
                   onClick={() => void downloadClipWav(clip.id)}
                 >
                   <Icon name="fa-download" /> Download WAV
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={midiSelection.length === 0}
+                  title={
+                    midiSelection.length === 0
+                      ? "Select a MIDI clip with notes first"
+                      : "Download the selected MIDI clips as one .mid file"
+                  }
+                  onClick={() => downloadMidi(clip.id)}
+                >
+                  <Icon name="fa-music" /> Download MIDI
                 </button>
                 <button
                   type="button"

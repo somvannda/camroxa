@@ -19,6 +19,16 @@ export type FixtureClip = {
   duration: number;
   /** Optional audio for render/export tests (e.g. "/seed/demo-loop.wav"). */
   audioUrl?: string;
+  /** Optional notes, so the MIDI export path has a real clip to read. */
+  midi?: {
+    notes?: Array<{
+      id: string;
+      pitch: number;
+      start: number;
+      length: number;
+      velocity: number;
+    }>;
+  };
 };
 
 export type CreateProjectOptions = {
