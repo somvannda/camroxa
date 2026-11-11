@@ -380,6 +380,120 @@ async def test_quote_falls_back_when_routed_provider_has_no_price(
     assert quote.amount_credits == 7.5
 
 
+class _TextRoutingResult:
+    def __init__(self, provider: str | None, sub_model: str | None) -> None:
+        self.provider = provider
+        self.sub_model = sub_model
+
+
+class FakeTextRouting:
+    """AIRoutingService stand-in returning a provider + sub_model."""
+
+    def __init__(self, provider: str | None, sub_model: str | None) -> None:
+        self._provider = provider
+        self._sub_model = sub_model
+
+    async def resolve(self, operation: str) -> _TextRoutingResult:
+        if self._provider is None:
+            raise RuntimeError("no routing")
+        return _TextRoutingResult(self._provider, self._sub_model)
+
+
+class ModelPricing:
+    """Pricing fake keyed by (service, operation, model)."""
+
+    def __init__(self, prices: dict[tuple[str, str, str | None], int]) -> None:
+        self.prices = prices
+
+    async def get_price(self, ai_service: str, operation_type: str, sub_model: str | None = None) -> int:
+        key = (ai_service, operation_type, sub_model or None)
+        try:
+            return self.prices[key]
+        except KeyError as exc:
+            raise RuntimeError(f"missing {key}") from exc
+
+    async def get_all_pricing(self) -> list[dict]:
+        return [
+            {
+                "ai_service": service,
+                "operation_type": op,
+                "sub_model": model or "",
+                "credits_per_operation": units,
+            }
+            for (service, op, model), units in self.prices.items()
+        ]
+
+
+@pytest.mark.asyncio
+async def test_quote_text_uses_routed_model_price(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """Lyric routed to SLAI must charge the SLAI row, not a scanned row."""
+    pricing = ModelPricing(
+        {
+            ("openai", "lyric", "gpt-4o-mini"): credits_to_units(0.144),
+            ("slai", "lyric", "xiaomi/mimo-v2.5-pro"): credits_to_units(2),
+        }
+    )
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=pricing,
+        ai_routing_service=FakeTextRouting("slai", "xiaomi/mimo-v2.5-pro"),
+    )
+
+    quote = await billing.quote(
+        op="lyric", user_id=USER_ID, operation="lyric"
+    )
+
+    assert quote.amount_credits == 2
+    assert quote.amount_units == credits_to_units(2)
+
+
+@pytest.mark.asyncio
+async def test_quote_web_music_lyrics_prefers_concrete_assignment(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """web_music_lyrics prices from its own assignment row first."""
+    pricing = ModelPricing(
+        {
+            ("slai", "web_music_lyrics", "gpt-5.6-luna"): credits_to_units(2),
+            ("slai", "lyric", "gpt-5.6-luna"): credits_to_units(3),
+        }
+    )
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=pricing,
+        ai_routing_service=FakeTextRouting("slai", "gpt-5.6-luna"),
+    )
+
+    quote = await billing.quote(
+        op="web_music_lyrics",
+        user_id=USER_ID,
+        operation="web_music_lyrics",
+    )
+
+    assert quote.amount_credits == 2
+
+
+@pytest.mark.asyncio
+async def test_quote_text_falls_back_when_routed_model_has_no_row(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """A routed text model without a row keeps the static chain price."""
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=FakePricing(),
+        ai_routing_service=FakeTextRouting("slai", "unknown-model"),
+    )
+
+    quote = await billing.quote(op="lyric", user_id=USER_ID, operation="lyric")
+
+    assert quote.amount_credits == 5
+
+
 @pytest.mark.asyncio
 async def test_plan_override_ignored(billing: CreditsOnlyBillingService, store: FakeStore) -> None:
     plan_id = store.user_plan[str(USER_ID)]
