@@ -91,6 +91,7 @@ functional controls the capture does not show (listed below).
 | Heal Edits / Get MIDI / Remove FX | present in the captured order but disabled with reasons; the behaviours are not built |
 | Clip label colour | dark on pastel fills, white on the saturated reference fills (contrast-safe; the capture only shows white on purple) |
 | Bounce row in the track menu | the reference strings name `Bounce` / `Exporting on track #` but the menu itself was never captured row by row; the action renders the track and downloads the mixdown until storage allows render-in-place (D-031) |
+| Download MIDI row in the clip menu | N-05's strings name the action but the captured clip menu only shows `Get MIDI` (conversion); the row sits after Download WAV and keeps the 158 px menu width by carrying no hint text |
 
 ## Still to measure
 

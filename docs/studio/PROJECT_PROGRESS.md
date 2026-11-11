@@ -2,6 +2,31 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-11 — MIDI download (N-05)
+
+The clip menu can hand back the selected MIDI clips as one Standard MIDI file
+(`feat/studio-midi-export`).
+
+| Area | Landing |
+|---|---|
+| **Encoder** | `lib/studio-midi-file.ts` writes a format-0 SMF at 480 PPQ: tempo meta from the project BPM, one note-on/note-off pair per note, VLQ deltas, end-of-track |
+| **Selection is the unit** | the captured copy says "Download the selected MIDI clips", so several clips become one file with their timeline offsets preserved (`clip.start + note.start`) |
+| **Menu + feedback** | `Download MIDI` sits after `Download WAV`, enabled only when the selection has notes, and reports through the existing toast; the captured `Get MIDI` conversion row stays disabled |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, vitest **238/238** (26 files), full studio e2e
+**114 passed / 1 skipped**, including a spec that reads the downloaded bytes (header,
+PPQ, tempo, both note-ons, end-of-track) and one that proves an audio clip has nothing
+to export.
+
+### S46 correction
+
+The handoff listed "bulk export (S46)", but S46 is the **preset menu** (§90), which is
+already shipped: the plugin cards' stepper opens Clear all / Save preset / preset list.
+The `bulk-preset-export-assets` half has no captured evidence ("nothing in the library
+or the plugin menu offers it"), so it stays unbuilt rather than invented.
+
 ## Session 2026-11-11 — Bounce a track (N-06)
 
 The track menu can render one track on its own, on top of the warp-marker branch
