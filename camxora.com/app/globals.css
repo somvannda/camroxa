@@ -4846,6 +4846,37 @@ html{color-scheme:dark}
 .se-midi-control{display:inline-flex;align-items:center;gap:6px}
 .se-midi-control strong{font-weight:600;color:#f7f4ef}
 .se-midi-control select{height:26px;padding:0 8px;border:0;border-radius:6px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:12px}
+.se-audio{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.06);background:#101012;flex:none;max-height:400px}
+.se-audio-head{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.06)}
+.se-audio-head strong{font-size:12px;font-weight:600}
+.se-audio-head .se-icon{width:24px;height:24px}
+.se-audio-body{display:flex;min-height:0;flex:1}
+.se-audio-settings{width:280px;flex:none;padding:12px;border-right:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:12px;overflow:auto}
+.se-audio-title{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#f4f5fb}
+.se-audio-switch{position:relative;width:38px;height:22px;border-radius:999px;border:0;padding:0;background:#2e2e33;cursor:pointer}
+.se-audio-switch span{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#f4f5fb;transition:left .15s ease}
+.se-audio-switch.on{background:hsl(var(--accent))}
+.se-audio-switch.on span{left:19px}
+.se-audio-modes{display:flex;flex-direction:column;gap:2px}
+.se-audio-modes button{display:flex;align-items:center;gap:10px;min-height:38px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#c2c2c1;font:inherit;font-size:13px;text-align:left;cursor:pointer}
+.se-audio-modes button.on{background:rgba(255,255,255,.07);color:#f4f5fb}
+.se-audio-modes button:hover:not(.on){background:rgba(255,255,255,.04)}
+.se-audio-modes .icon{width:13px;height:13px}
+.se-audio-formant{display:flex;align-items:center;gap:10px;font-size:12px;color:#8b90a6}
+.se-audio-formant input{flex:1;accent-color:hsl(var(--accent))}
+.se-audio-formant output{width:34px;text-align:right;font-variant-numeric:tabular-nums;color:#c2c2c1}
+.se-audio-hint{margin:0;font-size:11px;line-height:1.5;color:#8b90a6}
+.se-audio-canvas{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.se-audio-ruler{position:relative;height:26px;flex:none;background:#141416;border-bottom:1px solid rgba(255,255,255,.06)}
+.se-audio-tick{position:absolute;top:0;padding:7px 0 0 8px;font-size:11px;color:#8b90a6;font-variant-numeric:tabular-nums}
+.se-audio-scroll{flex:1;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#2b2b30 transparent}
+.se-audio-wave{position:relative;background:#0c0c0e}
+.se-audio-wave canvas{display:block;height:150px}
+.se-warp-marker{position:absolute;top:0;bottom:0;width:0}
+.se-warp-head{position:absolute;top:0;left:-6px;width:12px;height:14px;padding:0;border:0;background:#f4f5fb;clip-path:polygon(0 0,100% 0,50% 100%);cursor:ew-resize;z-index:2}
+.se-warp-head.selected{outline:1px solid hsl(var(--accent));outline-offset:2px}
+.se-warp-stem{position:absolute;top:12px;left:0;width:1px;height:44px;background:rgba(244,245,251,.35);pointer-events:none}
+.se-audio-playhead{position:absolute;top:0;bottom:0;width:1px;background:#3dafff;pointer-events:none;z-index:1}
 .se-error{position:fixed;left:50%;top:94px;transform:translateX(-50%);z-index:90;max-width:min(640px,calc(100vw - 32px));padding:8px 14px;border-radius:8px;background:#b91c1c;color:#fff;font-size:12px;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,.45)}
 .se-loading{position:fixed;right:16px;bottom:56px;padding:6px 12px;border-radius:8px;background:#1c1c1f;color:#c9cde0;font-size:12px}
 .se-gate{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100dvh;background:#101012;color:#f4f5fb;text-align:center}
@@ -5272,7 +5303,7 @@ html{color-scheme:dark}
 .se-shell{background:hsl(var(--background));color:hsl(var(--foreground))}
 .se-body,.se-timeline{background:hsl(var(--background))}
 .se-head,.se-foot{background:hsl(224 45% 5%)}
-.se-tracks,.se-library,.se-inspector,.sp-dock,.se-midi{background:hsl(222 34% 9%)}
+.se-tracks,.se-library,.se-inspector,.sp-dock,.se-midi,.se-audio{background:hsl(222 34% 9%)}
 .se-ruler-bars,.se-ruler-time{background:hsl(222 34% 9%)}
 .se-master-strip{background:hsl(222 34% 9%)}
 .se-lib-tile,.se-lib-row,.se-lib-song,.se-lib-upload,.se-project-card,.sp-slot,.sp-card,

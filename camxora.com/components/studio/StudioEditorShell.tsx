@@ -83,6 +83,8 @@ import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSav
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
 import { StudioMidiEditor } from "@/components/studio/StudioMidiEditor";
+import { StudioAudioEditor } from "@/components/studio/StudioAudioEditor";
+import type { WarpState } from "@/lib/studio-warp";
 import { sanitizeNotes, sanitizePoints, scheduleMidiNote, valueAt, type MidiNote } from "@/lib/studio-midi";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
@@ -133,6 +135,8 @@ type ClipLike = {
   songId?: string;
   offset?: number;
   fadeIn?: number;
+  /** Warp markers + stretch mode (S30); parsed by `sanitizeWarp`. */
+  warp?: unknown;
   midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
   /** Alternate takes (S29), newest first; the active one mirrors `audioUrl`. */
   takes?: Array<{
@@ -404,6 +408,7 @@ export function StudioEditorShell() {
     setSelectedClip(clip.id);
     // Selecting an audio clip leaves the MIDI editor; a MIDI clip opens it.
     setMidiClipId((clip as { midi?: unknown }).midi ? clip.id : null);
+    if ((clip as { midi?: unknown }).midi) setAudioClipId(null);
     const group = selectedIds.includes(clip.id) ? selectedIds : [clip.id];
     setSelectedIds(group);
     const origins: Record<string, number> = {};
@@ -413,9 +418,37 @@ export function StudioEditorShell() {
     });
     dragRef.current = { startX: event.clientX, ids: group, origins, ghost: settingsRef.current.ghostDrag };
   }
+
+  /**
+   * Double-click opens the clip editor the reference opens for that clip type (§81):
+   * the note grid for MIDI, the warp/stretch editor for audio.
+   */
+  function handleClipDoubleClick(clip: ClipLike) {
+    if ((clip as { midi?: unknown }).midi) {
+      setAudioClipId(null);
+      setMidiClipId(clip.id);
+      return;
+    }
+    if (!clip.audioUrl) return;
+    setMidiClipId(null);
+    setAudioClipId(clip.id);
+  }
+
+  /** Persist the warp markers / stretch state onto the clip (S30). */
+  function commitWarp(clipId: string, warp: WarpState) {
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      { ...data, lanes: lanes.map((clip) => (clip.id === clipId ? { ...clip, warp } : clip)) },
+      "the warp markers"
+    );
+  }
+
   const [exporting, setExporting] = useState(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [midiClipId, setMidiClipId] = useState<string | null>(null);
+  /** Audio clip editor (S30): warp markers live beside the clip's waveform. */
+  const [audioClipId, setAudioClipId] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
   const [promptModel, setPromptModel] = useState("v6");
@@ -2096,6 +2129,10 @@ export function StudioEditorShell() {
     if (midiClipId) setTakeLanesOpen(false);
   }, [midiClipId]);
 
+  useEffect(() => {
+    if (audioClipId) setTakeLanesOpen(false);
+  }, [audioClipId]);
+
   /** Persist the master chain into the project document (S48). */
   function commitMasterChain(next: MasterChainEntry[]) {
     setLocalMasterChain(next);
@@ -2211,6 +2248,8 @@ export function StudioEditorShell() {
   function deleteSelection() {
     const ids = activeClipIds();
     if (ids.length === 0 || !projectId) return;
+    if (audioClipId && ids.includes(audioClipId)) setAudioClipId(null);
+    if (midiClipId && ids.includes(midiClipId)) setMidiClipId(null);
 
     const removed = clips.filter((clip) => ids.includes(clip.id));
     const remaining = clips.filter((clip) => !ids.includes(clip.id));
@@ -2582,8 +2621,9 @@ export function StudioEditorShell() {
         toggleLoop();
         return;
       }
-      // Select all / cut (spec §36).
+      // Select all / cut (spec §36). The clip editor owns Ctrl+A while it is open.
       if (key === "a") {
+        if (audioClipId) return;
         event.preventDefault();
         setSelectedIds(clipsRef.current.map((clip) => clip.id));
         setSelectedClip(null);
@@ -3794,6 +3834,9 @@ export function StudioEditorShell() {
       }
     : undefined;
 
+  /** The audio clip open in the bottom editor, if any (S30). */
+  const audioClip = audioClipId ? clips.find((clip) => clip.id === audioClipId) : undefined;
+
   return (
     <>
       {/* The reference gates Studio below 768 px (S65): desktop-only notice. */}
@@ -4004,6 +4047,7 @@ export function StudioEditorShell() {
           onRulerContextMenu={handleRulerContextMenu}
           onRangeHandleDown={handleRangeHandleDown}
           onClipPointerDown={handleClipPointerDown}
+          onClipDoubleClick={handleClipDoubleClick}
           onClipContextMenu={handleClipContextMenu}
           onTrimPointerDown={handleTrimPointerDown}
           onFadePointerDown={handleFadePointerDown}
@@ -4741,6 +4785,15 @@ export function StudioEditorShell() {
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
           onChangeLanes={(lane, points) => setMidiLanes(midiClip.id, lane, points)}
           onClose={() => setMidiClipId(null)}
+        />
+      ) : audioClip ? (
+        <StudioAudioEditor
+          clip={audioClip}
+          secondsPerBar={secondsPerBar}
+          beatsPerBar={beatsPerBar}
+          playhead={playhead}
+          onWarp={(next) => commitWarp(audioClip.id, next)}
+          onClose={() => setAudioClipId(null)}
         />
       ) : masterSelected ? (
         <StudioMasterDock chain={masterChain} onChange={commitMasterChain} />

@@ -105,6 +105,8 @@ export type StudioTimelineProps = {
   onRulerContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
   /** Grabbing either edge of the time selection. */
   onRangeHandleDown?: (event: ReactPointerEvent<HTMLButtonElement>, edge: "start" | "end") => void;
+  /** Double-click opens the clip editor: notes for MIDI, warp for audio (S30). */
+  onClipDoubleClick?: (clip: TimelineClip) => void;
   onClipPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, clip: TimelineClip, trackId: string) => void;
   onClipContextMenu: (event: React.MouseEvent<HTMLButtonElement>, clip: TimelineClip) => void;
   onTrimPointerDown: (
@@ -148,6 +150,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
     onRulerPointerDown,
     onRulerContextMenu,
     onRangeHandleDown,
+    onClipDoubleClick,
     onClipPointerDown,
     onClipContextMenu,
     onTrimPointerDown,
@@ -254,6 +257,10 @@ export function StudioTimeline(props: StudioTimelineProps) {
                         color: labelOn(clip.color || track.color),
                       }}
                       onPointerDown={(event) => onClipPointerDown(event, clip, track.id)}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        onClipDoubleClick?.(clip);
+                      }}
                       onContextMenu={(event) => onClipContextMenu(event, clip)}
                       data-help="clip"
                       aria-pressed={isSelected}
