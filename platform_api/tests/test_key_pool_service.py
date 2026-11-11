@@ -643,7 +643,11 @@ class TestPoolStatus:
 
     @pytest.mark.asyncio
     async def test_status_counts_are_correct(
-        self, service: KeyPoolService, fake_repo: FakeKeyPoolRepository, encryption: KeyEncryption
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        fake_redis: FakeRedis,
     ) -> None:
         """Pool status should return correct counts per key status."""
         active = _make_entry(encryption, label="a1")
@@ -654,6 +658,8 @@ class TestPoolStatus:
         fake_repo._entries[rate_limited.id] = rate_limited
         fake_repo._entries[exhausted.id] = exhausted
         fake_repo._entries[disabled.id] = disabled
+        # An unexpired cooldown keeps the rate-limited key parked (no recovery).
+        fake_redis._store[f"key_pool:suno:cooldown:{rate_limited.id}"] = "1"
 
         status = await service.get_pool_status("suno")
         assert status["provider"] == "suno"
@@ -864,6 +870,28 @@ class TestExecuteWithFailover:
 
         assert result == {"result": "ok", "key_used": "value-B"}
         assert fake_repo._entries[key_a.id].status == KeyStatus.RATE_LIMITED
+
+    @pytest.mark.asyncio
+    async def test_pool_status_recovers_expired_cooldown(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+    ) -> None:
+        """Health reads must not keep reporting a stale critical after cooldown."""
+        key = _make_entry(
+            encryption,
+            provider="slai",
+            label="key-A",
+            status=KeyStatus.RATE_LIMITED,
+        )
+        fake_repo._entries[key.id] = key
+
+        status = await service.get_pool_status("slai")
+
+        assert status["active_keys"] == 1
+        assert status["rate_limited_keys"] == 0
+        assert fake_repo._entries[key.id].status == KeyStatus.ACTIVE
 
     @pytest.mark.asyncio
     async def test_max_3_retries_then_raises(
