@@ -1621,6 +1621,17 @@ class UsageEnforcementService:
             )
             pricing_entry = None
         if pricing_entry is None:
+            if (routed_provider and routed_provider != provider) or (
+                routed_model is not None and routed_model != model
+            ):
+                logger.warning(
+                    "v3 fallback settle: no pricing row for executed %s/%s "
+                    "(op=%s); keeping the quoted %d units",
+                    provider,
+                    model,
+                    operation_type,
+                    held,
+                )
             return held
 
         raw_units = pricing_entry.get("credits_per_operation")
