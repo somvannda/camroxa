@@ -77,6 +77,10 @@ _AUTH_INVALID_KEY_MARKERS = (
 # key to finish its cooldown before giving the request back to the job queue.
 KEY_POOL_MAX_COOLDOWN_WAIT_SECONDS = 65.0
 
+# Dedup window for "this provider has no selectable keys" ops alerts. One burst
+# of parallel songs must not turn into dozens of Telegram messages.
+KEY_POOL_ALERT_COOLDOWN_SECONDS = 900
+
 
 def classify_auth_rejection(response_body: str | None) -> str:
     """Classify a 401 body so the pool can park, disable, or fail fast.
@@ -94,8 +98,8 @@ def classify_auth_rejection(response_body: str | None) -> str:
     return "unknown"
 
 
-def _alert_provider_out_of_credits(provider: str, response_body: str | None) -> None:
-    """Best-effort ops ping when a provider's upstream account is empty."""
+def _schedule_ops_alert(message: str) -> None:
+    """Best-effort ops alert; never blocks or fails the caller."""
 
     async def _send() -> None:
         try:
@@ -106,19 +110,24 @@ def _alert_provider_out_of_credits(provider: str, response_body: str | None) -> 
             service = get_telegram_ops_service()
             if service is None:
                 return
-            summary = (response_body or "Insufficient credits.")[:200]
-            await service.send_html(
-                f"⚠️ <b>{provider}</b> is out of credits.\n"
-                f"<code>{summary}</code>\n"
-                "Generation fails until the upstream account is topped up."
-            )
+            await service.send_html(message)
         except Exception:
-            logger.debug("Credit-exhaustion ops alert failed", exc_info=True)
+            logger.debug("Key-pool ops alert failed", exc_info=True)
 
     try:
         asyncio.get_running_loop().create_task(_send())
     except RuntimeError:
-        logger.warning("No running loop for credit-exhaustion alert (%s)", provider)
+        logger.warning("No running loop for key-pool ops alert")
+
+
+def _alert_provider_out_of_credits(provider: str, response_body: str | None) -> None:
+    """Best-effort ops ping when a provider's upstream account is empty."""
+    summary = (response_body or "Insufficient credits.")[:200]
+    _schedule_ops_alert(
+        f"⚠️ <b>{provider}</b> is out of credits.\n"
+        f"<code>{summary}</code>\n"
+        "Generation fails until the upstream account is topped up."
+    )
 
 
 def _effective_suno_base_url(configured: str | None) -> str:
@@ -191,6 +200,7 @@ class KeyPoolService:
             # Build status counts for the error
             all_keys = await self._repo.list_by_provider(provider)
             status_counts = self._compute_status_counts(all_keys)
+            await self._alert_no_active_keys(provider, status_counts)
             raise NoAvailableKeysError(provider=provider, status_counts=status_counts)
 
         strategy = config.selection_strategy
@@ -690,6 +700,7 @@ class KeyPoolService:
                     # No active keys at all and none about to recover
                     all_keys = await self._repo.list_by_provider(provider)
                     status_counts = self._compute_status_counts(all_keys)
+                    await self._alert_no_active_keys(provider, status_counts)
                     raise NoAvailableKeysError(
                         provider=provider, status_counts=status_counts
                     )
@@ -996,6 +1007,11 @@ class KeyPoolService:
                 provider,
                 status_code,
                 reason,
+            )
+            _schedule_ops_alert(
+                f"🔑 <b>{provider}</b> key <code>{key_entry.label}</code> disabled: "
+                f"upstream returned {status_code} ({reason}).\n"
+                "Fix the key/account and re-enable it in Key Pool."
             )
             return
 
@@ -1412,6 +1428,35 @@ class KeyPoolService:
                 return untagged
             return tagged
         return keys
+
+    async def _alert_no_active_keys(
+        self, provider: str, status_counts: dict[str, int]
+    ) -> None:
+        """Ops alert when the pool has zero selectable keys.
+
+        Deduped in Redis so a burst of parallel songs produces one alert per
+        ``KEY_POOL_ALERT_COOLDOWN_SECONDS`` instead of a message storm.
+        """
+        dedup_key = f"key_pool:{provider}:alert:no_active"
+        try:
+            if await self._redis.exists(dedup_key):
+                return
+            await self._redis.set(dedup_key, "1", ex=KEY_POOL_ALERT_COOLDOWN_SECONDS)
+        except Exception:
+            logger.debug(
+                "Could not dedupe no-active-keys alert (provider=%s)",
+                provider,
+                exc_info=True,
+            )
+
+        counts = ", ".join(
+            f"{name}={count}" for name, count in status_counts.items() if count
+        )
+        _schedule_ops_alert(
+            f"🚨 <b>{provider}</b> key pool has no active keys"
+            + (f" ({counts})" if counts else "")
+            + ".\nGeneration fails until a key is re-enabled or topped up."
+        )
 
     async def _earliest_cooldown_wait(self, provider: str) -> float | None:
         """Seconds to wait for the soonest parked key to rejoin the pool.
