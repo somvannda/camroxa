@@ -91,7 +91,7 @@ Helpers in `scripts/`:
 | unit | `npm test` | snap, time edits, warp markers/onsets, MIDI file, meter, export, plugins, … |
 | component | `npm test` | header, footer, library, timeline, track panel, audio editor, MIDI editor |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | 35 specs, 114 passing |
+| e2e | `npm run test:e2e` | 43 specs, 114 passing |
 
 CI jobs on any PR touching `camxora.com`: `camxora-web-checks` (typecheck, `check:ui`,
 `npm test`, `npm run build`) and `camxora-e2e` (Postgres, Redis, musicapi,
