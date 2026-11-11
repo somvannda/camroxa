@@ -32,6 +32,11 @@ decision (vitest vs. node:test vs. Playwright only).
 web dev server `:3103`. Real generation and stems are verified end to end — see B-005
 for the exact environment and the callback tunnel.
 
+**Local UI login:** set `NEXT_PUBLIC_TURNSTILE_DISABLED=1` in `camxora.com/.env.local`
+and restart `next dev`. The backend already accepts a missing Turnstile token in
+development, but the widget never issues one on localhost, so the form stays disabled
+without the flag. Verified with a Playwright form login.
+
 ## B-004 — Stems tab needs a listing API (RESOLVED 2026-11-10)
 
 **Was:** a stem set existed only as a `studio_operations` row with a provider-shaped
