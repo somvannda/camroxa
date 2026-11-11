@@ -699,3 +699,32 @@ content offset advance, MIDI notes rebased onto their slice, track `clipIds` reb
 Edits write the document once, so undo restores the whole block in one step. Deleting
 time keeps a clip's id when its head does not survive, so keyboard focus and the DOM
 selection stay put.
+
+## D-030 - Warp markers are pairs, and the clip editor ships Stretch only
+
+**Date:** 2026-11-11 **Status:** accepted
+
+**Decision.** A clip stores its warp markers as `warp: { on, mode, formant, markers }`
+with one entry per marker holding both positions: `time` (seconds on the timeline,
+relative to the clip start) and `source` (seconds into the audio file). The reference
+stores a map of source beats to timeline seconds; the pair keeps the same information
+but survives quantizing and dragging without a lookup.
+
+The three captured modes only decide which positions are auto-generated:
+`On Beat` marks every beat, `Start and End` marks the bounds, `Transients` runs onset
+detection over the decoded peak envelope and falls back to the bounds when the audio
+has no transients to find (a steady tone yields nothing honest). Markers render only
+while `on` is true, as pennants on the waveform's top edge in the audio clip editor,
+which double-clicking an audio clip opens.
+
+**Why Stretch only.** The captured Clip Settings column also lists Volume,
+Loop/Reverse, Pitch, Speed and Quantize (§81). Those need real audio behaviour
+(reversed buffers, resampling, per-clip gain) that the engine does not have yet, and the
+project rule is that a visible control either works or is honestly absent. Stretch's
+markers are the part S30 is about, and they are fully functional.
+
+**Consequences.** `lib/studio-warp.ts` is pure and unit-tested; `lib/studio-peaks.ts`
+now owns the decode cache so the timeline waveform and the clip editor analyse the same
+peaks. Dragging a head changes `time` only, so the audio keeps its source alignment
+until `Shift Q` snaps the timeline positions to the grid. The rest of the settings
+column is tracked as a follow-up rather than hidden in the panel.

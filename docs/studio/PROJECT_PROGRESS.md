@@ -2,6 +2,27 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-11 — Warp markers (S30)
+
+The audio clip editor and its warp markers are in, on top of the time-selection branch
+(`feat/studio-warp-markers`). Double-clicking an audio clip opens the captured
+`Clip Settings` band; the markers are the editable object (D-030).
+
+| Area | What landed |
+|---|---|
+| **Clip editor** | 280 px `Clip Settings` column beside a zoomed waveform with a bar ruler and playhead, in the same band geometry as the MIDI editor |
+| **Stretch** | a switch plus `On Beat` / `Transients` / `Start and End` with the captured tooltips, and the Formant control; choosing a mode fills the clip with that mode's markers |
+| **Markers** | white pennant heads on the waveform's top edge with hairline stems, clipped to the clip bounds; `Transients` detects onsets from the decoded peaks and falls back to the bounds for steady audio |
+| **Editing** | drag a head (timeline position moves, source stays), click selects, `Ctrl A` selects all, `Shift Q` quantizes; every edit persists on the clip as `warp` and one undo step |
+| **Shared decode** | `lib/studio-peaks.ts` now owns the peak cache and onset detection, used by both the timeline waveform and the clip editor |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, vitest **234/234** (25 files), full studio e2e
+**110 passed / 1 skipped**, plus a screenshot pass over the panel and its marker row.
+The captured-but-unbuilt half of §81 (Volume, Loop/Reverse, Pitch, Speed, Quantize) is
+recorded in D-030 as the follow-up.
+
 ## Session 2026-11-11 — Time selection (N-01)
 
 The editor has the reference's second selection type: a **time range** dragged on the
