@@ -1,25 +1,64 @@
-# SESSION HANDOFF — read this first, nothing else
+# SESSION HANDOFF — read this first
 
-State as of 2026-11-07. A new session should need only this file plus
-`reference/SCREEN_MANIFEST.md` and `IMPLEMENTATION_ROADMAP.md`.
+State as of **2026-11-11**. Start here; the long plans live beside this file.
 
 ## Where things are
 
 | | |
 |---|---|
 | Worktree | `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-rebuild` |
-| Branch | `feat/studio-rebuild` — clean, pushed |
+| Branch | `feat/studio-rebuild` — clean, pushed, **reconciled with `origin/main`** (`0` behind, `437` ahead) |
 | Web | `localhost:3103` (`npm run dev` in `camxora.com`) |
-| Platform API | `localhost:8100` — **now runs from this worktree** |
+| Platform API | `localhost:8100` — **must run from this worktree** |
 | MusicAPI | `localhost:4003` |
-| Capture archive | `docs/studio/reference/screens/` — 78 images |
+| Local account | `somvannda@gmail.com` / `StudioLocal!2026` |
+| UI login | needs `NEXT_PUBLIC_TURNSTILE_DISABLED=1` in `camxora.com/.env.local` |
+| Capture archive | `docs/studio/reference/screens/` — 83 images |
 
-## Two halves of the work
+## State in one paragraph
 
-| Half | State |
+Capture is **63/65 DONE / 2 OPEN** (S60 moderation, S61 credits — both need forced
+account states). The gap analysis `G1`–`G49` is **done** except `G12`'s remaining
+blocked halves, and the build has now shipped the last unblocked feature areas:
+time-selection editing (N-01), warp markers + the audio clip editor (S30), track
+bounce (N-06) and MIDI download (N-05). Every one of them is covered by unit tests and
+browser tests, and the branch is main-synced.
+
+## Verified on `7a51da8b` (post-merge)
+
+| Gate | Result |
 |---|---|
-| **Capture** (65 screens → screenshot + spec) | **63 DONE / 0 PART / 2 OPEN**, spec §1–§101, 83 images. The two remaining are S60/S61 and are documented in `reference/CAPTURE_GAPS.md`; neither blocks the build. |
-| **Build** (close gaps against that spec) | W1 ✅, W2 ✅ (all four), W3 ✅ (9 done, G12 partial), W4 ✅ 1/3/4 — only the stems-dependent items remain; G21 arm+record done (D-020). |
+| `npm run typecheck` | clean |
+| `npm run check:ui` | compliant |
+| `npm test` (vitest) | **238 / 238**, 26 files |
+| `npx playwright test` | **114 passed / 1 skipped** |
+
+The single skip is the uploads spec's optional branch (`STUDIO_EXPECT_UPLOADS=1` when a
+bucket is configured).
+
+## Recently shipped (all on this branch)
+
+| Area | Evidence |
+|---|---|
+| Time selection (N-01) | ruler drag/Shift-click, edge grips, range menu, delete/duplicate time with ripple, scoped delete, loop selection, range export unlock — `lib/studio-time.ts`, `tests/e2e/studio-time-selection.spec.ts` |
+| Warp markers (S30) | audio clip editor on double-click, Stretch switch + 3 captured modes + Formant, pennant markers over the waveform, drag/select/quantize — `lib/studio-warp.ts`, `components/studio/StudioAudioEditor.tsx` |
+| Track bounce (N-06) | track menu renders that track through its chain and downloads a WAV, solo-aware — `tests/e2e/studio-bounce.spec.ts` |
+| MIDI download (N-05) | selected MIDI clips become one `.mid` (format 0, 480 PPQ) — `lib/studio-midi-file.ts` |
+
+Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pairs; the
+rest of the captured §81 settings column is deferred), **D-031** (bounce renders the
+track; in-place waits for storage).
+
+## Still blocked or deferred
+
+| Item | Why | Where |
+|---|---|---|
+| Render-in-place bounce | `POST /studio/uploads` answers `storage_not_configured` on the running API; data-URL clips were rejected as document bloat | D-031, B-007 |
+| §81 settings column: Volume, Loop/Reverse, Pitch, Speed, Quantize | needs real audio behaviour the engine does not have yet | D-030 |
+| Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
+| Stems tile/upload halves of G12 | stems needs a genuinely generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
+| S60 / S61 captures | need a signed-in Suno reference session with a real moderation/no-credit trigger | `reference/CAPTURE_GAPS.md` |
+| Song Radio + playlists UI | **already shipped in `origin/main`** — Song Radio is in `SongRowMenu` on Create and Library with a working radio endpoint, and Library has a full Playlists tab, detail view and composer. The old handoff list was stale on this point | `components/SongRowMenu.tsx`, `components/LibraryView.tsx` |
 
 ## Running the app (the part that costs time)
 
@@ -33,54 +72,39 @@ python -m uvicorn platform_api.main:app --host 127.0.0.1 --port 8100 --log-level
 ```
 
 - `PYTHONIOENCODING=utf-8` matters: the access log contains `→` and crashes on cp1252.
-- `set "VAR=value" && …` must be quoted; `set VAR=value &&` puts a trailing space in
-  the DB name and the pool fails with `database "… " does not exist`.
-- Don't `cd platform_api` — `platform_api` must be importable from the repo root.
-
-**Local account** (sandbox DB, disposable):
-`somvannda@gmail.com` / `StudioLocal!2026`
+- Don't `cd platform_api` — the package must be importable from the repo root.
+- Uploads (recorded takes, bounce-in-place) need the moto S3 env in `B-006`; without it
+  the endpoint answers `storage_not_configured` by design.
 
 Helpers in `scripts/`:
-- `inspect_api_env.py <pid>` — find which DB a running API actually uses.
-- `seed_sandbox_user.py [email] [pw]` - create/reset a user in that DB **and ensure a
-  default workspace** (the library filters songs by workspace, so a fresh account with
-  no workspace lists nothing).
-- `seed_sandbox_song.py` - writes `public/seed/demo-loop.wav` and inserts a completed
-  `suno_task`, so the library/provenance paths have real data. When
-  `PLATFORM_STREAMING_B2_*` is configured it also uploads the WAV to a task-scoped key
-  (`web-music/<task>/seed-ok.wav`), which is what makes the download/waveform path work;
-  pass `--force` to replace an existing seed task. Both scripts honour
-  `PLATFORM_DATABASE_URL` (async URLs accepted); the seed URL is overridable with
-  `STUDIO_SEED_PUBLIC_URL`. Note the three things
-  the list endpoint filters on (`source='web_music'`, a `workspace_id`) and the two
-  that make a clip playable (`stream_ready_*`, `package_status_*`).
+
+- `inspect_api_env.py <pid>` — which DB a running API actually uses.
+- `seed_sandbox_user.py [email] [pw]` — create/reset the user **and its workspace**.
+- `seed_sandbox_song.py` — writes `public/seed/demo-loop.wav` + a completed `suno_task`.
 - `verify_studio_conflict.py` — proves the 409 path against the live API.
 
-## Tests and CI (added 2026-11-04)
+## Tests and CI
 
 | Layer | Command | Count |
 |---|---|---|
-| production build | `npm run build` | passes; the classic editor page is wrapped in Suspense like the shell |
-| unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
-| component | `npm test` | header, footer, library, provenance strip, track panel |
+| production build | `npm run build` | passes (classic editor page is wrapped in Suspense) |
+| unit | `npm test` | snap, time edits, warp markers/onsets, MIDI file, meter, export, plugins, … |
+| component | `npm test` | header, footer, library, timeline, track panel, audio editor, MIDI editor |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` (set `STUDIO_EXPECT_UPLOADS=1` when the API has a bucket) | smoke, persistence, home + search, library + date grouping, project menu, clip menu + split, clip info, conflicts, offline, share page, versions, transport, meter, shortcuts, trim, fade, snap guideline, track colour, loop/seek, export bytes, zoom, tracks, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, classic editor, recording, axe ×3 |
+| e2e | `npm run test:e2e` | 35 specs, 114 passing |
 
-CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` + `npm run build` on
-any PR touching `camxora.com`. The production build gate exists because a missing
-Suspense boundary once broke `/studio/editor/classic` at build time while typecheck and
-unit tests stayed green. A second job, `camxora-e2e`, provisions Postgres, **Redis**
-(platform_api's audit middleware needs it or logins 500), musicapi, platform_api and the
-web app, then runs the Playwright suite. It is a **blocking gate** (first green run on
-PR #483); the specs build their own fixtures through the API
-(`tests/e2e/studio-fixture.ts`) and leave those fixtures in the sandbox database, so the
-sandbox accumulates test projects by design; they never touch a non-sandbox account.
+CI jobs on any PR touching `camxora.com`: `camxora-web-checks` (typecheck, `check:ui`,
+`npm test`, `npm run build`) and `camxora-e2e` (Postgres, Redis, musicapi,
+platform_api, web, seeded user + song). Both block.
 
-**Backend suite:** `python -m pytest platform_api/tests -q` → **3304 passed, 0 failed**
-after the `origin/main` reconciliation. The plan-era tests were rewritten to the
-credits-only contract, so the suite is green and a new failure is a real one.
+Specs build their own fixtures through the API (`tests/e2e/studio-fixture.ts`) and leave
+them in the sandbox database by design; they never touch a non-sandbox account.
 
-`beforeunload` note: when a save is pending the editor blocks navigation, so a
+**Backend suite:** `python -m pytest platform_api/tests -q` → green after the
+`origin/main` reconciliation; plan-era tests were rewritten to the credits-only
+contract, so a new failure is a real one.
+
+`beforeunload` note: while a save is pending the editor blocks navigation, so a
 Playwright `page.goto` can hang on the confirmation dialog. Close the save first, or open
 a fresh page.
 
@@ -88,13 +112,14 @@ a fresh page.
 
 | Trap | Avoid |
 |---|---|
-| Access tokens live **30 minutes** | expect `401` mid-session; re-login with `POST /api/v3/auth/login` from the page |
-| Background tab throttles `requestAnimationFrame` | the playhead will not advance; don't read that as a playback bug |
-| `beforeunload` guard blocks navigation while a save is pending | accept the dialog via the browser tool, or open a new tab |
-| Synthetic pointer events need `pointerdown` **on the element** | a press with no movement is a click; a move past 3 px is a drag |
+| Access tokens live **30 minutes** | expect `401` mid-session; re-login via `POST /api/v3/auth/login` from the page |
+| Background tab throttles `requestAnimationFrame` | the playhead will not advance; not a playback bug |
+| `beforeunload` guard blocks navigation while a save is pending | accept the dialog, or open a new tab |
+| Synthetic pointer events need `pointerdown` **on the element** | a press with no movement is a click; >3 px is a drag |
 | Stale closures in pointer handlers | read live data through refs (`tracksRef`, `clipsRef`) |
-| Two edits in quick succession | writes are serialized; do not "fix" a 409 by loosening the version check — the queue already coalesces (G29) |
-| PowerShell mangles `—`/`§` and nested quotes | write docs with the write/edit tools; put JS in a file |
+| Two edits in quick succession | writes are serialized; do not loosen the version check (G29) |
+| API reads race the async save | poll the project document in e2e instead of reading once |
+| PowerShell mangles dashes and nested quotes | write docs with the tools; put JS in a file |
 | `next dev` re-adds `camxora.com/AGENTS.md` | commit it, or it stays dirty |
 
 ## Gates before every commit
@@ -103,57 +128,28 @@ a fresh page.
 cd camxora.com && npm run typecheck && npm run check:ui && npm test
 ```
 
-Add `npm run test:e2e` when the change touches the editor's interaction model, the
-metric surface, or accessibility.
+Add `npx playwright test` when the change touches the editor's interaction model,
+export bytes, the menu surfaces or accessibility.
 
 `check:ui` rejects raw hex outside the palette (use `hsl(var(--token))`) and font sizes
-outside the `.s-*` scale.
+outside the `.s-*` scale — and the `.se-*` block is scanned for stray hexes too.
 
-## What we deliberately did NOT copy from the reference
+## What we deliberately did NOT copy
 
-Written into the code where it matters: the reference has **no** save-status, conflict
-UI, offline state or draft recovery (spec §93, §96). We built all four on purpose. Any
-future "parity" work should not delete them.
+The reference has **no** save-status, conflict UI, offline state or draft recovery
+(spec §93, §96). All four are deliberate (W2). Any future "parity" work must not delete
+them. Same for the selection model: the reference's time range is transient, so ours is
+not persisted (D-029).
 
 ## Next moves, in order
 
-Capture is **63/65** (S60/S61 need forced states) and the signed-in reference session is
-available; the one missing image is §100's song-detail rail, blocked only by the Review
-pane not being visible when the screenshot runs. What is left:
-
-1. **W4.2 stems** and the stems half of **W4.3** — the charge path is fixed and verified
-   (D-009); what remains is one genuinely generated clip so musicapi can resolve the
-   owning Suno account (blocker B-005).
-2. **G12 remainder** — only the stems tile/list (B-005). The two-level library is fully
-   wired: level 1 tile chooser + Workspaces (with `New workspace`) + Studio Projects;
-   level 2 with collapsible date headings, Play/Like row actions, draggable rows,
-   tag strips, the captured toolbar, and the §100 song-detail rail on double-click.
-   Library upload is **verified locally** against a moto S3 stand-in (B-006); production
-   still needs a real bucket.
-3. **G21** - arm + microphone takes are implemented as a documented divergence (D-020); the reference take flow itself is still uncaptured.
-4. **§100 image + S60/S61** — an image of the detail rail when the pane is visible, and
-   the two forced states (moderation, no credits). Neither blocks the build.
-5. **e2e in CI** - the service-backed `camxora-e2e` job provisions Postgres, **Redis** (platform_api's audit middleware needs it or every login is a 500), musicapi, platform_api, the web app and Playwright, and seeds one user plus one playable song. It is now a **blocking gate** (green on PR #483).
-
-## Modules added this session (each with a dev handle for measurement)
-
-| Module | Purpose | Handle (dev only) |
-|---|---|---|
-| `lib/studio-snap.ts` | snap-to-grid, drag threshold, pure | — |
-| `lib/studio-draft.ts` | offline draft storage, storage-injected | — |
-| `lib/studio-seed.ts` | build a project from a song | — |
-| `lib/studio-master-bus.ts` | real EQ/comp/limiter/drive node graph | `window.__buildMasterBus` |
-| `lib/studio-export.ts` | 16-bit WAV encoder + offline mixdown | `window.__studioExport` |
-| `lib/studio-meter.ts` | peak / RMS / 4x inter-sample estimate | `window.__studioMeter` |
-| `lib/studio-normalise.ts` | sample-peak gain matching for exports | `window.__studioNormalise` |
-| `lib/studio-settings.ts` | editor preferences + the ghost-drag apply plan | — |
-| `lib/studio-help.ts` | What's This? copy registry + our real shortcut list | — |
-| `lib/studio-metronome.ts` | click timing (pure) + beat-in-bar | — |
-
-The handles exist so audio behaviour can be measured with an `OfflineAudioContext`
-instead of by ear — that is how W4.1, W4.3 and W4.4 were verified.
-
-## Capture position
-
-65 screens: **63 DONE / 0 PART / 2 OPEN**, 83 images, spec §1–§101. The two remaining
-are the forced account states in `reference/CAPTURE_GAPS.md`. None block the build.
+1. **Ship the branch**: open a PR from `feat/studio-rebuild` to `main`. The branch is
+   main-synced and green, so this is a review step rather than a reconciliation step.
+2. **Delete the four merged remote branches** after review
+   (`feat/studio-time-selection`, `-warp-markers`, `-bounce`, `-midi-export`); their
+   commits are all contained in `feat/studio-rebuild`.
+3. **Unblock render-in-place** by starting the API with the moto env (B-006/B-007), then
+   upload the bounce and add the `(bounced)` track.
+4. **Audio settings pass** — the captured §81 column (Volume, Loop/Reverse, Pitch,
+   Speed, Quantize) on top of the clip editor built for S30 (D-030).
+5. **S60/S61** and the §100 detail-rail image when a reference session is available.
