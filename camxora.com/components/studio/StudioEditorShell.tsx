@@ -9,6 +9,18 @@ import { getStudioProject, StudioConflictError, updateStudioProject, type Studio
 import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import {
+  requestStudioCover,
+  requestStudioExtend,
+  requestStudioRemaster,
+  type StudioOperation,
+} from "@/lib/studio-api";
+import {
+  extendedClipStart,
+  resultAudioUrl,
+  resultDuration,
+  withTransformTake,
+} from "@/lib/studio-transforms";
+import {
   listStudioProjects,
   listStudioStems,
   listStudioUploads,
@@ -245,6 +257,10 @@ export function StudioEditorShell() {
   const [clipSource, setClipSource] = useState<WebMusicGeneration | null>(null);
   /** Stem separation request state for the selected clip (W4.2). */
   const [stems, setStems] = useState<{ status: string; message?: string } | null>(null);
+  /** Clip transform in flight + the optional Cover prompt (D-033). */
+  const [transformBusy, setTransformBusy] = useState<null | "extend" | "cover" | "remaster">(null);
+  const [transformPrompt, setTransformPrompt] = useState<{ clipId: string } | null>(null);
+  const [transformValue, setTransformValue] = useState("");
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
   const [drag, setDrag] = useState<{
     ids: string[];
@@ -261,8 +277,7 @@ export function StudioEditorShell() {
   /** Live fade-in length while its handle is dragged (S25). */
   const [fadePreview, setFadePreview] = useState<{ id: string; fadeIn: number } | null>(null);
   /** Clip context menu (S26/§47): anchored at the click point, built from clip state. */
-  const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
-  const [clipColorOpen, setClipColorOpen] = useState(false);
+  const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);  const [clipColorOpen, setClipColorOpen] = useState(false);
   /** Clip rename dialog (clip menu ▸ Rename). */
   const [clipRename, setClipRename] = useState<{ id: string; value: string } | null>(null);
   const fadePreviewRef = useRef<typeof fadePreview>(null);
@@ -1998,6 +2013,106 @@ export function StudioEditorShell() {
         status: "error",
         message: cause instanceof Error ? cause.message : "Could not start stem separation.",
       });
+    }
+  }
+
+  /** Poll a Studio operation until it settles (or the deadline passes). */
+  async function pollOperation(
+    operation: StudioOperation,
+    timeoutMs = 120_000
+  ): Promise<StudioOperation> {
+    const deadline = Date.now() + timeoutMs;
+    let current = operation;
+    while (Date.now() < deadline) {
+      if (current.status === "done" || current.status === "error" || current.status === "failed") {
+        return current;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      current = await getStudioOperation(operation.id);
+    }
+    return current;
+  }
+
+  /**
+   * Clip transforms (D-033): Extend continues the clip after itself, while Cover and
+   * Remaster land as new takes on the source clip. Both are paid Studio operations, so
+   * the result is placed only after the operation finishes.
+   */
+  async function runTransform(
+    kind: "extend" | "cover" | "remaster",
+    clipId: string,
+    prompt = ""
+  ) {
+    if (transformBusy) return;
+    const clip = clipsRef.current.find((entry) => entry.id === clipId);
+    const songId = (clip as { songId?: string } | undefined)?.songId;
+    if (!clip || !songId) return;
+    const label = kind === "extend" ? "Extend" : kind === "cover" ? "Cover" : "Remaster";
+    setClipMenu(null);
+    setTransformBusy(kind);
+    setExportToast(`${label} queued…`);
+    try {
+      const operation =
+        kind === "extend"
+          ? await requestStudioExtend({
+              taskId: songId,
+              variant: "ok",
+              continueAt: extendedClipStart(clip),
+              projectId,
+            })
+          : kind === "cover"
+            ? await requestStudioCover({
+                taskId: songId,
+                variant: "ok",
+                prompt,
+                projectId,
+              })
+            : await requestStudioRemaster({ taskId: songId, variant: "ok", projectId });
+      const current = await pollOperation(operation);
+      if (current.status !== "done") {
+        throw new Error(current.error_message ?? `${label} failed.`);
+      }
+      const result = current.result?.clips?.[0];
+      if (!result) throw new Error("No audio came back.");
+      const stamp = Date.now().toString(36);
+      const data = currentData() as Record<string, unknown>;
+
+      if (kind === "extend") {
+        const lane: ClipLike = {
+          id: `ext-${stamp}`,
+          title: `${clip.title ?? "Clip"} (extended)`,
+          start: extendedClipStart(clip),
+          duration: resultDuration(result, clip.duration ?? 8),
+          volume: 1,
+          pan: 0,
+          audioUrl: resultAudioUrl(result),
+          songId,
+        };
+        const nextTracks = tracks.map((track) =>
+          track.clipIds.includes(clip.id)
+            ? { ...track, clipIds: [...track.clipIds, lane.id] }
+            : track
+        );
+        writeProjectData(
+          { ...data, lanes: [...clipsRef.current, lane], tracks: nextTracks },
+          "the extension",
+          nextTracks
+        );
+        setSelectedClip(lane.id);
+        setExportToast("Extension added after the clip.");
+      } else {
+        const lanes = clipsRef.current.map((entry) =>
+          entry.id === clip.id ? withTransformTake(entry, label, result, stamp) : entry
+        );
+        writeProjectData({ ...data, lanes }, `${label.toLowerCase()} result`);
+        setSelectedClip(clip.id);
+        setTakeLanesOpen(true);
+        setExportToast(`${label} added as a new take.`);
+      }
+    } catch (cause) {
+      setExportToast(cause instanceof Error ? cause.message : `${label} failed.`);
+    } finally {
+      setTransformBusy(null);
     }
   }
 
@@ -4841,6 +4956,51 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-wand-magic-sparkles" /> Get Stems
                 </button>
+                <div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId || Boolean(transformBusy)}
+                  title={
+                    clip.songId
+                      ? "Continue this clip after itself"
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => void runTransform("extend", clip.id)}
+                >
+                  <Icon name="fa-arrow-right" /> Extend
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId || Boolean(transformBusy)}
+                  title={
+                    clip.songId
+                      ? "Re-sing this clip in a new style"
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => {
+                    setClipMenu(null);
+                    setTransformValue("");
+                    setTransformPrompt({ clipId: clip.id });
+                  }}
+                >
+                  <Icon name="fa-music" /> Cover…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId || Boolean(transformBusy)}
+                  title={
+                    clip.songId
+                      ? "Clean up and re-master this clip"
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => void runTransform("remaster", clip.id)}
+                >
+                  <Icon name="fa-wand-magic" /> Remaster
+                </button>
+                <div className="se-clip-menu-sep" />
                 <button
                   type="button"
                   role="menuitem"
@@ -4948,8 +5108,7 @@ export function StudioEditorShell() {
         : null}
       </div>
 
-      {clipRename ? (
-        <div className="se-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Rename clip">
+      {clipRename ? (        <div className="se-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Rename clip">
           <div className="se-dialog">
             <h2>Rename clip</h2>
             <label className="se-dialog-note" htmlFor="se-clip-title">
@@ -4977,6 +5136,56 @@ export function StudioEditorShell() {
               </button>
               <button type="button" className="se-pill on" onClick={commitClipRename}>
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {transformPrompt ? (
+        <div
+          className="se-dialog-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cover this clip"
+        >
+          <div className="se-dialog">
+            <h2>Cover this clip</h2>
+            <label className="se-dialog-note" htmlFor="se-transform-prompt">
+              Style instructions
+            </label>
+            <input
+              id="se-transform-prompt"
+              className="se-pill"
+              value={transformValue}
+              autoFocus
+              aria-label="Cover style"
+              placeholder="e.g. acoustic, slow tempo, female vocal"
+              onChange={(event) => setTransformValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && transformPrompt) {
+                  const target = transformPrompt;
+                  setTransformPrompt(null);
+                  void runTransform("cover", target.clipId, transformValue);
+                }
+                if (event.key === "Escape") setTransformPrompt(null);
+              }}
+            />
+            <div className="se-dialog-foot">
+              <button type="button" className="se-pill" onClick={() => setTransformPrompt(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="se-pill on"
+                onClick={() => {
+                  if (!transformPrompt) return;
+                  const target = transformPrompt;
+                  setTransformPrompt(null);
+                  void runTransform("cover", target.clipId, transformValue);
+                }}
+              >
+                Generate cover
               </button>
             </div>
           </div>

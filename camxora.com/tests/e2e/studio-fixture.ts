@@ -29,6 +29,8 @@ export type FixtureClip = {
       velocity: number;
     }>;
   };
+  /** Source generation, so Studio clip operations are enabled. */
+  songId?: string;
 };
 
 export type CreateProjectOptions = {
