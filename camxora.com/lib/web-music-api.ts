@@ -718,6 +718,146 @@ export async function coverWebMusicGeneration(
   );
 }
 
+/** Suno's Edit ▸ Extend: continue the song from a point with new lyrics/style. */
+export async function extendWebMusicGeneration(
+  taskId: string,
+  input: { variant?: "ok" | "alt"; continue_at?: number; prompt?: string } = {}
+): Promise<WebMusicStudioOperation> {
+  return musicJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(taskId)}/extend`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        continue_at: input.continue_at ?? null,
+        prompt: input.prompt ?? "",
+      }),
+    }
+  );
+}
+
+/** Suno's Edit ▸ Replace Section: regenerate a 10-30s window with new lyrics. */
+export async function replaceWebMusicSection(
+  taskId: string,
+  input: {
+    variant?: "ok" | "alt";
+    start_s: number;
+    end_s: number;
+    lyrics: string;
+    prompt?: string;
+  }
+): Promise<WebMusicStudioOperation> {
+  return musicJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(taskId)}/replace-section`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        start_s: input.start_s,
+        end_s: input.end_s,
+        lyrics: input.lyrics,
+        prompt: input.prompt ?? "",
+      }),
+    }
+  );
+}
+
+/** Suno's Edit ▸ Get Stems / MIDI. */
+export async function stemsWebMusicGeneration(
+  taskId: string,
+  input: { variant?: "ok" | "alt"; mode?: "vocal" | "stems" | "advanced" } = {}
+): Promise<WebMusicStudioOperation> {
+  return musicJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(taskId)}/stems`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        mode: input.mode ?? "vocal",
+      }),
+    }
+  );
+}
+
+/** Suno's Edit ▸ Remaster. */
+export async function remasterWebMusicGeneration(
+  taskId: string,
+  input: { variant?: "ok" | "alt"; model?: string } = {}
+): Promise<WebMusicStudioOperation> {
+  return musicJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(taskId)}/remaster`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        model: input.model ?? null,
+      }),
+    }
+  );
+}
+
+/** Suno's Edit ▸ Crop / Remove Section / Reverse / Adjust Speed / Fades. */
+export async function deriveWebMusicGeneration(
+  taskId: string,
+  input: {
+    variant?: "ok" | "alt";
+    operation: "crop" | "remove_section" | "reverse" | "speed" | "fade_in" | "fade_out";
+    start_s?: number;
+    end_s?: number;
+    speed?: number;
+    fade_seconds?: number;
+  }
+): Promise<WebMusicGeneration> {
+  return musicJson<WebMusicGeneration>(
+    `/api/v3/web-music/generations/${encodeURIComponent(taskId)}/derive`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        operation: input.operation,
+        start_s: input.start_s ?? null,
+        end_s: input.end_s ?? null,
+        speed: input.speed ?? null,
+        fade_seconds: input.fade_seconds ?? null,
+      }),
+    }
+  );
+}
+
+/** Suno's Sample this song: build a new track from a waveform section. */
+export async function sampleWebMusicGeneration(
+  taskId: string,
+  input: {
+    variant?: "ok" | "alt";
+    start_s: number;
+    end_s: number;
+    prompt?: string;
+    title?: string;
+    tags?: string;
+  }
+): Promise<WebMusicStudioOperation> {
+  return musicJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(taskId)}/sample`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        start_s: input.start_s,
+        end_s: input.end_s,
+        prompt: input.prompt ?? "",
+        title: input.title ?? "",
+        tags: input.tags ?? "",
+      }),
+    }
+  );
+}
+
 export async function createWebMusicStudioVideo(input: {
   task_id: string;
   variant?: "ok" | "alt";

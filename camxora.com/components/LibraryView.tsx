@@ -8,6 +8,7 @@ import { ReportClipModal } from "@/components/ReportClipModal";
 import { ShareClipModal } from "@/components/ShareClipModal";
 import { SongDetailsModal } from "@/components/SongDetailsModal";
 import { SongRowMenu } from "@/components/SongRowMenu";
+import { EditSongModal, type EditKind, type EditPayload } from "@/components/EditSongModal";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -33,6 +34,12 @@ import {
   coverWebMusicGeneration,
   reportWebMusicGeneration,
   radioWebMusicGeneration,
+  sampleWebMusicGeneration,
+  extendWebMusicGeneration,
+  replaceWebMusicSection,
+  stemsWebMusicGeneration,
+  remasterWebMusicGeneration,
+  deriveWebMusicGeneration,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   fetchWebMusicDislikedKeys,
@@ -195,6 +202,10 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     { song: WebMusicGeneration; variant: "ok" | "alt" } | null
   >(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
+  const [editTarget, setEditTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt"; kind: EditKind } | null
+  >(null);
+  const [editBusy, setEditBusy] = useState(false);
   const [shareTarget, setShareTarget] = useState<
     { song: WebMusicGeneration; clip: WebMusicClip } | null
   >(null);
@@ -616,6 +627,105 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       await loadGenerations(0);
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not move this song");
+    }
+  }
+
+  async function submitEdit(payload: EditPayload) {
+    if (!editTarget) return;
+    const { song, variant, kind } = editTarget;
+    setEditBusy(true);
+    try {
+      if (kind === "sample") {
+        await sampleWebMusicGeneration(song.id, {
+          variant,
+          start_s: payload.start_s ?? 0,
+          end_s: payload.end_s ?? 30,
+          prompt: payload.prompt,
+          title: payload.title,
+        });
+        setToast("Sample started — it will appear in your library");
+      } else if (kind === "extend") {
+        await extendWebMusicGeneration(song.id, {
+          variant,
+          continue_at: payload.continue_at,
+        });
+        setToast("Extend started — it will appear in your library");
+      } else if (kind === "replace_section") {
+        await replaceWebMusicSection(song.id, {
+          variant,
+          start_s: payload.start_s ?? 0,
+          end_s: payload.end_s ?? 0,
+          lyrics: payload.lyrics || "",
+          prompt: payload.prompt,
+        });
+        setToast("Section replacement started — it will appear in your library");
+      } else {
+        const operation = kind === "adjust_speed" ? "speed" : kind;
+        const created = await deriveWebMusicGeneration(song.id, {
+          variant,
+          operation,
+          start_s: payload.start_s,
+          end_s: payload.end_s,
+          speed: payload.speed,
+          fade_seconds: payload.fade_seconds,
+        });
+        setToast(`Saved “${created.title}”`);
+      }
+      setEditTarget(null);
+      await loadGenerations(0);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not apply that edit");
+    } finally {
+      if (mounted.current) setEditBusy(false);
+    }
+  }
+
+  async function runReverse(song: WebMusicGeneration, variant: "ok" | "alt") {
+    setEditBusy(true);
+    try {
+      const created = await deriveWebMusicGeneration(song.id, {
+        variant,
+        operation: "reverse",
+      });
+      setToast(`Saved “${created.title}”`);
+      await loadGenerations(0);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not reverse this song");
+    } finally {
+      if (mounted.current) setEditBusy(false);
+    }
+  }
+
+  async function runStems(
+    song: WebMusicGeneration,
+    variant: "ok" | "alt",
+    mode: "vocal" | "stems" | "advanced"
+  ) {
+    try {
+      await stemsWebMusicGeneration(song.id, { variant, mode });
+      setToast("Stems requested");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not request stems");
+    }
+  }
+
+  async function runRemaster(song: WebMusicGeneration, variant: "ok" | "alt") {
+    try {
+      await remasterWebMusicGeneration(song.id, { variant });
+      setToast("Remaster started — it will appear in your library");
+      await loadGenerations(0);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not remaster this song");
+    }
+  }
+
+  async function findCollaborator(song: WebMusicGeneration) {
+    const url = `${window.location.origin}/library?clip=${encodeURIComponent(song.id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setToast("Link copied — send it to a collaborator");
+    } catch {
+      setToast(url);
     }
   }
 
@@ -1161,6 +1271,35 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                           song.id
                         )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
                       }}
+                      onSample={() =>
+                        setEditTarget({
+                          song,
+                          variant: clip.variant === "alt" ? "alt" : "ok",
+                          kind: "sample",
+                        })
+                      }
+                      onEdit={(kind) => {
+                        const variant = clip.variant === "alt" ? "alt" : "ok";
+                        if (kind === "reverse") {
+                          void runReverse(song, variant);
+                        } else {
+                          setEditTarget({ song, variant, kind });
+                        }
+                      }}
+                      onStems={(mode) =>
+                        void runStems(
+                          song,
+                          clip.variant === "alt" ? "alt" : "ok",
+                          mode
+                        )
+                      }
+                      onRemaster={() =>
+                        void runRemaster(
+                          song,
+                          clip.variant === "alt" ? "alt" : "ok"
+                        )
+                      }
+                      onCollaborate={() => void findCollaborator(song)}
                       onDetails={() =>
                         setDetailsTarget({
                           song,
@@ -2256,6 +2395,22 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {editTarget ? (
+        <EditSongModal
+          kind={editTarget.kind}
+          title={editTarget.song.title}
+          duration={
+            generationClips(editTarget.song).find(
+              (candidate) => candidate.variant === editTarget.variant
+            )?.duration_seconds || 180
+          }
+          lyrics={editTarget.song.lyrics || ""}
+          busy={editBusy}
+          onClose={() => setEditTarget(null)}
+          onSubmit={submitEdit}
+        />
       ) : null}
 
       {detailsTarget ? (
