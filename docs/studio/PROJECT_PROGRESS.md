@@ -2,6 +2,25 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-11 — Clip transforms (Extend / Cover / Remaster)
+
+Generation is no longer Create-only in the editor: the clip menu runs paid Studio
+operations and lands the result on the arrangement (D-033).
+
+| Area | What landed |
+|---|---|
+| **Extend** | continues the clip after itself on the same track, using the clip's own end as `continue_at` |
+| **Cover… / Remaster** | arrive as a new active take on the source clip (the S29 take model), with the take band opening and `audioUrl` following the active take |
+| **Cover dialog** | captured dialog shape: title, optional style field, Cancel / Generate cover |
+| **Guardrails** | rows are disabled without a source generation; nothing is placed until the operation reports `done`; provider failures surface in the toast |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, vitest **274/274** (30 files; six new placement
+tests), and `tests/e2e/studio-transforms.spec.ts`, which mocks the operation endpoints and
+asserts the real document change: an extension lane at 4 s and a persisted `Cover` take.
+
+
 ## Session 2026-11-11 — Audio clip settings (§81)
 
 The captured Clip Settings column is fully live on top of the S30 editor

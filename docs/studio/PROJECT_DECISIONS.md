@@ -788,3 +788,27 @@ Semantics, chosen so the engine can honour them exactly:
 so existing exports stay byte-identical — the export unit tests and the byte-level e2e
 specs pin that. `tests/e2e/studio-audio-settings.spec.ts` proves the gain reaches the
 mix by comparing exported RMS at 0 dB and −12 dB.
+
+## D-033 - Clip transforms land as takes, Extend lands after the clip
+
+**Date:** 2026-11-11 **Status:** accepted
+
+**Decision.** The clip menu gains a Generate section backed by the existing Studio
+operation API: **Extend**, **Cover…** and **Remaster**. Cover and Remaster become a new
+**take** on the source clip (the S29 take model, newest first, active on arrival); Extend
+adds a new clip immediately after its source on the same track. Every operation is paid,
+so nothing is placed until the operation reports `done`; failures surface in the toast
+with the provider message.
+
+Cover takes optional style instructions in the captured dialog shape (title + field +
+Cancel/Generate), pre-filled empty rather than invented from the song's tags.
+
+**Why takes.** The reference's clip menu was never captured, so the shape had to follow
+our own model. A cover or remaster is the same musical part with different audio — that
+is exactly what a take is here, and it keeps the source one click away. An extension is
+different music after the boundary, so it belongs on the timeline, not in the take stack.
+
+**Consequences.** The take-lanes band opens on arrival, and the clip's `audioUrl` follows
+the active take, so playback and export hear the new result immediately. Add-vocals,
+add-instrumental, replace-section and mashup are already in `lib/studio-api.ts` and can
+reuse the same polling and placement helper when their menus are decided.
