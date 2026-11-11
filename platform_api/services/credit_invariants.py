@@ -49,9 +49,25 @@ SELECT u.email, count(*) AS lots,
        COALESCE(SUM(lot.remaining_units), 0) / 10000.0 AS credits
 FROM credit_wallet_lots lot
 JOIN users u ON u.id = lot.user_id
-WHERE lot.tag = 'grant' AND lot.remaining_units > 0
+WHERE lot.tag = 'grant'
+  AND lot.period_start IS NOT NULL
+  AND lot.remaining_units > 0
+  AND (lot.expires_at IS NULL OR lot.expires_at > NOW())
 GROUP BY u.id, u.email
 HAVING count(*) > 1
+ORDER BY count(*) DESC, credits DESC
+LIMIT $1
+"""
+
+_NON_EXPIRING_GRANT_SQL = """
+SELECT u.email, count(*) AS lots,
+       COALESCE(SUM(lot.remaining_units), 0) / 10000.0 AS credits
+FROM credit_wallet_lots lot
+JOIN users u ON u.id = lot.user_id
+WHERE lot.tag = 'grant'
+  AND lot.remaining_units > 0
+  AND lot.expires_at IS NULL
+GROUP BY u.id, u.email
 ORDER BY count(*) DESC, credits DESC
 LIMIT $1
 """
@@ -112,6 +128,9 @@ async def collect_credit_invariants(pool: Any) -> dict[str, Any]:
     """Snapshot current credit-grant invariant violations."""
     async with pool.acquire() as conn:
         multi_lot_users = [dict(r) for r in await conn.fetch(_MULTI_LOT_SQL, _MAX_SAMPLES)]
+        non_expiring_grants = [
+            dict(r) for r in await conn.fetch(_NON_EXPIRING_GRANT_SQL, _MAX_SAMPLES)
+        ]
         multi_grant_user_days = [
             dict(r) for r in await conn.fetch(_MULTI_GRANT_DAY_SQL, _MAX_SAMPLES, _WINDOW_HOURS)
         ]
@@ -121,6 +140,7 @@ async def collect_credit_invariants(pool: Any) -> dict[str, Any]:
         ]
     return {
         "multi_lot_users": multi_lot_users,
+        "non_expiring_grants": non_expiring_grants,
         "multi_grant_user_days": multi_grant_user_days,
         "daily_volume": daily_volume,
         "wallet_lot_mismatches": wallet_lot_mismatches,
@@ -130,8 +150,10 @@ async def collect_credit_invariants(pool: Any) -> dict[str, Any]:
 
 
 def has_credit_violations(invariants: dict[str, Any]) -> bool:
-    """True when a user has stacked lots / multiple grants, or volume spikes."""
+    """True when a user has stacked grants / no-expiry lots, or volume spikes."""
     if invariants.get("multi_lot_users") or invariants.get("multi_grant_user_days"):
+        return True
+    if invariants.get("non_expiring_grants"):
         return True
     if invariants.get("wallet_lot_mismatches"):
         return True
@@ -150,8 +172,17 @@ def format_credit_invariants_message(invariants: dict[str, Any], env_label: str)
     ]
     lots = invariants.get("multi_lot_users") or []
     if lots:
-        lines.append(f"<b>multiple live grant lots</b> ({len(lots)})")
+        lines.append(f"<b>multiple live period grant lots</b> ({len(lots)})")
         for row in lots:
+            lines.append(
+                f"• {_esc(row.get('email'))}: {int(row.get('lots') or 0)} lots, "
+                f"{float(row.get('credits') or 0):,.2f} cr"
+            )
+        lines.append("")
+    immortal = invariants.get("non_expiring_grants") or []
+    if immortal:
+        lines.append(f"<b>grant lots with no expiry</b> ({len(immortal)})")
+        for row in immortal:
             lines.append(
                 f"• {_esc(row.get('email'))}: {int(row.get('lots') or 0)} lots, "
                 f"{float(row.get('credits') or 0):,.2f} cr"
