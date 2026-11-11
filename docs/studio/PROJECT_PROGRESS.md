@@ -64,6 +64,10 @@ The track menu can render one track on its own, on top of the warp-marker branch
 the new bounce spec: a real 4 s clip downloads a valid RIFF of the expected size, and an
 emptied track disables the action.
 
+**Update:** the in-place half now ships too — the render uploads and returns as a
+`(bounced)` track with the source muted, falling back to the download when storage
+refuses. Covered against a stubbed upload; real-bucket verification needs B-007.
+
 ### Blocked
 
 True render-in-place needs the rendered file stored: `POST /studio/uploads` answers

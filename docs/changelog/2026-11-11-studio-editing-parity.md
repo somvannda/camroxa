@@ -85,9 +85,10 @@ was corrected (`provider=ai_service`).
 
 ## Follow-ups
 
-- **Render-in-place bounce** is blocked on configured upload storage
-  (`storage_not_configured`; B-006/B-007). The mixdown form is what the captured strings
-  describe.
+- **Render-in-place** ships with a download fallback: it uploads the render and places a
+  `(bounced)` track when storage accepts it, and explains the fallback when it does not.
+  Real-bucket verification still needs B-006/B-007 (the sandbox API has no upload
+  storage); the in-place path is covered against a stubbed upload.
 - **Key/BPM rows** stay blocked: the corpus carries neither field (D-016).
 - **S60/S61 captures** still need a signed-in reference session with real triggers.
 - PR is not open yet: local `gh` token is invalid (`gh auth login -h github.com`), and
