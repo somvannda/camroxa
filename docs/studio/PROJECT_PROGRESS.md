@@ -27,6 +27,11 @@ Playwright gate at the capture viewport (1689×1277). Targets live in
 | **MIDI** | Add-track MIDI creates a four-bar clip and opens the bottom piano-roll editor (grid, velocity lane, tabs, quantize); notes are editable, persisted, synthesised in playback and included in exports |
 | **Plugins** | dock band + slot cards, catalog with Learn chips, shared knob controls on every card, preset menus, and a working **four-band EQ card** backed by four cascaded biquads; **Create new plugin** opens the S45 designer (restate → Build it → draggable card saved to MY PLUGINS, never auto-inserted) |
 | **Stems (G12)** | GET /studio/stems projects completed stem operations into one typed row per clip; the library Stems tile/chip lists them with audition and Add-at-playhead |
+| **Take lanes (S29)** | footer control opens the band; regenerating over an audio clip stacks takes, newest on top, active take outlined with a tick and switchable |
+| **Convolution (S44)** | IR slot with a 0–2 s preview, six-group/11-response picker, Mix/Gain/Pre/Width, and the picked impulse drives the convolver |
+| **Master chain (S48)** | selecting Main opens the Limiter card (Lookahead/Pre Gain/Attack/Release/Link) wired to the master bus; EQ/Compressor Amount links |
+| **Sidechain (S43)** | compressor routing menu with None and every track as Pre-fx/Post-fader; playback ducks the target from the chosen tap |
+| **Refusals (S60/S61)** | credit errors show Not enough credits + View plans; policy errors show a refusal card + Edit prompt (own states, no capture) |
 
 ### Verified
 
