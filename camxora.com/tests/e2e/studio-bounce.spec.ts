@@ -107,6 +107,60 @@ test("bounce places a bounced track when storage accepts the render", async ({ p
   expect(bouncedClip?.start).toBe(0);
 });
 
+const uploadProxy = process.env.STUDIO_UPLOAD_PROXY_URL;
+
+/**
+ * Optional integration check for B-007: when STUDIO_UPLOAD_PROXY_URL points at a
+ * storage-backed platform API (moto/S3 from B-006), the browser's upload is proxied
+ * there, so the bounce really lands in a bucket and the placed clip points at it.
+ * Skipped by default because the sandbox API has no storage.
+ */
+test("bounce stores the render in the bucket when uploads are configured", async ({ page }) => {
+  test.skip(!uploadProxy, "set STUDIO_UPLOAD_PROXY_URL to a storage-backed API");
+  test.setTimeout(120_000);
+
+  await page.route("**/api/v3/web-music/studio/uploads", async (route) => {
+    const response = await route.fetch({
+      url: `${uploadProxy}/api/v3/web-music/studio/uploads`,
+    });
+    await route.fulfill({ response });
+  });
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, {
+    title: `Bounce bucket ${tag}`,
+    clips: [
+      { id: "loop", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" },
+    ],
+  });
+
+  await page.getByLabel("Options for Track 1").click();
+  await page.getByRole("menuitem", { name: "Bounce track" }).click();
+
+  await expect(page.getByRole("status")).toContainText("added as a new track");
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const project = (await response.json()) as {
+            data?: {
+              tracks?: Array<{ name: string; clipIds: string[] }>;
+              lanes?: Array<{ id: string; audioUrl?: string | null }>;
+            };
+          };
+          const bounced = project.data?.tracks?.find((track) =>
+            track.name.endsWith("(bounced)")
+          );
+          if (!bounced) return null;
+          return project.data?.lanes?.find((lane) => lane.id === bounced.clipIds[0])?.audioUrl;
+        }, projectId),
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toContain("9000");
+});
+
 test("a track with no clips cannot be bounced", async ({ page }) => {
   test.setTimeout(120_000);
 

@@ -152,6 +152,20 @@ path is covered by a stubbed upload in `tests/e2e/studio-bounce.spec.ts`.
 bucket) and re-run the bounce spec with `STUDIO_EXPECT_UPLOADS=1` semantics, then confirm
 the bounced track plays after a reload.
 
+**Attempted 2026-11-11** with a second API instance on `:8101` and moto on `:9000`, and
+the browser's upload proxied to it (`STUDIO_UPLOAD_PROXY_URL` in
+`tests/e2e/studio-bounce.spec.ts`). Two things surfaced:
+
+1. `--env-file platform_api/.env` points at `platform_db`, not the sandbox database, so
+   the studio user's session is unknown there (`401 User not found`). The sandbox run
+   needs `PLATFORM_DATABASE_URL=.../camxora_pfm_sandbox` set explicitly, because
+   `python-dotenv` does not override an existing environment variable.
+2. With the sandbox database, `resolve_streaming_storage_config` still reports
+   unconfigured: that database already holds `streaming.b2.*` rows that fail to decrypt
+   with the current `PLATFORM_ENCRYPTION_MASTER_KEY` ("Incorrect padding"), and the
+   resolver prefers the database secret over the environment fallback. Re-saving the
+   streaming config in admin Settings (or deleting those rows) is the real unblock.
+
 ## Closed
 
 | ID | Was | Closed by |
