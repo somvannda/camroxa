@@ -2,50 +2,18 @@
 
 import { useEffect, useRef } from "react";
 
+import { computePeaks } from "@/lib/studio-peaks";
+
 /**
  * Peak waveform for a clip or song (shared by the clip inspector, the song detail
  * rail and the timeline clips). Decodes the real audio; a failed fetch or decode
  * leaves the canvas blank and every panel keeps its metadata. Guarded for jsdom/SSR
  * where AudioContext is absent.
  *
- * Peaks are cached per URL at a fixed resolution, so zooming a clip (which remounts
- * its canvas) repaints from memory instead of decoding the file again.
+ * Peaks are cached per URL at a fixed resolution (see `lib/studio-peaks.ts`), so
+ * zooming a clip (which remounts its canvas) repaints from memory instead of decoding
+ * the file again.
  */
-
-const PEAK_BUCKETS = 1024;
-const peakCache = new Map<string, Promise<number[] | null>>();
-
-function computePeaks(url: string): Promise<number[] | null> {
-  const cached = peakCache.get(url);
-  if (cached) return cached;
-  const pending = (async () => {
-    if (typeof AudioContext === "undefined") return null;
-    const context = new AudioContext();
-    try {
-      const response = await fetch(url);
-      if (!response.ok) return null;
-      const decoded = await context.decodeAudioData(await response.arrayBuffer());
-      const data = decoded.getChannelData(0);
-      const step = Math.max(1, Math.floor(data.length / PEAK_BUCKETS));
-      const peaks: number[] = [];
-      for (let bucket = 0; bucket < PEAK_BUCKETS; bucket += 1) {
-        let peak = 0;
-        for (let i = 0; i < step; i += 1) {
-          const value = Math.abs(data[bucket * step + i] ?? 0);
-          if (value > peak) peak = value;
-        }
-        peaks.push(peak);
-      }
-      return peaks;
-    } catch {
-      return null;
-    } finally {
-      void context.close();
-    }
-  })();
-  peakCache.set(url, pending);
-  return pending;
-}
 
 export type WaveformProps = {
   url: string | null | undefined;
