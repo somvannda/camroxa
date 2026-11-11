@@ -104,3 +104,4 @@ image_output_cache/
 # Playwright artefacts
 camxora.com/test-results/
 camxora.com/playwright-report/
+.playwright-mcp/
