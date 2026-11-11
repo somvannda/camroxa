@@ -31,8 +31,8 @@ browser tests, and the branch is main-synced.
 | `npm run typecheck` | clean |
 | `npm run check:ui` | compliant |
 | `npm test` (vitest) | **268 / 268**, 29 files |
-| `npx playwright test` | **122 passed / 2 skipped** |
-| python -m pytest platform_api/tests -q (merged main) | **3352 passed**, 2 known warnings |
+| `npx playwright test` | **126 passed / 2 skipped** |
+| python -m pytest platform_api/tests -q (merged main) | **3354 passed**, 2 known warnings |
 
 The single skip is the uploads spec's optional branch (`STUDIO_EXPECT_UPLOADS=1` when a
 bucket is configured).
@@ -46,6 +46,8 @@ bucket is configured).
 | Clip settings (§81) | the whole captured column is live: Volume dB, Loop/Reverse, Pitch, Speed, Quantize; one planner drives playback and export — `lib/studio-clip-audio.ts` (D-032) |
 | Track bounce (N-06) | track menu renders that track through its chain and places a `(bounced)` track with the source muted; when uploads are unavailable it downloads the WAV and the toast says why — `tests/e2e/studio-bounce.spec.ts` |
 | MIDI download (N-05) | selected MIDI clips become one `.mid` (format 0, 480 PPQ) — `lib/studio-midi-file.ts` |
+| Library filters + uploads | honest filter menu (`lib/library-filters.ts`), Uploads tab listing Studio imports, and add-to-project placement (`lib/studio-upload-place.ts`) |
+| Site accessibility | `<main>` landmark on every `(site)` page, named player region, decorative images, `h2` ordering, readable disabled menu items; axe gates now cover Studio, Library, Create, `/`, `/pricing` and `/discover` |
 
 Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pairs),
 **D-031** (bounce renders the track; in-place placement with a download fallback),
@@ -92,7 +94,7 @@ Helpers in `scripts/`:
 | unit | `npm test` | snap, time edits, warp markers/onsets, MIDI file, meter, export, plugins, … |
 | component | `npm test` | header, footer, library, timeline, track panel, audio editor, MIDI editor |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | 49 specs, 122 passing |
+| e2e | `npm run test:e2e` | 48 specs, 126 passing |
 
 CI jobs on any PR touching `camxora.com`: `camxora-web-checks` (typecheck, `check:ui`,
 `npm test`, `npm run build`) and `camxora-e2e` (Postgres, Redis, musicapi,
