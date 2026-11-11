@@ -166,6 +166,25 @@ the browser's upload proxied to it (`STUDIO_UPLOAD_PROXY_URL` in
    resolver prefers the database secret over the environment fallback. Re-saving the
    streaming config in admin Settings (or deleting those rows) is the real unblock.
 
+**Verified 2026-11-11 with a disposable database.** The sandbox rows were left alone;
+instead the proxy target was a fresh `camxora_bounce_verify` database:
+
+1. Create the DB, start it against the moto env, and let the API run all migrations.
+2. Seed the same account, then align its `users.id` to the sandbox account's UUID —
+   otherwise the browser's session cookie names a user that the fresh DB does not have
+   (`401 User not found`). `update users set id=...` cascades; recreate the default
+   workspace afterwards.
+3. Run `studio-bounce.spec.ts` with `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8101`.
+
+Result: `POST /studio/uploads` answered **201**, moto recorded the object
+(`studio/uploads/<user>/<upload>.wav`, 705 KB) and served the signed GET, and the spec
+asserted the placed `(bounced)` clip points at the bucket. The running sandbox API still
+has no storage, so the tab's listing test keeps its mock, but the upload + placement path
+is now proven against real storage.
+
+**Remaining production action:** configure a real bucket (or re-save the sandbox
+streaming config) so the deployed API can store uploads.
+
 ## Closed
 
 | ID | Was | Closed by |

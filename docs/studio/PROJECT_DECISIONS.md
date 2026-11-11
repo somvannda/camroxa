@@ -752,12 +752,14 @@ the in-place variant is a small follow-up: upload the WAV, add a `(bounced)` tra
 one clip at the source track's span, and mute the source. Recorded in
 `PROJECT_BLOCKERS.md`.
 
-**Update 2026-11-11 — the in-place half shipped.** `bounceTrack` now uploads the render
-through `uploadStudioAudio` and places it as a `<track> (bounced)` track at the source
-span with the source muted; one undo step covers both. When the upload refuses (storage
-not configured), it falls back to downloading the WAV and the toast says why. The
-in-place path is verified against a stubbed upload response in
-`studio-bounce.spec.ts`; real-storage verification still needs B-007 unblocked.
+**Update 2026-11-11 — the in-place half shipped, and the upload path is proven.** `bounceTrack`
+now uploads the render through `uploadStudioAudio` and places it as a `<track> (bounced)`
+track at the source span with the source muted; one undo step covers both. When the upload
+refuses (storage not configured), it falls back to downloading the WAV and the toast says
+why. The in-place path is verified twice: against a stubbed upload in
+`studio-bounce.spec.ts`, and against a real moto bucket with a disposable database
+(B-007) — `POST /studio/uploads` returned 201 and the placed clip points at the stored
+object.
 
 ## D-032 - Clip settings run through one playback planner
 
