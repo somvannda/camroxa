@@ -975,6 +975,17 @@ class PlatformApi:
         )
         return data if isinstance(data, dict) else {}
 
+    def create_youtube_playlist(
+        self, profile_id: str, *, title: str, privacy_status: str = "private"
+    ) -> YouTubePlaylistOption:
+        data = self._client.request(
+            f"/youtube/profiles/{profile_id}/playlists",
+            method="POST",
+            auth=True,
+            body={"title": title, "privacy_status": privacy_status},
+        )
+        return YouTubePlaylistOption.model_validate(data)
+
     def list_publish_accounts(self, profile_id: str | None = None) -> list[PublishAccount]:
         params = {"profile_id": profile_id} if profile_id else None
         data = self._client.request("/publish/accounts", auth=True, params=params)

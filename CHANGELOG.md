@@ -7,6 +7,28 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.7] - 2026-11-11
+
+### Added
+
+- **Create a playlist from Settings** — Publication has a name field and *Create playlist*; the new
+  playlist is created on the connected channel and selected immediately (needs `youtube.force-ssl`).
+- **Per-upload playlist choice** — Progress → right-click → *Upload to YouTube (choose playlist)…*
+  offers the profile default, no playlist, or any playlist on the channel for that one video.
+
+### Fixed
+
+- The Publication **Playlist** dropdown saved the playlist title instead of its id, so every upload
+  sent a name where YouTube expects an id and `playlistItems.insert` could never match. It now stores
+  the id, keeps it selected while the channel's playlists load, and restores it by id.
+- Saving a playlist that no longer exists on the channel is refused with a clear message instead of
+  failing silently at upload time.
+
+### Notes
+
+- The playlist is **per profile**: every upload from that profile uses the selected playlist unless a
+  single upload overrides it.
+
 ## [1.6.6] - 2026-11-09
 
 ### Fixed

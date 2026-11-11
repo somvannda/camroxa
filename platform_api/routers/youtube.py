@@ -158,6 +158,28 @@ async def list_youtube_connections(
     )
 
 
+class CreatePlaylistRequest(BaseModel):
+    title: str
+    privacy_status: str = "private"
+
+
+@router.post("/profiles/{profile_id}/playlists", response_model=YouTubePlaylistOption, status_code=201)
+async def create_youtube_playlist(
+    profile_id: UUID,
+    request: CreatePlaylistRequest,
+    ctx: CurrentUserDep,
+    service: YouTubeConnectionServiceDep,
+) -> YouTubePlaylistOption:
+    """Create a playlist on the connected channel so it can be selected here."""
+    data = await service.create_playlist(
+        user_id=UUID(ctx.user_id),
+        profile_id=profile_id,
+        title=request.title,
+        privacy_status=request.privacy_status,
+    )
+    return YouTubePlaylistOption(id=data["id"], title=data["title"])
+
+
 @router.get("/profiles/{profile_id}/playlists", response_model=YouTubePlaylistsResponse)
 async def list_youtube_playlists(
     profile_id: UUID,

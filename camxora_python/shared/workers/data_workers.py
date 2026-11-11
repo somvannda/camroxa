@@ -2891,6 +2891,7 @@ class YouTubeDirectUploadWorker(QThread):
         batch_id: str,
         role: str,
         merged_path: str,
+        playlist_id: str | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -2899,6 +2900,7 @@ class YouTubeDirectUploadWorker(QThread):
         self._batch_id = str(batch_id or "").strip()
         self._role = str(role or "OK").strip().upper() or "OK"
         self._merged_path = str(merged_path or "").strip()
+        self._playlist_override = playlist_id
         self._activity_key = ""
         self._upload_title = Path(self._merged_path).name if self._merged_path else ""
 
@@ -2951,6 +2953,9 @@ class YouTubeDirectUploadWorker(QThread):
             if profile is None:
                 raise RuntimeError("The channel profile for this upload was not found.")
             meta = yt.build_metadata(profile, path)
+            if self._playlist_override is not None:
+                override = str(self._playlist_override).strip()
+                meta["playlist"] = "" if override == "__none__" else override
             self._upload_title = str(meta.get("title") or self._upload_title or path.name)
             self.status_changed.emit(f"Preparing “{meta['title']}”…")
 

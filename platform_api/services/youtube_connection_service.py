@@ -430,6 +430,49 @@ class YouTubeConnectionService:
         credentials = await self._build_refreshed_credentials(account)
         return self._fetch_playlists(credentials)
 
+    async def create_playlist(
+        self,
+        *,
+        user_id: UUID,
+        profile_id: UUID,
+        title: str,
+        privacy_status: str = "private",
+    ) -> dict[str, str]:
+        """Create a playlist on the connected channel (needs youtube.force-ssl)."""
+        normalized = str(title or "").strip()
+        if not normalized:
+            raise ValidationError("A playlist name is required.")
+        if len(normalized) > 150:
+            raise ValidationError("Playlist names are limited to 150 characters.")
+        privacy = str(privacy_status or "private").strip().lower()
+        if privacy not in {"private", "public", "unlisted"}:
+            privacy = "private"
+        credentials = await self.build_refreshed_credentials_for_profile(
+            user_id=user_id, profile_id=profile_id
+        )
+        return await asyncio.to_thread(
+            self._insert_playlist, credentials, normalized, privacy
+        )
+
+    def _insert_playlist(self, credentials: Any, title: str, privacy: str) -> dict[str, str]:
+        try:
+            from googleapiclient.discovery import build
+        except Exception as exc:
+            raise RuntimeError(f"Missing Google API client libraries: {exc}") from exc
+
+        service = build("youtube", "v3", credentials=credentials, cache_discovery=False)
+        response = service.playlists().insert(
+            part="snippet,status",
+            body={
+                "snippet": {"title": title},
+                "status": {"privacyStatus": privacy},
+            },
+        ).execute()
+        playlist_id = str((response or {}).get("id") or "").strip()
+        if not playlist_id:
+            raise RuntimeError("YouTube did not return a playlist id.")
+        return {"id": playlist_id, "title": title}
+
     async def enqueue_upload_for_merge(
         self,
         *,
