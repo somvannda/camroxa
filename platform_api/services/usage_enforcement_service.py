@@ -1476,7 +1476,17 @@ class UsageEnforcementService:
     ) -> int:
         """After a successful provider call: write plan ledger or settle wallet hold."""
         if getattr(hold, "source", "v1") == "v3":
-            return int(hold.held_units or 0)
+            return await self._settle_v3_fallback(
+                user_id=user_id,
+                operation_type=operation_type,
+                ai_service=ai_service,
+                sub_model=sub_model,
+                hold=hold,
+                routed_provider=routed_provider,
+                routed_model=routed_model,
+                executed_provider=executed_provider,
+                executed_model=executed_model,
+            )
 
         pricing_entry = await lookup_pricing_entry(
             self._pricing_repo, ai_service, operation_type, sub_model
@@ -1563,6 +1573,113 @@ class UsageEnforcementService:
             return actual_units
 
         return held
+
+    async def _settle_v3_fallback(
+        self,
+        *,
+        user_id: UUID,
+        operation_type: str,
+        ai_service: str,
+        sub_model: str | None,
+        hold: OperationHold,
+        routed_provider: str | None,
+        routed_model: str | None,
+        executed_provider: str | None,
+        executed_model: str | None,
+    ) -> int:
+        """Reconcile a v3 up-front charge with the provider that actually ran.
+
+        The v3 charge is priced from the routing assignment before generation.
+        If the request falls back to a different provider (e.g. SLAI fails and
+        kie serves the image), the quoted price and the executed model's list
+        price differ. Collect the difference, or refund it when the executed
+        model is cheaper, so billing matches the admin promise that credits are
+        charged for whichever provider actually succeeds.
+
+        Collection is best-effort: a produced image must not fail because the
+        wallet cannot cover a small delta. The shortfall is logged for ops.
+        """
+        held = int(hold.held_units or 0)
+        if held <= 0:
+            return 0
+
+        provider = str(executed_provider or ai_service or "").strip()
+        model = executed_model if executed_model is not None else sub_model
+        if not provider:
+            return held
+
+        try:
+            pricing_entry = await lookup_pricing_entry(
+                self._pricing_repo, provider, operation_type, model
+            )
+        except Exception:
+            logger.debug(
+                "v3 fallback settle: pricing lookup failed for %s/%s",
+                provider,
+                model,
+                exc_info=True,
+            )
+            pricing_entry = None
+        if pricing_entry is None:
+            return held
+
+        raw_units = pricing_entry.get("credits_per_operation")
+        if raw_units is None:
+            return held
+        actual_units = max(0, int(raw_units))
+        if actual_units == held:
+            return held
+
+        settle_reason = f"{operation_type}_fallback_settle"
+        metadata = self._wallet_usage_metadata(
+            operation_type=operation_type,
+            ai_service=provider,
+            sub_model=model,
+            list_credit_units=actual_units,
+            charged_credit_units=actual_units,
+            purpose=settle_reason,
+            routed_provider=routed_provider,
+            routed_model=routed_model,
+            executed_provider=provider,
+            executed_model=model,
+        )
+        metadata["hold_settle"] = True
+
+        if actual_units < held:
+            delta = held - actual_units
+            refund = getattr(self._credit_repo, "refund", None)
+            if refund is None:
+                return held
+            await refund(user_id, delta, settle_reason, metadata=metadata)
+            return actual_units
+
+        delta = actual_units - held
+        try:
+            collected = await self._credit_repo.atomic_deduct(
+                user_id, delta, settle_reason, metadata=metadata
+            )
+        except Exception:
+            logger.warning(
+                "v3 fallback settle: delta charge failed for user %s (%s/%s, %d units)",
+                user_id,
+                provider,
+                model,
+                delta,
+                exc_info=True,
+            )
+            return held
+        if not collected:
+            logger.warning(
+                "v3 fallback settle: wallet could not cover %d extra units for "
+                "user %s (%s/%s); charged %d credits instead",
+                delta,
+                user_id,
+                provider,
+                model,
+                held,
+            )
+            return held
+        return actual_units
 
     async def deduct_for_operation(
         self,

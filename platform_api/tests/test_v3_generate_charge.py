@@ -59,6 +59,7 @@ class FakeV3Billing:
         product=None,
         model=None,
         operation=None,
+        provider=None,
     ):
         self.charges.append(
             {
@@ -68,6 +69,7 @@ class FakeV3Billing:
                 "product": product,
                 "model": model,
                 "operation": operation,
+                "provider": provider,
             }
         )
         if self.fail:
@@ -144,6 +146,7 @@ async def test_check_and_deduct_uses_v3_when_flag_on() -> None:
             "product": "desktop",
             "model": None,
             "operation": "music",
+            "provider": "suno",
         }
     ]
 
@@ -203,3 +206,159 @@ async def test_reserve_hold_and_finalize_skip_quota_when_v3_on() -> None:
     )
     assert settled == credits_to_units(4)
     assert billing.charges[0]["op"] == "image"
+
+
+class FakePricingRepo:
+    """Minimal pricing repo: exact (service, operation, model) rows only."""
+
+    def __init__(self, rows: dict[tuple[str, str, str], dict]) -> None:
+        self.rows = rows
+
+    async def get_by_service_and_operation(self, service, operation, model):
+        return self.rows.get((service, operation, model))
+
+
+class FakeCreditRepo:
+    def __init__(self, *, cover_delta: bool = True) -> None:
+        self.cover_delta = cover_delta
+        self.deducts: list[dict] = []
+        self.refunds: list[dict] = []
+
+    async def get_balance(self, _user_id):
+        return 10**9
+
+    async def atomic_deduct(self, user_id, amount, reason, metadata=None, **_kwargs):
+        self.deducts.append(
+            {"amount": amount, "reason": reason, "metadata": metadata or {}}
+        )
+        return self.cover_delta
+
+    async def refund(self, user_id, amount, reason, ref_id=None, metadata=None, **_kwargs):
+        self.refunds.append(
+            {"amount": amount, "reason": reason, "metadata": metadata or {}}
+        )
+        return True
+
+
+def _settle_service(
+    *,
+    rows: dict[tuple[str, str, str], dict],
+    credit_repo: FakeCreditRepo,
+) -> UsageEnforcementService:
+    return UsageEnforcementService(
+        credit_repo=credit_repo,
+        usage_repo=_Unused(),
+        plan_repo=_Unused(),
+        pricing_repo=FakePricingRepo(rows),
+        redis=FakeRedis(),
+        settings_repo=FakeSettingsRepo(True),
+        v3_billing=FakeV3Billing(amount_units=0),
+    )
+
+
+@pytest.mark.asyncio
+async def test_v3_settle_collects_delta_when_fallback_costs_more() -> None:
+    """Quoted SLAI (6) then kie ran (8): collect the 2-credit difference."""
+    from platform_api.services.usage_enforcement_service import OperationHold
+
+    credit_repo = FakeCreditRepo()
+    service = _settle_service(
+        rows={
+            ("kie", "background_image", "grok-imagine-image-2-0/text-to-image"): {
+                "credits_per_operation": credits_to_units(8)
+            }
+        },
+        credit_repo=credit_repo,
+    )
+    hold = OperationHold(
+        held_units=credits_to_units(6), plan_covered=False, source="v3", v3_op="image"
+    )
+
+    settled = await service.finalize_held_operation(
+        USER_ID,
+        "background_image",
+        "kie",
+        sub_model="grok-imagine-image-2-0/text-to-image",
+        hold=hold,
+        routed_provider="slai",
+        routed_model="cx/gpt-image-2.5",
+        executed_provider="kie",
+        executed_model="grok-imagine-image-2-0/text-to-image",
+    )
+
+    assert settled == credits_to_units(8)
+    assert len(credit_repo.deducts) == 1
+    assert credit_repo.deducts[0]["amount"] == credits_to_units(2)
+    meta = credit_repo.deducts[0]["metadata"]
+    assert meta["provider"] == "kie"
+    assert meta["model"] == "grok-imagine-image-2-0/text-to-image"
+    assert meta["routed_provider"] == "slai"
+    assert meta["executed_provider"] == "kie"
+
+
+@pytest.mark.asyncio
+async def test_v3_settle_refunds_delta_when_fallback_is_cheaper() -> None:
+    """Quoted kie (8) then SLAI ran (6): refund the 2-credit difference."""
+    from platform_api.services.usage_enforcement_service import OperationHold
+
+    credit_repo = FakeCreditRepo()
+    service = _settle_service(
+        rows={
+            ("slai", "background_image", "cx/gpt-image-2.5"): {
+                "credits_per_operation": credits_to_units(6)
+            }
+        },
+        credit_repo=credit_repo,
+    )
+    hold = OperationHold(
+        held_units=credits_to_units(8), plan_covered=False, source="v3", v3_op="image"
+    )
+
+    settled = await service.finalize_held_operation(
+        USER_ID,
+        "background_image",
+        "slai",
+        sub_model="cx/gpt-image-2.5",
+        hold=hold,
+        routed_provider="kie",
+        routed_model="grok-imagine-image-2-0/text-to-image",
+        executed_provider="slai",
+        executed_model="cx/gpt-image-2.5",
+    )
+
+    assert settled == credits_to_units(6)
+    assert credit_repo.deducts == []
+    assert len(credit_repo.refunds) == 1
+    assert credit_repo.refunds[0]["amount"] == credits_to_units(2)
+
+
+@pytest.mark.asyncio
+async def test_v3_settle_keeps_charge_when_wallet_cannot_cover_delta() -> None:
+    """A produced image must not fail because the delta charge is refused."""
+    from platform_api.services.usage_enforcement_service import OperationHold
+
+    credit_repo = FakeCreditRepo(cover_delta=False)
+    service = _settle_service(
+        rows={
+            ("kie", "background_image", "grok-imagine-image-2-0/text-to-image"): {
+                "credits_per_operation": credits_to_units(8)
+            }
+        },
+        credit_repo=credit_repo,
+    )
+    hold = OperationHold(
+        held_units=credits_to_units(6), plan_covered=False, source="v3", v3_op="image"
+    )
+
+    settled = await service.finalize_held_operation(
+        USER_ID,
+        "background_image",
+        "kie",
+        sub_model="grok-imagine-image-2-0/text-to-image",
+        hold=hold,
+        executed_provider="kie",
+        executed_model="grok-imagine-image-2-0/text-to-image",
+    )
+
+    assert settled == credits_to_units(6)
+    assert credit_repo.refunds == []
