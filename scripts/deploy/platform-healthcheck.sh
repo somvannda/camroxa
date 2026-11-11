@@ -89,6 +89,23 @@ check_url "https://admin.camxora.com/" "admin"
 check_url "https://camxora.com/" "website"
 check_url "https://musicapi.camxora.com/health" "musicapi health"
 
+# /health answers 200 even when degraded, so a provider pool with no usable
+# keys (e.g. a 401 burst parking every SLAI key) would otherwise stay silent.
+# Page on the status field, not just the HTTP code.
+health_json="$(curl -sS --connect-timeout 10 -m 20 --retry 2 --retry-delay 2 \
+  --retry-all-errors "https://api.camxora.com/health" 2>/dev/null || true)"
+health_status="$(printf '%s' "${health_json}" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("status",""))
+except Exception: print("")' 2>/dev/null)"
+if [[ -n "${health_status}" && "${health_status}" != "healthy" ]]; then
+  down_services="$(printf '%s' "${health_json}" | python3 -c 'import json,sys
+try:
+    s = json.load(sys.stdin).get("services") or {}
+    print(",".join(k for k, v in s.items() if v is False))
+except Exception: print("unknown")' 2>/dev/null)"
+  add_failure "api health is ${health_status} (providers down: ${down_services:-unknown})"
+fi
+
 # --- database / redis -------------------------------------------------------
 if command -v pg_isready >/dev/null 2>&1; then
   pg_isready -q || add_failure "postgres is not accepting connections"
