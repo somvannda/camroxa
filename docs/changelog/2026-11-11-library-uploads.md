@@ -57,9 +57,18 @@ tests mock the response.
 | Vitest | **263 passed** (28 files) |
 | Playwright | **121 passed / 2 skipped** (the new spec covers listing + play, and the empty state with its `Open Studio` action) |
 
+## Add to project (same day)
+
+The tab's cards carry **Add to project**: a picker lists the user's Studio projects
+(lazily, when the dialog opens), and choosing one appends the upload to the project's
+first track at the end of that track's clips — or to a new `Uploads` track when the
+project is empty. The write goes through the normal project PATCH with
+`expected_updated_at`, so a project edited elsewhere surfaces as an error in the dialog
+instead of being overwritten. `lib/studio-upload-place.ts` holds the pure placement
+logic; the e2e proves a real document change (the clip lands at 4 s after the fixture
+clip with its source URL).
+
 ## Follow-ups
 
-- **Add to a Studio project** from this tab — needs a project picker; Studio's own library
-  already has that flow.
 - **Delete / rename uploads** — the upload service has no mutation endpoint yet.
 - Once storage is configured, drop the mock and let the spec read a real imported file.
