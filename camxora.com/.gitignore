@@ -4,3 +4,7 @@ out
 .env*.local
 .DS_Store
 *.tsbuildinfo
+
+# Playwright artifacts from local runs
+test-results/
+playwright-report/
