@@ -19,6 +19,7 @@ _REASON_LABELS: dict[str, str] = {
     "draft_generation_error": "Refund: song draft error",
     "suno_invalid_response": "Refund: Suno invalid response",
     "image_generation_failed": "Refund: image generation failed",
+    "web_music_generation_failed": "Refund: web music generation failed",
     "image_invalid_provider": "Refund: unsupported image provider",
     "credit_pack_purchase": "Credit pack purchase",
     "lifetime_bonus": "Lifetime plan bonus credits",
