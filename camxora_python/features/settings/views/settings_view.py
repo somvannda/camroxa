@@ -3224,7 +3224,11 @@ class SettingsView(QWidget):
             self._pub_category.setCurrentIndex(category_index)
         self._pub_playlist.clear()
         self._pub_playlist.addItem("No playlist", "")
-        self._pub_playlist.setEditText(self._publication_draft.playlist)
+        if self._publication_draft.playlist:
+            # Keep the saved id selectable until the channel's playlists load,
+            # otherwise the selection looks lost while the tab is opening.
+            self._pub_playlist.addItem("Saved playlist", self._publication_draft.playlist)
+            self._pub_playlist.setCurrentIndex(1)
         self._pub_made_for_kids.setChecked(self._publication_draft.made_for_kids)
         ai_index = self._pub_ai_use.findData(self._publication_draft.ai_use)
         if ai_index >= 0:
@@ -3641,7 +3645,7 @@ class SettingsView(QWidget):
             made_for_kids=self._pub_made_for_kids.isChecked(),
             ai_use=bool(self._pub_ai_use.currentData()),
             category=str(self._pub_category.currentData() or "10"),
-            playlist=self._pub_playlist.currentText(),
+            playlist=str(self._pub_playlist.currentData() or ""),
             title_template=self._pub_title_template.text(),
             description_template=self._pub_description_template.toPlainText(),
         )
