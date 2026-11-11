@@ -754,6 +754,21 @@ test("the master chain shows the captured Limiter and remembers it", async ({ pa
   await card.getByRole("slider", { name: "Lookahead" }).fill("10");
   await expect(page.locator(".se-chain-chip", { hasText: "Limiter" })).toBeVisible();
 
+  // The save is asynchronous; wait for the document so the reload restores it.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const project = (await response.json()) as {
+            data?: { masterChain?: Array<{ params?: { lookahead?: number } }> };
+          };
+          return project.data?.masterChain?.[0]?.params?.lookahead ?? null;
+        }, projectId),
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toBe(10);
+
   // Persisted in the document: reload and reopen the master.
   await page.goto(`/studio/editor?project=${encodeURIComponent(projectId)}`);
   await page.getByRole("button", { name: "Main", exact: true }).click();

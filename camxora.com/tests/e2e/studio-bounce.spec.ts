@@ -39,7 +39,72 @@ test("the track menu bounces that track to a RIFF mixdown", async ({ page }) => 
   const expected = 44 + 4 * 44100 * 2 * 2;
   expect(Math.abs(bytes.length - expected)).toBeLessThan(2000);
 
-  await expect(page.getByRole("status")).toContainText("Bounce on Track 1 started!");
+  await expect(page.getByRole("status")).toContainText("Bounce on Track 1 downloaded");
+});
+
+test("bounce places a bounced track when storage accepts the render", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  // The sandbox API has no upload storage (B-007), so this proves the in-place path
+  // against a stubbed upload response; the render itself is real.
+  await page.route("**/api/v3/web-music/studio/uploads", (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "bounce-upload",
+        filename: "bounce.wav",
+        content_type: "audio/wav",
+        size_bytes: 1024,
+        duration_seconds: 4,
+        url: "/seed/demo-loop.wav",
+      }),
+    })
+  );
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, {
+    title: `Bounce place ${tag}`,
+    clips: [
+      { id: "loop", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" },
+    ],
+  });
+
+  await page.getByLabel("Options for Track 1").click();
+  await page.getByRole("menuitem", { name: "Bounce track" }).click();
+
+  await expect(
+    page.locator(".se-tracks").getByText("Track 1 (bounced)", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("added as a new track");
+
+  const readDocument = () =>
+    page.evaluate(async (id) => {
+      const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+      return (await response.json()) as {
+        data: {
+          tracks: Array<{ id: string; name: string; muted: boolean; clipIds: string[] }>;
+          lanes: Array<{ id: string; audioUrl?: string | null; start?: number }>;
+        };
+      };
+    }, projectId);
+
+  // The write is asynchronous; wait for the document rather than the DOM.
+  await expect.poll(async () => (await readDocument()).data.tracks.length, {
+    timeout: 15_000,
+    intervals: [250],
+  }).toBe(2);
+  const document = await readDocument();
+
+  expect(document.data.tracks).toHaveLength(2);
+  // The source is muted, the render sits on its own track at the same span.
+  expect(document.data.tracks[0].muted).toBe(true);
+  expect(document.data.tracks[1].name).toBe("Track 1 (bounced)");
+  const bouncedClip = document.data.lanes.find(
+    (lane) => lane.id === document.data.tracks[1].clipIds[0]
+  );
+  expect(bouncedClip?.audioUrl).toBe("/seed/demo-loop.wav");
+  expect(bouncedClip?.start).toBe(0);
 });
 
 test("a track with no clips cannot be bounced", async ({ page }) => {

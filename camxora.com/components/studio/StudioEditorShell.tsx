@@ -3305,7 +3305,10 @@ export function StudioEditorShell() {
   /**
    * Bounce a track (N-06): render that track's clips through its own effect chain,
    * ignoring the solo state of the other tracks (bouncing a soloed-out track must not
-   * be silent — the same rule as the per-track export, G39), and hand back a WAV.
+   * be silent — the same rule as the per-track export, G39).
+   *
+   * When upload storage is available the render is placed back as a `(bounced)` track
+   * and the source is muted; otherwise the WAV downloads instead (B-007).
    */
   async function bounceTrack(trackId: string) {
     const track = tracks.find((candidate) => candidate.id === trackId);
@@ -3314,6 +3317,15 @@ export function StudioEditorShell() {
       setError("This track has no clips to bounce.");
       return;
     }
+    const sourceClips = track.clipIds
+      .map((id) => clips.find((clip) => clip.id === id))
+      .filter((clip): clip is ClipLike => Boolean(clip));
+    const start = Math.min(...sourceClips.map((clip) => clip.start ?? 0));
+    const end = Math.max(
+      ...sourceClips.map((clip) => (clip.start ?? 0) + (clip.duration ?? 0))
+    );
+    const span = Math.max(0.1, end - start);
+
     setBouncingTrack(trackId);
     // The reference reports "Exporting on track #": name the track while it renders.
     setExportToast(`Bouncing ${track.name || `track ${tracks.indexOf(track) + 1}`}…`);
@@ -3346,14 +3358,74 @@ export function StudioEditorShell() {
         masterGain: 1,
       });
       const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
-      download(wav, `${project.title || "project"} - ${label} (bounce).wav`, "audio/wav");
-      setExportToast(`Bounce on ${label} started!`);
+      const filename = `${project.title || "project"} - ${label} (bounce).wav`;
+
+      try {
+        const blob = new Blob([wav as unknown as ArrayBufferView<ArrayBuffer>], {
+          type: "audio/wav",
+        });
+        const upload = await uploadStudioAudio(
+          new File([blob], filename, { type: "audio/wav" }),
+          span
+        );
+        placeBounce(track, upload.url, start, span);
+        setExportToast(`Bounce on ${label} added as a new track.`);
+      } catch {
+        // Storage is not configured on this deployment (B-007): keep the render useful.
+        download(wav, filename, "audio/wav");
+        setExportToast(
+          `Bounce on ${label} downloaded — storage is off, so it was not placed.`
+        );
+      }
     } catch {
       setError("Bounce failed. Check that the clips still have audio.");
       setExportToast(null);
     } finally {
       setBouncingTrack(null);
     }
+  }
+
+  /** Render-in-place result: one bounced track, with the source muted (N-06). */
+  function placeBounce(source: StudioTrack, url: string, start: number, duration: number) {
+    const stamp = Date.now().toString(36);
+    const trackId = `track-${stamp}`;
+    const clipId = `clip-${stamp}`;
+    const nextTrack: StudioTrack = {
+      id: trackId,
+      name: `${source.name} (bounced)`,
+      color: source.color,
+      index: tracks.length,
+      volume: 80,
+      pan: 0,
+      muted: false,
+      solo: false,
+      hidden: false,
+      collapsed: false,
+      groupId: null,
+      chain: [],
+      clipIds: [clipId],
+    };
+    const clip: ClipLike = {
+      id: clipId,
+      title: `${source.name} (bounce)`,
+      start,
+      duration,
+      color: source.color,
+      audioUrl: url,
+    };
+    const data = currentData() as Record<string, unknown>;
+    const nextTracks = [
+      ...tracks.map((candidate) =>
+        candidate.id === source.id ? { ...candidate, muted: true } : candidate
+      ),
+      nextTrack,
+    ];
+    writeProjectData(
+      { ...data, lanes: [...clips, clip], tracks: nextTracks },
+      "bouncing the track",
+      nextTracks
+    );
+    setSelectedTrack(trackId);
   }
 
   // The export toast dismisses itself; the capture keeps a manual close too.

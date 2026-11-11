@@ -295,16 +295,26 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
   // appears in the Uploads list where it can be added to a track. Set
   // STUDIO_EXPECT_UPLOADS=1 when the API is pointed at a bucket (B-006).
   const imported = library.getByText("demo-loop.wav").first();
-  const refused = library.getByRole("alert");
-  await expect(imported.or(refused)).toBeVisible();
+  const refused = library.getByRole("alert").first();
+  // The sandbox may already hold a demo-loop.wav row from an earlier bucket run, so
+  // accept either outcome without demanding a unique match.
+  await expect
+    .poll(
+      async () =>
+        (await library.getByRole("alert").count()) +
+        (await library.getByText("demo-loop.wav").count()),
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toBeGreaterThan(0);
   if (process.env.STUDIO_EXPECT_UPLOADS === "1") {
     await expect(imported).toBeVisible();
-    await expect(refused).toHaveCount(0);
-  }
-  if (await imported.isVisible().catch(() => false)) {
+    await expect(library.getByRole("alert")).toHaveCount(0);
     await expect(library.getByLabel("Back to library")).toBeVisible();
     await expect(library.getByLabel("Add demo-loop.wav").first()).toBeEnabled();
   } else {
+    // Storage is off for this API: the upload must refuse with a reason. A stale row
+    // from an earlier bucket run may also be listed, so only the alert is asserted.
+    await expect(refused).toBeVisible();
     await expect(refused).toContainText(/not configured|Upload failed/i);
   }
 });
