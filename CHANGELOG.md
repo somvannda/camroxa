@@ -7,6 +7,14 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.7] - 2026-11-11
+
+### Fixed
+
+- The Publication **Playlist** dropdown saved the playlist title instead of its id, so every upload
+  sent a name where YouTube expects an id and `playlistItems.insert` could never match. The chosen
+  id is now stored, kept selected while the channel's playlists load, and restored by id.
+
 ## [1.6.6] - 2026-11-09
 
 ### Fixed
