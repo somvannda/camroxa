@@ -17,6 +17,7 @@ from platform_api.exceptions import (
 from platform_api.services.credit_units import CREDIT_SCALE, credits_to_units, units_to_credits
 from platform_api.services.pricing_display import credit_reset_label
 from platform_api.services.v3.list_prices import (
+    TEXT_PRICING_OPS,
     music_credits_per_generate,
     overlay_plan_list_prices,
     resolve_all_op_list_credits,
@@ -117,6 +118,31 @@ class CreditsOnlyBillingService:
         sub_model = str(getattr(routing, "sub_model", "") or "").strip() or None
         return provider, sub_model
 
+    async def _text_pricing_routing(
+        self, operation: str | None, op: str
+    ) -> tuple[str | None, str | None]:
+        """Routed ``(provider, sub_model)`` for a text op.
+
+        ``web_music_lyrics``/``web_music_style`` are their own routing
+        assignments, so prefer the caller's concrete operation over the
+        normalized op. Without routing the static price chain is used.
+        """
+        if self._ai_routing is None:
+            return None, None
+        assignment = str(operation or "").strip().lower() or op
+        try:
+            routing = await self._ai_routing.resolve(assignment)
+        except Exception:
+            logger.debug(
+                "text routing lookup failed for %s; using default price chain",
+                assignment,
+                exc_info=True,
+            )
+            return None, None
+        provider = str(getattr(routing, "provider", "") or "").strip().lower() or None
+        sub_model = str(getattr(routing, "sub_model", "") or "").strip() or None
+        return provider, sub_model
+
     async def list_pricing(self) -> list[dict[str, Any]]:
         return await self._pricing.get_all_pricing()
 
@@ -190,6 +216,12 @@ class CreditsOnlyBillingService:
             image_provider, image_sub_model = await self._image_pricing_routing(
                 operation
             )
+        text_provider: str | None = None
+        text_sub_model: str | None = None
+        if operation_name in TEXT_PRICING_OPS:
+            text_provider, text_sub_model = await self._text_pricing_routing(
+                operation, operation_name
+            )
         units = await resolve_op_list_units(
             self._pricing,
             operation_name,
@@ -197,6 +229,9 @@ class CreditsOnlyBillingService:
             image_provider=image_provider,
             image_sub_model=image_sub_model,
             image_operation=operation,
+            text_provider=text_provider,
+            text_sub_model=text_sub_model,
+            text_operation=operation,
         )
         return QuoteResult(
             op=operation_name,

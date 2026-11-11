@@ -33,6 +33,8 @@ OP_SCAN_ALIASES: dict[str, tuple[str, ...]] = {
     "publish": ("upload", "publish"),
 }
 
+TEXT_PRICING_OPS = frozenset({"lyric", "title", "album", "style"})
+
 
 def _row_units(row: dict[str, Any]) -> int | None:
     raw = row.get("credits_per_operation")
@@ -172,6 +174,34 @@ def _image_fallbacks(
     return _dedupe(chain)
 
 
+def _text_fallbacks(
+    op: str,
+    text_provider: str | None,
+    text_sub_model: str | None,
+    text_operation: str | None,
+) -> tuple[PricingLookup, ...]:
+    """Pricing lookup chain for text ops (lyric/title/album/style).
+
+    The routed provider+model wins so the debit matches the model that runs;
+    ``web_music_*`` operations are also looked up under their concrete name
+    (e.g. ``web_music_lyrics``) before the normalized op rows. The static
+    chain remains the fallback for a provider with no configured row.
+    """
+    provider = str(text_provider or "").strip().lower()
+    model = str(text_sub_model or "").strip() or None
+    chain: list[PricingLookup] = []
+    if provider:
+        names: list[str] = []
+        for name in (str(text_operation or "").strip().lower(), op):
+            if name and name not in names:
+                names.append(name)
+        for name in names:
+            chain.append((provider, name, model))
+            chain.append((provider, name, None))
+    chain.extend(PRICING_FALLBACKS[op])
+    return _dedupe(chain)
+
+
 def _fallbacks_for(
     op: str,
     *,
@@ -179,11 +209,16 @@ def _fallbacks_for(
     image_provider: str | None,
     image_sub_model: str | None,
     image_operation: str | None,
+    text_provider: str | None = None,
+    text_sub_model: str | None = None,
+    text_operation: str | None = None,
 ) -> tuple[PricingLookup, ...]:
     if op == "music":
         return _music_fallbacks(music_provider)
     if op == "image":
         return _image_fallbacks(image_provider, image_sub_model, image_operation)
+    if op in TEXT_PRICING_OPS:
+        return _text_fallbacks(op, text_provider, text_sub_model, text_operation)
     return PRICING_FALLBACKS[op]
 
 
@@ -195,6 +230,9 @@ async def resolve_op_list_units(
     image_provider: str | None = None,
     image_sub_model: str | None = None,
     image_operation: str | None = None,
+    text_provider: str | None = None,
+    text_sub_model: str | None = None,
+    text_operation: str | None = None,
 ) -> int:
     fallbacks = _fallbacks_for(
         op,
@@ -202,6 +240,9 @@ async def resolve_op_list_units(
         image_provider=image_provider,
         image_sub_model=image_sub_model,
         image_operation=image_operation,
+        text_provider=text_provider,
+        text_sub_model=text_sub_model,
+        text_operation=text_operation,
     )
     last_error: Exception | None = None
     for ai_service, operation_type, sub_model in fallbacks:
@@ -211,11 +252,25 @@ async def resolve_op_list_units(
         except Exception as exc:
             last_error = exc
             continue
+    scan_provider = (
+        image_provider
+        if op == "image"
+        else text_provider
+        if op in TEXT_PRICING_OPS
+        else None
+    )
+    scan_operation = (
+        image_operation
+        if op == "image"
+        else text_operation
+        if op in TEXT_PRICING_OPS
+        else None
+    )
     scanned = await _scan_pricing_units(
         pricing,
         op,
-        ai_service=image_provider if op == "image" else None,
-        operation_type=image_operation if op == "image" else None,
+        ai_service=scan_provider,
+        operation_type=scan_operation,
     )
     if scanned is not None:
         return scanned
@@ -232,6 +287,9 @@ async def resolve_op_list_credits(
     image_provider: str | None = None,
     image_sub_model: str | None = None,
     image_operation: str | None = None,
+    text_provider: str | None = None,
+    text_sub_model: str | None = None,
+    text_operation: str | None = None,
 ) -> float:
     return units_to_credits(
         await resolve_op_list_units(
@@ -241,6 +299,9 @@ async def resolve_op_list_credits(
             image_provider=image_provider,
             image_sub_model=image_sub_model,
             image_operation=image_operation,
+            text_provider=text_provider,
+            text_sub_model=text_sub_model,
+            text_operation=text_operation,
         )
     )
 
