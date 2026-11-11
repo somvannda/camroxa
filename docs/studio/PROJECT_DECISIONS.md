@@ -672,3 +672,30 @@ renders in the chain.
 and are snapshotted into each chain entry, so a stored chain stays self-describing.
 Their parameters are clamped by their own definition, and the audio engine maps each
 family onto a real Web Audio graph.
+
+## D-029 - Two selection types: clips and time, never both
+
+**Date:** 2026-11-11 **Status:** accepted
+
+**Decision.** The ruler owns a **time range** selection, separate from the clip
+selection (N-01, spec §2). Dragging on the ruler creates the range; a press without
+movement still seeks, `Shift`-click extends it, `Shift ←/→` grows it a beat at a time.
+Selecting a clip or pressing an empty lane clears the range, and `Esc` clears it too.
+The range is transient: it is not written to the project document.
+
+The range feeds three surfaces: the range menu on the ruler (loop selection, duplicate
+time, delete time on all tracks, delete time on the focused track, export selection),
+the same verbs as shortcuts (`Ctrl/⌘ Shift Backspace`, `Ctrl/⌘ Backspace`,
+`Ctrl/⌘ Shift D`), and the header's `Selected time range (WAV)` scope, which unlocks
+when either a range or a loop range exists.
+
+**Why.** The reference's destructive edits ripple time, so they need a range that is
+not tied to any clip. Reusing the loop range (our earlier fallback) confuses two
+concepts: loop playback is persistent project state, while a selection is a transient
+editing scope. Keeping both lets the export menu keep working for loop-only users.
+
+**Consequences.** `lib/studio-time.ts` owns the arithmetic (head/tail trimming with
+content offset advance, MIDI notes rebased onto their slice, track `clipIds` rebuilt).
+Edits write the document once, so undo restores the whole block in one step. Deleting
+time keeps a clip's id when its head does not survive, so keyboard focus and the DOM
+selection stay put.

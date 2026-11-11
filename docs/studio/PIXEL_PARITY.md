@@ -69,6 +69,7 @@ functional controls the capture does not show (listed below).
 | Export toast | bottom-left 888 px banner on #1c1c1e, radius 16 | same |
 | Selected track | tints the gutter row and its lane | same |
 | Selected clip | white outline only; trim/fade grips on hover | same |
+| Time selection (N-01) | not captured as its own frame; the strings (`Delete Time`, `Duplicate Time`, `Extend Selection Left/Right`) and the shortcut map describe it | accent-tinted band over the ruler and lanes with edge grips; right-click the ruler for loop, duplicate/delete time (all tracks or the focused one), range export and clear; `Shift ←/→` extends by a beat, `Esc` clears |
 | Clip hover card | light 256 px card explaining drag/double-click/right-click | same |
 | Clip info rail | 360 px card: hero, Remix, waveform, underlined tabs, section cards | same (facts kept in a Details card) |
 | Song detail rail | 360 px card: hero + meta, actions, icon-only play, underlined tabs, cards, sticky mini-player | same (mini-player built per D-023; the More menu is ours, D-027) |

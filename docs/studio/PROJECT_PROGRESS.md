@@ -2,6 +2,25 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-11 — Time selection (N-01)
+
+The editor has the reference's second selection type: a **time range** dragged on the
+bar ruler, with its own verbs (D-029). Branch `feat/studio-time-selection`.
+
+| Area | What landed |
+|---|---|
+| **Range selection** | dragging the bar ruler selects a snap-to-beat range; a click without movement still seeks, `Shift`-click extends it, `Shift ←/→` grows it a beat, `Esc` clears it; clips and empty lanes clear it (selection is contextual) |
+| **Rendering** | an accent-tinted band over the ruler and the lanes with edge grips, kept separate from the loop band so loop playback and a transient edit scope never fight |
+| **Verbs** | ruler right-click menu: loop selection, duplicate time, delete time (all tracks), delete time (focused track), export selection, clear; the same actions as `Ctrl Shift D`, `Ctrl Shift Backspace` and `Ctrl Backspace` |
+| **Ripple edits** | `lib/studio-time.ts` deletes/duplicates a block: clips are cut at the range edges, content offsets advance, MIDI notes rebase onto their slice, later clips move, track `clipIds` rebuild, and each edit is one undo step |
+| **Range export** | the header's `Selected time range (WAV)` unlocks for a range as well as a loop range, and exports the range when both exist |
+| **Docs + Learn** | shortcut list, `PIXEL_PARITY` row and D-029 record the two-selection model |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, vitest **217/217** (23 files), full studio e2e
+**108 passed / 1 skipped**, plus a manual screenshot pass over the band and the range menu.
+
 ## Session 2026-11-09 — Pixel parity (D-022)
 
 The Studio is now built to the captured layout, palette and type scale, verified by a
