@@ -526,6 +526,66 @@ async def test_quote_text_falls_back_when_routed_model_has_no_row(
 
 
 @pytest.mark.asyncio
+async def test_settle_executed_charge_refunds_cheaper_model(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """Web-music lyric charged 2, served by openai-mini (216 units) refunds."""
+    pricing = ModelPricing(
+        {("openai", "lyric", "gpt-4o-mini"): 216}
+    )
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=pricing,
+    )
+
+    settled = await billing.settle_executed_charge(
+        user_id=USER_ID,
+        op="web_music_lyrics",
+        operation="lyric",
+        charged_units=credits_to_units(2),
+        executed_provider="openai",
+        executed_model="gpt-4o-mini",
+        routed_provider="slai",
+        routed_model="gpt-5.6-luna",
+    )
+
+    assert settled == 216
+    refund = wallet.txs[-1]
+    assert refund["kind"] == "refund"
+    assert refund["amount"] == credits_to_units(2) - 216
+    assert refund["metadata"]["executed_provider"] == "openai"
+
+
+@pytest.mark.asyncio
+async def test_settle_executed_charge_collects_expensive_model(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    pricing = ModelPricing({("openai", "lyric", "gpt-4o"): credits_to_units(1.3334)})
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=pricing,
+    )
+
+    settled = await billing.settle_executed_charge(
+        user_id=USER_ID,
+        op="lyric",
+        operation="lyric",
+        charged_units=credits_to_units(0.5),
+        executed_provider="openai",
+        executed_model="gpt-4o",
+        routed_provider="slai",
+        routed_model="xiaomi/mimo-v2.5-pro",
+    )
+
+    assert settled == credits_to_units(1.3334)
+    debit = wallet.txs[-1]
+    assert debit["kind"] == "debit"
+    assert debit["amount"] == credits_to_units(1.3334) - credits_to_units(0.5)
+
+
+@pytest.mark.asyncio
 async def test_plan_override_ignored(billing: CreditsOnlyBillingService, store: FakeStore) -> None:
     plan_id = store.user_plan[str(USER_ID)]
     store.plans[plan_id]["music_credits"] = 10

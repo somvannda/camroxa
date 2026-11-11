@@ -798,6 +798,36 @@ class WebMusicService:
             ) from exc
         return routing, chain, charge_amount
 
+    async def _settle_text_operation(self, user_id: UUID, operation: str, routing: Any) -> None:
+        """Reconcile a v3 web-music text charge with the executed model.
+
+        Pops the open charge so a later failure path cannot refund it after the
+        debit has already been settled to the model that produced the text.
+        """
+        if not await self._credits_only_v3_enabled():
+            return
+        charge = self._open_charges.pop(f"text:{user_id}:{operation}", None)
+        if charge is None:
+            return
+        try:
+            from platform_api.ai.providers.text.gateway import get_executed_text
+            from platform_api.services.credit_units import credits_to_units
+
+            executed = get_executed_text()
+            if executed is None:
+                return
+            await self._web_music_charge_bridge().settle_text(
+                user_id=user_id,
+                operation=operation,
+                charged_units=credits_to_units(int(charge.amount_credits)),
+                routed_provider=str(getattr(routing, "provider", "") or "") or None,
+                routed_model=str(getattr(routing, "sub_model", "") or "") or None,
+                executed_provider=executed[0],
+                executed_model=executed[1] or None,
+            )
+        except Exception:
+            logger.debug("Web music text settle failed", exc_info=True)
+
     async def _refund_text_operation(self, user_id: UUID, amount: int, source: str) -> None:
         if await self._credits_only_v3_enabled():
             operation = "lyric" if "lyric" in source else "style" if "style" in source else source
@@ -850,6 +880,8 @@ class WebMusicService:
         except Exception as exc:
             await self._refund_text_operation(user_id, charged, "web_music_lyrics_refund")
             reraise_text_assist_failure(exc)
+
+        await self._settle_text_operation(user_id, "web_music_lyrics", routing)
 
         text = str(raw or "").strip()
         title = "Untitled"
@@ -911,6 +943,8 @@ class WebMusicService:
         except Exception as exc:
             await self._refund_text_operation(user_id, charged, "web_music_style_refund")
             reraise_text_assist_failure(exc)
+
+        await self._settle_text_operation(user_id, "web_music_style", routing)
 
         cleaned = str(raw or "").strip().strip('"').strip("'")
         if cleaned.lower().startswith("style:"):

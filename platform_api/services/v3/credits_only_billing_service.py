@@ -486,6 +486,77 @@ class CreditsOnlyBillingService:
             "balance_credits": units_to_credits(int(await self._credit_repo.get_balance(user_id))),
         }
 
+    async def settle_executed_charge(
+        self,
+        *,
+        user_id: UUID,
+        op: str,
+        operation: str,
+        charged_units: int,
+        executed_provider: str,
+        executed_model: str | None,
+        routed_provider: str | None = None,
+        routed_model: str | None = None,
+    ) -> int:
+        """Adjust an up-front v3 charge to the model that actually served it.
+
+        Web-music text charges happen before generation. When the fallback chain
+        advances to another provider/model, collect or refund the difference so
+        the debit matches the executed model's row. Missing pricing or an
+        unfunded wallet leaves the original charge in place.
+        """
+        charged = int(charged_units or 0)
+        provider = str(executed_provider or "").strip().lower()
+        if charged <= 0 or not provider:
+            return charged
+        model = str(executed_model or "").strip() or None
+        try:
+            actual = int(await self._pricing.get_price(provider, operation, model))
+        except Exception:
+            logger.debug(
+                "settle: no pricing for %s/%s op=%s",
+                provider,
+                model,
+                operation,
+                exc_info=True,
+            )
+            return charged
+        if actual == charged:
+            return charged
+
+        reason = f"{operation}_fallback_settle"
+        metadata = {
+            "billing": "wallet",
+            "source": "v3",
+            "op": self._normalize_op(op),
+            "operation": operation,
+            "provider": provider,
+            "model": model,
+            "executed_provider": provider,
+            "executed_model": model,
+            "routed_provider": routed_provider,
+            "routed_model": routed_model,
+            "purpose": reason,
+            "hold_settle": True,
+        }
+        if actual < charged:
+            await self._credit_repo.refund(
+                user_id, charged - actual, reason, metadata=metadata
+            )
+            return actual
+
+        try:
+            collected = await self._credit_repo.atomic_deduct(
+                user_id, actual - charged, reason, metadata=metadata
+            )
+        except Exception:
+            logger.warning(
+                "settle: delta charge failed for %s/%s", provider, model,
+                exc_info=True,
+            )
+            return charged
+        return actual if collected else charged
+
     async def _existing_debit(self, user_id: UUID, reason: str, ref_id: str) -> bool:
         getter = getattr(self._credit_repo, "has_transaction", None)
         if getter is None:
