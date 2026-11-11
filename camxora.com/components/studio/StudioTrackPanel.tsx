@@ -42,6 +42,9 @@ export type StudioTrackPanelProps = {
   onRenameCommit: () => void;
   onRenameCancel: () => void;
   onDuplicate: (trackId: string) => void;
+  /** N-06: render this track (clips + effects) to a WAV mixdown. */
+  onBounce?: (trackId: string) => void;
+  bouncingTrackId?: string | null;
   onHide: (trackId: string) => void;
   onDelete: (trackId: string) => void;
   onAddTrack: () => void;
@@ -126,6 +129,8 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onRenameCommit,
     onRenameCancel,
     onDuplicate,
+    onBounce = () => {},
+    bouncingTrackId = null,
     onHide,
     onDelete,
     onAddTrack,
@@ -310,6 +315,23 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   >
                     <Icon name="fa-thumbtack" />
                     {track.collapsed ? "Expand controls" : "Collapse controls"}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={bouncingTrackId === track.id || track.clipIds.length === 0}
+                    title={
+                      track.clipIds.length === 0
+                        ? "This track has no clips to bounce"
+                        : "Render this track, with its effects, to a WAV mixdown"
+                    }
+                    onClick={() => {
+                      onToggleMenu(null);
+                      onBounce(track.id);
+                    }}
+                  >
+                    <Icon name="fa-arrow-up-from-bracket" />
+                    {bouncingTrackId === track.id ? "Bouncing…" : "Bounce track"}
                   </button>
                   <button type="button" role="menuitem" onClick={() => onDuplicate(track.id)}>
                     <Icon name="fa-copy" /> Duplicate

@@ -1077,6 +1077,7 @@ describe("StudioTrackPanel", () => {
       "Rename track",
       "Color",
       "Collapse controls",
+      "Bounce track",
       "Duplicate",
       "Hide & Mute Track",
       "Delete",

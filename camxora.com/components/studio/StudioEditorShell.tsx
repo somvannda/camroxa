@@ -445,6 +445,8 @@ export function StudioEditorShell() {
   }
 
   const [exporting, setExporting] = useState(false);
+  /** N-06: the track whose bounce is rendering right now. */
+  const [bouncingTrack, setBouncingTrack] = useState<string | null>(null);
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [midiClipId, setMidiClipId] = useState<string | null>(null);
   /** Audio clip editor (S30): warp markers live beside the clip's waveform. */
@@ -3213,9 +3215,61 @@ export function StudioEditorShell() {
     }
   }
 
+  /**
+   * Bounce a track (N-06): render that track's clips through its own effect chain,
+   * ignoring the solo state of the other tracks (bouncing a soloed-out track must not
+   * be silent — the same rule as the per-track export, G39), and hand back a WAV.
+   */
+  async function bounceTrack(trackId: string) {
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (!track || !project || bouncingTrack) return;
+    if (track.clipIds.length === 0) {
+      setError("This track has no clips to bounce.");
+      return;
+    }
+    setBouncingTrack(trackId);
+    // The reference reports "Exporting on track #": name the track while it renders.
+    setExportToast(`Bouncing ${track.name || `track ${tracks.indexOf(track) + 1}`}…`);
+    try {
+      const buffers = await decodeClips();
+      const exportClips: ExportClip[] = clips.map((clip) => ({
+        id: clip.id,
+        start: clip.start,
+        duration: clip.duration,
+        offset: (clip as { offset?: number }).offset,
+        fadeIn: (clip as { fadeIn?: number }).fadeIn,
+        audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
+        midi: (clip as ClipLike).midi,
+      }));
+      const exportTracks: ExportTrack[] = tracks.map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+        volume: candidate.volume,
+        muted: candidate.muted,
+        solo: candidate.solo,
+        clipIds: candidate.clipIds,
+      }));
+      const wav = await renderMix(buffers, exportClips, exportTracks, {
+        chain: (currentData() as { masterChain?: MasterChainEntry[] }).masterChain,
+        chains,
+        clipIds: new Set(track.clipIds),
+        honourSolo: false,
+        // A bounce is the track alone: no master fader, no master mute.
+        masterGain: 1,
+      });
+      const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
+      download(wav, `${project.title || "project"} - ${label} (bounce).wav`, "audio/wav");
+      setExportToast(`Bounce on ${label} started!`);
+    } catch {
+      setError("Bounce failed. Check that the clips still have audio.");
+      setExportToast(null);
+    } finally {
+      setBouncingTrack(null);
+    }
+  }
+
   // The export toast dismisses itself; the capture keeps a manual close too.
-  useEffect(() => {
-    if (!exportToast) return;
+  useEffect(() => {    if (!exportToast) return;
     const timer = window.setTimeout(() => setExportToast(null), 6000);
     return () => window.clearTimeout(timer);
   }, [exportToast]);
@@ -3976,6 +4030,8 @@ export function StudioEditorShell() {
           onRenameCommit={commitRename}
           onRenameCancel={() => setRenameTrackId(null)}
           onDuplicate={duplicateTrack}
+          onBounce={(trackId) => void bounceTrack(trackId)}
+          bouncingTrackId={bouncingTrack}
           onHide={hideTrack}
           onDelete={deleteTrack}
           onAddTrack={addTrack}

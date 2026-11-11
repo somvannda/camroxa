@@ -334,6 +334,7 @@ test("track options menu matches the captured popover", async ({ page }) => {
   expect(info.rows.map((row) => row.text)).toEqual([
     "Rename track",
     "Collapse controls",
+    "Bounce track",
     "Duplicate",
     "Hide & Mute Track",
     "Delete",
