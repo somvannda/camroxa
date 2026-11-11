@@ -34,7 +34,7 @@ async def test_deduct_for_operation_forwards_ref_id() -> None:
 
     assert charged == 100_000
     service._charge_via_v3.assert_awaited_once_with(
-        user_id, "music", ref_id="song-1", model="V6"
+        user_id, "music", ref_id="song-1", model="V6", provider="suno"
     )
 
 
