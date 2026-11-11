@@ -5193,9 +5193,7 @@ class BatchService:
                         batch.ok_profile_id,
                         "lyric",
                         bill_provider,
-                        charged_credit_units=int(
-                            getattr(charged, "charged_credit_units", 0) or 0
-                        ),
+                        charged_credit_units=int(charged or 0),
                         sub_model=bill_model or None,
                         reason="auto_suno_rewrite_failed",
                         ref_id=str(song.id),
@@ -5208,6 +5206,20 @@ class BatchService:
                 str(exc)[:200],
             )
             return False
+
+        if charged is not None and self._enforcement_service is not None:
+            try:
+                await self._enforcement_service.settle_text_charge(
+                    user_id=UUID(user_id),
+                    operation_type="lyric",
+                    charged_units=int(charged or 0),
+                    routed_provider=bill_provider,
+                    routed_model=bill_model or None,
+                )
+            except Exception:
+                logger.debug(
+                    "Auto-rewrite settle failed for song %s", song.id, exc_info=True
+                )
 
         cleaned = str(polished or "").strip()
         if not cleaned or cleaned == lyrics:

@@ -579,6 +579,17 @@ async def polish_lyrics(
             mood=mood,
             suno_failure_hint=suno_failure_hint,
         )
+        if charged:
+            try:
+                await enforcement_service.settle_text_charge(
+                    user_id=UUID(ctx.user_id),
+                    operation_type="lyric",
+                    charged_units=int(charged or 0),
+                    routed_provider=bill_provider,
+                    routed_model=bill_model or None,
+                )
+            except Exception:
+                logger.debug("Lyric settle failed", exc_info=True)
     except Exception:
         try:
             await enforcement_service.refund_failed_operation(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from typing import Any, Protocol
 
 from platform_api.ai.parsing.response_parser import extract_chat_content
@@ -20,6 +21,18 @@ logger = logging.getLogger(__name__)
 _OPENAI_BASE_URL = "https://api.openai.com"
 
 ProviderChain = list[tuple[str, str]]
+
+# (provider, model) of the last successful text call in the current async task.
+# Text charges happen before generation, so callers settle against this after
+# the fallback chain has chosen the model that actually served the request.
+_EXECUTED_TEXT: ContextVar[tuple[str, str] | None] = ContextVar(
+    "text_executed", default=None
+)
+
+
+def get_executed_text() -> tuple[str, str] | None:
+    """Return ``(provider, model)`` of the last successful text call."""
+    return _EXECUTED_TEXT.get()
 
 
 class LlmChatClient(Protocol):
@@ -122,22 +135,24 @@ class TextProviderGateway:
 
         if provider == "openai":
             wrapper = self._require_pool(self._openai_pool, provider)
-            return await wrapper.execute(
+            result = await wrapper.execute(
                 lambda api_key: _call(api_key, base_url=_OPENAI_BASE_URL)
             )
-        if provider == "deepseek":
+        elif provider == "deepseek":
             wrapper = self._require_pool(self._deepseek_pool, provider)
-            return await wrapper.execute(lambda api_key: _call(api_key))
-        if provider == "slai":
+            result = await wrapper.execute(lambda api_key: _call(api_key))
+        elif provider == "slai":
             wrapper = self._require_pool(self._slai_pool, provider)
-            return await wrapper.execute(
+            result = await wrapper.execute(
                 lambda api_key: _call(api_key, base_url=self._slai_base_url)
             )
-
-        raise ValidationError(
-            "Unsupported LLM provider.",
-            details={"provider": provider, "model": canonical_model},
-        )
+        else:
+            raise ValidationError(
+                "Unsupported LLM provider.",
+                details={"provider": provider, "model": canonical_model},
+            )
+        _EXECUTED_TEXT.set((provider, canonical_model))
+        return result
 
     async def chat_completion_with_fallback(
         self,
