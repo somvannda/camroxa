@@ -30,8 +30,8 @@ browser tests, and the branch is main-synced.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run check:ui` | compliant |
-| `npm test` (vitest) | **255 / 255**, 27 files |
-| `npx playwright test` | **118 passed / 1 skipped** |
+| `npm test` (vitest) | **268 / 268**, 29 files |
+| `npx playwright test` | **122 passed / 2 skipped** |
 | python -m pytest platform_api/tests -q (merged main) | **3352 passed**, 2 known warnings |
 
 The single skip is the uploads spec's optional branch (`STUDIO_EXPECT_UPLOADS=1` when a
@@ -55,7 +55,7 @@ Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pair
 
 | Item | Why | Where |
 |---|---|---|
-| Real-bucket verification of in-place bounce | the running API has no upload storage, so the fallback is what executes locally; placement is covered against a stubbed upload | D-031, B-007 |
+| Real-bucket verification of in-place bounce | **verified 2026-11-11** against moto with a disposable database (recipe in B-007); the running sandbox API still has no storage, so the fallback is what executes locally | D-031, B-007 |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
 | Stems tile/upload halves of G12 | stems needs a genuinely generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
 | S60 / S61 captures | need a signed-in Suno reference session with a real moderation/no-credit trigger | `reference/CAPTURE_GAPS.md` |
@@ -92,7 +92,7 @@ Helpers in `scripts/`:
 | unit | `npm test` | snap, time edits, warp markers/onsets, MIDI file, meter, export, plugins, … |
 | component | `npm test` | header, footer, library, timeline, track panel, audio editor, MIDI editor |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | 43 specs, 118 passing |
+| e2e | `npm run test:e2e` | 49 specs, 122 passing |
 
 CI jobs on any PR touching `camxora.com`: `camxora-web-checks` (typecheck, `check:ui`,
 `npm test`, `npm run build`) and `camxora-e2e` (Postgres, Redis, musicapi,
@@ -147,14 +147,14 @@ not persisted (D-029).
 1. **Ship the branch**: open a PR from `feat/studio-rebuild` to `main`. The branch is
    main-synced and green, so this is a review step rather than a reconciliation step.
    `gh auth login -h github.com` is required first (the local token is invalid).
-2. **Delete the merged remote branches** after review — the stack branches
-   (`feat/studio-time-selection`, `-warp-markers`, `-bounce`, `-midi-export`,
-   `-audio-settings`, `-bounce-in-place`, `-a11y-panels`) are all contained in
-   `feat/studio-rebuild`.
-3. **Verify in-place bounce on a real bucket**: start the API with the moto env
-   (B-006/B-007), re-run `studio-bounce.spec.ts` without the stubbed upload, and confirm
-   the bounced track plays after a reload.
+2. **Give the running sandbox API storage**: configure a bucket (or re-save the streaming
+   settings in admin, B-006/B-007). The upload + in-place bounce path is already verified
+   against moto with a disposable DB; this step makes the *local* dev stack match.
+3. **Optional library follow-ups**: uploads rename/delete (needs a mutation endpoint);
+   covers/remasters filters (need generation↔`studio_operations` attribution).
 4. **S60/S61** and the §100 detail-rail image when a reference session is available.
 
 Everything else in the documented gap list is built: the §81 column shipped as D-032, the
 selection model as D-029, warp markers as D-030, bounce as D-031 and MIDI export as N-05.
+The merged task branches were deleted from `origin` on 2026-11-11; only
+`feat/studio-rebuild` carries this work.
