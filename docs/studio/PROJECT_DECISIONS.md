@@ -809,6 +809,8 @@ is exactly what a take is here, and it keeps the source one click away. An exten
 different music after the boundary, so it belongs on the timeline, not in the take stack.
 
 **Consequences.** The take-lanes band opens on arrival, and the clip's `audioUrl` follows
-the active take, so playback and export hear the new result immediately. Add-vocals,
-add-instrumental, replace-section and mashup are already in `lib/studio-api.ts` and can
-reuse the same polling and placement helper when their menus are decided.
+the active take, so playback and export hear the new result immediately. Add-vocals and
+add-instrumental reuse the same dialog and placement; replace-section and mashup are
+already in `lib/studio-api.ts` and can reuse the same polling and placement helper when
+their menus are decided. The transform dialog reads the credit price from
+`GET /studio/pricing` (never a hard-coded constant) before spending anything.

@@ -30,8 +30,8 @@ browser tests, and the branch is main-synced.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run check:ui` | compliant |
-| `npm test` (vitest) | **268 / 268**, 29 files |
-| `npx playwright test` | **126 passed / 2 skipped** |
+| `npm test` (vitest) | **274 / 274**, 30 files |
+| `npx playwright test` | **130 passed / 2 skipped** |
 | python -m pytest platform_api/tests -q (merged main) | **3354 passed**, 2 known warnings |
 
 The single skip is the uploads spec's optional branch (`STUDIO_EXPECT_UPLOADS=1` when a
@@ -95,7 +95,7 @@ Helpers in `scripts/`:
 | unit | `npm test` | snap, time edits, warp markers/onsets, MIDI file, meter, export, plugins, … |
 | component | `npm test` | header, footer, library, timeline, track panel, audio editor, MIDI editor |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | 48 specs, 126 passing |
+| e2e | `npm run test:e2e` | 49 specs, 130 passing |
 
 CI jobs on any PR touching `camxora.com`: `camxora-web-checks` (typecheck, `check:ui`,
 `npm test`, `npm run build`) and `camxora-e2e` (Postgres, Redis, musicapi,

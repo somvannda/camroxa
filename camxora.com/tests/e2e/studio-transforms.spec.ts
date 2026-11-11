@@ -19,7 +19,7 @@ const CLIP = {
 
 async function mockOperation(
   page: Page,
-  kind: "extend" | "cover" | "remaster",
+  kind: "extend" | "cover" | "add-vocals" | "add-instrumental",
   resultUrl: string
 ): Promise<void> {
   const operationId = `op-${kind}`;
@@ -128,4 +128,47 @@ test("Cover lands as a new take on the source clip", async ({ page }) => {
   const lanes = await savedLanes(page, projectId);
   const take = lanes.find((lane) => lane.id === "clip-a")?.takes?.[0];
   expect(take).toMatchObject({ title: "Cover", audioUrl: "/seed/demo-loop.wav", active: true });
+});
+
+test("Add vocals shows the credit price and lands as a take", async ({ page }) => {
+  test.setTimeout(120_000);
+  await mockOperation(page, "add-vocals", "/seed/demo-loop.wav");
+  await page.route("**/api/v3/web-music/studio/pricing", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ edit: 7, stems_2: 12, stems_12: 60 }),
+    })
+  );
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, {
+    title: `Vocals ${tag}`,
+    clips: [CLIP],
+  });
+
+  await page.locator(".se-clip").first().click({ button: "right" });
+  await page
+    .getByRole("menu", { name: "Clip options" })
+    .getByRole("menuitem", { name: /Vocals/ })
+    .click();
+
+  const dialog = page.getByRole("dialog", { name: "Add vocals to this clip" });
+  await expect(dialog).toBeVisible();
+  // The price comes from the pricing endpoint, never a hard-coded constant.
+  await expect(dialog).toContainText("This spends 7 credits");
+  await dialog.getByLabel("Vocal instructions").fill("warm female lead");
+  await dialog.getByRole("button", { name: "Add vocals" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Add vocals added as a new take");
+
+  await expect
+    .poll(
+      async () => {
+        const lanes = await savedLanes(page, projectId);
+        return lanes.find((lane) => lane.id === "clip-a")?.takes?.[0]?.title ?? null;
+      },
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toBe("Add vocals");
 });

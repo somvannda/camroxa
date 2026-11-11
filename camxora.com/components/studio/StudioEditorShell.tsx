@@ -12,6 +12,9 @@ import {
   requestStudioCover,
   requestStudioExtend,
   requestStudioRemaster,
+  requestStudioAddVocals,
+  requestStudioAddInstrumental,
+  getStudioPricing,
   type StudioOperation,
 } from "@/lib/studio-api";
 import {
@@ -258,9 +261,27 @@ export function StudioEditorShell() {
   /** Stem separation request state for the selected clip (W4.2). */
   const [stems, setStems] = useState<{ status: string; message?: string } | null>(null);
   /** Clip transform in flight + the optional Cover prompt (D-033). */
-  const [transformBusy, setTransformBusy] = useState<null | "extend" | "cover" | "remaster">(null);
-  const [transformPrompt, setTransformPrompt] = useState<{ clipId: string } | null>(null);
+  const [transformBusy, setTransformBusy] = useState<null | "extend" | "cover" | "remaster" | "vocals" | "instrumental">(null);
+  const [transformPrompt, setTransformPrompt] = useState<
+    { clipId: string; kind: "cover" | "vocals" | "instrumental" } | null
+  >(null);
   const [transformValue, setTransformValue] = useState("");
+  /** Credit price for one clip transform, from the pricing endpoint (never hard-coded). */
+  const [transformCost, setTransformCost] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getStudioPricing()
+      .then((pricing) => {
+        if (active) setTransformCost(pricing.edit);
+      })
+      .catch(() => {
+        /* the action still works; the price is just omitted */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
   const [drag, setDrag] = useState<{
     ids: string[];
@@ -2034,12 +2055,13 @@ export function StudioEditorShell() {
   }
 
   /**
-   * Clip transforms (D-033): Extend continues the clip after itself, while Cover and
-   * Remaster land as new takes on the source clip. Both are paid Studio operations, so
-   * the result is placed only after the operation finishes.
+   * Clip transforms (D-033): Extend continues the clip after itself, while Cover,
+   * Remaster, Add vocals and Add instrumental land as new takes on the source clip.
+   * These are paid Studio operations, so the result is placed only after the operation
+   * finishes.
    */
   async function runTransform(
-    kind: "extend" | "cover" | "remaster",
+    kind: "extend" | "cover" | "remaster" | "vocals" | "instrumental",
     clipId: string,
     prompt = ""
   ) {
@@ -2047,7 +2069,16 @@ export function StudioEditorShell() {
     const clip = clipsRef.current.find((entry) => entry.id === clipId);
     const songId = (clip as { songId?: string } | undefined)?.songId;
     if (!clip || !songId) return;
-    const label = kind === "extend" ? "Extend" : kind === "cover" ? "Cover" : "Remaster";
+    const label =
+      kind === "extend"
+        ? "Extend"
+        : kind === "cover"
+          ? "Cover"
+          : kind === "remaster"
+            ? "Remaster"
+            : kind === "vocals"
+              ? "Add vocals"
+              : "Add instrumental";
     setClipMenu(null);
     setTransformBusy(kind);
     setExportToast(`${label} queued…`);
@@ -2067,7 +2098,21 @@ export function StudioEditorShell() {
                 prompt,
                 projectId,
               })
-            : await requestStudioRemaster({ taskId: songId, variant: "ok", projectId });
+            : kind === "remaster"
+              ? await requestStudioRemaster({ taskId: songId, variant: "ok", projectId })
+              : kind === "vocals"
+                ? await requestStudioAddVocals({
+                    taskId: songId,
+                    variant: "ok",
+                    prompt,
+                    projectId,
+                  })
+                : await requestStudioAddInstrumental({
+                    taskId: songId,
+                    variant: "ok",
+                    prompt,
+                    projectId,
+                  });
       const current = await pollOperation(operation);
       if (current.status !== "done") {
         throw new Error(current.error_message ?? `${label} failed.`);
@@ -4816,6 +4861,12 @@ export function StudioEditorShell() {
                 style={{
                   left: Math.min(clipMenu.x, Math.max(8, window.innerWidth - 200)),
                   top: Math.min(clipMenu.y, Math.max(8, window.innerHeight - 400)),
+                  // The menu grew with the Generate rows; cap it to the space below its
+                  // anchor so it scrolls instead of running off-screen.
+                  maxHeight: Math.max(
+                    160,
+                    window.innerHeight - Math.min(clipMenu.y, Math.max(8, window.innerHeight - 400)) - 8
+                  ),
                 }}
               >
                 <button
@@ -4982,7 +5033,7 @@ export function StudioEditorShell() {
                   onClick={() => {
                     setClipMenu(null);
                     setTransformValue("");
-                    setTransformPrompt({ clipId: clip.id });
+                    setTransformPrompt({ clipId: clip.id, kind: "cover" });
                   }}
                 >
                   <Icon name="fa-music" /> Cover…
@@ -4993,12 +5044,46 @@ export function StudioEditorShell() {
                   disabled={!clip.songId || Boolean(transformBusy)}
                   title={
                     clip.songId
-                      ? "Clean up and re-master this clip"
+                      ? `Clean up and re-master this clip${transformCost != null ? ` (${transformCost} credits)` : ""}`
                       : "No source generation for this clip"
                   }
                   onClick={() => void runTransform("remaster", clip.id)}
                 >
                   <Icon name="fa-wand-magic" /> Remaster
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId || Boolean(transformBusy)}
+                  title={
+                    clip.songId
+                      ? `Sing over this clip${transformCost != null ? ` (${transformCost} credits)` : ""}`
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => {
+                    setClipMenu(null);
+                    setTransformValue("");
+                    setTransformPrompt({ clipId: clip.id, kind: "vocals" });
+                  }}
+                >
+                  <Icon name="fa-microphone" /> Vocals…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId || Boolean(transformBusy)}
+                  title={
+                    clip.songId
+                      ? `Add an instrumental to this clip${transformCost != null ? ` (${transformCost} credits)` : ""}`
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => {
+                    setClipMenu(null);
+                    setTransformValue("");
+                    setTransformPrompt({ clipId: clip.id, kind: "instrumental" });
+                  }}
+                >
+                  <Icon name="fa-wave-square" /> Instrumental…
                 </button>
                 <div className="se-clip-menu-sep" />
                 <button
@@ -5142,55 +5227,83 @@ export function StudioEditorShell() {
         </div>
       ) : null}
 
-      {transformPrompt ? (
-        <div
-          className="se-dialog-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Cover this clip"
-        >
-          <div className="se-dialog">
-            <h2>Cover this clip</h2>
-            <label className="se-dialog-note" htmlFor="se-transform-prompt">
-              Style instructions
-            </label>
-            <input
-              id="se-transform-prompt"
-              className="se-pill"
-              value={transformValue}
-              autoFocus
-              aria-label="Cover style"
-              placeholder="e.g. acoustic, slow tempo, female vocal"
-              onChange={(event) => setTransformValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && transformPrompt) {
-                  const target = transformPrompt;
-                  setTransformPrompt(null);
-                  void runTransform("cover", target.clipId, transformValue);
-                }
-                if (event.key === "Escape") setTransformPrompt(null);
-              }}
-            />
-            <div className="se-dialog-foot">
-              <button type="button" className="se-pill" onClick={() => setTransformPrompt(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="se-pill on"
-                onClick={() => {
-                  if (!transformPrompt) return;
-                  const target = transformPrompt;
-                  setTransformPrompt(null);
-                  void runTransform("cover", target.clipId, transformValue);
-                }}
+      {transformPrompt
+        ? (() => {
+            const kind = transformPrompt.kind;
+            const copy =
+              kind === "cover"
+                ? {
+                    title: "Cover this clip",
+                    label: "Style instructions",
+                    aria: "Cover style",
+                    placeholder: "e.g. acoustic, slow tempo, female vocal",
+                    action: "Generate cover",
+                  }
+                : kind === "vocals"
+                  ? {
+                      title: "Add vocals to this clip",
+                      label: "Vocal instructions",
+                      aria: "Vocal instructions",
+                      placeholder: "e.g. warm female lead, close harmony",
+                      action: "Add vocals",
+                    }
+                  : {
+                      title: "Add an instrumental",
+                      label: "Instrument instructions",
+                      aria: "Instrument instructions",
+                      placeholder: "e.g. acoustic guitar, upright bass",
+                      action: "Add instrumental",
+                    };
+            const submit = () => {
+              const target = transformPrompt;
+              setTransformPrompt(null);
+              void runTransform(kind, target.clipId, transformValue);
+            };
+            return (
+              <div
+                className="se-dialog-backdrop"
+                role="dialog"
+                aria-modal="true"
+                aria-label={copy.title}
               >
-                Generate cover
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+                <div className="se-dialog">
+                  <h2>{copy.title}</h2>
+                  <label className="se-dialog-note" htmlFor="se-transform-prompt">
+                    {copy.label}
+                  </label>
+                  <input
+                    id="se-transform-prompt"
+                    className="se-pill"
+                    value={transformValue}
+                    autoFocus
+                    aria-label={copy.aria}
+                    placeholder={copy.placeholder}
+                    onChange={(event) => setTransformValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") submit();
+                      if (event.key === "Escape") setTransformPrompt(null);
+                    }}
+                  />
+                  {transformCost != null ? (
+                    <p className="se-dialog-note">This spends {transformCost} credits.</p>
+                  ) : null}
+                  <div className="se-dialog-foot">
+                    <button
+                      type="button"
+                      className="se-pill"
+                      onClick={() => setTransformPrompt(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button type="button" className="se-pill on" onClick={submit}>
+                      {copy.action}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        : null}
 
       <ClipSourceStrip
         source={clipSource}

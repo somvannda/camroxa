@@ -454,6 +454,8 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Extend",
     "Cover…",
     "Remaster",
+    "Vocals…",
+    "Instrumental…",
     "Download WAV",
     "Download MIDI",
     "Get MIDI",

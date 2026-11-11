@@ -41,6 +41,7 @@ test("the clip menu downloads the selected MIDI clip as a .mid file", async ({ p
   await expect(row).toBeEnabled();
 
   const download = page.waitForEvent("download");
+  await row.scrollIntoViewIfNeeded();
   await row.click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/- MIDI\.mid$/);
