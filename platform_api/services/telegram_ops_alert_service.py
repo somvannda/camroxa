@@ -822,8 +822,13 @@ def notify_wallet_spend(
     credits = format_display_credits(units_to_credits(int(amount_units)))
     if new_balance_units is not None:
         credits = f"{credits} (balance {format_display_credits(units_to_credits(int(new_balance_units)))})"
-    extra = [f"ref: {_esc(ref_id)}"] if ref_id else None
+    extra = [f"ref: {_esc(ref_id)}"] if ref_id else []
     model = metadata.get("model") if metadata else None
+    basis = str((metadata or {}).get("pricing_basis") or "").strip().lower()
+    if basis == "routed":
+        extra.append("pricing: quoted (routed model)")
+    elif basis == "executed":
+        extra.append("pricing: settled to executed model")
     _schedule_enriched(
         "spend",
         user_id=user_id,
@@ -832,7 +837,7 @@ def notify_wallet_spend(
         credits_label=credits,
         pool=pool,
         reason=reason,
-        extra_lines=extra,
+        extra_lines=extra or None,
     )
 
 
