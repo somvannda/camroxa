@@ -217,8 +217,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/sunoapi
       # config.ts refuses to start without a strong JWT_SECRET and a 64-hex
       # COOKIE_ENCRYPTION_KEY, so the smoke boot needs throwaway values.
-      JWT_SECRET: ci-smoke-jwt-secret-0123456789abcdef0123456789abcdef
-      COOKIE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      JWT_SECRET: ci-smoke-jwt-secret-0123456789abcdef0123456789abcdef # gitleaks:allow
+      COOKIE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef # gitleaks:allow
       PORT: "4003"
     steps:
       - uses: actions/checkout@v4
@@ -565,8 +565,8 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/sunoapi
-      JWT_SECRET: ci-e2e-jwt-secret-0123456789abcdef0123456789abcdef
-      COOKIE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      JWT_SECRET: ci-e2e-jwt-secret-0123456789abcdef0123456789abcdef # gitleaks:allow
+      COOKIE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef # gitleaks:allow
       PLATFORM_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/camxora_pfm_sandbox
       PLATFORM_STUDIO_INTERNAL_TOKEN: ci-studio-token
       PLATFORM_SUNO_API_BASE_URL: http://127.0.0.1:4003
