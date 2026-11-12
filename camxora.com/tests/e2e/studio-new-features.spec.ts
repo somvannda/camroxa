@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { createStudioProject } from "./studio-fixture";
+import { createStudioProject, signIn } from "./studio-fixture";
 
 /**
  * New editor controls from the parity pass: chord/arpeggiator modes and ruler
@@ -193,6 +193,25 @@ test("Heal Edits restores the clip audio from before a transform", async ({ page
   expect(clip.audioUrl).toBe("/seed/demo-loop.wav");
   expect(clip.duration).toBe(4);
   expect(clip.takes).toEqual([]);
+});
+
+test("two editor tabs show presence and a remote cursor", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const contextA = await browser.newContext({ viewport: { width: 1689, height: 1277 } });
+  const pageA = await contextA.newPage();
+  const projectId = await createStudioProject(pageA, { title: "Presence" });
+
+  const contextB = await browser.newContext({ viewport: { width: 1689, height: 1277 } });
+  const pageB = await contextB.newPage();
+  await signIn(pageB);
+  await pageB.goto(`/studio/editor?project=${projectId}`);
+  await expect(pageB.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
+
+  await expect(pageA.locator(".se-presence-avatar")).toHaveCount(1, { timeout: 20_000 });
+  await expect(pageA.locator(".se-remote-cursor")).toHaveCount(1, { timeout: 20_000 });
+
+  await contextA.close();
+  await contextB.close();
 });
 
 test("Create Section stamps a ruler marker that survives a reload", async ({ page }) => {

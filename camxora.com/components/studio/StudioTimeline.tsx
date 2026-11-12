@@ -96,6 +96,8 @@ export type StudioTimelineProps = {
   markers?: TimelineMarker[];
   onMarkerClick?: (time: number) => void;
   onMarkerRemove?: (id: string) => void;
+  /** Collaborators' playheads (polled presence). */
+  remoteCursors?: Array<{ id: string; name: string; color: string; time: number }>;
   viewWidth: number;
   viewLeft: number;
   /** Live geometry while a trim grip is dragged. */
@@ -153,6 +155,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
     markers = [],
     onMarkerClick,
     onMarkerRemove,
+    remoteCursors = [],
     viewWidth,
     viewLeft,
     trimPreview,
@@ -484,6 +487,18 @@ export function StudioTimeline(props: StudioTimelineProps) {
             <span>Add a track to start arranging.</span>
           </div>
         ) : null}
+        {remoteCursors.map((cursor) => (
+          <span
+            key={cursor.id}
+            className="se-remote-cursor"
+            style={{
+              left: (Math.max(0, cursor.time) / secondsPerBar) * barWidth,
+              background: cursor.color,
+            }}
+            title={`${cursor.name || "Collaborator"} at ${clock(cursor.time)}`}
+            aria-hidden="true"
+          />
+        ))}
       </div>
 
       <div className="se-ruler-time" aria-hidden="true">

@@ -11,6 +11,8 @@ import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import {
   createStudioPersona,
   listStudioPersonas,
+  listProjectPresence,
+  touchProjectPresence,
   requestStudioCover,
   requestStudioExtend,
   requestStudioRemaster,
@@ -22,6 +24,7 @@ import {
   getStudioPricing,
   type StudioOperation,
   type StudioPersona,
+  type ProjectPresence,
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
@@ -214,6 +217,16 @@ type ClipLike = {
     active?: boolean;
   }>;
 };
+
+const PRESENCE_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"];
+
+function presenceColor(userId: string): string {
+  let hash = 0;
+  for (let index = 0; index < userId.length; index += 1) {
+    hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
+  }
+  return PRESENCE_COLORS[hash % PRESENCE_COLORS.length];
+}
 
 function clock(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -692,6 +705,19 @@ export function StudioEditorShell() {
   /** Time selection (N-01), created by dragging on the bar ruler; not persisted. */
   const [timeSelection, setTimeSelection] = useState<TimeRange | null>(null);
   const [markers, setMarkers] = useState<SectionMarker[]>([]);
+  const [presence, setPresence] = useState<ProjectPresence[]>([]);
+  const presenceClientId = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const key = "studio:presence-client";
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const next =
+      typeof window.crypto?.randomUUID === "function"
+        ? window.crypto.randomUUID()
+        : `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    window.sessionStorage.setItem(key, next);
+    return next;
+  }, []);
   const [rangeMenu, setRangeMenu] = useState<{ x: number; y: number } | null>(null);
   const rangeDragRef = useRef<{
     anchor: number;
@@ -763,6 +789,40 @@ export function StudioEditorShell() {
       active = false;
     };
   }, [authLoading, user, projectId]);
+
+  // Polled presence: one durable row per collaborator, refreshed while the editor is
+  // open. The reference uses a realtime transport; this keeps the same visible surface
+  // (avatars + remote playheads) without a second socket stack.
+  useEffect(() => {
+    if (!projectId || !user) {
+      setPresence([]);
+      return;
+    }
+    let active = true;
+    const name = user.display_name || user.email.split("@")[0] || "Collaborator";
+    const color = presenceColor(user.id);
+    const tick = async () => {
+      try {
+        await touchProjectPresence(projectId, {
+          clientId: presenceClientId,
+          displayName: name,
+          color,
+          cursorTime: playheadRef.current,
+          playhead: playheadRef.current,
+        });
+        const next = await listProjectPresence(projectId, presenceClientId, 30);
+        if (active) setPresence(next.items ?? []);
+      } catch {
+        /* presence is best-effort and never blocks editing */
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [presenceClientId, projectId, user]);
 
   const clips = useMemo<ClipLike[]>(() => {
     const data = (project?.data || {}) as { lanes?: unknown };
@@ -5091,6 +5151,21 @@ export function StudioEditorShell() {
           }}
         />
 
+        {presence.length ? (
+          <div className="se-presence" aria-label="Collaborators">
+            {presence.map((person) => (
+              <span
+                key={person.client_id}
+                className="se-presence-avatar"
+                style={{ background: person.color }}
+                title={`${person.display_name || "Collaborator"} at ${clock(person.playhead)}`}
+              >
+                {(person.display_name || "?").slice(0, 1).toUpperCase()}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         <StudioTimeline
           tracks={tracks}
           clips={clips}
@@ -5114,6 +5189,12 @@ export function StudioEditorShell() {
           markers={markers}
           onMarkerClick={seekTo}
           onMarkerRemove={removeSectionMarker}
+          remoteCursors={presence.map((person) => ({
+            id: person.client_id,
+            name: person.display_name || "Collaborator",
+            color: person.color,
+            time: person.playhead,
+          }))}
           viewWidth={view.width}
           viewLeft={view.left}
           trimPreview={trimPreview}

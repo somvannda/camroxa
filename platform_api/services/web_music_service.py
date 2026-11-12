@@ -1913,6 +1913,98 @@ class WebMusicService:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         return self._studio_project_payload(row)
 
+    async def touch_studio_presence(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        client_id: str = "",
+        display_name: str = "",
+        color: str = "#38bdf8",
+        cursor_time: float = 0,
+        playhead: float = 0,
+    ) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError(
+                "Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        session_id = str(client_id or user_id)[:200]
+        await self._pool.execute(
+            """
+            INSERT INTO studio_editor_presence
+                (project_id, client_id, user_id, display_name, color, cursor_time, playhead, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+            ON CONFLICT (project_id, client_id) DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                display_name = EXCLUDED.display_name,
+                color = EXCLUDED.color,
+                cursor_time = EXCLUDED.cursor_time,
+                playhead = EXCLUDED.playhead,
+                updated_at = now()
+            """,
+            project_id,
+            session_id,
+            user_id,
+            str(display_name or "").strip()[:120],
+            str(color or "#38bdf8")[:16],
+            float(cursor_time or 0),
+            float(playhead or 0),
+        )
+        return {"ok": True}
+
+    async def list_studio_presence(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        client_id: str = "",
+        lease_seconds: int = 30,
+    ) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError(
+                "Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        lease = max(5, min(int(lease_seconds), 300))
+        rows = await self._pool.fetch(
+            """
+            SELECT client_id, user_id, display_name, color, cursor_time, playhead, updated_at
+            FROM studio_editor_presence
+            WHERE project_id = $1
+              AND ($2 = '' OR client_id <> $2)
+              AND updated_at > now() - ($3 * interval '1 second')
+            ORDER BY updated_at DESC
+            """,
+            project_id,
+            str(client_id or ""),
+            lease,
+        )
+        return {
+            "items": [
+                {
+                    "client_id": str(row["client_id"]),
+                    "user_id": str(row["user_id"]),
+                    "display_name": str(row["display_name"] or ""),
+                    "color": str(row["color"] or "#38bdf8"),
+                    "cursor_time": float(row["cursor_time"] or 0),
+                    "playhead": float(row["playhead"] or 0),
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                }
+                for row in rows
+            ]
+        }
+
     async def update_studio_project(
         self,
         user_id: UUID,
@@ -2514,7 +2606,7 @@ class WebMusicService:
         name = str(display_name or "").strip()[:80] or "Collaborator"
         await self._pool.execute(
             """
-            INSERT INTO studio_project_presence
+            INSERT INTO studio_editor_presence
                 (project_id, user_id, display_name, last_seen, playhead_seconds, selected_lane_id)
             VALUES ($1, $2, $3, now(), $4, $5)
             ON CONFLICT (project_id, user_id)
@@ -2533,13 +2625,13 @@ class WebMusicService:
             str(selected_lane_id)[:120] if selected_lane_id else None,
         )
         await self._pool.execute(
-            "DELETE FROM studio_project_presence WHERE project_id = $1 AND last_seen < now() - interval '90 seconds'",
+            "DELETE FROM studio_editor_presence WHERE project_id = $1 AND last_seen < now() - interval '90 seconds'",
             project_id,
         )
         rows = await self._pool.fetch(
             """
             SELECT user_id, display_name, last_seen, playhead_seconds, selected_lane_id
-            FROM studio_project_presence
+            FROM studio_editor_presence
             WHERE project_id = $1 AND last_seen >= now() - interval '90 seconds'
             ORDER BY last_seen DESC
             """,

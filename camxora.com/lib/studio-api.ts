@@ -531,6 +531,52 @@ export async function addStudioShareComment(
   );
 }
 
+export type ProjectPresence = {
+  client_id: string;
+  user_id: string;
+  display_name: string;
+  color: string;
+  cursor_time: number;
+  playhead: number;
+  updated_at?: string | null;
+};
+
+export async function touchProjectPresence(
+  projectId: string,
+  input: {
+    clientId: string;
+    displayName: string;
+    color: string;
+    cursorTime: number;
+    playhead: number;
+  }
+): Promise<{ ok: boolean }> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/presence`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: input.clientId,
+        display_name: input.displayName,
+        color: input.color,
+        cursor_time: input.cursorTime,
+        playhead: input.playhead,
+      }),
+    }
+  );
+}
+
+export async function listProjectPresence(
+  projectId: string,
+  clientId: string,
+  leaseSeconds = 30
+): Promise<{ items: ProjectPresence[] }> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/presence?lease_seconds=${leaseSeconds}&client_id=${encodeURIComponent(clientId)}`
+  );
+}
+
 export async function listStudioProjectComments(
   projectId: string,
   limit = 100

@@ -661,6 +661,48 @@ class StudioCommentCreateRequest(BaseModel):
     parent_id: UUID | None = None
 
 
+class StudioPresenceTouchRequest(BaseModel):
+    client_id: str = ""
+    display_name: str = ""
+    color: str = "#38bdf8"
+    cursor_time: float = 0
+    playhead: float = 0
+
+
+@router.post("/studio/projects/{project_id}/presence")
+async def touch_studio_project_presence(
+    project_id: UUID,
+    body: StudioPresenceTouchRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.touch_studio_presence(
+        UUID(ctx.user_id),
+        project_id,
+        client_id=body.client_id,
+        display_name=body.display_name,
+        color=body.color,
+        cursor_time=body.cursor_time,
+        playhead=body.playhead,
+    )
+
+
+@router.get("/studio/projects/{project_id}/presence")
+async def list_studio_project_presence(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    lease_seconds: int = Query(30, ge=5, le=300),
+    client_id: str = Query(""),
+) -> dict:
+    return await service.list_studio_presence(
+        UUID(ctx.user_id),
+        project_id,
+        client_id=client_id,
+        lease_seconds=lease_seconds,
+    )
+
+
 @router.get("/studio/projects/{project_id}/comments")
 async def list_studio_project_comments(
     project_id: UUID,
