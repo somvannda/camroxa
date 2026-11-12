@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildMidiChordNotes,
   midiToFreq,
   noteName,
   quantizeNotes,
@@ -35,6 +36,72 @@ describe("studio MIDI model", () => {
       { id: "b", pitch: 62, start: 0.61, length: 0.4, velocity: 100 },
     ];
     expect(quantizeNotes(notes, 0.5).map((note) => note.start)).toEqual([0.5, 0.5]);
+  });
+
+  it("builds single notes, chords and arpeggios", () => {
+    const base = { start: 1, step: 0.25, baseLength: 0.5, duration: 4 };
+
+    expect(
+      buildMidiChordNotes({ ...base, pitch: 60, chordMode: "off", arpMode: "off" }).map(
+        (note) => [note.pitch, note.start, note.length]
+      )
+    ).toEqual([[60, 1, 0.5]]);
+
+    expect(
+      buildMidiChordNotes({ ...base, pitch: 60, chordMode: "major", arpMode: "off" }).map(
+        (note) => note.pitch
+      )
+    ).toEqual([60, 64, 67]);
+
+    expect(
+      buildMidiChordNotes({ ...base, pitch: 60, chordMode: "minor", arpMode: "off" }).map(
+        (note) => note.pitch
+      )
+    ).toEqual([60, 63, 67]);
+
+    expect(
+      buildMidiChordNotes({ ...base, pitch: 60, chordMode: "major", arpMode: "up" }).map(
+        (note) => [note.pitch, note.start]
+      )
+    ).toEqual([
+      [60, 1],
+      [64, 1.25],
+      [67, 1.5],
+    ]);
+
+    expect(
+      buildMidiChordNotes({ ...base, pitch: 60, chordMode: "major", arpMode: "down" }).map(
+        (note) => [note.pitch, note.start]
+      )
+    ).toEqual([
+      [67, 1],
+      [64, 1.25],
+      [60, 1.5],
+    ]);
+  });
+
+  it("clamps chord pitches and drops notes past the clip end", () => {
+    const top = buildMidiChordNotes({
+      pitch: 84,
+      chordMode: "major",
+      arpMode: "off",
+      start: 0,
+      step: 0.25,
+      baseLength: 0.5,
+      duration: 4,
+    });
+    expect(top.map((note) => note.pitch)).toEqual([84]);
+
+    const late = buildMidiChordNotes({
+      pitch: 60,
+      chordMode: "major",
+      arpMode: "up",
+      start: 3.8,
+      step: 0.25,
+      baseLength: 0.5,
+      duration: 4,
+    });
+    expect(late.map((note) => note.pitch)).toEqual([60]);
   });
 
   it("sanitises and reads automation lanes", () => {

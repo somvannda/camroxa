@@ -21,6 +21,59 @@ export const MIDI_MAX_PITCH = 84; // C6
 export const MIDI_ROW = 12;
 export const MIDI_PITCHES = MIDI_MAX_PITCH - MIDI_MIN_PITCH + 1;
 
+export type MidiChordMode = "off" | "major" | "minor";
+export type MidiArpMode = "off" | "up" | "down";
+
+/**
+ * Notes produced by a click in the piano roll, before ids are assigned.
+ *
+ * `off` is a single note. A chord stacks the root/third/fifth at the same start;
+ * an arpeggiator spreads the same pitches by one grid step, up or down. Pitches are
+ * clamped to the editor's 36-84 range and notes that would fall past the clip end
+ * are dropped rather than clipped into a zero-length note.
+ */
+export function buildMidiChordNotes({
+  pitch,
+  chordMode,
+  arpMode,
+  start,
+  step,
+  baseLength,
+  duration,
+}: {
+  pitch: number;
+  chordMode: MidiChordMode;
+  arpMode: MidiArpMode;
+  start: number;
+  step: number;
+  baseLength: number;
+  duration: number;
+}): Array<{ pitch: number; start: number; length: number }> {
+  const intervals = chordMode === "major" ? [0, 4, 7] : chordMode === "minor" ? [0, 3, 7] : [0];
+  let pitches = intervals
+    .map((interval) => pitch + interval)
+    .filter((value) => value >= MIDI_MIN_PITCH && value <= MIDI_MAX_PITCH);
+  if (arpMode === "down") pitches = [...pitches].reverse();
+
+  const stride = arpMode === "off" ? 0 : Math.max(0.02, step);
+  const notes: Array<{ pitch: number; start: number; length: number }> = [];
+  pitches.forEach((value, index) => {
+    const noteStart = start + index * stride;
+    if (noteStart >= duration - 0.02) return;
+    const available = duration - noteStart;
+    const length =
+      arpMode === "off"
+        ? Math.max(0.02, Math.min(available, baseLength))
+        : Math.max(0.02, Math.min(available, Math.max(0.02, stride * 0.9)));
+    notes.push({
+      pitch: value,
+      start: Number(noteStart.toFixed(4)),
+      length: Number(length.toFixed(4)),
+    });
+  });
+  return notes;
+}
+
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export function midiToFreq(pitch: number): number {

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import {
+  buildMidiChordNotes,
   sanitizePoints,
   MIDI_MAX_PITCH,
   MIDI_MIN_PITCH,
@@ -11,6 +12,8 @@ import {
   MIDI_ROW,
   isBlackKey,
   noteName,
+  type MidiArpMode,
+  type MidiChordMode,
   type MidiNote,
   type MidiPoint,
 } from "@/lib/studio-midi";
@@ -98,6 +101,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const width = Math.max(96, (duration / secondsPerBar) * barWidth);
   const rollHeight = MIDI_PITCHES * MIDI_ROW;
   const [quantize, setQuantize] = useState<"4" | "8" | "16">("8");
+  const [chordMode, setChordMode] = useState<MidiChordMode>("off");
+  const [arpMode, setArpMode] = useState<MidiArpMode>("off");
   const [lane, setLane] = useState<"velocity" | "bend" | "mod">("velocity");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [preview, setPreview] = useState<MidiNote | null>(null);
@@ -131,15 +136,31 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     const grid = event.currentTarget;
     const start = timeAt(event.clientX, grid);
     const pitch = snapToScale(pitchAt(event.clientY, grid), keyName, scaleName);
-    const note: MidiNote = {
-      id: `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+    const created = buildMidiChordNotes({
       pitch,
+      chordMode,
+      arpMode,
       start,
-      length: Math.min(duration - start, Math.max(step, secondsPerBar / 4)),
+      step,
+      baseLength: Math.min(duration - start, Math.max(step, secondsPerBar / 4)),
+      duration,
+    });
+    if (!created.length) return;
+    const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+    const additions: MidiNote[] = created.map((note, index) => ({
+      ...note,
+      id: `note-${stamp}-${index}`,
       velocity: 100,
-    };
-    if (note.length < 0.02) return;
-    onChangeNotes([...notes, note]);
+    }));
+    // Clicking the same cell twice should not stack duplicate notes.
+    const fresh = additions.filter(
+      (note) =>
+        !notes.some(
+          (existing) =>
+            existing.pitch === note.pitch && Math.abs(existing.start - note.start) < 0.005
+        )
+    );
+    if (fresh.length) onChangeNotes([...notes, ...fresh]);
   }
 
   function startDrag(event: React.PointerEvent<HTMLButtonElement>, note: MidiNote) {
@@ -470,6 +491,30 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             <option value="4">1/4</option>
             <option value="8">1/8</option>
             <option value="16">1/16</option>
+          </select>
+        </label>
+        <label className="se-midi-control">
+          Chord
+          <select
+            aria-label="Chord mode"
+            value={chordMode}
+            onChange={(event) => setChordMode(event.target.value as MidiChordMode)}
+          >
+            <option value="off">Single note</option>
+            <option value="major">Major</option>
+            <option value="minor">Minor</option>
+          </select>
+        </label>
+        <label className="se-midi-control">
+          Arp
+          <select
+            aria-label="Arpeggiator"
+            value={arpMode}
+            onChange={(event) => setArpMode(event.target.value as MidiArpMode)}
+          >
+            <option value="off">Off</option>
+            <option value="up">Up</option>
+            <option value="down">Down</option>
           </select>
         </label>
         <label className="se-midi-control">
