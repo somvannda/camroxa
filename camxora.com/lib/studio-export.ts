@@ -20,7 +20,14 @@ import {
 } from "@/lib/studio-clip-audio";
 import { normaliseChannels } from "@/lib/studio-normalise";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
-import { sanitizePoints, scheduleMidiNote, valueAt, type MidiNote } from "@/lib/studio-midi";
+import {
+  normalizeMidiInstrument,
+  sanitizePoints,
+  scheduleMidiNote,
+  valueAt,
+  type MidiInstrument,
+  type MidiNote,
+} from "@/lib/studio-midi";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
 export type ExportClip = {
@@ -39,6 +46,8 @@ export type ExportClip = {
     bend?: { at: number; value: number }[];
     mod?: { at: number; value: number }[];
   };
+  /** MIDI synth voice (S31); triangle when absent. */
+  instrument?: MidiInstrument;
 };
 
 export type ExportTrack = {
@@ -243,10 +252,18 @@ export async function renderMix(
     for (const note of notes) {
       const absolute = (clip.start ?? 0) + note.start;
       if (absolute < from - 0.001 || absolute >= to) continue;
-      scheduleMidiNote(context, destination, note, Math.max(0, absolute - from), 1, {
-        bend: valueAt(bend, note.start, 0),
-        mod: valueAt(mod, note.start, 0),
-      });
+      scheduleMidiNote(
+        context,
+        destination,
+        note,
+        Math.max(0, absolute - from),
+        1,
+        {
+          bend: valueAt(bend, note.start, 0),
+          mod: valueAt(mod, note.start, 0),
+        },
+        normalizeMidiInstrument(clip.instrument)
+      );
     }
   }
 

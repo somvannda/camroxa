@@ -115,7 +115,15 @@ import { StudioFooter } from "@/components/studio/StudioFooter";
 import { StudioMidiEditor } from "@/components/studio/StudioMidiEditor";
 import { StudioAudioEditor } from "@/components/studio/StudioAudioEditor";
 import type { WarpState } from "@/lib/studio-warp";
-import { sanitizeNotes, sanitizePoints, scheduleMidiNote, valueAt, type MidiNote } from "@/lib/studio-midi";
+import {
+  normalizeMidiInstrument,
+  sanitizeNotes,
+  sanitizePoints,
+  scheduleMidiNote,
+  valueAt,
+  type MidiInstrument,
+  type MidiNote,
+} from "@/lib/studio-midi";
 import { buildMidiFile } from "@/lib/studio-midi-file";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
@@ -171,6 +179,8 @@ type ClipLike = {
   /** Clip Settings audio state (S30/§81); parsed by `sanitizeClipAudio`. */
   audio?: unknown;
   midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
+  /** MIDI synth voice (S31); triangle when absent. */
+  instrument?: MidiInstrument;
   /** Alternate takes (S29), newest first; the active one mirrors `audioUrl`. */
   takes?: Array<{
     id: string;
@@ -2507,6 +2517,19 @@ export function StudioEditorShell() {
     );
   }
 
+  /** MIDI synth voice (S31): one instrument per clip, persisted with the document. */
+  function setMidiInstrument(clipId: string, instrument: MidiInstrument) {
+    const data = currentData() as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      {
+        ...data,
+        lanes: lanes.map((clip) => (clip.id === clipId ? { ...clip, instrument } : clip)),
+      },
+      "the MIDI instrument"
+    );
+  }
+
   const derivedChains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
     return (data.chains as Record<string, PluginChainEntry[]>) || {};
@@ -2830,6 +2853,7 @@ export function StudioEditorShell() {
         fadeIn: item.fadeIn,
         audioUrl: item.audioUrl ?? null,
         audio: item.audio as Partial<ClipAudioSettings> | undefined,
+        instrument: item.instrument,
       }));
       const exportTracks = tracks.map((track) => ({
         id: track.id,
@@ -3578,7 +3602,15 @@ export function StudioEditorShell() {
         const bend = valueAt(sanitizePoints(clipMidi?.bend, -1, 1), note.start, 0);
         const mod = valueAt(sanitizePoints(clipMidi?.mod, 0, 1), note.start, 0);
         audioRef.current?.sources.push(
-          ...scheduleMidiNote(context, destination, note, when, playbackRate, { bend, mod })
+          ...scheduleMidiNote(
+            context,
+            destination,
+            note,
+            when,
+            playbackRate,
+            { bend, mod },
+            normalizeMidiInstrument((clip as ClipLike).instrument)
+          )
         );
       }
     }
@@ -3670,6 +3702,7 @@ export function StudioEditorShell() {
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
         audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
+        instrument: (clip as ClipLike).instrument,
       }));
       const exportTracks: ExportTrack[] = tracks.map((track) => ({
         id: track.id,
@@ -3765,6 +3798,7 @@ export function StudioEditorShell() {
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
         audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
+        instrument: (clip as ClipLike).instrument,
       }));
       const exportTracks: ExportTrack[] = tracks.map((candidate) => ({
         id: candidate.id,
@@ -5740,6 +5774,8 @@ export function StudioEditorShell() {
           onScaleChange={(next) => {
             writeProjectData({ ...currentData(), scale: next }, "the project scale");
           }}
+          instrument={normalizeMidiInstrument(midiClip.instrument)}
+          onInstrumentChange={(instrument) => setMidiInstrument(midiClip.id, instrument)}
           onToggleLoop={() => setLoop((value) => !value)}
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
           onChangeLanes={(lane, points) => setMidiLanes(midiClip.id, lane, points)}

@@ -14,6 +14,7 @@ import {
   noteName,
   type MidiArpMode,
   type MidiChordMode,
+  type MidiInstrument,
   type MidiNote,
   type MidiPoint,
 } from "@/lib/studio-midi";
@@ -44,6 +45,8 @@ export type StudioMidiEditorProps = {
   scaleName: string;
   onKeyChange: (key: string) => void;
   onScaleChange: (scale: string) => void;
+  instrument: MidiInstrument;
+  onInstrumentChange: (instrument: MidiInstrument) => void;
   onToggleLoop: () => void;
   onChangeNotes: (notes: MidiNote[]) => void;
   onChangeLanes: (lane: "bend" | "mod", points: MidiPoint[]) => void;
@@ -91,6 +94,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     scaleName,
     onKeyChange,
     onScaleChange,
+    instrument,
+    onInstrumentChange,
     onToggleLoop,
     onChangeNotes,
     onChangeLanes,
@@ -491,6 +496,18 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             <option value="4">1/4</option>
             <option value="8">1/8</option>
             <option value="16">1/16</option>
+          </select>
+        </label>
+        <label className="se-midi-control">
+          Instrument
+          <select
+            aria-label="MIDI instrument"
+            value={instrument}
+            onChange={(event) => onInstrumentChange(event.target.value as MidiInstrument)}
+          >
+            <option value="triangle">Triangle</option>
+            <option value="sine">Sine</option>
+            <option value="sawtooth">Saw</option>
           </select>
         </label>
         <label className="se-midi-control">

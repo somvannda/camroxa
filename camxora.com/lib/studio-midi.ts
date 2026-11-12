@@ -23,6 +23,11 @@ export const MIDI_PITCHES = MIDI_MAX_PITCH - MIDI_MIN_PITCH + 1;
 
 export type MidiChordMode = "off" | "major" | "minor";
 export type MidiArpMode = "off" | "up" | "down";
+export type MidiInstrument = "triangle" | "sine" | "sawtooth";
+
+export function normalizeMidiInstrument(value: unknown): MidiInstrument {
+  return value === "sine" || value === "sawtooth" ? value : "triangle";
+}
 
 /**
  * Notes produced by a click in the piano roll, before ids are assigned.
@@ -154,11 +159,12 @@ export function scheduleMidiNote(
   note: MidiNote,
   when: number,
   rate = 1,
-  automation?: { bend?: number; mod?: number }
+  automation?: { bend?: number; mod?: number },
+  instrument: MidiInstrument = "triangle"
 ): AudioScheduledSourceNode[] {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
-  oscillator.type = "triangle";
+  oscillator.type = instrument;
   oscillator.frequency.value = midiToFreq(note.pitch);
   // Pitch bend is applied as detune at the note's start (captured lane, simplified).
   oscillator.detune.value = (automation?.bend ?? 0) * 200;

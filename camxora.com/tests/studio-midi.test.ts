@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMidiChordNotes,
   midiToFreq,
+  normalizeMidiInstrument,
   noteName,
   quantizeNotes,
   sanitizeNotes,
@@ -102,6 +103,14 @@ describe("studio MIDI model", () => {
       duration: 4,
     });
     expect(late.map((note) => note.pitch)).toEqual([60]);
+  });
+
+  it("normalises the MIDI synth instrument", () => {
+    expect(normalizeMidiInstrument("sine")).toBe("sine");
+    expect(normalizeMidiInstrument("sawtooth")).toBe("sawtooth");
+    expect(normalizeMidiInstrument("triangle")).toBe("triangle");
+    expect(normalizeMidiInstrument("square")).toBe("triangle");
+    expect(normalizeMidiInstrument(undefined)).toBe("triangle");
   });
 
   it("sanitises and reads automation lanes", () => {
