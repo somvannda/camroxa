@@ -277,6 +277,9 @@ export function StudioEditorShell() {
   const [clipSource, setClipSource] = useState<WebMusicGeneration | null>(null);
   /** Stem separation request state for the selected clip (W4.2). */
   const [stems, setStems] = useState<{ status: string; message?: string } | null>(null);
+  /** Get Stems dialog (M1): choose the separation depth before spending credits. */
+  const [stemsPrompt, setStemsPrompt] = useState<{ songId: string } | null>(null);
+  const [stemsMode, setStemsMode] = useState<"vocal" | "stems" | "advanced">("stems");
   /** Clip transform in flight + the optional Cover prompt (D-033). */
   const [transformBusy, setTransformBusy] = useState<
     null | "extend" | "cover" | "remaster" | "vocals" | "instrumental" | "mashup" | "replace"
@@ -295,6 +298,9 @@ export function StudioEditorShell() {
   const [transformValue, setTransformValue] = useState("");
   /** Credit price for one clip transform, from the pricing endpoint (never hard-coded). */
   const [transformCost, setTransformCost] = useState<number | null>(null);
+  const [stemsPricing, setStemsPricing] = useState<{ stems2: number; stems12: number } | null>(
+    null
+  );
   /** Personas for Replace Section (GEN-025/026): list, creation and the selected id. */
   const [personas, setPersonas] = useState<StudioPersona[]>([]);
   const [personaBusy, setPersonaBusy] = useState(false);
@@ -313,7 +319,9 @@ export function StudioEditorShell() {
     let active = true;
     getStudioPricing()
       .then((pricing) => {
-        if (active) setTransformCost(pricing.edit);
+        if (!active) return;
+        setTransformCost(pricing.edit);
+        setStemsPricing({ stems2: pricing.stems_2, stems12: pricing.stems_12 });
       })
       .catch(() => {
         /* the action still works; the price is just omitted */
@@ -2004,16 +2012,26 @@ export function StudioEditorShell() {
    * lands the results on new tracks, so that is the shape implemented here: request,
    * poll the operation, then add one track per returned stem at the playhead.
    */
-  async function requestStems() {
+  function openStemsDialog() {
+    const clip = clips.find((candidate) => candidate.id === selectedClip) as
+      | { songId?: string }
+      | undefined;
+    if (!clip?.songId) return;
+    setStemsMode("stems");
+    setStemsPrompt({ songId: clip.songId });
+  }
+
+  async function requestStems(mode: "vocal" | "stems" | "advanced") {
     const clip = clips.find((candidate) => candidate.id === selectedClip);
     const songId = (clip as { songId?: string } | undefined)?.songId;
     if (!songId) return;
+    setStemsPrompt(null);
     setStems({ status: "queued" });
     try {
       const operation = await requestStudioStems({
         taskId: songId,
         variant: "ok",
-        mode: "stems",
+        mode,
         projectId,
       });
       setStems({ status: operation.status });
@@ -4745,7 +4763,7 @@ export function StudioEditorShell() {
                 trackName={owner?.name}
                 source={clipSource}
                 stems={stems}
-                onRequestStems={() => void requestStems()}
+                onRequestStems={openStemsDialog}
                 onClose={() => setInspectorOpen(false)}
               />
             );
@@ -5314,7 +5332,7 @@ export function StudioEditorShell() {
                   title={clip.songId ? undefined : "No source generation for this clip"}
                   onClick={() => {
                     setClipMenu(null);
-                    void requestStems();
+                    openStemsDialog();
                   }}
                 >
                   <Icon name="fa-wand-magic-sparkles" /> Get Stems
@@ -5738,10 +5756,56 @@ export function StudioEditorShell() {
           })()
         : null}
 
+      {stemsPrompt ? (
+        <div
+          className="se-dialog-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Get stems"
+        >
+          <div className="se-dialog">
+            <h2>Separate stems</h2>
+            <p className="se-dialog-note">
+              Choose the separation depth. This spends credits from your balance.
+            </p>
+            {(
+              [
+                ["vocal", "Vocals + instrumental", stemsPricing?.stems2],
+                ["stems", "Core stems", stemsPricing?.stems2],
+                ["advanced", "Full 12-stem split", stemsPricing?.stems12],
+              ] as const
+            ).map(([mode, label, cost]) => (
+              <label key={mode} className="se-dialog-note">
+                <input
+                  type="radio"
+                  name="stem-mode"
+                  checked={stemsMode === mode}
+                  onChange={() => setStemsMode(mode)}
+                />{" "}
+                {label}
+                {cost != null ? ` (${cost} credits)` : ""}
+              </label>
+            ))}
+            <div className="se-dialog-foot">
+              <button type="button" className="se-pill" onClick={() => setStemsPrompt(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="se-pill on"
+                onClick={() => void requestStems(stemsMode)}
+              >
+                Separate
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <ClipSourceStrip
         source={clipSource}
         stems={stems}
-        onRequestStems={() => void requestStems()}
+        onRequestStems={openStemsDialog}
       />
 
       {takeLanesOpen ? (

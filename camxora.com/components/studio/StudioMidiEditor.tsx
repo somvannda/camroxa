@@ -244,6 +244,15 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     };
   }, [velocityDrag, velocityPreview, onChangeNotes]);
 
+  function transposeNotes(delta: number) {
+    onChangeNotes(
+      notes.map((note) => ({
+        ...note,
+        pitch: Math.max(MIDI_MIN_PITCH, Math.min(MIDI_MAX_PITCH, note.pitch + delta)),
+      }))
+    );
+  }
+
   const shown = preview
     ? notes.map((note) => (note.id === preview.id ? preview : note))
     : velocityPreview !== null && velocityDrag
@@ -556,6 +565,25 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             <option value="minor">Minor</option>
           </select>
         </label>
+        <button
+          type="button"
+          className="se-pill"
+          aria-label="Transpose MIDI down one octave"
+          onClick={() => transposeNotes(-12)}
+        >
+          -12
+        </button>
+        <button
+          type="button"
+          className="se-pill"
+          aria-label="Transpose MIDI up one octave"
+          onClick={() => transposeNotes(12)}
+        >
+          +12
+        </button>
+        <button type="button" className="se-pill" onClick={() => onChangeNotes([])}>
+          Clear
+        </button>
         <span className="se-midi-control">View All</span>
       </div>
     </section>
