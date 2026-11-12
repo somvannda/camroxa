@@ -9,13 +9,13 @@
   // with the documentation still uncommitted.
   "agents": {
     "build": {
-      "steps": 360
+      "steps": 1200
     },
     "general": {
-      "steps": 360
+      "steps": 1200
     },
     "explore": {
-      "steps": 360
+      "steps": 1200
     }
   },
 
