@@ -137,6 +137,11 @@ import {
   type AutomationPoint,
 } from "@/lib/studio-automation";
 import { sanitizeSectionMarkers, type SectionMarker } from "@/lib/studio-markers";
+import {
+  effectiveTrackMix,
+  sanitizeGroups,
+  type StudioGroup,
+} from "@/lib/studio-groups";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -727,6 +732,7 @@ export function StudioEditorShell() {
         setMarkers(
           sanitizeSectionMarkers((next.data as { markers?: unknown } | undefined)?.markers)
         );
+        setGroups(sanitizeGroups((next.data as { groups?: unknown } | undefined)?.groups));
         const master = (next.data || {}) as { masterVolume?: unknown; masterMuted?: unknown };
         if (typeof master.masterVolume === "number" && Number.isFinite(master.masterVolume)) {
           setMasterVolume(Math.max(0, Math.min(100, master.masterVolume)));
@@ -781,6 +787,7 @@ export function StudioEditorShell() {
   }, [project, clips]);
 
   const [localTracks, setLocalTracks] = useState<StudioTrack[] | null>(null);
+  const [groups, setGroups] = useState<StudioGroup[]>([]);
   const tracks = localTracks ?? derivedTracks;
 
   // Pointer handlers are registered once; these refs give them the current data
@@ -1976,6 +1983,51 @@ export function StudioEditorShell() {
     commitTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
   }
 
+  function commitGroups(next: StudioGroup[]) {
+    setGroups(next);
+    writeProjectData({ ...currentData(), groups: next }, "the track groups");
+  }
+
+  function createGroup(name?: string): StudioGroup {
+    const group: StudioGroup = {
+      id: `group-${Date.now().toString(36)}`,
+      name: (name || `Group ${groups.length + 1}`).slice(0, 60),
+      color: ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"][groups.length % 5],
+      volume: 100,
+      muted: false,
+      solo: false,
+    };
+    commitGroups([...groups, group]);
+    return group;
+  }
+
+  function updateGroup(groupId: string, patch: Partial<StudioGroup>) {
+    commitGroups(groups.map((group) => (group.id === groupId ? { ...group, ...patch } : group)));
+  }
+
+  /** Effective track mix after the group's volume/mute/solo are applied. */
+  function mixFor(track: StudioTrack) {
+    return effectiveTrackMix(track, groups, tracks.some((item) => item.solo));
+  }
+
+  /** Group volume scales the track's automation curve as well as its fader. */
+  function volumeAutomationFor(track: StudioTrack) {
+    const factor =
+      (groups.find((group) => group.id === track.groupId)?.volume ?? 100) / 100;
+    return track.volumeAutomation?.map((point) => ({
+      ...point,
+      value: Math.max(0, Math.min(100, point.value * factor)),
+    }));
+  }
+
+  function deleteGroup(groupId: string) {
+    commitGroups(groups.filter((group) => group.id !== groupId));
+    const nextTracks = tracks.map((track) =>
+      track.groupId === groupId ? { ...track, groupId: null } : track
+    );
+    commitTracks(nextTracks);
+  }
+
   /** Live slider movement: update state without a history entry; commit on release. */
   function previewTrack(trackId: string, patch: Partial<StudioTrack>) {
     setLocalTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
@@ -3094,17 +3146,20 @@ export function StudioEditorShell() {
         audio: item.audio as Partial<ClipAudioSettings> | undefined,
         instrument: item.instrument,
       }));
-      const exportTracks = tracks.map((track) => ({
-        id: track.id,
-        name: track.name,
-        volume: track.volume,
-        pan: track.pan,
-        muted: track.muted,
-        solo: track.solo,
-        volumeAutomation: track.volumeAutomation,
-        panAutomation: track.panAutomation,
-        clipIds: track.clipIds,
-      }));
+      const exportTracks = tracks.map((track) => {
+        const mix = mixFor(track);
+        return {
+          id: track.id,
+          name: track.name,
+          volume: mix.volume,
+          pan: track.pan,
+          muted: mix.muted,
+          solo: mix.solo,
+          volumeAutomation: volumeAutomationFor(track),
+          panAutomation: track.panAutomation,
+          clipIds: track.clipIds,
+        };
+      });
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
       const wav = await renderMix(buffers, exportClips, exportTracks, {
         chain,
@@ -3761,17 +3816,18 @@ export function StudioEditorShell() {
       const hasVolume = Boolean(track.volumeAutomation?.length);
       const hasPan = Boolean(track.panAutomation?.length);
       if (!hasVolume && !hasPan) continue;
-      const audible = !track.muted && (!anySoloAtStart || track.solo);
-      trackInput(track.id, audible ? track.volume : 0, track.pan);
+      const mix = effectiveTrackMix(track, groups, anySoloAtStart);
+      const audible = !mix.muted;
+      trackInput(track.id, audible ? mix.volume : 0, track.pan);
       const gain = trackGainRef.current.get(track.id);
       const panner = trackPanRef.current.get(track.id);
       if (!audible) continue;
       if (gain && hasVolume) {
-        scheduleVolumeAutomation(gain.gain, track.volumeAutomation!, {
+        scheduleVolumeAutomation(gain.gain, volumeAutomationFor(track) ?? [], {
           from,
           when: now,
           rate: playbackRate,
-          fallback: track.volume,
+          fallback: mix.volume,
         });
       }
       if (panner && hasPan) {
@@ -3794,9 +3850,9 @@ export function StudioEditorShell() {
       const track = tracks.find((item) => item.clipIds.includes(clip.id));
       // Sources are always scheduled; mute/solo are applied through the track gain so
       // toggling them mid-playback is heard immediately (and undoable by unmuting).
-      const anySolo = tracks.some((item) => item.solo);
-      const audible = track ? !track.muted && (!anySolo || track.solo) : true;
-      const volume = audible ? (track?.volume ?? 80) : 0;
+      const mix = track ? mixFor(track) : { volume: 80, muted: false, solo: false };
+      const audible = !mix.muted;
+      const volume = audible ? mix.volume : 0;
 
       const when = now + Math.max(0, start - from) / playbackRate;
       const intoClip = Math.max(0, from - start);
@@ -3879,9 +3935,9 @@ export function StudioEditorShell() {
       if (notes.length === 0) continue;
       const start = clip.start ?? 0;
       const track = tracks.find((item) => item.clipIds.includes(clip.id));
-      const anySolo = tracks.some((item) => item.solo);
-      const audible = track ? !track.muted && (!anySolo || track.solo) : true;
-      const volume = audible ? (track?.volume ?? 80) : 0;
+      const mix = track ? mixFor(track) : { volume: 80, muted: false, solo: false };
+      const audible = !mix.muted;
+      const volume = audible ? mix.volume : 0;
       const destination = trackInput(track?.id ?? clip.id, volume, track?.pan ?? 0);
       for (const note of notes) {
         const absolute = start + note.start;
@@ -4092,17 +4148,20 @@ export function StudioEditorShell() {
         midi: (clip as ClipLike).midi,
         instrument: (clip as ClipLike).instrument,
       }));
-      const exportTracks: ExportTrack[] = tracks.map((candidate) => ({
-        id: candidate.id,
-        name: candidate.name,
-        volume: candidate.volume,
-        pan: candidate.pan,
-        muted: candidate.muted,
-        solo: candidate.solo,
-        volumeAutomation: candidate.volumeAutomation,
-        panAutomation: candidate.panAutomation,
-        clipIds: candidate.clipIds,
-      }));
+      const exportTracks: ExportTrack[] = tracks.map((candidate) => {
+        const mix = mixFor(candidate);
+        return {
+          id: candidate.id,
+          name: candidate.name,
+          volume: mix.volume,
+          pan: candidate.pan,
+          muted: mix.muted,
+          solo: mix.solo,
+          volumeAutomation: volumeAutomationFor(candidate),
+          panAutomation: candidate.panAutomation,
+          clipIds: candidate.clipIds,
+        };
+      });
       const wav = await renderMix(buffers, exportClips, exportTracks, {
         chain: (currentData() as { masterChain?: MasterChainEntry[] }).masterChain,
         chains,
@@ -4968,6 +5027,13 @@ export function StudioEditorShell() {
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
           onToggleAllCollapsed={toggleAllCollapsed}
+  groups={groups}
+  onCreateGroup={() => {
+    createGroup();
+  }}
+  onUpdateGroup={updateGroup}
+  onDeleteGroup={deleteGroup}
+  onAssignGroup={(trackId, groupId) => updateTrack(trackId, { groupId })}
           masterVolume={masterVolume}
           masterMuted={masterMuted}
           onMasterVolume={(value) => {
