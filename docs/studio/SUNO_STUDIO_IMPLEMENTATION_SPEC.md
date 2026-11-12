@@ -3751,3 +3751,26 @@ there is nothing to list; the section does not show an empty rail or a placehold
 **Still uncaptured:** the populated take lane - how alternates are listed, which one is
 active, and whether comping exists. Our build has no sections framework yet (Plugins /
 Automation / Clip editor / Take lanes), so this is recorded, not implemented.
+
+## 102. S60 - lyrics moderation refusal `M`
+
+Capture: `screens/S60-moderation.jpeg`, 1440 x 900 at DPR 1. Reached on
+`https://suno.com/create` -> **Advanced** -> paste four lines of a known copyrighted song
+into the lyrics editor, set a style and title, then press **Create**.
+
+**What it shows.** A bottom-centre orange toast, not a dialog and not an inline field
+error:
+
+- Title: `Couldn't generate that.`
+- Body: `Your lyrics contain copyrighted material. Please change it and try again.`
+- A close `X` on the right.
+
+The composer keeps the lyrics, style (`pop rock, piano`) and title, so the user can edit
+the words and submit again. No progress row, network error or navigation appears; the
+song list is unchanged.
+
+**What it establishes.** The copyright check runs **on submit**, after the draft is
+accepted, and reports through the global toast system. The copy names the cause
+(`copyrighted material`) and the fix (`change it and try again`), and the refusal is
+recoverable in place. This is the moderation half of the two state screens; the
+no-credit half stays open (S61).

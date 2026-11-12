@@ -2,7 +2,7 @@
 
 Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-**Final state: 63 DONE · 0 PART · 2 OPEN** of 65. Spec through §101, 83 images.
+**Final state: 64 DONE · 0 PART · 1 OPEN** of 65. Spec through §102, 84 images.
 
 Everything `DONE` has an image and a measured section — including six captured
 **negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
@@ -15,12 +15,25 @@ Opening an `Untitled Project` from the library fixed both instantly, which is wh
 cleared S37, S29, S50/S51 and S45. **Any future capture involving export, generation,
 takes or plugins must start from a native project.**
 
-## The 2 that remain
+## The one that remains
 
 | Screen | State | Exactly what is missing |
 |---|---|---|
-| S60 moderation | OPEN | Needs a policy-violating prompt. **Do not fabricate** — capture it only if it happens naturally. |
 | S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
+
+### S60 - lyrics moderation refusal (DONE, §102)
+
+Captured on https://suno.com/create while signed in as the reference account. Switched
+to **Advanced**, pasted four lines of a known copyrighted song into the lyrics editor,
+set style pop rock, piano and a title, then pressed **Create**. Suno answered with a
+bottom-centre orange toast:
+
+> **Couldn't generate that.**
+> Your lyrics contain copyrighted material. Please change it and try again.
+
+The composer kept the lyrics, style and title, so the refusal is recoverable in place;
+there was no dialog, inline field error or navigation. The check runs on submit, after
+the draft is accepted. Image: screens/S60-moderation.jpeg (1440 x 900).
 
 ## Live-session findings (2026-11-06, signed in)
 

@@ -7,18 +7,17 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
 | | |
 |---|---|
 | Worktree | `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-rebuild` |
-| Branch | `feat/studio-rebuild` — clean, pushed, **reconciled with `origin/main`** (`0` behind, `437` ahead) |
+| Branch | `feat/studio-rebuild` — clean, pushed, **reconciled with `origin/main`** (`0` behind, `502` ahead) |
 | Web | `localhost:3103` (`npm run dev` in `camxora.com`) |
 | Platform API | `localhost:8100` — **must run from this worktree** |
 | MusicAPI | `localhost:4003` |
 | Local account | `somvannda@gmail.com` / `StudioLocal!2026` |
 | UI login | needs `NEXT_PUBLIC_TURNSTILE_DISABLED=1` in `camxora.com/.env.local` |
-| Capture archive | `docs/studio/reference/screens/` — 83 images |
+| Capture archive | `docs/studio/reference/screens/` — 84 images |
 
 ## State in one paragraph
 
-Capture is **63/65 DONE / 2 OPEN** (S60 moderation, S61 credits — both need forced
-account states). The gap analysis `G1`–`G49` is **done** except `G12`'s remaining
+Capture is **64/65 DONE / 1 OPEN** (S61 credits - needs an account with no credits). The gap analysis `G1`-`G49` is **done** except `G12`'s remaining
 blocked halves, and the build has now shipped the last unblocked feature areas:
 time-selection editing (N-01), warp markers + the audio clip editor (S30), track
 bounce (N-06) and MIDI download (N-05). Every one of them is covered by unit tests and
@@ -64,7 +63,7 @@ Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pair
 | Live generation through the real provider | **verified live 2026-11-12**: `POST /web-music/generate` (V6) reached `SUCCESS` with both variants packaged and stored; the pool key routes `suno` at the local `musicapi`, so the Suno web account pays the credits. Encrypted playback was verified too (`licenses/play/{token}` → `206 audio/mpeg`) | B-008, `scripts/dev/README.md` |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
 | Stems tile/upload halves of G12 | stems **verified live** against a real generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
-| S60 / S61 captures | the reference session works (`node scripts/dev/suno-session.cjs` injects `iamduke1987@gmail.com`'s stored `__client`), but S60 needs a genuine policy refusal and S61 needs an account with zero credits | `reference/CAPTURE_GAPS.md` |
+| S61 capture | the reference session works (`node scripts/dev/suno-session.cjs` injects `iamduke1987@gmail.com`'s stored `__client`), but the no-credit screen needs an account with zero credits. S60 (lyrics moderation) is **captured** in `screens/S60-moderation.jpeg` (§102) | `reference/CAPTURE_GAPS.md` |
 | Song Radio + playlists UI | **already shipped in `origin/main`** — Song Radio is in `SongRowMenu` on Create and Library with a working radio endpoint, and Library has a full Playlists tab, detail view and composer. The old handoff list was stale on this point | `components/SongRowMenu.tsx`, `components/LibraryView.tsx` |
 
 ## Running the app (the part that costs time)

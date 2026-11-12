@@ -100,7 +100,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S57 | Project loading | DONE §63 |
 | S58 | Empty library | DONE §88 |
 | S59 | Save conflict / error banner | DONE §93 — no conflict UI exists (negative) |
-| S60 | Policy / moderation refusal | OPEN |
+| S60 | Policy / moderation refusal | DONE §102 |
 | S61 | Insufficient credits | OPEN |
 | S62 | Offline | DONE §96 — no offline state either way (negative) |
 
