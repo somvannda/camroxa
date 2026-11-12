@@ -150,23 +150,27 @@ not persisted (D-029).
 ## Next moves, in order
 
 **The feature queue is empty.** Every row in `SUNO_STUDIO_FEATURE_INVENTORY.md` is
-implemented, and every capture-backed area is covered by tests. What remains is
-environment access, not code:
+implemented, every product page renders inside `SiteChrome` (only the editor, auth screens
+and `/health` are full-bleed), and every capture-backed area is covered by tests. What
+remains is environment access, not code:
 
 1. **Ship the branch**: `gh auth login -h github.com`, then
    `gh pr create --base main --head feat/studio-rebuild`. The branch is main-synced and
-   green (134 browser tests / 2 skipped, 277 vitest, 3354 backend).
-2. **Give the running dev API storage**: `scripts/dev/studio-stack.ps1` starts moto, the
-   bucket and the platform API with the sandbox DB, the credits-only flag and
-   `PLATFORM_STUDIO_INTERNAL_TOKEN` taken from the environment — it refuses to start
-   without the token, because a restart that loses it silently disables every clip
-   operation. With that running, set
-   `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100 npx playwright test tests/e2e/studio-bounce.spec.ts`
-   to verify uploads against the live API, then the uploads tab can drop its mock.
+   green (135 browser tests / 2 skipped, 277 vitest, 3354 backend).
+2. **Restart the dev stack safely**: `scripts/dev/studio-stack.ps1 -All` starts moto, the
+   bucket, platform API (sandbox DB, credits-only, Studio token from the environment),
+   musicapi and the web dev server; `-Status` shows which of the four is down. It refuses
+   to start the API without the token, and `musicapi/.env` already carries the matching
+   `STUDIO_INTERNAL_TOKEN`. Live uploads/bounce are verified through
+   `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100`.
 3. **S60/S61** and the §100 detail-rail image when a signed-in reference session is
-   available.
+   available. The stored Clerk `__client` does not restore a browser session (the backend
+   can mint JWTs, the web app cannot); `musicapi`'s `npm run suno:login` can refresh it
+   only from a signed-in Chrome profile (Chrome must be closed) or a fresh email/password
+   sign-in.
 4. **Key/BPM rows** stay blocked on the corpus (D-016) — no field exists to show.
 
 Everything else in the documented gap list is built: the §81 column shipped as D-032, the
 selection model as D-029, warp markers as D-030, bounce as D-031, MIDI export as N-05,
-the clip transforms as D-033 and the S46 preset menu in `docs/changelog`.
+the clip transforms as D-033, the S46 preset menu and the site chrome in
+`docs/changelog` / `PROJECT_PROGRESS.md`.
