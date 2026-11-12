@@ -329,6 +329,11 @@ flagged by `check_deploy_hygiene.py`.
 - [ ] Audit log outcome matches browser result
 - [ ] Admin â†’ API Key Pool has working keys for routed providers
 
+### Music API (musicapi / Suno)
+
+- [ ] `curl -sf https://musicapi.<env>.camxora.com/health` returns `{"ok":true,...}` with the expected account count
+- [ ] `python scripts/deploy/verify_musicapi_captcha_guard.py --solve` -> solve gate live and 2Captcha accepts a token (spends ~$0.003 of 2Captcha balance, no user credits)
+
 ### Billing (if enabled)
 
 - [ ] CutLuy webhook URL points to `https://api.<env>.camxora.com/api/v3/webhooks/cutluy` (music) and/or `https://api.<env>.camxora.com/api/v3/billing/webhooks/cutluy` (desktop billing). `/api/v1/...` remains dual-mounted during transition.
