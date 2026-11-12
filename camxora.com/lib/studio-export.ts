@@ -9,6 +9,10 @@
  * directly with an OfflineAudioContext (see the dev handle below).
  */
 
+import {
+  scheduleVolumeAutomation,
+  type AutomationPoint,
+} from "@/lib/studio-automation";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import {
   clipRate,
@@ -56,6 +60,8 @@ export type ExportTrack = {
   volume?: number;
   muted?: boolean;
   solo?: boolean;
+  /** Volume automation points in absolute timeline seconds. */
+  volumeAutomation?: AutomationPoint[];
   clipIds: string[];
 };
 
@@ -150,12 +156,14 @@ export async function renderMix(
   // One gain + optional plugin chain per track, shared by that track's clips so an
   // effect is heard once rather than duplicated per clip.
   const trackNodes = new Map<string, AudioNode>();
+  const trackGains = new Map<string, GainNode>();
   const anySolo = tracks.some((track) => track.solo);
   function trackInput(trackId: string, volume: number): AudioNode {
     const existing = trackNodes.get(trackId);
     if (existing) return existing;
     const gain = context.createGain();
     gain.gain.value = Math.max(0, volume) / 100;
+    trackGains.set(trackId, gain);
     gain.connect(master);
     const entries = options.chains?.[trackId] ?? [];
     if (entries.length > 0) {
@@ -166,6 +174,21 @@ export async function renderMix(
     }
     trackNodes.set(trackId, gain);
     return gain;
+  }
+
+  for (const track of tracks) {
+    if (!track.volumeAutomation?.length) continue;
+    const audible = !track.muted && (!anySolo || track.solo);
+    trackInput(track.id, audible ? track.volume ?? 80 : 0);
+    const gain = trackGains.get(track.id);
+    if (gain && audible) {
+      scheduleVolumeAutomation(gain.gain, track.volumeAutomation, {
+        from,
+        when: 0,
+        rate: 1,
+        fallback: track.volume ?? 80,
+      });
+    }
   }
 
   for (const clip of clips) {
