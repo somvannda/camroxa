@@ -33,8 +33,7 @@ test("studio home has no axe violations", async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page);
   await page.reload();
-  await expect(page.locator("main.studio-home")).toBeVisible({ timeout: 30_000 });
-  // The skeleton also renders a main; wait for the real heading before auditing.
+  // The shared chrome provides <main>; StudioHome is the page content inside it.
   await expect(page.getByRole("heading", { level: 1, name: "Your projects" })).toBeVisible({
     timeout: 30_000,
   });

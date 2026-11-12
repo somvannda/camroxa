@@ -159,7 +159,7 @@ export default function SharedStudioPage() {
   }
 
   return (
-    <main className="shared-studio-page">
+    <div className="shared-studio-page">
       <header className="shared-studio-head">
         <Link href="/" className="shared-studio-brand">
           <Icon name="fa-wave-square" /> CAMXORA
@@ -281,6 +281,6 @@ export default function SharedStudioPage() {
           </footer>
         </section>
       )}
-    </main>
+    </div>
   );
 }

@@ -2,6 +2,26 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-12 — Product chrome on every page
+
+`/studio` and the shared-project viewer rendered bare (no left nav, no top bar, no footer)
+because they sat outside the `(site)` layout. They now use the same chrome as the rest of
+the product; only the editor stays full-bleed.
+
+| Area | What landed |
+|---|---|
+| **`components/SiteChrome.tsx`** | the product shell (player provider, sidebar, top bar, single `<main>`, footer, player) extracted so the site and Studio pages cannot drift |
+| **Studio public pages** | `app/studio/(public)/layout.tsx` wraps `/studio` (page moved into the group); `app/studio/shared/layout.tsx` wraps the shared viewer |
+| **Landmarks** | `StudioHome` and the shared page drop their own `<main>` (the chrome owns it); `.studio-home`/`.shared-studio-page` got `flex:none` so the footer cannot compress the page at short viewports |
+| **Rule** | `AGENTS.md` § Page chrome records the exception list: editor routes, auth screens and `/health` |
+
+### Verified
+
+`npm run typecheck`, `npm run check:ui`, `npm run build`, vitest **277/277**, full studio e2e
+**135 passed / 2 skipped** — including the axe gate on the Studio home and the share fork
+flow, both of which previously assumed a standalone page.
+
+
 ## Session 2026-11-12 — Live storage verified; the dev stack keeps its token
 
 The local stack can now be restarted without silently losing Studio operations, and the

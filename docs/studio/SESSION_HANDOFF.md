@@ -48,6 +48,7 @@ bucket is configured).
 | MIDI download (N-05) | selected MIDI clips become one `.mid` (format 0, 480 PPQ) — `lib/studio-midi-file.ts` |
 | Clip transforms | Extend / Cover… / Remaster / Vocals… / Instrumental… / Mashup… / Replace… run the Studio operation API and land as a lane after the clip or as a take, with the credit price shown and a refusal card on a failed charge — `lib/studio-transforms.ts` (D-033) |
 | Plugin presets (S46) | Clear all settings, Save preset… (project-scoped, survives reload) and saved presets in the card menu — `lib/studio-plugins.ts`, `StudioPluginDock` |
+| Page chrome | `SiteChrome` wraps every product page; `/studio` and shared views have the left nav/top bar/footer, the editor alone is full-bleed — rule in `AGENTS.md` |
 | Library filters + uploads | honest filter menu (`lib/library-filters.ts`), Uploads tab listing Studio imports, and add-to-project placement (`lib/studio-upload-place.ts`) |
 | Site accessibility | `<main>` landmark on every `(site)` page, named player region, decorative images, `h2` ordering, readable disabled menu items; axe gates now cover Studio, Library, Create, `/`, `/pricing` and `/discover` |
 

@@ -239,7 +239,7 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
 
   if (authLoading) {
     return (
-      <main className="studio-home" aria-busy="true">
+      <div className="studio-home" aria-busy="true">
         <div className="studio-home-inner">
           <div className="studio-home-hero sh-skeleton" />
           <div className="studio-home-grid">
@@ -248,14 +248,14 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
             ))}
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!user) return <>{marketing}</>;
 
   return (
-    <main className="studio-home">
+    <div className="studio-home">
       <div className="studio-home-inner">
         <header className="studio-home-head">
           <div>
@@ -537,6 +537,6 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
           </div>
         </div>
       ) : null}
-    </main>
+    </div>
   );
 }

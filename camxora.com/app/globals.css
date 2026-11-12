@@ -2752,7 +2752,7 @@ html{color-scheme:dark}
   @media(max-width:760px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:560px){.pricing-grid,.pricing-pack-grid,.pricing-includes-grid{grid-template-columns:1fr}.pricing-balance{text-align:left}.pricing-signin{align-items:flex-start;flex-direction:column}}
 
-  .shared-studio-page{min-height:100vh;padding:24px;background:radial-gradient(circle at 20% 0%,rgba(124,58,237,.18),transparent 32%),#070b18;color:#e2e8f0}
+  .shared-studio-page{min-height:0;flex:none;padding:92px 24px 40px;background:radial-gradient(circle at 20% 0%,rgba(124,58,237,.18),transparent 32%),#070b18;color:#e2e8f0}
   .shared-studio-head{display:flex;align-items:center;justify-content:space-between;max-width:1080px;margin:0 auto 30px;gap:16px}
   .shared-studio-brand{display:inline-flex;align-items:center;gap:8px;color:#f8fafc;text-decoration:none;font-size:14px;font-weight:700;letter-spacing:.12em}
   .shared-studio-brand .icon{color:#a855f7}
@@ -4375,7 +4375,7 @@ html{color-scheme:dark}
 /* ------------------------------------------------------------------ */
 /* Studio home (`/studio` for signed-in users)                         */
 /* ------------------------------------------------------------------ */
-.studio-home{padding-top:96px}
+.studio-home{padding-top:96px;flex:none}
 .studio-home-inner{display:flex;flex-direction:column;gap:22px;width:min(1180px,100%);margin:0 auto}
 .studio-home-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}
 .studio-home-eyebrow{margin:0;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2)}
