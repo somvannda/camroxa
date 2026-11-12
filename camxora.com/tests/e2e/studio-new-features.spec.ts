@@ -65,6 +65,44 @@ test("track Automation draws a volume point that persists", async ({ page }) => 
   await expect(reloaded.locator(".se-automation-point")).toHaveCount(1);
 });
 
+test("clip settings copy and paste through the clip menu", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  const projectId = await createStudioProject(page, {
+    title: "Clip settings copy",
+    clips: [
+      {
+        id: "clip-a",
+        title: "A",
+        start: 0,
+        duration: 4,
+        audioUrl: "/seed/demo-loop.wav",
+        audio: { gainDb: 6, pitch: 2 },
+      },
+      {
+        id: "clip-b",
+        title: "B",
+        start: 8,
+        duration: 4,
+        audioUrl: "/seed/demo-loop.wav",
+        audio: { gainDb: 0, pitch: 0 },
+      },
+    ],
+  });
+
+  await page.locator(".se-clip").filter({ hasText: "A" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Copy settings/ }).click();
+  await page.locator(".se-clip").filter({ hasText: "B" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Paste settings/ }).click();
+
+  const saved = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    return response.json();
+  }, projectId);
+  const clipB = saved.data.lanes.find((clip: { id: string }) => clip.id === "clip-b");
+  expect(clipB.audio).toMatchObject({ gainDb: 6, pitch: 2 });
+});
+
 test("Create Section stamps a ruler marker that survives a reload", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1689, height: 1277 });

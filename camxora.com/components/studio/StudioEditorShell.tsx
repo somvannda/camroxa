@@ -359,6 +359,11 @@ export function StudioEditorShell() {
   const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);  const [clipColorOpen, setClipColorOpen] = useState(false);
   /** Clip rename dialog (clip menu ▸ Rename). */
   const [clipRename, setClipRename] = useState<{ id: string; value: string } | null>(null);
+  /** Copy/paste buffer for Clip Settings (gain, loop, reverse, pitch, speed, fade). */
+  const [clipSettingsClipboard, setClipSettingsClipboard] = useState<{
+    audio?: unknown;
+    fadeIn?: number;
+  } | null>(null);
   const fadePreviewRef = useRef<typeof fadePreview>(null);
   fadePreviewRef.current = fadePreview;
   const fadeRef = useRef<{ id: string; startX: number; fadeIn: number; duration: number } | null>(
@@ -2762,6 +2767,37 @@ export function StudioEditorShell() {
     const earliest = Math.min(...entries.map((entry) => entry.clip.start ?? 0));
     const target = snapToGrid(playhead, secondsPerBar, beatsPerBar);
     insertClips(duplicateEntries(entries, target - earliest));
+  }
+
+  function copyClipSettings() {
+    const id = selectedClip ?? selectedIds[0];
+    const clip = clipsRef.current.find((candidate) => candidate.id === id);
+    if (!clip) return;
+    setClipSettingsClipboard({ audio: clip.audio, fadeIn: clip.fadeIn });
+    setExportToast("Clip settings copied.");
+  }
+
+  function pasteClipSettings() {
+    const buffer = clipSettingsClipboard;
+    if (!buffer) return;
+    const ids = activeClipIds();
+    if (ids.length === 0) return;
+    const data = currentData() as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      {
+        ...data,
+        lanes: lanes.map((clip) =>
+          ids.includes(clip.id)
+            ? { ...clip, audio: buffer.audio, fadeIn: buffer.fadeIn }
+            : clip
+        ),
+      },
+      "clip settings"
+    );
+    setExportToast(
+      `Settings pasted to ${ids.length} clip${ids.length === 1 ? "" : "s"}.`
+    );
   }
 
   function duplicateSelection() {
@@ -5413,6 +5449,27 @@ export function StudioEditorShell() {
                   }}
                 >
                   <Icon name="fa-trash" /> Delete <span>Backspace</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    copyClipSettings();
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-sliders" /> Copy settings
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clipSettingsClipboard}
+                  onClick={() => {
+                    pasteClipSettings();
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-paste" /> Paste settings
                 </button>
                 <div className="se-clip-menu-sep" />
                 <button
