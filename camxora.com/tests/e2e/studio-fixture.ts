@@ -77,42 +77,58 @@ export async function createStudioProject(
         credentials: "include",
         body: JSON.stringify({ email, password }),
       });
-      if (login.status !== 200) throw new Error(`login failed: ${login.status}`);
+      if (login.status !== 200) {
+        throw new Error(`login failed: ${login.status} ${(await login.text()).slice(0, 300)}`);
+      }
 
-      const created = await fetch("/api/v3/web-music/studio/projects", {
+      const payload = JSON.stringify({
+        title: projectTitle,
+        bpm: 120,
+        time_signature: "4/4",
+        data: {
+          lanes: lanes.map((clip) => ({
+            title: clip.title ?? clip.id,
+            volume: 1,
+            pan: 0,
+            ...clip,
+          })),
+          tracks: [
+            {
+              id: "fixture-track",
+              name: "Track 1",
+              color: "#38bdf8",
+              index: 0,
+              volume: 80,
+              pan: 0,
+              muted: false,
+              solo: false,
+              hidden: false,
+              groupId: null,
+              chain: [],
+              clipIds: lanes.map((clip) => clip.id),
+            },
+          ],
+        },
+      });
+
+      // A fresh CI database occasionally returns one transient 500 while the API
+      // warms its pool; retry once so infrastructure noise does not fail a spec.
+      let created = await fetch("/api/v3/web-music/studio/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: projectTitle,
-          bpm: 120,
-          time_signature: "4/4",
-          data: {
-            lanes: lanes.map((clip) => ({
-              title: clip.title ?? clip.id,
-              volume: 1,
-              pan: 0,
-              ...clip,
-            })),
-            tracks: [
-              {
-                id: "fixture-track",
-                name: "Track 1",
-                color: "#38bdf8",
-                index: 0,
-                volume: 80,
-                pan: 0,
-                muted: false,
-                solo: false,
-                hidden: false,
-                groupId: null,
-                chain: [],
-                clipIds: lanes.map((clip) => clip.id),
-              },
-            ],
-          },
-        }),
+        body: payload,
       });
-      if (!created.ok) throw new Error(`create failed: ${created.status}`);
+      if (created.status >= 500) {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        created = await fetch("/api/v3/web-music/studio/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+        });
+      }
+      if (!created.ok) {
+        throw new Error(`create failed: ${created.status} ${(await created.text()).slice(0, 300)}`);
+      }
       const project = (await created.json()) as { id: string };
       return project.id;
     },

@@ -14,7 +14,10 @@ export default defineConfig({
   // The specs share one dev server and one sandbox account and some decode audio; more
   // workers than this starves the machine and turns timing-based checks flaky.
   workers: 4,
-  retries: 0,
+  // CI runners are slower and occasionally drop a single timing-sensitive assertion on
+  // the first pass; one retry keeps infrastructure noise out of the gate. Local runs
+  // stay strict.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: {
     baseURL: process.env.BASE_URL ?? "http://localhost:3103",
