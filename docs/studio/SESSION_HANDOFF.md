@@ -155,9 +155,11 @@ environment access, not code:
 1. **Ship the branch**: `gh auth login -h github.com`, then
    `gh pr create --base main --head feat/studio-rebuild`. The branch is main-synced and
    green (134 browser tests / 2 skipped, 277 vitest, 3354 backend).
-2. **Give the running dev API storage**: its `PLATFORM_STUDIO_INTERNAL_TOKEN` was supplied
-   by the launching shell and is not recoverable from the process, so a restart must
-   include it. With moto on `:9000` and the B-006 env, run
+2. **Give the running dev API storage**: `scripts/dev/studio-stack.ps1` starts moto, the
+   bucket and the platform API with the sandbox DB, the credits-only flag and
+   `PLATFORM_STUDIO_INTERNAL_TOKEN` taken from the environment — it refuses to start
+   without the token, because a restart that loses it silently disables every clip
+   operation. With that running, set
    `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100 npx playwright test tests/e2e/studio-bounce.spec.ts`
    to verify uploads against the live API, then the uploads tab can drop its mock.
 3. **S60/S61** and the §100 detail-rail image when a signed-in reference session is
