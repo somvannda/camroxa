@@ -127,6 +127,7 @@ import {
 import { buildMidiFile } from "@/lib/studio-midi-file";
 import { parseMidiFile } from "@/lib/studio-midi-import";
 import { classifyStudioError } from "@/lib/studio-errors";
+import { sanitizeSectionMarkers, type SectionMarker } from "@/lib/studio-markers";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -660,6 +661,7 @@ export function StudioEditorShell() {
   const reversedBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   /** Time selection (N-01), created by dragging on the bar ruler; not persisted. */
   const [timeSelection, setTimeSelection] = useState<TimeRange | null>(null);
+  const [markers, setMarkers] = useState<SectionMarker[]>([]);
   const [rangeMenu, setRangeMenu] = useState<{ x: number; y: number } | null>(null);
   const rangeDragRef = useRef<{
     anchor: number;
@@ -704,6 +706,9 @@ export function StudioEditorShell() {
         setProject(next);
         setBpm(next.bpm || 120);
         setTimeSignature(next.time_signature || "4/4");
+        setMarkers(
+          sanitizeSectionMarkers((next.data as { markers?: unknown } | undefined)?.markers)
+        );
         const master = (next.data || {}) as { masterVolume?: unknown; masterMuted?: unknown };
         if (typeof master.masterVolume === "number" && Number.isFinite(master.masterVolume)) {
           setMasterVolume(Math.max(0, Math.min(100, master.masterVolume)));
@@ -2784,6 +2789,27 @@ export function StudioEditorShell() {
    * Split at a time (spec §47: Split ctrl E). The right half keeps its musical place by
    * carrying the source offset forward, so audio does not shift.
    */
+  /** Stamp a ruler section marker from the clip (S46, clip menu "Create Section"). */
+  function createSectionFromClip(clip: ClipLike) {
+    const time = Math.max(0, clip.start ?? playhead);
+    const label = (clip.title || `Section ${markers.length + 1}`).slice(0, 80);
+    const marker: SectionMarker = {
+      id: `marker-${Date.now().toString(36)}`,
+      time: Math.round(time * 1000) / 1000,
+      label,
+      color: "#3dafff",
+    };
+    const next = [...markers, marker].sort((a, b) => a.time - b.time);
+    setMarkers(next);
+    writeProjectData({ ...currentData(), markers: next }, "a section marker");
+  }
+
+  function removeSectionMarker(id: string) {
+    const next = markers.filter((marker) => marker.id !== id);
+    setMarkers(next);
+    writeProjectData({ ...currentData(), markers: next }, "removing a section marker");
+  }
+
   function splitClips(ids: string[], at: number) {
     const data = currentData();
     const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
@@ -4773,6 +4799,9 @@ export function StudioEditorShell() {
           loopStart={loopStart}
           loopEnd={loopEnd}
           timeSelection={timeSelection}
+          markers={markers}
+          onMarkerClick={seekTo}
+          onMarkerRemove={removeSectionMarker}
           viewWidth={view.width}
           viewLeft={view.left}
           trimPreview={trimPreview}
@@ -5307,6 +5336,16 @@ export function StudioEditorShell() {
                   }}
                 >
                   <Icon name="fa-scissors" /> Split <span>Ctrl E</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    createSectionFromClip(clip);
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-flag" /> Create Section
                 </button>
                 <button
                   type="button"

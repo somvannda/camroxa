@@ -38,6 +38,14 @@ export type TimelineDrag = {
 
 export type TimelineMarquee = { x1: number; y1: number; x2: number; y2: number };
 
+/** Ruler section marker (S46 "Create Section"). */
+export type TimelineMarker = {
+  id: string;
+  time: number;
+  label: string;
+  color?: string;
+};
+
 /** A time range dragged on the ruler (N-01); separate from the clip selection. */
 export type TimelineRange = { start: number; end: number };
 
@@ -84,6 +92,10 @@ export type StudioTimelineProps = {
   loopEnd: number;
   /** The time selection, if the user dragged one on the ruler (N-01). */
   timeSelection?: TimelineRange | null;
+  /** Section flags on the bar ruler (S46). */
+  markers?: TimelineMarker[];
+  onMarkerClick?: (time: number) => void;
+  onMarkerRemove?: (id: string) => void;
   viewWidth: number;
   viewLeft: number;
   /** Live geometry while a trim grip is dragged. */
@@ -138,6 +150,9 @@ export function StudioTimeline(props: StudioTimelineProps) {
     loopStart,
     loopEnd,
     timeSelection,
+    markers = [],
+    onMarkerClick,
+    onMarkerRemove,
     viewWidth,
     viewLeft,
     trimPreview,
@@ -172,17 +187,22 @@ export function StudioTimeline(props: StudioTimelineProps) {
     >
       <div
         className="se-ruler-bars"
-        aria-hidden="true"
         onPointerDown={onRulerPointerDown}
         onContextMenu={onRulerContextMenu}
       >
         <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
           {Array.from({ length: barCount }).map((_, bar) => (
-            <span key={`line-${bar}`} className="se-bar-line" style={{ left: bar * barWidth }} />
+            <span
+              key={`line-${bar}`}
+              className="se-bar-line"
+              aria-hidden="true"
+              style={{ left: bar * barWidth }}
+            />
           ))}
           {range ? (
             <span
               className="se-range-ruler"
+              aria-hidden="true"
               style={{
                 left: (range.start / secondsPerBar) * barWidth,
                 width: ((range.end - range.start) / secondsPerBar) * barWidth,
@@ -195,7 +215,12 @@ export function StudioTimeline(props: StudioTimelineProps) {
             const step = barWidth >= 80 ? 1 : barWidth >= 44 ? 2 : barWidth >= 24 ? 4 : 8;
             if (bar % step !== 0) return null;
             return (
-              <span key={bar} className="se-bar-tick" style={{ left: bar * barWidth }}>
+              <span
+                key={bar}
+                className="se-bar-tick"
+                aria-hidden="true"
+                style={{ left: bar * barWidth }}
+              >
                 {bar + 1}
               </span>
             );
@@ -205,6 +230,31 @@ export function StudioTimeline(props: StudioTimelineProps) {
             style={{ left: (playhead / secondsPerBar) * barWidth }}
             aria-hidden="true"
           />
+          {markers.map((marker) => (
+            <button
+              key={marker.id}
+              type="button"
+              className="se-section-marker"
+              style={{
+                left: (marker.time / secondsPerBar) * barWidth,
+                color: marker.color ?? "#3dafff",
+              }}
+              title={`${marker.label} - click to seek, right-click to remove`}
+              aria-label={`Section ${marker.label} at ${clock(marker.time)}`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onMarkerClick?.(marker.time);
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onMarkerRemove?.(marker.id);
+              }}
+            >
+              <span>{marker.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
