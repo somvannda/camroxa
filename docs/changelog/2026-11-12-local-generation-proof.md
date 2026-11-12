@@ -42,11 +42,13 @@ blocked on three separate setup gaps, and the fix is tooling, not product code.
 | Task | `3899e06d-81e8-482b-9435-617cf3f38c18` |
 | Both variants | `ready: true`, `package_status: ready`, stream + download URLs |
 | Bucket objects | ~2.8 MB `audio/mpeg` originals and `application/vnd.camxora.audio` packaged per variant |
+| Encrypted playback | device registered → license session (`package_status: ready`) → `GET /licenses/play/{token}` returned **206 `audio/mpeg`**, 262,144 bytes, `ID3` header |
 | Suno credits (`iamduke1987@gmail.com`) | 3,450 → 3,350 across two V6 jobs (platform run + direct probe) |
 | `musicapi` key credits | 873 → 853 (10 credits per job) |
 
 Packaged tracks answer `422 encrypted_playback_required` on the plain stream route by
-design; playback uses the license/player flow.
+design; playback goes through the license flow, which was verified against the same task
+(`devices/register` → `licenses/sessions` → `licenses/play/{token}` → `206 audio/mpeg`).
 
 ## Migration/deploy
 

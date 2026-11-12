@@ -61,7 +61,7 @@ Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pair
 | Item | Why | Where |
 |---|---|---|
 | Real-bucket verification of in-place bounce | **verified live 2026-11-12**: the sandbox API (started by `scripts/dev/studio-stack.ps1` with the Studio token) accepts uploads and the gated bounce case passes against it; storage only needs moto + the B-006 env | D-031, B-007 |
-| Live generation through the real provider | **verified live 2026-11-12**: `POST /web-music/generate` (V6) reached `SUCCESS` with both variants packaged and stored; the pool key routes `suno` at the local `musicapi`, so the Suno web account pays the credits | B-008, `scripts/dev/README.md` |
+| Live generation through the real provider | **verified live 2026-11-12**: `POST /web-music/generate` (V6) reached `SUCCESS` with both variants packaged and stored; the pool key routes `suno` at the local `musicapi`, so the Suno web account pays the credits. Encrypted playback was verified too (`licenses/play/{token}` → `206 audio/mpeg`) | B-008, `scripts/dev/README.md` |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
 | Stems tile/upload halves of G12 | stems **verified live** against a real generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
 | S60 / S61 captures | the reference session works (`node scripts/dev/suno-session.cjs` injects `iamduke1987@gmail.com`'s stored `__client`), but S60 needs a genuine policy refusal and S61 needs an account with zero credits | `reference/CAPTURE_GAPS.md` |
