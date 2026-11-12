@@ -113,6 +113,7 @@ import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSav
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
 import { StudioMidiEditor } from "@/components/studio/StudioMidiEditor";
+import { StudioAutomationPanel } from "@/components/studio/StudioAutomationPanel";
 import { StudioAudioEditor } from "@/components/studio/StudioAudioEditor";
 import type { WarpState } from "@/lib/studio-warp";
 import {
@@ -127,6 +128,7 @@ import {
 import { buildMidiFile } from "@/lib/studio-midi-file";
 import { parseMidiFile } from "@/lib/studio-midi-import";
 import { classifyStudioError } from "@/lib/studio-errors";
+import { scheduleVolumeAutomation, type AutomationPoint } from "@/lib/studio-automation";
 import { sanitizeSectionMarkers, type SectionMarker } from "@/lib/studio-markers";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
@@ -509,6 +511,7 @@ export function StudioEditorShell() {
     // Selecting an audio clip leaves the MIDI editor; a MIDI clip opens it.
     setMidiClipId((clip as { midi?: unknown }).midi ? clip.id : null);
     if ((clip as { midi?: unknown }).midi) setAudioClipId(null);
+    setAutomationOpen(false);
     const group = selectedIds.includes(clip.id) ? selectedIds : [clip.id];
     setSelectedIds(group);
     const origins: Record<string, number> = {};
@@ -527,11 +530,13 @@ export function StudioEditorShell() {
     if ((clip as { midi?: unknown }).midi) {
       setAudioClipId(null);
       setMidiClipId(clip.id);
+      setAutomationOpen(false);
       return;
     }
     if (!clip.audioUrl) return;
     setMidiClipId(null);
     setAudioClipId(clip.id);
+    setAutomationOpen(false);
   }
 
   /** Persist the warp markers / stretch state onto the clip (S30). */
@@ -559,6 +564,7 @@ export function StudioEditorShell() {
   const [bouncingTrack, setBouncingTrack] = useState<string | null>(null);
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [midiClipId, setMidiClipId] = useState<string | null>(null);
+  const [automationOpen, setAutomationOpen] = useState(false);
   /** Audio clip editor (S30): warp markers live beside the clip's waveform. */
   const [audioClipId, setAudioClipId] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState("");
@@ -2980,6 +2986,7 @@ export function StudioEditorShell() {
         volume: track.volume,
         muted: track.muted,
         solo: track.solo,
+        volumeAutomation: track.volumeAutomation,
         clipIds: track.clipIds,
       }));
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
@@ -3626,6 +3633,24 @@ export function StudioEditorShell() {
       return pre;
     }
 
+    // Track volume automation is scheduled on the shared track gain before any clip
+    // sources are created, so the curve is already in place when playback starts.
+    const anySoloAtStart = tracks.some((track) => track.solo);
+    for (const track of tracks) {
+      if (!track.volumeAutomation?.length) continue;
+      const audible = !track.muted && (!anySoloAtStart || track.solo);
+      trackInput(track.id, audible ? track.volume : 0);
+      const gain = trackGainRef.current.get(track.id);
+      if (gain && audible) {
+        scheduleVolumeAutomation(gain.gain, track.volumeAutomation, {
+          from,
+          when: now,
+          rate: playbackRate,
+          fallback: track.volume,
+        });
+      }
+    }
+
     for (const clip of arrangement) {
       const url = (clip as { audioUrl?: string | null }).audioUrl;
       const buffer = url ? bufferCacheRef.current.get(url) : undefined;
@@ -3841,6 +3866,7 @@ export function StudioEditorShell() {
         volume: track.volume,
         muted: track.muted,
         solo: track.solo,
+        volumeAutomation: track.volumeAutomation,
         clipIds: track.clipIds,
       }));
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
@@ -3937,6 +3963,7 @@ export function StudioEditorShell() {
         volume: candidate.volume,
         muted: candidate.muted,
         solo: candidate.solo,
+        volumeAutomation: candidate.volumeAutomation,
         clipIds: candidate.clipIds,
       }));
       const wav = await renderMix(buffers, exportClips, exportTracks, {
@@ -5946,6 +5973,24 @@ export function StudioEditorShell() {
         onRequestStems={openStemsDialog}
       />
 
+      {automationOpen && selectedTrack
+        ? (() => {
+            const track = tracks.find((candidate) => candidate.id === selectedTrack);
+            if (!track) return null;
+            return (
+              <StudioAutomationPanel
+                track={track}
+                duration={duration}
+                playhead={playhead}
+                onChange={(points: AutomationPoint[]) =>
+                  updateTrack(track.id, { volumeAutomation: points })
+                }
+                onClose={() => setAutomationOpen(false)}
+              />
+            );
+          })()
+        : null}
+
       {takeLanesOpen ? (
         <StudioTakeLanes
           takes={selectedClip ? clips.find((clip) => clip.id === selectedClip)?.takes ?? null : null}
@@ -6034,7 +6079,15 @@ export function StudioEditorShell() {
         takeLanesOpen={takeLanesOpen}
         onToggleTakeLanes={() => {
           setTakeLanesOpen((open) => !open);
+          setAutomationOpen(false);
           setMidiClipId(null);
+        }}
+        automationOpen={automationOpen}
+        onToggleAutomation={() => {
+          setAutomationOpen((open) => !open);
+          setMidiClipId(null);
+          setAudioClipId(null);
+          setTakeLanesOpen(false);
         }}
         onWhatsThis={(next) => {
           const updated = { ...settingsRef.current, whatsThis: next };

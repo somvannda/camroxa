@@ -26,6 +26,9 @@ export type StudioFooterProps = {
   /** S29: the take-lanes band is open. */
   takeLanesOpen?: boolean;
   onToggleTakeLanes?: () => void;
+  /** Track automation band is open. */
+  automationOpen?: boolean;
+  onToggleAutomation?: () => void;
 };
 
 export function StudioFooter(props: StudioFooterProps) {
@@ -43,6 +46,8 @@ export function StudioFooter(props: StudioFooterProps) {
     onWhatsThis,
     takeLanesOpen = false,
     onToggleTakeLanes,
+    automationOpen = false,
+    onToggleAutomation,
   } = props;
 
   return (
@@ -63,6 +68,16 @@ export function StudioFooter(props: StudioFooterProps) {
             <Icon name="fa-bars" />
           </button>
           <button type="button" className="se-icon" disabled aria-label="Microphone input (use Record in the transport)" title="Recording lives in the transport: arm a track, then Record"><Icon name="fa-microphone" /></button>
+          <button
+            type="button"
+            className={`se-icon${automationOpen ? " on" : ""}`}
+            aria-label="Automation"
+            aria-pressed={automationOpen}
+            disabled={!hasTrack}
+            onClick={() => onToggleAutomation?.()}
+          >
+            <Icon name="fa-bezier-curve" />
+          </button>
         </span>
       </div>
 

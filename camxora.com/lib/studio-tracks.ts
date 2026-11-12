@@ -15,6 +15,7 @@
  * Flipping rendering from `lanes` to `tracks` is a later, separate change.
  */
 
+import { sanitizeAutomation, type AutomationPoint } from "@/lib/studio-automation";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
 export type StudioTrack = {
@@ -37,6 +38,8 @@ export type StudioTrack = {
   groupId: string | null;
   /** Ordered plugin chain; signal order. */
   chain: PluginChainEntry[];
+  /** Volume automation points (0-100) in timeline seconds. */
+  volumeAutomation?: AutomationPoint[];
   /** Ids of the clips that live on this track. */
   clipIds: string[];
 };
@@ -119,6 +122,7 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
       collapsed: Boolean(candidate.collapsed),
       groupId: typeof candidate.groupId === "string" ? candidate.groupId : null,
       chain: [], // chains are sanitised separately, by track id
+      volumeAutomation: sanitizeAutomation(candidate.volumeAutomation, 0, 100),
       clipIds,
     });
   }

@@ -37,6 +37,25 @@ test("MIDI chord and arpeggiator modes write the expected notes", async ({ page 
   expect(new Set(lefts).size).toBeGreaterThan(1);
 });
 
+test("track Automation draws a volume point that persists", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, { title: "Track automation" });
+
+  await page.locator(".se-clip").first().click();
+  await page.locator(".se-foot").getByRole("button", { name: "Automation" }).click();
+  const lane = page.getByRole("group", { name: "Volume automation lane" });
+  await expect(lane).toBeVisible();
+  await lane.click({ position: { x: 180, y: 30 } });
+  await expect(page.locator(".se-automation-point")).toHaveCount(1);
+
+  await page.reload();
+  await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
+  await page.locator(".se-clip").first().click();
+  await page.locator(".se-foot").getByRole("button", { name: "Automation" }).click();
+  await expect(page.locator(".se-automation-point")).toHaveCount(1);
+});
+
 test("Create Section stamps a ruler marker that survives a reload", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1689, height: 1277 });
