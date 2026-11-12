@@ -26,12 +26,21 @@ $env:PLATFORM_STUDIO_INTERNAL_TOKEN = "<the value musicapi uses>"
 # 2. Start moto (if needed), the bucket and the platform API on :8100
 pwsh -File scripts/dev/studio-stack.ps1
 
-# 3. Dry run: print what would start, touch nothing
+# 3. Bring up the whole stack (musicapi + web too) or just check what is running
+pwsh -File scripts/dev/studio-stack.ps1 -All
+pwsh -File scripts/dev/studio-stack.ps1 -Status
+
+# 4. Dry run: print what would start, touch nothing
 pwsh -File scripts/dev/studio-stack.ps1 -DryRun
 
-# 4. Stop the two processes this script owns
+# 5. Stop the processes (API + moto, or the whole stack with -All)
 pwsh -File scripts/dev/studio-stack.ps1 -Stop
+pwsh -File scripts/dev/studio-stack.ps1 -Stop -All
 ```
+
+`-Status` prints the health of `:3103` (web), `:8100` (platform API), `:4003` (musicapi)
+and whether moto is listening, which is the quickest way to spot a half-down stack —
+musicapi in particular can be down while everything else looks fine.
 
 The script also starts an S3 stand-in (moto) on `:9000` and creates the
 `camxora-studio` bucket, because uploads (recorded takes, in-place bounce, Library

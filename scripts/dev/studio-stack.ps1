@@ -10,11 +10,15 @@
 param(
     [switch]$DryRun,
     [switch]$Stop,
+    [switch]$Status,
+    [switch]$All,
     [string]$Token = $env:PLATFORM_STUDIO_INTERNAL_TOKEN,
     [string]$DatabaseUrl = "postgresql+asyncpg://postgres:postgres@localhost:5432/camxora_pfm_sandbox",
     [string]$EnvFile = "G:\Developments\Projects\Camxora\platform_api\.env",
     [int]$ApiPort = 8100,
-    [int]$MotoPort = 9000
+    [int]$MotoPort = 9000,
+    [int]$MusicPort = 4003,
+    [int]$WebPort = 3103
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +44,28 @@ function Stop-Port([int]$port, [string]$label) {
 if ($Stop) {
     Stop-Port $ApiPort "platform API"
     Stop-Port $MotoPort "moto"
+    if ($All) {
+        Stop-Port $MusicPort "musicapi"
+        Stop-Port $WebPort "web"
+    }
+    return
+}
+
+function Get-Health([int]$port, [string]$path = "/health") {
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$port$path" -TimeoutSec 10
+        return "up ($($response.StatusCode))"
+    } catch {
+        if (Get-PortOwner $port) { return "listening, health failed" }
+        return "down"
+    }
+}
+
+if ($Status) {
+    Write-Host "web        :$WebPort      $(Get-Health $WebPort '/library')"
+    Write-Host "platform   :$ApiPort      $(Get-Health $ApiPort)"
+    Write-Host "musicapi   :$MusicPort    $(Get-Health $MusicPort)"
+    Write-Host "moto       :$MotoPort     $(if (Get-PortOwner $MotoPort) { 'listening' } else { 'down' })"
     return
 }
 
@@ -70,6 +96,10 @@ if ($DryRun) {
     Write-Host "  database: $DatabaseUrl"
     Write-Host "  env file: $EnvFile"
     Write-Host "  token: set ($($Token.Length) characters)"
+    if ($All) {
+        Write-Host "  musicapi on :$MusicPort (build if dist is missing)"
+        Write-Host "  web dev server on :$WebPort"
+    }
     return
 }
 
@@ -90,6 +120,30 @@ try {
 
     if (Get-PortOwner $ApiPort) {
         throw "Port $ApiPort is already in use. Stop the running platform API first (or pass -Stop), so the Studio token cannot be lost silently."
+    }
+
+    if ($All) {
+        if (-not (Get-PortOwner $MusicPort)) {
+            $music = Join-Path $root "musicapi"
+            if (-not (Test-Path (Join-Path $music "dist\serve.js"))) {
+                Write-Host "Building musicapi..."
+                Push-Location $music
+                npm run build
+                Pop-Location
+            }
+            Write-Host "Starting musicapi on :$MusicPort..."
+            Start-Process -FilePath "npm.cmd" -ArgumentList @("run", "start") -WorkingDirectory $music -WindowStyle Hidden
+            Start-Sleep -Seconds 4
+        } else {
+            Write-Host "musicapi already listening on :$MusicPort."
+        }
+
+        if (-not (Get-PortOwner $WebPort)) {
+            Write-Host "Starting web dev server on :$WebPort..."
+            Start-Process -FilePath "npm.cmd" -ArgumentList @("run", "dev") -WorkingDirectory (Join-Path $root "camxora.com") -WindowStyle Hidden
+        } else {
+            Write-Host "web already listening on :$WebPort."
+        }
     }
 
     foreach ($key in $apiEnv.Keys) { Set-Item -Path "Env:$key" -Value $apiEnv[$key] }
