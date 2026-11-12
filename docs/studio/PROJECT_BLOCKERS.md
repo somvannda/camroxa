@@ -199,3 +199,18 @@ applies as designed. The download fallback test now skips when uploads are confi
 | ID | Was | Closed by |
 |---|---|---|
 | — | Studio charge died on `relation "plans" does not exist` | D-009 — studio ops price from `credit_pricing` |
+
+## B-008 - Local generations need provider keys in the pool
+
+**Blocks:** live /create and Studio generations on the local sandbox (the editor,
+exports and mocked specs are unaffected).
+
+**State:** the platform worker had never been started locally, so jobs sat in
+`job_queue` with no consumer; after starting `platform_api.worker` it failed with
+`No available API keys for provider 'suno'` and the task stayed `PENDING` with
+`external_task_id = NULL`. `api_key_entries` is empty in `camxora_pfm_sandbox`.
+
+**Unblock:** add a Suno provider key in the admin console (key pool) or seed a sandbox row,
+then restart the worker (`scripts/dev/studio-stack.ps1 -Stop` / `-All`). The Suno web
+session used for stems is separate: `suno_accounts` in `sunoapi` holds three active
+accounts, and `iamduke1987@gmail.com` has 3,450 credits (verified 2026-11-12).

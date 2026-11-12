@@ -42,6 +42,15 @@ pwsh -File scripts/dev/studio-stack.ps1 -Stop -All
 and whether moto is listening, which is the quickest way to spot a half-down stack —
 musicapi in particular can be down while everything else looks fine.
 
+## Generation needs provider keys
+
+The script also starts `platform_api.worker` (logs in `%TEMP%\camxora-platform-worker*.log`).
+Every `/create` generation is enqueued in `job_queue` and submitted by that worker. On a
+fresh sandbox, `api_key_entries` is empty, so the worker reports
+`No available API keys for provider 'suno'` and the task stays `PENDING` forever — the
+editor and exports are unaffected. Seed pool rows from the admin console (or a sandbox
+fixture) before expecting live generations.
+
 The script also starts an S3 stand-in (moto) on `:9000` and creates the
 `camxora-studio` bucket, because uploads (recorded takes, in-place bounce, Library
 uploads) need storage. Without it the API answers `storage_not_configured`, which is the

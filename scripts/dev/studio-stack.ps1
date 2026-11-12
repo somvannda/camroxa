@@ -44,6 +44,12 @@ function Stop-Port([int]$port, [string]$label) {
 if ($Stop) {
     Stop-Port $ApiPort "platform API"
     Stop-Port $MotoPort "moto"
+    Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like "*run-platform-worker*" } |
+        ForEach-Object {
+            Write-Host "Stopping platform worker (pid $($_.ProcessId))..."
+            if (-not $DryRun) { Stop-Process -Id $_.ProcessId -Force }
+        }
     if ($All) {
         Stop-Port $MusicPort "musicapi"
         Stop-Port $WebPort "web"
@@ -159,6 +165,16 @@ try {
     } catch {
         Write-Warning "API did not answer /health yet: $($_.Exception.Message). Check its window for migration output."
     }
+
+    # Generation jobs sit in `job_queue` until this worker drains them. It is not needed
+    # for the editor or exports, but without it "/create" generations stay pending — and
+    # without rows in `api_key_entries` for the provider the worker fails with
+    # "No available API keys for provider 'suno'".
+    $workerLog = Join-Path $env:TEMP "camxora-platform-worker.out.log"
+    $workerErr = Join-Path $env:TEMP "camxora-platform-worker.err.log"
+    Write-Host "Starting platform worker (logs: $workerLog)..."
+    Start-Process -FilePath "python" -ArgumentList @("scripts/dev/run-platform-worker.py") `
+        -WorkingDirectory $root -RedirectStandardOutput $workerLog -RedirectStandardError $workerErr -WindowStyle Hidden
 } finally {
     Pop-Location
 }
