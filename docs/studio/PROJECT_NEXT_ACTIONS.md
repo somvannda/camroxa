@@ -12,13 +12,12 @@ Resume here. **Execution order only** — the authoritative plans live elsewhere
 
 ## Phase 0 — Capture: **complete**
 
-65 screens: **63 DONE, 0 PART, 2 OPEN-by-design**, 83 images, spec through §101.
+65 screens: **64 DONE, 0 PART, 1 OPEN-by-design**, 84 images, spec through §102.
 
-The two `OPEN` rows (S60 moderation, S61 credits) are parked in
-`reference/CAPTURE_GAPS.md`; both need a genuine trigger, so they are opportunistic and
-not blocking. S30, S32 and S44 are closed (§97–§99, with S32 as a negative). The only
-pending evidence is an image of the §100 song-detail rail, which needs the Review pane
-visible.
+The one `OPEN` row (S61 credits) is parked in
+`reference/CAPTURE_GAPS.md`; it needs a genuine trigger, so it is opportunistic and
+not blocking. S30, S32, S44 and S60 are closed (§97–§102, with S32 as a negative); the §100
+detail-rail image is captured too. Only S61 remains.
 
 ## Phase 1 — W1 Studio entry: **DONE**
 

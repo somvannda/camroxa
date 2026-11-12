@@ -33,7 +33,7 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S49 | `screens/S49-export-menu.jpeg` | Export menu — `Full Song` / `Selected Time Range` / `Multitrack` |
 | S50 | `screens/S50-export-scopes-no-dialog.jpeg` | The three scopes, `Selected Time Range` disabled — choosing one starts the download, no dialog follows |
 | S59 | `screens/S59-no-conflict-after-reload.jpeg` | After two tabs edited the same project and one reloaded: no banner, no prompt |
-| S60 | `screens/S60-moderation.jpeg` | Create → Advanced with copyrighted lyrics: orange toast `Couldn't generate that.` / `Your lyrics contain copyrighted material. Please change it and try again.` (Â§102) |
+| S60 | `screens/S60-moderation.jpeg` | Create → Advanced with copyrighted lyrics: orange toast `Couldn't generate that.` / `Your lyrics contain copyrighted material. Please change it and try again.` (§102) |
 | S52 | `screens/S52-library-workspaces.jpeg` | Library home — 4 corpus tiles, workspaces with counts, studio projects with ages |
 | S53 | `screens/S53-library-songs.jpeg` | Songs in a workspace — date groups, `V6 COVER · key · BPM` tag strip |
 | S65 | `screens/S65-gate-767px.jpeg` | Desktop-only gate at **767 px** — the last width that gates |

@@ -166,10 +166,11 @@ not code:
    `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100`. Live generations additionally need the
    `musicapi` pool key and both Suno routing values (B-008); `scripts/dev/README.md` has the
    exact commands, including the cloudflared callback tunnel.
-3. **S60/S61** and the §100 detail-rail image. The reference session is solved:
+3. **S61** (no-credit account). The reference session is solved:
    `node scripts/dev/suno-session.cjs` decrypts `iamduke1987@gmail.com`'s stored `__client`
-   and opens Suno signed in. S60 still needs a deliberate policy-refused prompt and S61 an
-   account with zero credits — both are decisions, not missing setup.
+   and opens Suno signed in. S60 (lyrics moderation) is captured in
+   `screens/S60-moderation.jpeg` (§102); S61 needs an account with zero credits — a
+   decision, not missing setup.
 4. **Key/BPM rows** stay blocked on the corpus (D-016) — no field exists to show.
 
 Everything else in the documented gap list is built: the §81 column shipped as D-032, the

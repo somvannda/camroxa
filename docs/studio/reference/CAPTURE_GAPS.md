@@ -142,10 +142,11 @@ The lanes sit under the note lane and share its x-axis. Evidence from 2026-11-06
 left at **108 BPM**, a generated Bass track, one new default-named workspace). It is an
 `Untitled Project`, not `Drum & Bass Demo`.
 
-## If a next session wants to finish them
+## If a next session wants to finish it
 
-1. **S60 / S61** — only with a genuine trigger. Both would be captured as
-   "error taxonomy" evidence, not as a screen we can stage.
+1. **S61** — only with a genuine trigger. It would be captured as
+   "error taxonomy" evidence, not as a screen we can stage. S60 is captured
+   (`screens/S60-moderation.jpeg`, §102).
 
 ### Recording (G21) — observed with no input device
 
