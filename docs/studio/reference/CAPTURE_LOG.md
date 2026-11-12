@@ -257,3 +257,10 @@ The first attempt used headless Chromium and captured the same toast, but an unr
 auto-reload upsell covered the editor and later attempts hit a Cloudflare Turnstile
 challenge. Real Chrome with the automation flag disabled passed the challenge and
 produced the clean frame. The toast auto-dismisses, so capture immediately after Create.
+
+Backend confirmation: `GET /api/feed/?ids=899db45b-839e-4419-a613-d098b60f421a` (minted
+from the same `__client` cookie) returns the draft as `status: "error"` with
+`metadata.error_type: "moderation_failure"` and the exact toast copy as
+`metadata.error_message`; its `audio_url` is `/api/forbidden`. So the refusal is a real
+server-side moderation result, not a client-only warning. The failed generation stays in
+My Songs as a non-playable error row and can be trashed there.
