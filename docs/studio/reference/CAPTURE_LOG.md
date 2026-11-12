@@ -264,3 +264,21 @@ from the same `__client` cookie) returns the draft as `status: "error"` with
 `metadata.error_message`; its `audio_url` is `/api/forbidden`. So the refusal is a real
 server-side moderation result, not a client-only warning. The failed generation stays in
 My Songs as a non-playable error row and can be trashed there.
+
+## Run 8 - 2026-11-12, S61 insufficient credits
+
+| Item | Value |
+|---|---|
+| Route | `https://suno.com/create` |
+| Mode | authenticated as `kduke168@gmail.com` (paid test account, 50 credits) |
+| Method | Playwright with installed Chrome + persistent profile; Simple mode |
+| Spend | five generations at 10 credits each -> balance **0**, 100% of monthly credits used |
+| Trigger | one more **Create** submission |
+| Result | centred `You're out of credits` modal (auto-reload $6, Turn on auto-reload / Not now) plus `You're out of songs for the month. Buy more credits` toast |
+| Image | `screens/S61-insufficient-credits.jpeg` (1440 x 900) |
+| Remaining | none - 65/65 captured |
+
+The free-account route was tried first: `iamdukekh1987@gmail.com` (free, 100 credits) hit
+`Out of songs for now / You can create again in 10:25` at 50 credits. The free tier's
+daily song cap intercepts before the balance reaches zero, so a **paid** account was
+needed to reach the real no-credit state. The paid test account is now at 0 credits.

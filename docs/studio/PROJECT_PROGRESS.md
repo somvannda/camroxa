@@ -229,7 +229,7 @@ Playwright gate at the capture viewport (1689×1277). Targets live in
 | **Convolution (S44)** | IR slot with a 0–2 s preview, six-group/11-response picker, Mix/Gain/Pre/Width, and the picked impulse drives the convolver |
 | **Master chain (S48)** | selecting Main opens the Limiter card (Lookahead/Pre Gain/Attack/Release/Link) wired to the master bus; EQ/Compressor Amount links |
 | **Sidechain (S43)** | compressor routing menu with None and every track as Pre-fx/Post-fader; playback ducks the target from the chosen tap |
-| **Refusals (S60/S61)** | credit errors show Not enough credits + View plans; policy errors show a refusal card + Edit prompt. S60 reference is captured (screens/S60-moderation.jpeg, §102); S61 still needs a zero-credit account |
+| **Refusals (S60/S61)** | credit errors show Not enough credits + View plans; policy errors show a refusal card + Edit prompt. S60 (lyrics moderation) and S61 (insufficient credits) are both captured (§102, §103) |
 
 ### Verified
 

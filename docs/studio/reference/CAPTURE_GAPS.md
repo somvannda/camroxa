@@ -2,7 +2,7 @@
 
 Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-**Final state: 64 DONE · 0 PART · 1 OPEN** of 65. Spec through §102, 84 images.
+**Final state: 65 DONE · 0 PART · 0 OPEN** of 65. Spec through §103, 85 images.
 
 Everything `DONE` has an image and a measured section — including six captured
 **negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
@@ -15,46 +15,28 @@ Opening an `Untitled Project` from the library fixed both instantly, which is wh
 cleared S37, S29, S50/S51 and S45. **Any future capture involving export, generation,
 takes or plugins must start from a native project.**
 
-## The one that remains
+## All 65 captured
 
-| Screen | State | Exactly what is missing |
-|---|---|---|
-| S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
+S61 was the last open state. It is now captured on a paid test account whose last 50
+credits were spent to zero; the next Create submission opened the no-credit modal.
 
-### S61 - no-credit account (blocked 2026-11-12)
+### S61 - insufficient credits (DONE, §103)
 
-The local search for a genuinely empty Suno account came up empty:
+Captured on `https://suno.com/create` as `kduke168@gmail.com` after five generations took a
+50-credit paid balance to **0**. The next Create submission opened:
 
-- `sunoapi.suno_accounts` has exactly three rows - `acct-1`, `acct-2` and
-  `iamduke1987@gmail.com`. All three are `paid`; the paid account has ~3,190 credits, and
-  `acct-1`/`acct-2` cannot authenticate (`401` / "no active Clerk session"). Re-probing
-  both in a browser with their stored `__client` shows `/studio-welcome` (signed out).
-- No other database has a Suno web account. The zero-balance records that exist are
-  platform users (`collab+studio-gate@example.com`, `dev.studio@camxora.com`) and
-  `musicapi` API keys with 0 credits; neither can produce Suno's own no-credit screen.
-- The deploy key in `.deploy/camxora_deploy_ed25519` does reach the production VPS, so
-  the production `sunoapi.suno_accounts` was checked read-only: 10 rows, including four
-  free accounts, but **none at zero** (free accounts show 100 credits, the lowest paid
-  account 50, the highest 3,130). The live `COOKIE_ENCRYPTION_KEY` was then read from
-  `/opt/camxora/repo/musicapi/.env` on the VPS so a free account could be tested; the
-  value and the session were kept in memory and never printed.
+- a centred modal - **You're out of credits** - with `Monthly credits used 100%`, an
+  auto-reload amount of **$6**, **Turn on auto-reload** and **Not now**;
+- a bottom-left toast - **You're out of songs for the month. Buy more credits.**
 
-**Free-account exhaustion attempt (same day).** `iamdukekh1987@gmail.com` (free, 100
-credits) was driven through Create. Four generations took the balance to **50**, and then
-Suno replaced the composer with a modal reading:
+The composer and its prompt stay behind the modal; there is no inline field error. The
+state is recoverable only by buying/top-up or waiting for the monthly reset. Image:
+`screens/S61-insufficient-credits.jpeg` (1440 x 900).
 
-> **Out of songs for now**
-> You can create again in 10:25
-
-That is the free tier's **daily song cap**, not an insufficient-credit state: 50 credits
-were still on the account. The free tier's daily grant/cap always intercepts before the
-balance reaches zero, so a free account cannot produce S61. (The attempt spent 50 free
-credits; they replenish on the daily reset.)
-
-So S61 stays `OPEN` rather than being faked. It needs a **paid** account with zero
-credits - or a free account that is already at zero when the song cap is not the blocker -
-then the S60 method: open Create, submit a normal prompt, and capture the
-insufficient-credits state.
+The free-account route was tried first and does **not** work: `iamdukekh1987@gmail.com`
+(free, 100 credits) hit **Out of songs for now / You can create again in 10:25** at 50
+credits, because the free tier's daily song cap intercepts before the balance reaches
+zero. S61 therefore needs a paid account that can actually reach 0.
 
 ### S60 - lyrics moderation refusal (DONE, §102)
 

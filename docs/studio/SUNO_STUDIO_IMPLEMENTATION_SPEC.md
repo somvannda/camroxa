@@ -3773,4 +3773,29 @@ song list is unchanged.
 accepted, and reports through the global toast system. The copy names the cause
 (`copyrighted material`) and the fix (`change it and try again`), and the refusal is
 recoverable in place. This is the moderation half of the two state screens; the
-no-credit half stays open (S61).
+no-credit half is §103.
+
+## 103. S61 - insufficient credits `M`
+
+Capture: `screens/S61-insufficient-credits.jpeg`, 1440 x 900 at DPR 1. Reached on
+`https://suno.com/create` as a paid account (`kduke168@gmail.com`) after five generations
+took its last 50 credits to **0**; the next **Create** submission opened this state.
+
+**What it shows.** A centred modal over the unchanged composer:
+
+- Title: `You're out of credits`
+- `Monthly credits used` with a full pink bar and `100%`
+- Body: `Get back to creating. We'll top up your credits right away and automatically
+  when they run low. Uses your saved payment method - cancel anytime.`
+- `Auto-reload amount`, a `-` / `$6` / `+` stepper, `Better value than one-time credit
+  packs`
+- Primary `Turn on auto-reload`, secondary `Not now`, close `X`
+
+At the same time a bottom-left toast reads `You're out of songs for the month.` /
+`Buy more credits`.
+
+**What it establishes.** The no-credit gate is a **blocking modal with an auto-reload
+upsell**, plus a persistent buy-more toast, not a field-level validation error. The
+prompt is preserved behind the modal, so the user can dismiss it and keep the draft, but
+creation stays blocked until a top-up or the monthly reset. This is the credit half of
+the two state screens (S60 is §102).

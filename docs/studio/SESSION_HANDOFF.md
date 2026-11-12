@@ -13,11 +13,11 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
 | MusicAPI | `localhost:4003` |
 | Local account | `somvannda@gmail.com` / `StudioLocal!2026` |
 | UI login | needs `NEXT_PUBLIC_TURNSTILE_DISABLED=1` in `camxora.com/.env.local` |
-| Capture archive | `docs/studio/reference/screens/` — 84 images |
+| Capture archive | `docs/studio/reference/screens/` — 85 images |
 
 ## State in one paragraph
 
-Capture is **64/65 DONE / 1 OPEN** (S61 credits - needs an account with no credits). The gap analysis `G1`-`G49` is **done** except `G12`'s remaining
+Capture is **65/65 DONE / 0 OPEN**. The gap analysis `G1`-`G49` is **done** except `G12`'s remaining
 blocked halves, and the build has now shipped the last unblocked feature areas:
 time-selection editing (N-01), warp markers + the audio clip editor (S30), track
 bounce (N-06) and MIDI download (N-05). Every one of them is covered by unit tests and
@@ -63,7 +63,7 @@ Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pair
 | Live generation through the real provider | **verified live 2026-11-12**: `POST /web-music/generate` (V6) reached `SUCCESS` with both variants packaged and stored; the pool key routes `suno` at the local `musicapi`, so the Suno web account pays the credits. Encrypted playback was verified too (`licenses/play/{token}` → `206 audio/mpeg`) | B-008, `scripts/dev/README.md` |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
 | Stems tile/upload halves of G12 | stems **verified live** against a real generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
-| S61 capture | the reference session works (`node scripts/dev/suno-session.cjs` injects `iamduke1987@gmail.com`'s stored `__client`), but the no-credit screen needs an account with zero credits. S60 (lyrics moderation) is **captured** in `screens/S60-moderation.jpeg` (§102) | `reference/CAPTURE_GAPS.md` |
+| Captures | **65/65 complete** - S60 (lyrics moderation) is `screens/S60-moderation.jpeg` (§102) and S61 (insufficient credits) is `screens/S61-insufficient-credits.jpeg` (§103) | `reference/CAPTURE_GAPS.md` |
 | Song Radio + playlists UI | **already shipped in `origin/main`** — Song Radio is in `SongRowMenu` on Create and Library with a working radio endpoint, and Library has a full Playlists tab, detail view and composer. The old handoff list was stale on this point | `components/SongRowMenu.tsx`, `components/LibraryView.tsx` |
 
 ## Running the app (the part that costs time)
@@ -166,11 +166,9 @@ not code:
    `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100`. Live generations additionally need the
    `musicapi` pool key and both Suno routing values (B-008); `scripts/dev/README.md` has the
    exact commands, including the cloudflared callback tunnel.
-3. **S61** (no-credit account). The reference session is solved:
-   `node scripts/dev/suno-session.cjs` decrypts `iamduke1987@gmail.com`'s stored `__client`
-   and opens Suno signed in. S60 (lyrics moderation) is captured in
-   `screens/S60-moderation.jpeg` (§102); S61 needs an account with zero credits — a
-   decision, not missing setup.
+3. **Captures are complete (65/65).** S60 (lyrics moderation) and S61 (insufficient
+   credits) are recorded in §102/§103; the reference session remains available through
+   `node scripts/dev/suno-session.cjs` if another state ever needs capturing.
 4. **Key/BPM rows** stay blocked on the corpus (D-016) — no field exists to show.
 
 Everything else in the documented gap list is built: the §81 column shipped as D-032, the

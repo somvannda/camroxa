@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-**84 captures across the archive** (six extras with no manifest row). Every `DONE`
+**85 captures across the archive** (six extras with no manifest row). Every `DONE`
 row has at least one image; `PART` rows have a section and a partial image.
 
 ## Captured
@@ -121,3 +121,4 @@ before promoting them.
    frame, capture twice.
 5. Write this file with an editor or the write tool, **not** PowerShell
    `Set-Content -Encoding utf8` — it adds a BOM and mangles `—` and `§`.
+| S61 | `screens/S61-insufficient-credits.jpeg` | After spending the last 50 paid credits to zero: `You're out of credits` modal (100% used, auto-reload $6) and `You're out of songs for the month. Buy more credits` toast (§103) |

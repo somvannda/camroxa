@@ -12,12 +12,10 @@ Resume here. **Execution order only** — the authoritative plans live elsewhere
 
 ## Phase 0 — Capture: **complete**
 
-65 screens: **64 DONE, 0 PART, 1 OPEN-by-design**, 84 images, spec through §102.
+65 screens: **65 DONE, 0 PART, 0 OPEN**, 85 images, spec through §103.
 
-The one `OPEN` row (S61 credits) is parked in
-`reference/CAPTURE_GAPS.md`; it needs a genuine trigger, so it is opportunistic and
-not blocking. S30, S32, S44 and S60 are closed (§97–§102, with S32 as a negative); the §100
-detail-rail image is captured too. Only S61 remains.
+All rows are captured; `reference/CAPTURE_GAPS.md` is the evidence log. S30, S32, S44 and S60 are closed (§97–§102, with S32 as a negative); the §100
+detail-rail image is captured too; no captures remain.
 
 ## Phase 1 — W1 Studio entry: **DONE**
 

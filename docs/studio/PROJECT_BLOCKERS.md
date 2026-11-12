@@ -10,8 +10,9 @@ data (S44 IR library, S30 stretch + tempo change, S32 CC lane tabs). Screenshots
 need the OpenCode desktop window visible; the browser tool refuses to capture while it
 is minimised.
 
-**Remaining:** S61 (no-credit account) still needs a genuine trigger. S60 (lyrics
-moderation) is captured in `screens/S60-moderation.jpeg` (§102, 2026-11-12).
+**Remaining:** none - S60 (lyrics moderation) and S61 (insufficient credits) are
+captured in `screens/S60-moderation.jpeg` (§102) and
+`screens/S61-insufficient-credits.jpeg` (§103).
 See `reference/CAPTURE_GAPS.md` for the evidence captured and the parts still pending.
 
 ## B-002 — No Studio test harness
