@@ -16,7 +16,7 @@ import sys
 from dotenv import load_dotenv
 
 repo = Path(__file__).resolve().parents[2]
-env_file = os.environ.get("PLATFORM_ENV_FILE", str(repo / "platform_api" / ".env"))
+env_file = Path(os.environ.get("PLATFORM_ENV_FILE", repo / "platform_api" / ".env"))
 load_dotenv(env_file)
 
 # Running a script does not put the repo root on sys.path, and `platform_api` must be

@@ -59,14 +59,39 @@ Use it for the two uncaptured states (S60 moderation, S61 no credits). **S61 nee
 account with zero credits** — the verified account (`iamduke1987@gmail.com`) has 3,450 — and
 S60 needs a genuine policy refusal, so decide deliberately before sending one.
 
-## Generation needs provider keys
+## Live generations (local musicapi)
 
 The script also starts `platform_api.worker` (logs in `%TEMP%\camxora-platform-worker*.log`).
 Every `/create` generation is enqueued in `job_queue` and submitted by that worker. On a
 fresh sandbox, `api_key_entries` is empty, so the worker reports
 `No available API keys for provider 'suno'` and the task stays `PENDING` forever — the
-editor and exports are unaffected. Seed pool rows from the admin console (or a sandbox
-fixture) before expecting live generations.
+editor and exports are unaffected.
+
+To spend the Suno web account's credits instead of sunoapi.org, seed one pool row that
+points the Suno client at `musicapi`:
+
+```powershell
+$env:PLATFORM_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/camxora_pfm_sandbox"
+python scripts/dev/seed-local-suno-key.py --env-file "G:\Developments\Projects\Camxora\platform_api\.env"
+# -> updated <id> (local musicapi -> http://127.0.0.1:4003)
+```
+
+The key (`sk-test-123`) is a `musicapi` API key, encrypted with the platform's
+`PLATFORM_ENCRYPTION_MASTER_KEY`; the worker cannot decrypt it without that env file.
+
+Then export both routing values before starting the stack (the script passes them through):
+
+```powershell
+$env:PLATFORM_SUNO_API_BASE_URL = "http://127.0.0.1:4003"
+cloudflared tunnel --url http://127.0.0.1:8100 --no-autoupdate   # note the trycloudflare URL
+$env:PLATFORM_SUNO_CALLBACK_BASE_URL = "https://<name>.trycloudflare.com"
+pwsh -File scripts/dev/studio-stack.ps1 -All
+```
+
+`musicapi` rejects callback URLs that point at localhost, so the public tunnel is not
+optional for completion callbacks; without it submission fails with `400
+callback_url must not target a local host`. The pool key's `base_url` must match the
+configured `PLATFORM_SUNO_API_BASE_URL`, because key selection filters on that host.
 
 The script also starts an S3 stand-in (moto) on `:9000` and creates the
 `camxora-studio` bucket, because uploads (recorded takes, in-place bounce, Library

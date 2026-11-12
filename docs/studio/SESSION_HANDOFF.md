@@ -1,6 +1,6 @@
 # SESSION HANDOFF — read this first
 
-State as of **2026-11-11**. Start here; the long plans live beside this file.
+State as of **2026-11-12**. Start here; the long plans live beside this file.
 
 ## Where things are
 
@@ -61,9 +61,10 @@ Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pair
 | Item | Why | Where |
 |---|---|---|
 | Real-bucket verification of in-place bounce | **verified live 2026-11-12**: the sandbox API (started by `scripts/dev/studio-stack.ps1` with the Studio token) accepts uploads and the gated bounce case passes against it; storage only needs moto + the B-006 env | D-031, B-007 |
+| Live generation through the real provider | **verified live 2026-11-12**: `POST /web-music/generate` (V6) reached `SUCCESS` with both variants packaged and stored; the pool key routes `suno` at the local `musicapi`, so the Suno web account pays the credits | B-008, `scripts/dev/README.md` |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
-| Stems tile/upload halves of G12 | stems needs a genuinely generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
-| S60 / S61 captures | need a signed-in Suno reference session with a real moderation/no-credit trigger | `reference/CAPTURE_GAPS.md` |
+| Stems tile/upload halves of G12 | stems **verified live** against a real generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
+| S60 / S61 captures | the reference session works (`node scripts/dev/suno-session.cjs` injects `iamduke1987@gmail.com`'s stored `__client`), but S60 needs a genuine policy refusal and S61 needs an account with zero credits | `reference/CAPTURE_GAPS.md` |
 | Song Radio + playlists UI | **already shipped in `origin/main`** — Song Radio is in `SongRowMenu` on Create and Library with a working radio endpoint, and Library has a full Playlists tab, detail view and composer. The old handoff list was stale on this point | `components/SongRowMenu.tsx`, `components/LibraryView.tsx` |
 
 ## Running the app (the part that costs time)
@@ -151,23 +152,25 @@ not persisted (D-029).
 
 **The feature queue is empty.** Every row in `SUNO_STUDIO_FEATURE_INVENTORY.md` is
 implemented, every product page renders inside `SiteChrome` (only the editor, auth screens
-and `/health` are full-bleed), and every capture-backed area is covered by tests. What
-remains is environment access, not code:
+and `/health` are full-bleed), every capture-backed area is covered by tests, and a live
+generation has completed through the real provider. What remains is environment access,
+not code:
 
 1. **Ship the branch**: `gh auth login -h github.com`, then
    `gh pr create --base main --head feat/studio-rebuild`. The branch is main-synced and
-   green (135 browser tests / 2 skipped, 277 vitest, 3354 backend).
+   green (135 browser tests / 2 skipped, 277 vitest, 3361 backend).
 2. **Restart the dev stack safely**: `scripts/dev/studio-stack.ps1 -All` starts moto, the
-   bucket, platform API (sandbox DB, credits-only, Studio token from the environment),
-   musicapi and the web dev server; `-Status` shows which of the four is down. It refuses
-   to start the API without the token, and `musicapi/.env` already carries the matching
-   `STUDIO_INTERNAL_TOKEN`. Live uploads/bounce are verified through
-   `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100`.
-3. **S60/S61** and the §100 detail-rail image when a signed-in reference session is
-   available. The stored Clerk `__client` does not restore a browser session (the backend
-   can mint JWTs, the web app cannot); `musicapi`'s `npm run suno:login` can refresh it
-   only from a signed-in Chrome profile (Chrome must be closed) or a fresh email/password
-   sign-in.
+   bucket, platform API (sandbox DB, credits-only, Studio token from the environment), the
+   worker, musicapi and the web dev server; `-Status` shows which of the four is down. It
+   refuses to start the API without the token, and `musicapi/.env` already carries the
+   matching `STUDIO_INTERNAL_TOKEN`. Live uploads/bounce are verified through
+   `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100`. Live generations additionally need the
+   `musicapi` pool key and both Suno routing values (B-008); `scripts/dev/README.md` has the
+   exact commands, including the cloudflared callback tunnel.
+3. **S60/S61** and the §100 detail-rail image. The reference session is solved:
+   `node scripts/dev/suno-session.cjs` decrypts `iamduke1987@gmail.com`'s stored `__client`
+   and opens Suno signed in. S60 still needs a deliberate policy-refused prompt and S61 an
+   account with zero credits — both are decisions, not missing setup.
 4. **Key/BPM rows** stay blocked on the corpus (D-016) — no field exists to show.
 
 Everything else in the documented gap list is built: the §81 column shipped as D-032, the

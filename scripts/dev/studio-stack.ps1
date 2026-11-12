@@ -94,6 +94,20 @@ $apiEnv = @{
     PLATFORM_STUDIO_INTERNAL_TOKEN = $Token
 } + $motoEnv
 
+# Optional: route Suno provider calls at a local musicapi (matched pool keys carry the
+# same base_url). Without it the client uses PLATFORM_SUNO_API_BASE_URL from the env file.
+if ($env:PLATFORM_SUNO_API_BASE_URL) {
+    $apiEnv["PLATFORM_SUNO_API_BASE_URL"] = $env:PLATFORM_SUNO_API_BASE_URL
+}
+
+# A local musicapi rejects localhost callback URLs, so pointing Suno provider calls at
+# 127.0.0.1:4003 also needs a public callback host (e.g. a cloudflared quick tunnel to
+# :8100). Pass it the same way; without it the client sends https://localhost/... and
+# musicapi answers 400 "callback_url must not target a local host".
+if ($env:PLATFORM_SUNO_CALLBACK_BASE_URL) {
+    $apiEnv["PLATFORM_SUNO_CALLBACK_BASE_URL"] = $env:PLATFORM_SUNO_CALLBACK_BASE_URL
+}
+
 if ($DryRun) {
     Write-Host "Dry run - would start:"
     Write-Host "  moto server on :$MotoPort"
@@ -153,10 +167,14 @@ try {
     }
 
     foreach ($key in $apiEnv.Keys) { Set-Item -Path "Env:$key" -Value $apiEnv[$key] }
-    Write-Host "Starting platform API on :$ApiPort (sandbox DB, Studio token set)..."
+    $apiLog = Join-Path $env:TEMP "camxora-platform-api.out.log"
+    $apiErr = Join-Path $env:TEMP "camxora-platform-api.err.log"
+    Write-Host "Starting platform API on :$ApiPort (sandbox DB, Studio token set; logs: $apiLog)..."
+    # Redirect stdio: without it the child keeps the caller's console handles open and a
+    # non-interactive `powershell -File studio-stack.ps1` never returns.
     Start-Process -FilePath "python" `
         -ArgumentList @("-m", "uvicorn", "platform_api.main:app", "--host", "127.0.0.1", "--port", "$ApiPort", "--env-file", $EnvFile, "--log-level", "warning") `
-        -WorkingDirectory $root
+        -WorkingDirectory $root -RedirectStandardOutput $apiLog -RedirectStandardError $apiErr -WindowStyle Hidden
 
     Start-Sleep -Seconds 12
     try {
@@ -173,6 +191,8 @@ try {
     $workerLog = Join-Path $env:TEMP "camxora-platform-worker.out.log"
     $workerErr = Join-Path $env:TEMP "camxora-platform-worker.err.log"
     Write-Host "Starting platform worker (logs: $workerLog)..."
+    # The worker must read the same env file as the API (master key, provider secrets).
+    Set-Item -Path "Env:PLATFORM_ENV_FILE" -Value $EnvFile
     Start-Process -FilePath "python" -ArgumentList @("scripts/dev/run-platform-worker.py") `
         -WorkingDirectory $root -RedirectStandardOutput $workerLog -RedirectStandardError $workerErr -WindowStyle Hidden
 } finally {

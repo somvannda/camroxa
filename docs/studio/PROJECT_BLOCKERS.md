@@ -200,17 +200,42 @@ applies as designed. The download fallback test now skips when uploads are confi
 |---|---|---|
 | — | Studio charge died on `relation "plans" does not exist` | D-009 — studio ops price from `credit_pricing` |
 
-## B-008 - Local generations need provider keys in the pool
+## B-008 — Local generations need provider keys in the pool (RESOLVED LOCALLY 2026-11-12)
 
-**Blocks:** live /create and Studio generations on the local sandbox (the editor,
+**Blocks:** live `/create` and Studio generations on the local sandbox (the editor,
 exports and mocked specs are unaffected).
 
-**State:** the platform worker had never been started locally, so jobs sat in
-`job_queue` with no consumer; after starting `platform_api.worker` it failed with
+**Was:** the platform worker had never been started locally, so jobs sat in `job_queue`
+with no consumer; after starting `platform_api.worker` it failed with
 `No available API keys for provider 'suno'` and the task stayed `PENDING` with
-`external_task_id = NULL`. `api_key_entries` is empty in `camxora_pfm_sandbox`.
+`external_task_id = NULL`. `api_key_entries` was empty in `camxora_pfm_sandbox`.
 
-**Unblock:** add a Suno provider key in the admin console (key pool) or seed a sandbox row,
-then restart the worker (`scripts/dev/studio-stack.ps1 -Stop` / `-All`). The Suno web
-session used for stems is separate: `suno_accounts` in `sunoapi` holds three active
-accounts, and `iamduke1987@gmail.com` has 3,450 credits (verified 2026-11-12).
+**Resolved locally** by routing the `suno` pool at `musicapi`, which already fronts the
+Suno web accounts:
+
+```powershell
+# 1. one encrypted pool row: sk-test-123 -> http://127.0.0.1:4003
+python scripts/dev/seed-local-suno-key.py --env-file "G:\Developments\Projects\Camxora\platform_api\.env"
+
+# 2. public callback host (musicapi rejects localhost callbacks)
+cloudflared tunnel --url http://127.0.0.1:8100 --no-autoupdate
+
+# 3. start everything with both routing values
+$env:PLATFORM_SUNO_API_BASE_URL = "http://127.0.0.1:4003"
+$env:PLATFORM_SUNO_CALLBACK_BASE_URL = "https://<name>.trycloudflare.com"
+pwsh -File scripts/dev/studio-stack.ps1 -All
+```
+
+**Verified live 2026-11-12:** `POST /api/v3/web-music/generate` (V6, instrumental) reached
+`SUCCESS` as task `3899e06d-81e8-482b-9435-617cf3f38c18`; both variants report
+`package_status: ready` with a stream URL, and the bucket holds ~2.8 MB originals plus
+`application/vnd.camxora.audio` packaged objects for each. The Suno account
+`iamduke1987@gmail.com` dropped 3,450 → 3,350 across two V6 jobs (the platform run plus a
+direct `musicapi` probe), and the `sk-test-123` key dropped 873 → 853 (10 credits/job).
+Encrypted tracks answer `422 encrypted_playback_required` on the plain stream route by
+design; playback goes through the license/player flow.
+
+**Still true:** the Suno web session (`suno_accounts` in `sunoapi`) is a different
+credential from an sunoapi.org key. `iamduke1987@gmail.com` is the working account;
+`acct-1` and `acct-2` have stale Clerk sessions.
+
