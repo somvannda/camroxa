@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   extendedClipStart,
+  healClipEdits,
   resultAudioUrl,
   resultDuration,
   withTransformTake,
@@ -68,6 +69,30 @@ describe("withTransformTake", () => {
     const next = withTransformTake(clip, "Cover 1", { title: "nothing" }, "s3");
     expect(next.audioUrl).toBe("old.wav");
     expect(next.takes?.[0].audioUrl).toBeNull();
+  });
+});
+
+describe("healClipEdits", () => {
+  it("restores the pre-transform audio and clears the takes", () => {
+    const transformed = withTransformTake(
+      { id: "clip", audioUrl: "original.wav", duration: 8 },
+      "Cover",
+      { audio_url: "cover.wav", duration_seconds: 9 },
+      "s1"
+    );
+    expect(transformed.sourceAudioUrl).toBe("original.wav");
+    expect(transformed.sourceDuration).toBe(8);
+
+    const healed = healClipEdits(transformed);
+    expect(healed.audioUrl).toBe("original.wav");
+    expect(healed.duration).toBe(8);
+    expect(healed.takes).toEqual([]);
+    expect(healed.sourceAudioUrl).toBeNull();
+  });
+
+  it("leaves an untouched clip unchanged", () => {
+    const clip = { id: "clip", audioUrl: "a.wav", duration: 4 };
+    expect(healClipEdits(clip)).toBe(clip);
   });
 });
 

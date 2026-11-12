@@ -25,6 +25,7 @@ import {
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
+  healClipEdits,
   resultAudioUrl,
   resultDuration,
   withTransformTake,
@@ -201,6 +202,9 @@ type ClipLike = {
   instrument?: MidiInstrument;
   /** Custom wavetable id; overrides the oscillator type when present. */
   wavetableId?: string | null;
+  /** Pre-transform audio/duration, so Heal Edits can restore the original. */
+  sourceAudioUrl?: string | null;
+  sourceDuration?: number;
   /** Alternate takes (S29), newest first; the active one mirrors `audioUrl`. */
   takes?: Array<{
     id: string;
@@ -3089,6 +3093,21 @@ export function StudioEditorShell() {
    * string is explicit that the unit is the selection, so several clips keep their
    * timeline positions in a single file.
    */
+  /** Clip menu Heal Edits: restore the pre-transform audio and drop the take stack. */
+  function healClip(clipId: string) {
+    const data = currentData() as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      {
+        ...data,
+        lanes: lanes.map((clip) => (clip.id === clipId ? healClipEdits(clip) : clip)),
+      },
+      "healing the clip edits"
+    );
+    setTakeLanesOpen(false);
+    setExportToast("Edits healed to the original clip.");
+  }
+
   function downloadMidi(fallbackClipId: string) {
     setClipMenu(null);
     const ids = activeClipIds();
@@ -5636,8 +5655,16 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled
-                  title="Heal Edits is not built in this editor"
+                  disabled={!clip.sourceAudioUrl && !(clip.takes?.length ?? 0)}
+                  title={
+                    clip.sourceAudioUrl || clip.takes?.length
+                      ? "Restore the audio from before the generated edits"
+                      : "No generated edits to heal"
+                  }
+                  onClick={() => {
+                    healClip(clip.id);
+                    setClipMenu(null);
+                  }}
                 >
                   <Icon name="fa-wand-magic" /> Heal Edits
                 </button>

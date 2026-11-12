@@ -21,6 +21,10 @@ export type FixtureClip = {
   audioUrl?: string;
   /** Clip Settings snapshot (gain, pitch, speed, loop, reverse). */
   audio?: Record<string, unknown>;
+  /** Pre-transform audio/duration, so Heal Edits can restore it. */
+  sourceAudioUrl?: string | null;
+  sourceDuration?: number;
+  takes?: Array<{ id: string; title?: string; audioUrl?: string | null; active?: boolean }>;
   /** Optional notes, so the MIDI export path has a real clip to read. */
   midi?: {
     notes?: Array<{

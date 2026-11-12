@@ -32,6 +32,9 @@ export type TakeHost = {
   duration?: number;
   audioUrl?: string | null;
   takes?: ClipTake[];
+  /** Audio before the first transform, kept so "Heal Edits" can restore it. */
+  sourceAudioUrl?: string | null;
+  sourceDuration?: number;
 };
 
 /** The URL a result clip should actually play from. */
@@ -57,7 +60,7 @@ export function withTransformTake<T extends TakeHost>(
   label: string,
   result: OperationClipResult,
   stamp: string
-): T & { takes: ClipTake[] } {
+): T & { takes: ClipTake[]; sourceAudioUrl?: string | null; sourceDuration?: number } {
   const url = resultAudioUrl(result);
   const take: ClipTake = {
     id: `${clip.id}-${stamp}`,
@@ -69,9 +72,27 @@ export function withTransformTake<T extends TakeHost>(
   const prior = (clip.takes ?? []).map((entry) => ({ ...entry, active: false }));
   return {
     ...clip,
+    sourceAudioUrl: clip.sourceAudioUrl ?? clip.audioUrl ?? null,
+    sourceDuration: clip.sourceDuration ?? clip.duration,
     takes: [take, ...prior],
     ...(url ? { audioUrl: url } : {}),
-  } as T & { takes: ClipTake[] };
+  } as T & { takes: ClipTake[]; sourceAudioUrl?: string | null; sourceDuration?: number };
+}
+
+/**
+ * "Heal Edits": drop every generated take and restore the audio/duration the clip had
+ * before its first transform. Clips with no transform history are returned unchanged.
+ */
+export function healClipEdits<T extends TakeHost>(clip: T): T {
+  if (!clip.takes?.length && !clip.sourceAudioUrl) return clip;
+  return {
+    ...clip,
+    audioUrl: clip.sourceAudioUrl ?? clip.audioUrl,
+    duration: clip.sourceDuration ?? clip.duration,
+    takes: [],
+    sourceAudioUrl: null,
+    sourceDuration: undefined,
+  };
 }
 
 /** Where an extended clip starts: immediately after its source. */

@@ -158,6 +158,43 @@ test("Wavetable Designer saves a table and selects it on the MIDI clip", async (
   expect(midiClip.wavetableId).toBe(selected);
 });
 
+test("Heal Edits restores the clip audio from before a transform", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  const projectId = await createStudioProject(page, {
+    title: "Heal edits",
+    clips: [
+      {
+        id: "clip-heal",
+        title: "Heal",
+        start: 0,
+        duration: 8,
+        audioUrl: "/transformed.wav",
+        sourceAudioUrl: "/seed/demo-loop.wav",
+        sourceDuration: 4,
+        takes: [
+          { id: "take-1", title: "Cover", audioUrl: "/transformed.wav", active: true },
+        ],
+      },
+    ],
+  });
+
+  await page.locator(".se-clip").first().click({ button: "right" });
+  const heal = page.getByRole("menuitem", { name: /Heal Edits/ });
+  await expect(heal).toBeEnabled();
+  await heal.click();
+
+  await page.waitForTimeout(800);
+  const saved = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    return response.json();
+  }, projectId);
+  const clip = saved.data.lanes.find((item: { id: string }) => item.id === "clip-heal");
+  expect(clip.audioUrl).toBe("/seed/demo-loop.wav");
+  expect(clip.duration).toBe(4);
+  expect(clip.takes).toEqual([]);
+});
+
 test("Create Section stamps a ruler marker that survives a reload", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1689, height: 1277 });
