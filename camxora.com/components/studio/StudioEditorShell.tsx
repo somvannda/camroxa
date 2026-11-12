@@ -128,7 +128,12 @@ import {
 import { buildMidiFile } from "@/lib/studio-midi-file";
 import { parseMidiFile } from "@/lib/studio-midi-import";
 import { classifyStudioError } from "@/lib/studio-errors";
-import { scheduleVolumeAutomation, type AutomationPoint } from "@/lib/studio-automation";
+import {
+  schedulePanAutomation,
+  scheduleVolumeAutomation,
+  type AutomationLane,
+  type AutomationPoint,
+} from "@/lib/studio-automation";
 import { sanitizeSectionMarkers, type SectionMarker } from "@/lib/studio-markers";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
@@ -2622,6 +2627,7 @@ export function StudioEditorShell() {
   );
   /** Per-track gain nodes for the current playback (live volume / mute / solo). */
   const trackGainRef = useRef<Map<string, GainNode>>(new Map());
+  const trackPanRef = useRef<Map<string, StereoPannerNode>>(new Map());
   /** Master gain node for the current playback (live fader / main mute). */
   const masterGainRef = useRef<GainNode | null>(null);
   /** Structure of the chains the engine was built with (ids, plugins, bypass state). */
@@ -2984,9 +2990,11 @@ export function StudioEditorShell() {
         id: track.id,
         name: track.name,
         volume: track.volume,
+        pan: track.pan,
         muted: track.muted,
         solo: track.solo,
         volumeAutomation: track.volumeAutomation,
+        panAutomation: track.panAutomation,
         clipIds: track.clipIds,
       }));
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
@@ -3550,6 +3558,7 @@ export function StudioEditorShell() {
     chainStructureRef.current = chainMapStructure(chainsRef.current);
     chainRuntimeRef.current = new Map();
     trackGainRef.current = new Map();
+    trackPanRef.current = new Map();
     const context = audioRef.current?.ctx ?? new AudioContext();
     await context.resume();
 
@@ -3598,13 +3607,17 @@ export function StudioEditorShell() {
     /** Per-track duck gain, between the plugin chain and the fader. */
     const duckGains = new Map<string, GainNode>();
     const duckSpecs: Array<{ target: string; source: string; tap: "pre" | "post" }> = [];
-    function trackInput(trackId: string, volume: number): AudioNode {
+    function trackInput(trackId: string, volume: number, pan = 0): AudioNode {
       const existing = trackInputs.get(trackId);
       if (existing) return existing;
       const gain = context.createGain();
       gain.gain.value = Math.max(0, volume) / 100;
-      gain.connect(master);
+      const panner = context.createStereoPanner();
+      panner.pan.value = Math.max(-1, Math.min(1, pan / 100));
+      gain.connect(panner);
+      panner.connect(master);
       trackGainRef.current.set(trackId, gain);
+      trackPanRef.current.set(trackId, panner);
       const duckGain = context.createGain();
       duckGain.connect(gain);
       const entries = chainsRef.current[trackId] ?? [];
@@ -3637,16 +3650,28 @@ export function StudioEditorShell() {
     // sources are created, so the curve is already in place when playback starts.
     const anySoloAtStart = tracks.some((track) => track.solo);
     for (const track of tracks) {
-      if (!track.volumeAutomation?.length) continue;
+      const hasVolume = Boolean(track.volumeAutomation?.length);
+      const hasPan = Boolean(track.panAutomation?.length);
+      if (!hasVolume && !hasPan) continue;
       const audible = !track.muted && (!anySoloAtStart || track.solo);
-      trackInput(track.id, audible ? track.volume : 0);
+      trackInput(track.id, audible ? track.volume : 0, track.pan);
       const gain = trackGainRef.current.get(track.id);
-      if (gain && audible) {
-        scheduleVolumeAutomation(gain.gain, track.volumeAutomation, {
+      const panner = trackPanRef.current.get(track.id);
+      if (!audible) continue;
+      if (gain && hasVolume) {
+        scheduleVolumeAutomation(gain.gain, track.volumeAutomation!, {
           from,
           when: now,
           rate: playbackRate,
           fallback: track.volume,
+        });
+      }
+      if (panner && hasPan) {
+        schedulePanAutomation(panner.pan, track.panAutomation!, {
+          from,
+          when: now,
+          rate: playbackRate,
+          fallback: track.pan,
         });
       }
     }
@@ -3700,7 +3725,7 @@ export function StudioEditorShell() {
         source.loopStart = plan.loopStart;
         source.loopEnd = plan.loopEnd;
       }
-      const destination = trackInput(track?.id ?? clip.id, volume);
+      const destination = trackInput(track?.id ?? clip.id, volume, track?.pan ?? 0);
       // Volume is its own node so the fade automation stays a 0→1 ramp.
       let nodeInput: AudioNode = destination;
       if (settings.gainDb !== 0) {
@@ -3749,7 +3774,7 @@ export function StudioEditorShell() {
       const anySolo = tracks.some((item) => item.solo);
       const audible = track ? !track.muted && (!anySolo || track.solo) : true;
       const volume = audible ? (track?.volume ?? 80) : 0;
-      const destination = trackInput(track?.id ?? clip.id, volume);
+      const destination = trackInput(track?.id ?? clip.id, volume, track?.pan ?? 0);
       for (const note of notes) {
         const absolute = start + note.start;
         if (absolute + note.length <= from) continue;
@@ -3864,9 +3889,11 @@ export function StudioEditorShell() {
         id: track.id,
         name: track.name,
         volume: track.volume,
+        pan: track.pan,
         muted: track.muted,
         solo: track.solo,
         volumeAutomation: track.volumeAutomation,
+        panAutomation: track.panAutomation,
         clipIds: track.clipIds,
       }));
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
@@ -3961,9 +3988,11 @@ export function StudioEditorShell() {
         id: candidate.id,
         name: candidate.name,
         volume: candidate.volume,
+        pan: candidate.pan,
         muted: candidate.muted,
         solo: candidate.solo,
         volumeAutomation: candidate.volumeAutomation,
+        panAutomation: candidate.panAutomation,
         clipIds: candidate.clipIds,
       }));
       const wav = await renderMix(buffers, exportClips, exportTracks, {
@@ -5982,8 +6011,13 @@ export function StudioEditorShell() {
                 track={track}
                 duration={duration}
                 playhead={playhead}
-                onChange={(points: AutomationPoint[]) =>
-                  updateTrack(track.id, { volumeAutomation: points })
+                onChange={(lane: AutomationLane, points: AutomationPoint[]) =>
+                  updateTrack(
+                    track.id,
+                    lane === "volume"
+                      ? { volumeAutomation: points }
+                      : { panAutomation: points }
+                  )
                 }
                 onClose={() => setAutomationOpen(false)}
               />

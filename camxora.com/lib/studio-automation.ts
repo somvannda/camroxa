@@ -12,6 +12,8 @@ export type AutomationPoint = {
   value: number;
 };
 
+export type AutomationLane = "volume" | "pan";
+
 export function sanitizeAutomation(
   input: unknown,
   min: number,
@@ -64,6 +66,33 @@ export function automationValueAt(
  * to, and `rate` the audition-speed factor. Values are normalised from the track's
  * 0-100 scale to the gain node's 0-1 scale.
  */
+/**
+ * Schedule a pan curve on a StereoPannerNode's `pan` parameter. Values are the
+ * track's -100..100 scale, normalised to the node's -1..1 range.
+ */
+export function schedulePanAutomation(
+  param: AudioParam,
+  points: AutomationPoint[],
+  {
+    from,
+    when,
+    rate = 1,
+    fallback,
+  }: { from: number; when: number; rate?: number; fallback: number }
+): void {
+  if (points.length === 0) return;
+  const scale = (value: number) => Math.max(-1, Math.min(1, value / 100));
+  param.cancelScheduledValues(when);
+  param.setValueAtTime(scale(automationValueAt(points, from, fallback)), when);
+  for (const point of points) {
+    if (point.time <= from) continue;
+    param.linearRampToValueAtTime(
+      scale(point.value),
+      when + (point.time - from) / Math.max(0.1, rate)
+    );
+  }
+}
+
 export function scheduleVolumeAutomation(
   param: AudioParam,
   points: AutomationPoint[],

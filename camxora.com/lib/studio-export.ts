@@ -10,6 +10,7 @@
  */
 
 import {
+  schedulePanAutomation,
   scheduleVolumeAutomation,
   type AutomationPoint,
 } from "@/lib/studio-automation";
@@ -58,10 +59,13 @@ export type ExportTrack = {
   id: string;
   name?: string;
   volume?: number;
+  pan?: number;
   muted?: boolean;
   solo?: boolean;
   /** Volume automation points in absolute timeline seconds. */
   volumeAutomation?: AutomationPoint[];
+  /** Pan automation points (-100..100) in absolute timeline seconds. */
+  panAutomation?: AutomationPoint[];
   clipIds: string[];
 };
 
@@ -157,14 +161,19 @@ export async function renderMix(
   // effect is heard once rather than duplicated per clip.
   const trackNodes = new Map<string, AudioNode>();
   const trackGains = new Map<string, GainNode>();
+  const trackPans = new Map<string, StereoPannerNode>();
   const anySolo = tracks.some((track) => track.solo);
-  function trackInput(trackId: string, volume: number): AudioNode {
+  function trackInput(trackId: string, volume: number, pan = 0): AudioNode {
     const existing = trackNodes.get(trackId);
     if (existing) return existing;
     const gain = context.createGain();
     gain.gain.value = Math.max(0, volume) / 100;
+    const panner = context.createStereoPanner();
+    panner.pan.value = Math.max(-1, Math.min(1, pan / 100));
     trackGains.set(trackId, gain);
-    gain.connect(master);
+    trackPans.set(trackId, panner);
+    gain.connect(panner);
+    panner.connect(master);
     const entries = options.chains?.[trackId] ?? [];
     if (entries.length > 0) {
       const chain = buildPluginChain(context, entries);
@@ -177,16 +186,28 @@ export async function renderMix(
   }
 
   for (const track of tracks) {
-    if (!track.volumeAutomation?.length) continue;
+    const hasVolume = Boolean(track.volumeAutomation?.length);
+    const hasPan = Boolean(track.panAutomation?.length);
+    if (!hasVolume && !hasPan) continue;
     const audible = !track.muted && (!anySolo || track.solo);
-    trackInput(track.id, audible ? track.volume ?? 80 : 0);
+    trackInput(track.id, audible ? track.volume ?? 80 : 0, track.pan ?? 0);
+    if (!audible) continue;
     const gain = trackGains.get(track.id);
-    if (gain && audible) {
-      scheduleVolumeAutomation(gain.gain, track.volumeAutomation, {
+    const panner = trackPans.get(track.id);
+    if (gain && hasVolume) {
+      scheduleVolumeAutomation(gain.gain, track.volumeAutomation!, {
         from,
         when: 0,
         rate: 1,
         fallback: track.volume ?? 80,
+      });
+    }
+    if (panner && hasPan) {
+      schedulePanAutomation(panner.pan, track.panAutomation!, {
+        from,
+        when: 0,
+        rate: 1,
+        fallback: track.pan ?? 0,
       });
     }
   }
@@ -228,7 +249,11 @@ export async function renderMix(
       source.loopStart = plan.loopStart;
       source.loopEnd = plan.loopEnd;
     }
-    const trackInputNode = trackInput(track?.id ?? clip.id, track?.volume ?? 80);
+    const trackInputNode = trackInput(
+      track?.id ?? clip.id,
+      track?.volume ?? 80,
+      track?.pan ?? 0
+    );
     const fadeIn = Math.min(clip.fadeIn ?? 0, duration);
     // Volume is a separate node so the fade automation stays a clean 0→1 ramp.
     let nodeInput: AudioNode = trackInputNode;
@@ -269,7 +294,11 @@ export async function renderMix(
     const track = tracks.find((item) => item.clipIds.includes(clip.id));
     const audible = track ? !track.muted && (!anySolo || track.solo) : true;
     if (!audible) continue;
-    const destination = trackInput(track?.id ?? clip.id, track?.volume ?? 80);
+    const destination = trackInput(
+      track?.id ?? clip.id,
+      track?.volume ?? 80,
+      track?.pan ?? 0
+    );
     const bend = sanitizePoints(clip.midi?.bend, -1, 1);
     const mod = sanitizePoints(clip.midi?.mod, 0, 1);
     for (const note of notes) {

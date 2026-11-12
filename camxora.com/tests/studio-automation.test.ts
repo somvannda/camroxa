@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   automationValueAt,
   sanitizeAutomation,
+  schedulePanAutomation,
   scheduleVolumeAutomation,
 } from "@/lib/studio-automation";
 
@@ -55,5 +56,25 @@ describe("track automation", () => {
     expect(param.cancelScheduledValues).toHaveBeenCalledWith(10);
     expect(param.setValueAtTime).toHaveBeenCalledWith(0.2, 10);
     expect(param.linearRampToValueAtTime).toHaveBeenCalledWith(0.8, 14);
+  });
+
+  it("schedules pan ramps on the -1..1 scale", () => {
+    const param = {
+      cancelScheduledValues: vi.fn(),
+      setValueAtTime: vi.fn(),
+      linearRampToValueAtTime: vi.fn(),
+    } as unknown as AudioParam;
+
+    schedulePanAutomation(
+      param,
+      [
+        { id: "a", time: 1, value: -50 },
+        { id: "b", time: 5, value: 50 },
+      ],
+      { from: 1, when: 0, rate: 1, fallback: 0 }
+    );
+
+    expect(param.setValueAtTime).toHaveBeenCalledWith(-0.5, 0);
+    expect(param.linearRampToValueAtTime).toHaveBeenCalledWith(0.5, 4);
   });
 });

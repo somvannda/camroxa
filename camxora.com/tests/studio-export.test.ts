@@ -19,6 +19,15 @@ class FakeNode {
 function fakeOfflineContext() {
   return {
     createGain: () => Object.assign(new FakeNode(), { gain: { value: 1 } }),
+    createStereoPanner: () =>
+      Object.assign(new FakeNode(), {
+        pan: {
+          value: 0,
+          cancelScheduledValues: () => {},
+          setValueAtTime: () => {},
+          linearRampToValueAtTime: () => {},
+        },
+      }),
     createBufferSource: () => {
       const node = new FakeNode() as FakeNode & { buffer: unknown; start: () => void };
       node.buffer = null;

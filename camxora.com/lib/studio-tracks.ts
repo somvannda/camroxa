@@ -40,6 +40,8 @@ export type StudioTrack = {
   chain: PluginChainEntry[];
   /** Volume automation points (0-100) in timeline seconds. */
   volumeAutomation?: AutomationPoint[];
+  /** Pan automation points (-100..100) in timeline seconds. */
+  panAutomation?: AutomationPoint[];
   /** Ids of the clips that live on this track. */
   clipIds: string[];
 };
@@ -123,6 +125,7 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
       groupId: typeof candidate.groupId === "string" ? candidate.groupId : null,
       chain: [], // chains are sanitised separately, by track id
       volumeAutomation: sanitizeAutomation(candidate.volumeAutomation, 0, 100),
+      panAutomation: sanitizeAutomation(candidate.panAutomation, -100, 100),
       clipIds,
     });
   }

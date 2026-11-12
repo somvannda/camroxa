@@ -4830,6 +4830,7 @@ html{color-scheme:dark}
 .se-automation{flex:none;border-top:1px solid rgba(255,255,255,.06);background:#101012;padding:8px 12px 10px}
 .se-automation-head{display:flex;align-items:center;gap:8px;height:28px;font-size:12px;color:#f4f5fb}
 .se-automation-head span{flex:1;display:flex;gap:6px;align-items:center;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.se-automation-tabs{display:flex;gap:4px;flex:none}
 .se-automation-lane{position:relative;height:72px;margin-top:6px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);cursor:crosshair;overflow:hidden}
 .se-automation-lane svg{position:absolute;inset:0;width:100%;height:100%}
 .se-automation-line{fill:none;stroke:hsl(var(--accent));stroke-width:1.5;vector-effect:non-scaling-stroke}

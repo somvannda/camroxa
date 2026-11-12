@@ -44,16 +44,25 @@ test("track Automation draws a volume point that persists", async ({ page }) => 
 
   await page.locator(".se-clip").first().click();
   await page.locator(".se-foot").getByRole("button", { name: "Automation" }).click();
-  const lane = page.getByRole("group", { name: "Volume automation lane" });
-  await expect(lane).toBeVisible();
-  await lane.click({ position: { x: 180, y: 30 } });
-  await expect(page.locator(".se-automation-point")).toHaveCount(1);
+  const panel = page.getByRole("region", { name: "Track automation" });
+  const volumeLane = panel.getByRole("group", { name: "Volume automation lane" });
+  await expect(volumeLane).toBeVisible();
+  await volumeLane.click({ position: { x: 180, y: 30 } });
+  await expect(panel.locator(".se-automation-point")).toHaveCount(1);
+
+  await panel.getByRole("button", { name: "Pan" }).click();
+  const panLane = panel.getByRole("group", { name: "Pan automation lane" });
+  await panLane.click({ position: { x: 320, y: 40 } });
+  await expect(panel.locator(".se-automation-point")).toHaveCount(1);
 
   await page.reload();
   await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
   await page.locator(".se-clip").first().click();
   await page.locator(".se-foot").getByRole("button", { name: "Automation" }).click();
-  await expect(page.locator(".se-automation-point")).toHaveCount(1);
+  const reloaded = page.getByRole("region", { name: "Track automation" });
+  await expect(reloaded.locator(".se-automation-point")).toHaveCount(1);
+  await reloaded.getByRole("button", { name: "Pan" }).click();
+  await expect(reloaded.locator(".se-automation-point")).toHaveCount(1);
 });
 
 test("Create Section stamps a ruler marker that survives a reload", async ({ page }) => {
