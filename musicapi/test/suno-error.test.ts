@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { SunoHttpError, isCapacityExhaustionError, isRetryableSunoError } = await import("../src/sunoError.js");
-
+const { SunoHttpError, isCapacityExhaustionError, isCaptchaUnavailableError, isRetryableSunoError } =
+  await import("../src/sunoError.js");
 test("402/429/5xx SunoHttpError are retryable", () => {
   assert.equal(isRetryableSunoError(new SunoHttpError("x", 402)), true);
   assert.equal(isRetryableSunoError(new SunoHttpError("x", 429)), true);
@@ -60,6 +60,28 @@ test("capacity exhaustion covers pool selection and provider 402", () => {
     isCapacityExhaustionError(new Error('generate/v2 failed (402): {"status_code": 402}')),
     true,
   );
+});
+
+test("a full 2Captcha queue is capacity exhaustion, not a terminal failure", () => {
+  const err = new Error(
+    "captcha unavailable: 2Captcha queue is full (ERROR_NO_SLOT_AVAILABLE); retry later",
+  );
+  err.name = "CaptchaUnavailableError";
+
+  assert.equal(isCaptchaUnavailableError(err), true);
+  // Retryable on another account (harmless) and, more importantly, deferrable.
+  assert.equal(isRetryableSunoError(err), true);
+  assert.equal(isCapacityExhaustionError(err), true);
+});
+
+test("a plain no-slot message is also treated as capacity", () => {
+  assert.equal(
+    isCapacityExhaustionError(
+      new Error("Captcha Queue exceeded maximum capacity. Please wait a few moments..."),
+    ),
+    true,
+  );
+  assert.equal(isCaptchaUnavailableError(new Error("invalid model name")), false);
 });
 
 test("content-policy and server errors are not capacity exhaustion", () => {

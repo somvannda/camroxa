@@ -21,3 +21,4 @@ import "./promo.test.js";
 import "./clips.test.js";
 import "./suno-error.test.js";
 import "./poll-clips.test.js";
+import "./captcha.test.js";

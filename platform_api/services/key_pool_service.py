@@ -10,6 +10,7 @@ Requirements: 2.1, 2.2, 2.3, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Callable, Awaitable
@@ -52,8 +53,53 @@ def is_billing_exhausted_response(response_body: str | None) -> bool:
     return any(marker in text for marker in _BILLING_EXHAUSTED_MARKERS)
 
 
-def _alert_provider_out_of_credits(provider: str, response_body: str | None) -> None:
-    """Best-effort ops ping when a provider's upstream account is empty."""
+# 401 bodies are not uniform. ``invalid_key`` and ``missing_credentials`` will
+# not heal with time (the key was revoked, or the upstream account has no
+# credentials for the requested provider), so parking them for a cooldown only
+# burns rotation slots. An account in arrears also answers 401, but a top-up
+# does fix it, so that stays on the recoverable path.
+_AUTH_MISSING_CREDENTIALS_MARKERS = (
+    "no active credentials for provider",
+    "no credentials for provider",
+    "missing credentials",
+)
+_AUTH_INVALID_KEY_MARKERS = (
+    "auth_002",
+    "invalid api key",
+    "invalid_api_key",
+    "api key is invalid",
+    "invalid key",
+    "key is invalid",
+    "revoked",
+)
+
+# How long execute_with_failover is willing to sleep for the soonest parked
+# key to finish its cooldown before giving the request back to the job queue.
+KEY_POOL_MAX_COOLDOWN_WAIT_SECONDS = 65.0
+
+# Dedup window for "this provider has no selectable keys" ops alerts. One burst
+# of parallel songs must not turn into dozens of Telegram messages.
+KEY_POOL_ALERT_COOLDOWN_SECONDS = 900
+
+
+def classify_auth_rejection(response_body: str | None) -> str:
+    """Classify a 401 body so the pool can park, disable, or fail fast.
+
+    Returns one of ``missing_credentials``, ``invalid_key``, ``billing`` or
+    ``unknown``.
+    """
+    text = str(response_body or "").lower()
+    if any(marker in text for marker in _AUTH_MISSING_CREDENTIALS_MARKERS):
+        return "missing_credentials"
+    if any(marker in text for marker in _AUTH_INVALID_KEY_MARKERS):
+        return "invalid_key"
+    if any(marker in text for marker in _BILLING_EXHAUSTED_MARKERS):
+        return "billing"
+    return "unknown"
+
+
+def _schedule_ops_alert(message: str) -> None:
+    """Best-effort ops alert; never blocks or fails the caller."""
 
     async def _send() -> None:
         try:
@@ -64,21 +110,24 @@ def _alert_provider_out_of_credits(provider: str, response_body: str | None) -> 
             service = get_telegram_ops_service()
             if service is None:
                 return
-            summary = (response_body or "Insufficient credits.")[:200]
-            await service.send_html(
-                f"⚠️ <b>{provider}</b> is out of credits.\n"
-                f"<code>{summary}</code>\n"
-                "Generation fails until the upstream account is topped up."
-            )
+            await service.send_html(message)
         except Exception:
-            logger.debug("Credit-exhaustion ops alert failed", exc_info=True)
+            logger.debug("Key-pool ops alert failed", exc_info=True)
 
     try:
-        import asyncio
-
         asyncio.get_running_loop().create_task(_send())
     except RuntimeError:
-        logger.warning("No running loop for credit-exhaustion alert (%s)", provider)
+        logger.warning("No running loop for key-pool ops alert")
+
+
+def _alert_provider_out_of_credits(provider: str, response_body: str | None) -> None:
+    """Best-effort ops ping when a provider's upstream account is empty."""
+    summary = (response_body or "Insufficient credits.")[:200]
+    _schedule_ops_alert(
+        f"⚠️ <b>{provider}</b> is out of credits.\n"
+        f"<code>{summary}</code>\n"
+        "Generation fails until the upstream account is topped up."
+    )
 
 
 def _effective_suno_base_url(configured: str | None) -> str:
@@ -151,6 +200,7 @@ class KeyPoolService:
             # Build status counts for the error
             all_keys = await self._repo.list_by_provider(provider)
             status_counts = self._compute_status_counts(all_keys)
+            await self._alert_no_active_keys(provider, status_counts)
             raise NoAvailableKeysError(provider=provider, status_counts=status_counts)
 
         strategy = config.selection_strategy
@@ -585,25 +635,34 @@ class KeyPoolService:
         with the decrypted key value. On HTTP 429 or 402/403 billing errors,
         marks the key appropriately and retries with the next available key.
 
-        Max 3 total attempts (initial + 2 retries). If all attempts fail,
-        the last exception is re-raised.
+        The retry budget covers the whole pool — ``max(max_retries,
+        len(active_keys))`` — so a 4-key pool always tries all 4 keys. When every
+        key is parked for a short cooldown, the request waits for the soonest
+        recovery (bounded by ``KEY_POOL_MAX_COOLDOWN_WAIT_SECONDS``) instead of
+        failing immediately. If all attempts fail, the last exception is
+        re-raised.
 
         Args:
             provider: The provider identifier (e.g. "suno", "fal").
             execute_fn: An async callable that takes an API key string and
                         performs the HTTP request. Should raise
                         httpx.HTTPStatusError on non-2xx responses.
-            max_retries: Maximum total attempts (default 3).
+            max_retries: Minimum total attempts (default 3). The pool size wins
+                         when it is larger.
 
         Returns:
             The response from a successful execute_fn call.
 
         Raises:
-            NoAvailableKeysError: If no active keys are available.
+            NoAvailableKeysError: If no active keys are available and none is
+                about to finish its cooldown.
             httpx.HTTPStatusError: If all retry attempts fail (re-raises last).
         """
         tried_key_ids: set[UUID] = set()
         last_exception: BaseException | None = None
+        attempt = 0
+        max_attempts = max_retries
+        waited_for_cooldown = False
 
         # Resolve the active host once per execution: only keys tagged with that
         # host are eligible, and the Suno client reads it to pick its base URL.
@@ -611,17 +670,37 @@ class KeyPoolService:
         if is_suno_compatible_provider(provider):
             set_active_suno_base_url(_effective_suno_base_url(config.base_url))
 
-        for attempt in range(max_retries):
+        while attempt < max_attempts:
             # Get active keys excluding already-tried ones
             active_keys = await self._get_active_keys(provider, base_url=config.base_url)
+            if not tried_key_ids:
+                # Cover the whole pool: a retry budget smaller than the pool
+                # leaves healthy keys untried when earlier keys reject.
+                max_attempts = max(max_retries, len(active_keys))
             available_keys = [k for k in active_keys if k.id not in tried_key_ids]
 
             if not available_keys:
-                # No more keys to try
+                if attempt == 0 and not waited_for_cooldown:
+                    # Every key may be parked for a short cooldown. Waiting for
+                    # the soonest recovery is better than failing a burst of
+                    # parallel songs that all hit the same parked pool.
+                    wait_seconds = await self._earliest_cooldown_wait(provider)
+                    if wait_seconds is not None:
+                        waited_for_cooldown = True
+                        if wait_seconds > 0:
+                            logger.info(
+                                "All '%s' keys are cooling down; waiting %.1fs for "
+                                "the soonest recovery instead of failing.",
+                                provider,
+                                wait_seconds,
+                            )
+                            await asyncio.sleep(wait_seconds + 0.1)
+                        continue
                 if attempt == 0:
-                    # No active keys at all
+                    # No active keys at all and none about to recover
                     all_keys = await self._repo.list_by_provider(provider)
                     status_counts = self._compute_status_counts(all_keys)
+                    await self._alert_no_active_keys(provider, status_counts)
                     raise NoAvailableKeysError(
                         provider=provider, status_counts=status_counts
                     )
@@ -636,6 +715,7 @@ class KeyPoolService:
                 selected = await self._select_priority(provider, available_keys)
 
             tried_key_ids.add(selected.id)
+            attempt += 1
             decrypted_key = self._encryption.decrypt(selected.encrypted_key_value)
 
             try:
@@ -680,8 +760,8 @@ class KeyPoolService:
                     logger.warning(
                         "Failover [attempt %d/%d] key %s (%s) rate-limited (429) "
                         "for provider '%s'. Retrying with next key.",
-                        attempt + 1,
-                        max_retries,
+                        attempt,
+                        max_attempts,
                         selected.id,
                         selected.label,
                         provider,
@@ -694,28 +774,29 @@ class KeyPoolService:
                     logger.warning(
                         "Failover [attempt %d/%d] key %s (%s) exhausted (%d) "
                         "for provider '%s'. Retrying with next key.",
-                        attempt + 1,
-                        max_retries,
+                        attempt,
+                        max_attempts,
                         selected.id,
                         selected.label,
                         status_code,
                         provider,
                     )
                 elif status_code == 401:
-                    # The provider rejected this key. A 401 is key-specific in
-                    # practice (revoked key, or an account in arrears until it
-                    # is topped up), so park it for one cooldown and try the
-                    # next key instead of failing the whole request.
+                    # A 401 is key-specific in practice: the key was revoked, the
+                    # account has no credentials for the requested provider, or it
+                    # is in arrears until topped up. Park only the recoverable
+                    # cases; disable keys that cannot heal on their own.
                     await self._handle_auth_failed(
                         provider, selected, status_code, response_body
                     )
                     logger.warning(
-                        "Failover [attempt %d/%d] key %s (%s) rejected (401) "
+                        "Failover [attempt %d/%d] key %s (%s) rejected (401, %s) "
                         "for provider '%s'. Retrying with next key.",
-                        attempt + 1,
-                        max_retries,
+                        attempt,
+                        max_attempts,
                         selected.id,
                         selected.label,
+                        classify_auth_rejection(response_body),
                         provider,
                     )
                 else:
@@ -886,16 +967,54 @@ class KeyPoolService:
         status_code: int,
         response_body: str,
     ) -> None:
-        """Park a key the provider rejected with 401 and rotate to the next one.
+        """Park or disable a key the provider rejected with 401.
 
-        A 401 is key-specific in practice: the key was revoked, or the upstream
-        account is in arrears and rejects calls until it is topped up. Marking
-        it ``exhausted`` would remove it permanently (exhausted keys never
-        auto-recover), so park it as ``rate_limited`` for one provider cooldown
-        instead. When the cooldown expires the key is retried and a topped-up
-        account rejoins the pool without an admin action.
+        A 401 is key-specific in practice. The response body separates the
+        cases:
+
+        * ``invalid_key`` / ``missing_credentials`` — the key was revoked, or the
+          upstream account has no credentials for the requested provider. These
+          never heal on their own, so the key is disabled instead of parked;
+          an admin re-enables it after fixing the key or account.
+        * ``billing`` — the account is in arrears and rejects calls until it is
+          topped up. Park it as ``rate_limited`` for one provider cooldown so it
+          rejoins the pool automatically once credited (``exhausted`` never
+          auto-recovers, so it must not be used here).
+        * ``unknown`` — park as ``rate_limited`` and retry after the cooldown.
         """
         previous_status = key_entry.status
+        reason = classify_auth_rejection(response_body)
+
+        if reason in {"invalid_key", "missing_credentials"}:
+            key_entry.status = KeyStatus.DISABLED
+            await self._repo.update(key_entry)
+            await self._repo.increment_counters(key_entry.id, success=False)
+            await self._record_status_event(
+                key_entry=key_entry,
+                provider=provider,
+                previous_status=previous_status,
+                new_status=KeyStatus.DISABLED,
+                trigger_reason=f"auth_rejected_{status_code}_{reason}",
+                http_status_code=status_code,
+                response_summary=response_body[:200] if response_body else None,
+            )
+            await self._invalidate_cache(provider)
+            logger.error(
+                "Disabled key %s (%s) for provider '%s': upstream rejected it "
+                "with %d (%s). Fix the key/account and re-enable it in Key Pool.",
+                key_entry.id,
+                key_entry.label,
+                provider,
+                status_code,
+                reason,
+            )
+            _schedule_ops_alert(
+                f"🔑 <b>{provider}</b> key <code>{key_entry.label}</code> disabled: "
+                f"upstream returned {status_code} ({reason}).\n"
+                "Fix the key/account and re-enable it in Key Pool."
+            )
+            return
+
         config = await self._get_provider_config(provider)
 
         key_entry.status = KeyStatus.RATE_LIMITED
@@ -912,7 +1031,7 @@ class KeyPoolService:
             provider=provider,
             previous_status=previous_status,
             new_status=KeyStatus.RATE_LIMITED,
-            trigger_reason=f"auth_rejected_{status_code}",
+            trigger_reason=f"auth_rejected_{status_code}_{reason}",
             http_status_code=status_code,
             response_summary=response_body[:200] if response_body else None,
         )
@@ -1309,6 +1428,80 @@ class KeyPoolService:
                 return untagged
             return tagged
         return keys
+
+    async def _alert_no_active_keys(
+        self, provider: str, status_counts: dict[str, int]
+    ) -> None:
+        """Ops alert when the pool has zero selectable keys.
+
+        Deduped in Redis so a burst of parallel songs produces one alert per
+        ``KEY_POOL_ALERT_COOLDOWN_SECONDS`` instead of a message storm.
+        """
+        dedup_key = f"key_pool:{provider}:alert:no_active"
+        try:
+            if await self._redis.exists(dedup_key):
+                return
+            await self._redis.set(dedup_key, "1", ex=KEY_POOL_ALERT_COOLDOWN_SECONDS)
+        except Exception:
+            logger.debug(
+                "Could not dedupe no-active-keys alert (provider=%s)",
+                provider,
+                exc_info=True,
+            )
+
+        counts = ", ".join(
+            f"{name}={count}" for name, count in status_counts.items() if count
+        )
+        _schedule_ops_alert(
+            f"🚨 <b>{provider}</b> key pool has no active keys"
+            + (f" ({counts})" if counts else "")
+            + ".\nGeneration fails until a key is re-enabled or topped up."
+        )
+
+    async def _earliest_cooldown_wait(self, provider: str) -> float | None:
+        """Seconds to wait for the soonest parked key to rejoin the pool.
+
+        Returns ``None`` when waiting cannot help (no parked keys, no predictable
+        expiry, or the soonest recovery is beyond
+        ``KEY_POOL_MAX_COOLDOWN_WAIT_SECONDS``). Returns ``0.0`` when a parked
+        key's cooldown has already elapsed and recovery is due immediately.
+        """
+        all_keys = await self._repo.list_by_provider(provider)
+        rate_limited = [k for k in all_keys if k.status == KeyStatus.RATE_LIMITED]
+        if not rate_limited:
+            return None
+
+        soonest: float | None = None
+        for key in rate_limited:
+            cooldown_key = f"key_pool:{provider}:cooldown:{key.id}"
+            try:
+                ttl = await self._redis.ttl(cooldown_key)
+            except Exception:
+                logger.debug(
+                    "Could not read cooldown TTL for key %s (provider=%s)",
+                    key.id,
+                    provider,
+                    exc_info=True,
+                )
+                return None
+            if ttl is None:
+                continue
+            if ttl == -2:
+                # Cooldown key is gone — _check_and_recover_keys can promote it now.
+                return 0.0
+            if ttl == -1:
+                # Key exists with no expiry; recovery is not time-based.
+                continue
+            if ttl == 0:
+                # Expired but not reaped yet: clear it so recovery can promote
+                # the key on the next pass.
+                await self._redis.delete(cooldown_key)
+                return 0.0
+            soonest = float(ttl) if soonest is None else min(soonest, float(ttl))
+
+        if soonest is None or soonest > KEY_POOL_MAX_COOLDOWN_WAIT_SECONDS:
+            return None
+        return soonest
 
     async def _get_provider_config(self, provider: str) -> KeyPoolConfig:
         """Get provider configuration, returning defaults if not configured.

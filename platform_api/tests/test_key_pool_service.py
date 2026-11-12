@@ -20,6 +20,8 @@ from platform_api.models.enums import KeyStatus, SelectionStrategy
 from platform_api.services.key_encryption import KeyEncryption
 from platform_api.services.key_pool_service import KeyPoolService
 
+import platform_api.services.key_pool_service as key_pool_module
+
 
 # ---------------------------------------------------------------------------
 # Fake Redis for unit-testing without a real server
@@ -33,6 +35,7 @@ class FakeRedis:
         self._store: dict[str, str] = {}
         self._zsets: dict[str, dict[str, float]] = {}
         self._sets: dict[str, set[str]] = {}
+        self._ttls: dict[str, int] = {}
 
     async def incr(self, key: str) -> int:
         current = int(self._store.get(key, "0"))
@@ -52,6 +55,7 @@ class FakeRedis:
             if key in self._sets:
                 del self._sets[key]
                 count += 1
+            self._ttls.pop(key, None)
         return count
 
     async def exists(self, key: str) -> int:
@@ -62,9 +66,18 @@ class FakeRedis:
 
     async def set(self, key: str, value: str, **kwargs: Any) -> None:
         self._store[key] = value
+        if kwargs.get("ex") is not None:
+            self._ttls[key] = int(kwargs["ex"])
 
     async def setex(self, key: str, seconds: int, value: str) -> None:
         self._store[key] = value
+        self._ttls[key] = int(seconds)
+
+    async def ttl(self, key: str) -> int:
+        """Return -2 when absent, -1 when present without an expiry."""
+        if key not in self._store:
+            return -2
+        return self._ttls.get(key, -1)
 
     async def scan(self, cursor: int = 0, match: str | None = None, count: int = 100) -> tuple[int, list[str]]:
         """Simulate Redis SCAN with pattern matching."""
@@ -808,19 +821,44 @@ class TestExecuteWithFailover:
         assert fake_repo._entries[key_a.id].status == KeyStatus.EXHAUSTED
 
     @pytest.mark.asyncio
-    async def test_401_rotates_to_next_key_and_parks_temporarily(
+    async def test_401_billing_parks_key_and_rotates(
         self,
         service: KeyPoolService,
         fake_repo: FakeKeyPoolRepository,
         encryption: KeyEncryption,
         fake_redis: FakeRedis,
     ) -> None:
-        """A 401 parks the rejected key for a cooldown and tries the next key.
+        """A 401 for an account in arrears parks the key and tries the next one.
 
-        Out-of-balance provider accounts answer 401 (SLAI returns AUTH_002), so
-        the key must stay recoverable: ``exhausted`` never auto-recovers and a
-        top-up would not bring it back.
+        A top-up fixes the account, so the key must stay recoverable:
+        ``exhausted`` never auto-recovers and a top-up would not bring it back.
         """
+        key_a = _make_entry(encryption, provider="slai", label="key-A", priority=10, key_value="value-A")
+        key_b = _make_entry(encryption, provider="slai", label="key-B", priority=20, key_value="value-B")
+        fake_repo._entries[key_a.id] = key_a
+        fake_repo._entries[key_b.id] = key_b
+
+        async def execute_fn(key: str) -> dict[str, str]:
+            if key == "value-A":
+                raise _make_http_status_error(401, "Insufficient balance for this account")
+            return {"result": "ok", "key_used": key}
+
+        result = await service.execute_with_failover("slai", execute_fn)
+
+        assert result == {"result": "ok", "key_used": "value-B"}
+        assert fake_repo._entries[key_a.id].status == KeyStatus.RATE_LIMITED
+        assert fake_repo._entries[key_b.id].status == KeyStatus.ACTIVE
+        assert f"key_pool:slai:cooldown:{key_a.id}" in fake_redis._store
+
+    @pytest.mark.asyncio
+    async def test_401_invalid_key_disables_it_and_rotates(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        fake_redis: FakeRedis,
+    ) -> None:
+        """A revoked/invalid key is disabled instead of burning rotation slots."""
         key_a = _make_entry(encryption, provider="slai", label="key-A", priority=10, key_value="value-A")
         key_b = _make_entry(encryption, provider="slai", label="key-B", priority=20, key_value="value-B")
         fake_repo._entries[key_a.id] = key_a
@@ -834,9 +872,104 @@ class TestExecuteWithFailover:
         result = await service.execute_with_failover("slai", execute_fn)
 
         assert result == {"result": "ok", "key_used": "value-B"}
-        assert fake_repo._entries[key_a.id].status == KeyStatus.RATE_LIMITED
-        assert fake_repo._entries[key_b.id].status == KeyStatus.ACTIVE
-        assert f"key_pool:slai:cooldown:{key_a.id}" in fake_redis._store
+        assert fake_repo._entries[key_a.id].status == KeyStatus.DISABLED
+        assert f"key_pool:slai:cooldown:{key_a.id}" not in fake_redis._store
+
+    @pytest.mark.asyncio
+    async def test_401_missing_upstream_credentials_disables_key(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+    ) -> None:
+        """An account with no credentials for the requested provider cannot heal."""
+        key = _make_entry(encryption, provider="slai", label="key-A", key_value="value-A")
+        fake_repo._entries[key.id] = key
+
+        async def execute_fn(_key: str) -> dict[str, str]:
+            raise _make_http_status_error(
+                401, "No active credentials for provider: xiaomi-mimo."
+            )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await service.execute_with_failover("slai", execute_fn)
+
+        assert fake_repo._entries[key.id].status == KeyStatus.DISABLED
+
+    @pytest.mark.asyncio
+    async def test_401_invalid_key_sends_disable_alert(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Auto-disabling a key must page ops, with the key label included."""
+        alerts: list[str] = []
+        monkeypatch.setattr(key_pool_module, "_schedule_ops_alert", alerts.append)
+
+        key_a = _make_entry(encryption, provider="slai", label="key-A", priority=10, key_value="value-A")
+        key_b = _make_entry(encryption, provider="slai", label="key-B", priority=20, key_value="value-B")
+        fake_repo._entries[key_a.id] = key_a
+        fake_repo._entries[key_b.id] = key_b
+
+        async def execute_fn(key: str) -> dict[str, str]:
+            if key == "value-A":
+                raise _make_http_status_error(401, "AUTH_002 Invalid API key")
+            return {"result": "ok", "key_used": key}
+
+        await service.execute_with_failover("slai", execute_fn)
+
+        assert len(alerts) == 1
+        assert "disabled" in alerts[0]
+        assert "key-A" in alerts[0]
+
+    @pytest.mark.asyncio
+    async def test_no_active_keys_alerts_once_within_cooldown(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An empty pool pages once, not once per parallel song."""
+        alerts: list[str] = []
+        monkeypatch.setattr(key_pool_module, "_schedule_ops_alert", alerts.append)
+
+        disabled = _make_entry(encryption, label="disabled", status=KeyStatus.DISABLED)
+        fake_repo._entries[disabled.id] = disabled
+
+        async def execute_fn(_key: str) -> dict[str, str]:
+            return {"result": "ok"}
+
+        for _ in range(3):
+            with pytest.raises(NoAvailableKeysError):
+                await service.execute_with_failover("suno", execute_fn)
+
+        assert len(alerts) == 1
+        assert "no active keys" in alerts[0]
+        assert "disabled=1" in alerts[0]
+
+    @pytest.mark.asyncio
+    async def test_get_key_alerts_when_pool_is_empty(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The direct get_key path must alert too, not just failover."""
+        alerts: list[str] = []
+        monkeypatch.setattr(key_pool_module, "_schedule_ops_alert", alerts.append)
+
+        disabled = _make_entry(encryption, label="disabled", status=KeyStatus.DISABLED)
+        fake_repo._entries[disabled.id] = disabled
+
+        with pytest.raises(NoAvailableKeysError):
+            await service.get_key("suno")
+
+        assert len(alerts) == 1
+        assert "no active keys" in alerts[0]
 
     @pytest.mark.asyncio
     async def test_wrapped_401_rotates_to_next_key(
@@ -861,7 +994,7 @@ class TestExecuteWithFailover:
                     details={
                         "provider": "slai",
                         "status_code": 401,
-                        "reason": "AUTH_002 Invalid API key",
+                        "reason": "Insufficient balance",
                     },
                 )
             return {"result": "ok", "key_used": key}
@@ -894,10 +1027,10 @@ class TestExecuteWithFailover:
         assert fake_repo._entries[key.id].status == KeyStatus.ACTIVE
 
     @pytest.mark.asyncio
-    async def test_max_3_retries_then_raises(
+    async def test_tries_every_pool_key_before_giving_up(
         self, service: KeyPoolService, fake_repo: FakeKeyPoolRepository, encryption: KeyEncryption
     ) -> None:
-        """Should attempt max 3 times then re-raise the last error."""
+        """The retry budget covers the pool: 5 keys means 5 attempts, not 3."""
         keys = [
             _make_entry(encryption, label=f"key-{i}", priority=i + 1, key_value=f"value-{i}")
             for i in range(5)
@@ -915,8 +1048,31 @@ class TestExecuteWithFailover:
         with pytest.raises(httpx.HTTPStatusError) as exc_info:
             await service.execute_with_failover("suno", execute_fn)
 
-        assert call_count == 3  # Max 3 attempts
+        assert call_count == 5  # Every key in the pool was tried
         assert exc_info.value.response.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_waits_for_soonest_cooldown_then_succeeds(
+        self,
+        service: KeyPoolService,
+        fake_repo: FakeKeyPoolRepository,
+        encryption: KeyEncryption,
+        fake_redis: FakeRedis,
+    ) -> None:
+        """When every key is parked for a short cooldown, wait instead of failing."""
+        key = _make_entry(encryption, label="key-A", key_value="value-A", status=KeyStatus.RATE_LIMITED)
+        fake_repo._entries[key.id] = key
+        cooldown_key = f"key_pool:suno:cooldown:{key.id}"
+        fake_redis._store[cooldown_key] = "1"
+        fake_redis._ttls[cooldown_key] = 0  # cooldown elapsed, not reaped yet
+
+        async def execute_fn(_key: str) -> dict[str, str]:
+            return {"result": "ok"}
+
+        result = await service.execute_with_failover("suno", execute_fn)
+
+        assert result == {"result": "ok"}
+        assert fake_repo._entries[key.id].status == KeyStatus.ACTIVE
 
     @pytest.mark.asyncio
     async def test_no_active_keys_raises_immediately(
@@ -1914,3 +2070,16 @@ def test_billing_marker_only_matches_credit_bodies() -> None:
     assert is_billing_exhausted_response("Insufficient Credits")
     assert not is_billing_exhausted_response('{"error":"rate limit exceeded"}')
     assert not is_billing_exhausted_response("")
+
+
+def test_classify_auth_rejection_separates_permanent_from_recoverable() -> None:
+    from platform_api.services.key_pool_service import classify_auth_rejection
+
+    assert classify_auth_rejection("AUTH_002 Invalid API key") == "invalid_key"
+    assert (
+        classify_auth_rejection("No active credentials for provider: xiaomi-mimo.")
+        == "missing_credentials"
+    )
+    assert classify_auth_rejection('{"error":"Insufficient balance"}') == "billing"
+    assert classify_auth_rejection("unauthorized") == "unknown"
+    assert classify_auth_rejection("") == "unknown"
