@@ -14,6 +14,8 @@ import {
 import { StudioSongDetail } from "@/components/studio/StudioSongDetail";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
+import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
+import { LIMITER_DEFAULTS } from "@/lib/studio-master-bus";
 import type { StudioTrack } from "@/lib/studio-tracks";
 import type { StudioProject, StudioStem, StudioUpload } from "@/lib/studio-api";
 import { addStudioProjectComment, listStudioProjectComments } from "@/lib/studio-api";
@@ -1128,6 +1130,42 @@ describe("StudioTrackPanel", () => {
     await user.click(screen.getByRole("button", { name: /Add new track/ }));
     await user.click(screen.getAllByRole("menuitem")[2]);
     expect(onAddUploadTrack).toHaveBeenCalledOnce();
+  });
+});
+
+describe("StudioMasterDock", () => {
+  it("applies a master preset to the limiter and its links", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <StudioMasterDock
+        chain={[
+          {
+            id: "limiter",
+            type: "limiter",
+            enabled: true,
+            params: { ...LIMITER_DEFAULTS },
+          },
+        ]}
+        onChange={onChange}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Default" }));
+    await user.click(screen.getByRole("menuitem", { name: "Warm" }));
+
+    const next = onChange.mock.calls[0][0] as Array<{
+      type?: string;
+      params?: Record<string, number>;
+      amount?: number;
+    }>;
+    expect(next.find((entry) => entry.type === "limiter")?.params).toMatchObject({
+      preGain: 1.5,
+      attack: 15,
+      release: 140,
+    });
+    expect(next.find((entry) => entry.type === "eq")?.amount).toBe(0.6);
+    expect(next.find((entry) => entry.type === "compressor")?.amount).toBe(0.25);
   });
 });
 
