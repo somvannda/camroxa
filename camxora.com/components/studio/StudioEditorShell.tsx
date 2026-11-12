@@ -9,6 +9,8 @@ import { getStudioProject, StudioConflictError, updateStudioProject, type Studio
 import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import {
+  createStudioPersona,
+  listStudioPersonas,
   requestStudioCover,
   requestStudioExtend,
   requestStudioRemaster,
@@ -18,6 +20,7 @@ import {
   requestStudioReplaceSection,
   getStudioPricing,
   type StudioOperation,
+  type StudioPersona,
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
@@ -282,6 +285,19 @@ export function StudioEditorShell() {
   const [transformValue, setTransformValue] = useState("");
   /** Credit price for one clip transform, from the pricing endpoint (never hard-coded). */
   const [transformCost, setTransformCost] = useState<number | null>(null);
+  /** Personas for Replace Section (GEN-025/026): list, creation and the selected id. */
+  const [personas, setPersonas] = useState<StudioPersona[]>([]);
+  const [personaBusy, setPersonaBusy] = useState(false);
+  const [personaError, setPersonaError] = useState("");
+  const [personaName, setPersonaName] = useState("");
+  const [selectedPersonaId, setSelectedPersonaId] = useState("");
+
+  useEffect(() => {
+    if (transformPrompt?.kind !== "replace") return;
+    void refreshPersonas();
+    // The list only needs refreshing when the Replace Section dialog opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transformPrompt?.kind]);
 
   useEffect(() => {
     let active = true;
@@ -2254,6 +2270,74 @@ export function StudioEditorShell() {
     }
   }
 
+  async function refreshPersonas() {
+    setPersonaBusy(true);
+    setPersonaError("");
+    try {
+      const next = await listStudioPersonas();
+      setPersonas(next);
+      setSelectedPersonaId((current) => {
+        const stillComplete =
+          current &&
+          next.some(
+            (persona) => persona.provider_persona_id === current && persona.status === "complete"
+          );
+        if (stillComplete) return current;
+        return (
+          next.find(
+            (persona) => persona.status === "complete" && persona.provider_persona_id
+          )?.provider_persona_id ?? ""
+        );
+      });
+    } catch (cause) {
+      setPersonaError(cause instanceof Error ? cause.message : "Could not load personas.");
+    } finally {
+      setPersonaBusy(false);
+    }
+  }
+
+  async function createPersonaForClip(clipId: string) {
+    if (personaBusy) return;
+    const clip = clipsRef.current.find((entry) => entry.id === clipId) as
+      | {
+          id: string;
+          title?: string;
+          songId?: string;
+          style?: string;
+          variant?: string;
+          offset?: number;
+          duration?: number;
+        }
+      | undefined;
+    if (!clip?.songId) {
+      setPersonaError("This clip has no source generation to build a persona from.");
+      return;
+    }
+    const name = personaName.trim() || `${clip.title ?? "Clip"} persona`;
+    setPersonaBusy(true);
+    setPersonaError("");
+    try {
+      const created = await createStudioPersona({
+        taskId: clip.songId,
+        name,
+        styles: clip.style,
+        description: `Created from ${clip.title ?? "clip"}`,
+        vocalStartS: clip.offset ?? 0,
+        vocalEndS: (clip.offset ?? 0) + (clip.duration ?? 0),
+        variant: clip.variant ?? "ok",
+      });
+      setPersonas((current) => [created, ...current]);
+      setPersonaName("");
+      setExportToast("Persona submitted; it will appear when ready.");
+      window.setTimeout(() => void refreshPersonas(), 8000);
+      window.setTimeout(() => void refreshPersonas(), 20000);
+    } catch (cause) {
+      setPersonaError(cause instanceof Error ? cause.message : "Could not create persona.");
+    } finally {
+      setPersonaBusy(false);
+    }
+  }
+
   /**
    * Replace Section (GEN-018): the N-01 time range is rewritten with new lyrics. The
    * provider returns the whole arrangement with that span re-sung, so it lands as a take
@@ -2291,6 +2375,7 @@ export function StudioEditorShell() {
         startS: Math.max(0, offset + (from - clipStart)),
         endS: Math.max(0, offset + (to - clipStart)),
         lyrics,
+        personaId: selectedPersonaId || null,
         projectId,
       });
       const current = await pollOperation(operation);
@@ -5556,6 +5641,48 @@ export function StudioEditorShell() {
                       }}
                     />
                   )}
+                  {kind === "replace" ? (
+                    <div className="se-dialog-note">
+                      <label htmlFor="se-persona-select">Persona (optional)</label>
+                      <select
+                        id="se-persona-select"
+                        className="se-pill"
+                        value={selectedPersonaId}
+                        disabled={personaBusy}
+                        onChange={(event) => setSelectedPersonaId(event.target.value)}
+                      >
+                        <option value="">No persona</option>
+                        {personas
+                          .filter(
+                            (persona) =>
+                              persona.status === "complete" && persona.provider_persona_id
+                          )
+                          .map((persona) => (
+                            <option key={persona.id} value={persona.provider_persona_id ?? ""}>
+                              {persona.name}
+                            </option>
+                          ))}
+                      </select>
+                      <div className="se-dialog-row">
+                        <input
+                          className="se-pill"
+                          value={personaName}
+                          placeholder="New persona name"
+                          maxLength={80}
+                          onChange={(event) => setPersonaName(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="se-pill"
+                          disabled={personaBusy}
+                          onClick={() => void createPersonaForClip(transformPrompt.clipId)}
+                        >
+                          {personaBusy ? "Working..." : "Create"}
+                        </button>
+                      </div>
+                      {personaError ? <small>{personaError}</small> : null}
+                    </div>
+                  ) : null}
                   {transformCost != null ? (
                     <p className="se-dialog-note">This spends {transformCost} credits.</p>
                   ) : null}
