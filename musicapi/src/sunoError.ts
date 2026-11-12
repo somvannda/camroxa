@@ -94,7 +94,7 @@ export function isInsufficientCreditsError(err: unknown): boolean {
 export function isCaptchaUnavailableError(err: unknown): boolean {
   if (err instanceof Error && err.name === "CaptchaUnavailableError") return true;
   const message = err instanceof Error ? err.message : String(err);
-  return /captcha unavailable|ERROR_NO_SLOT_AVAILABLE|no slot available|captcha[^.]{0,80}maximum capacity|captcha queue (?:is )?full/i.test(
+  return /captcha unavailable|ERROR_NO_SLOT_AVAILABLE|no slot available|captcha[^.]{0,80}maximum capacity|captcha queue (?:is )?full|TWOCAPTCHA_KEY (?:is )?(?:not )?(?:set|required|missing)|captcha solver (?:is )?(?:not )?(?:configured|available)|no captcha solver/i.test(
     message,
   );
 }

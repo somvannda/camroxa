@@ -74,8 +74,18 @@ test("a full 2Captcha queue is capacity exhaustion, not a terminal failure", () 
   assert.equal(isCapacityExhaustionError(err), true);
 });
 
-test("a plain no-slot message is also treated as capacity", () => {
-  assert.equal(
+test("a missing 2Captcha key is transient capacity, not a song failure", () => {
+  const err = new Error("captcha required: TWOCAPTCHA_KEY is required to solve captcha.");
+  assert.equal(isCaptchaUnavailableError(err), true);
+  assert.equal(isCapacityExhaustionError(err), true);
+});
+
+test("an unrelated captcha error is not treated as capacity", () => {
+  const err = new Error("captcha required: ERROR_CAPTCHA_UNSOLVABLE");
+  assert.equal(isCaptchaUnavailableError(err), false);
+});
+
+test("a plain no-slot message is also treated as capacity", () => {  assert.equal(
     isCapacityExhaustionError(
       new Error("Captcha Queue exceeded maximum capacity. Please wait a few moments..."),
     ),
