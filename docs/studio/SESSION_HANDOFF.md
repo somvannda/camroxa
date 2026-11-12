@@ -59,7 +59,7 @@ Decisions recorded: **D-029** (two selection types), **D-030** (warp marker pair
 
 | Item | Why | Where |
 |---|---|---|
-| Real-bucket verification of in-place bounce | **verified 2026-11-11** against moto with a disposable database (recipe in B-007); the running sandbox API still has no storage, so the fallback is what executes locally | D-031, B-007 |
+| Real-bucket verification of in-place bounce | **verified live 2026-11-12**: the sandbox API (started by `scripts/dev/studio-stack.ps1` with the Studio token) accepts uploads and the gated bounce case passes against it; storage only needs moto + the B-006 env | D-031, B-007 |
 | Key/BPM rows in the library rail | the corpus carries neither (`suno_tasks` has no fields, provider metadata had none) | G12, D-016 |
 | Stems tile/upload halves of G12 | stems needs a genuinely generated clip (B-005); uploads need a bucket (B-006, moto env works locally) | B-005, B-006 |
 | S60 / S61 captures | need a signed-in Suno reference session with a real moderation/no-credit trigger | `reference/CAPTURE_GAPS.md` |

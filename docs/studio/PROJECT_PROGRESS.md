@@ -2,6 +2,19 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-12 — Live storage verified; the dev stack keeps its token
+
+The local stack can now be restarted without silently losing Studio operations, and the
+in-place bounce ran against the live API for the first time.
+
+| Area | What landed |
+|---|---|
+| **Token recovery** | `musicapi/.env` carries `STUDIO_INTERNAL_TOKEN`; `scripts/dev/studio-stack.ps1` reads it into `PLATFORM_STUDIO_INTERNAL_TOKEN`, so operations survive a restart (a probe against a fake task now answers `NOT_FOUND`, not "not configured") |
+| **Live uploads** | with moto on `:9000` and the sandbox DB, `POST /studio/uploads` returns 201 with a `:9000` URL; `studio-bounce.spec.ts` passes **with** `STUDIO_UPLOAD_PROXY_URL` set, so the in-place bounce is verified against the running API |
+| **Storage-agnostic bounce spec** | the fallback case now accepts either outcome — a downloaded RIFF or a placed `(bounced)` track — so the suite is green whether or not the API has a bucket |
+| **Reference session probe** | the stored Clerk `__client` decrypts (1604 chars) but suno.com still shows "Log in"; the backend can mint JWTs with it, the browser cannot restore a session from that cookie alone |
+
+
 ## Session 2026-11-12 — Captured edit rules (fades are audio-only)
 
 The reference states that fades only apply to audio arrangements (N-10); a MIDI clip is

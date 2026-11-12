@@ -756,10 +756,10 @@ one clip at the source track's span, and mute the source. Recorded in
 now uploads the render through `uploadStudioAudio` and places it as a `<track> (bounced)`
 track at the source span with the source muted; one undo step covers both. When the upload
 refuses (storage not configured), it falls back to downloading the WAV and the toast says
-why. The in-place path is verified twice: against a stubbed upload in
-`studio-bounce.spec.ts`, and against a real moto bucket with a disposable database
-(B-007) — `POST /studio/uploads` returned 201 and the placed clip points at the stored
-object.
+why. The in-place path is verified three times: against a stubbed upload in
+`studio-bounce.spec.ts`, against a real moto bucket with a disposable database, and
+**2026-11-12 against the live sandbox API** (`POST /studio/uploads` → 201, placed clip
+points at the moto object; see B-007).
 
 ## D-032 - Clip settings run through one playback planner
 

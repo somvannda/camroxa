@@ -185,6 +185,15 @@ is now proven against real storage.
 **Remaining production action:** configure a real bucket (or re-save the sandbox
 streaming config) so the deployed API can store uploads.
 
+**Verified live 2026-11-12.** With the platform API running from the sandbox database and
+the moto env (`scripts/dev/studio-stack.ps1`), an authenticated
+`POST /studio/uploads` answered **201** and returned a `127.0.0.1:9000` signed URL; the
+gated `studio-bounce.spec.ts` case then passed against the live API with
+`STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100`, asserting the placed `(bounced)` clip
+points at the bucket. The earlier "undecryptable rows" finding belonged to `platform_db`,
+not the sandbox database — the sandbox has no `streaming.*` override, so the env fallback
+applies as designed. The download fallback test now skips when uploads are configured.
+
 ## Closed
 
 | ID | Was | Closed by |

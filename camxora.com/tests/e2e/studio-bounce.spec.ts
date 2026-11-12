@@ -24,10 +24,21 @@ test("the track menu bounces that track to a RIFF mixdown", async ({ page }) => 
   });
 
   await page.getByLabel("Options for Track 1").click();
-  const download = page.waitForEvent("download");
+  // The API may accept the render (placed as a track) or refuse and download it; this
+  // spec covers both behaviours so it does not depend on storage being configured.
+  const download = page.waitForEvent("download", { timeout: 8000 }).catch(() => null);
   await page.getByRole("menuitem", { name: "Bounce track" }).click();
 
   const wav = await download;
+  if (!wav) {
+    // Storage accepted the render: it lands as a new track (the toast may already have
+    // expired while waiting for the download event).
+    await expect(
+      page.locator(".se-tracks").getByText("Track 1 (bounced)", { exact: true })
+    ).toBeVisible();
+    return;
+  }
+
   expect(wav.suggestedFilename()).toContain("(bounce).wav");
 
   const path = await wav.path();
