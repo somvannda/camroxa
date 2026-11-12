@@ -2956,6 +2956,11 @@ export function StudioEditorShell() {
             const clip = id ? clipsRef.current.find((item) => item.id === id) : undefined;
             if (clip) {
               event.preventDefault();
+              // Captured rule (N-10): fades only apply to audio arrangements.
+              if ((clip as { midi?: { notes?: unknown[] } }).midi) {
+                setExportToast("Fades only apply to audio arrangements.");
+                return;
+              }
               const current = (clip as { fadeIn?: number }).fadeIn ?? 0;
               commitClipFade(
                 clip.id,

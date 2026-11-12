@@ -80,3 +80,35 @@ test("the fade handle and Shift+F set a fade that is audible in the export", asy
   await page.keyboard.press("Shift+F");
   await expect.poll(lane, { timeout: 15_000 }).toBe(0.5);
 });
+
+test("fades are refused on a MIDI arrangement", async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = await createStudioProject(page, {
+    title: `Midi fade ${Math.random().toString(36).slice(2, 6)}`,
+    clips: [
+      {
+        id: "midi-fade",
+        title: "Keys",
+        start: 0,
+        duration: 4,
+        midi: { notes: [{ id: "n1", pitch: 60, start: 0, length: 1, velocity: 100 }] },
+      },
+    ],
+  });
+
+  await page.locator(".se-clip").first().click();
+  await page.keyboard.press("Shift+F");
+  await expect(page.getByRole("status")).toContainText(
+    "Fades only apply to audio arrangements"
+  );
+
+  // Nothing was written to the document.
+  const fade = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    const project = (await response.json()) as {
+      data?: { lanes?: Array<{ id: string; fadeIn?: number }> };
+    };
+    return project.data?.lanes?.[0]?.fadeIn ?? null;
+  }, projectId);
+  expect(fade).toBeNull();
+});

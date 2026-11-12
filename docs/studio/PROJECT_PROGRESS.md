@@ -2,6 +2,17 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-12 — Captured edit rules (fades are audio-only)
+
+The reference states that fades only apply to audio arrangements (N-10); a MIDI clip is
+now refused instead of silently accepting a fade that the synth never renders.
+
+| Area | What landed |
+|---|---|
+| **Shift F guard** | a MIDI clip gets the captured wording — "Fades only apply to audio arrangements." — in the toast, and nothing is written to the document |
+| **Coverage** | `studio-fade.spec.ts` asserts the refusal and reads the project back to prove no `fadeIn` was stored, alongside the existing audible-fade test |
+
+
 ## Session 2026-11-11 — Plugin presets (S46) and two test races
 
 The preset menu now carries the captured three-part model: clear, save, browse.
