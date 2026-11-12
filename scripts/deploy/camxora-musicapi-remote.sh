@@ -260,6 +260,17 @@ PREV_ENV="$(mktemp)"
 if [[ -f "${MUSICAPI_DIR}/.env" ]]; then
   cp "${MUSICAPI_DIR}/.env" "${PREV_ENV}"
 fi
+# Values an operator may set directly in .env rather than in the deploy secrets.
+# The heredoc below rewrites .env wholesale and emits these keys from MUSICAPI_*
+# secrets, so an absent secret used to land an empty line and silently drop the
+# hand-set value. That is how TWOCAPTCHA_KEY and the SUNO_* seed cookies were
+# wiped, which took music generation down the next time Suno raised its captcha
+# gate. Fall back to the snapshot instead of blanking them.
+prev_env_value() {
+  local key="$1"
+  [[ -s "${PREV_ENV}" ]] || return 0
+  grep -m1 "^${key}=" "${PREV_ENV}" | cut -d= -f2- || true
+}
 # Mail. The Resend API key and webhook secret are deliberately NOT here: they
 # live in app_settings, encrypted, editable at /admin/settings > Mail (Resend),
 # so rotating them needs no redeploy. These three decide what is printed inside
@@ -309,12 +320,12 @@ COOKIE_ENCRYPTION_KEY=${MUSICAPI_COOKIE_ENCRYPTION_KEY}
 TRUST_PROXY=127.0.0.1
 FRONTEND_ORIGINS=${MUSICAPI_FRONTEND_ORIGINS}
 LOG_LEVEL=${MUSICAPI_LOG_LEVEL}
-SUNO_CLIENT_COOKIE=${MUSICAPI_SUNO_CLIENT_COOKIE:-}
-SUNO_COOKIE=${MUSICAPI_SUNO_COOKIE:-}
-SUNO_JWT=${MUSICAPI_SUNO_JWT:-}
-SUNO_DEVICE_ID=${MUSICAPI_SUNO_DEVICE_ID:-}
-SUNO_CAPTCHA_TOKEN=${MUSICAPI_SUNO_CAPTCHA_TOKEN:-}
-TWOCAPTCHA_KEY=${MUSICAPI_TWOCAPTCHA_KEY:-}
+SUNO_CLIENT_COOKIE=${MUSICAPI_SUNO_CLIENT_COOKIE:-$(prev_env_value SUNO_CLIENT_COOKIE)}
+SUNO_COOKIE=${MUSICAPI_SUNO_COOKIE:-$(prev_env_value SUNO_COOKIE)}
+SUNO_JWT=${MUSICAPI_SUNO_JWT:-$(prev_env_value SUNO_JWT)}
+SUNO_DEVICE_ID=${MUSICAPI_SUNO_DEVICE_ID:-$(prev_env_value SUNO_DEVICE_ID)}
+SUNO_CAPTCHA_TOKEN=${MUSICAPI_SUNO_CAPTCHA_TOKEN:-$(prev_env_value SUNO_CAPTCHA_TOKEN)}
+TWOCAPTCHA_KEY=${MUSICAPI_TWOCAPTCHA_KEY:-$(prev_env_value TWOCAPTCHA_KEY)}
 GOOGLE_CLIENT_ID=${MUSICAPI_GOOGLE_CLIENT_ID:-}
 GOOGLE_CLIENT_SECRET=${MUSICAPI_GOOGLE_CLIENT_SECRET:-}
 GOOGLE_REDIRECT_URI_USER=https://${APP_HOST}/auth/callback
@@ -369,6 +380,15 @@ fi
 rm -f "${PREV_ENV}"
 chmod 600 "${MUSICAPI_DIR}/.env"
 chown camxora:camxora "${MUSICAPI_DIR}/.env"
+
+# Music generation needs a 2Captcha key the moment Suno raises its Turnstile
+# gate. Warn at deploy time rather than discover it from a failed batch: the
+# service keeps running, but every submit will be deferred until a key is set.
+if ! grep -qE '^TWOCAPTCHA_KEY=.+' "${MUSICAPI_DIR}/.env"; then
+  log "WARN: TWOCAPTCHA_KEY is empty in ${MUSICAPI_DIR}/.env."
+  log "WARN: Suno generation will fail the next time its captcha gate is up."
+  log "WARN: Set MUSICAPI_TWOCAPTCHA_KEY in the deploy secrets (or TWOCAPTCHA_KEY in .env)."
+fi
 
 log "Building core API (tsc -> dist/)..."
 sudo -u camxora -H bash -lc "
