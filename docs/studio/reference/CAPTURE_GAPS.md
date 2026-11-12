@@ -35,14 +35,26 @@ The local search for a genuinely empty Suno account came up empty:
 - The deploy key in `.deploy/camxora_deploy_ed25519` does reach the production VPS, so
   the production `sunoapi.suno_accounts` was checked read-only: 10 rows, including four
   free accounts, but **none at zero** (free accounts show 100 credits, the lowest paid
-  account 50, the highest 3,130). The production cookie key in `.deploy` does not match
-  the stored rows, so those sessions cannot be used locally without fetching the live
-  key from the VPS.
+  account 50, the highest 3,130). The live `COOKIE_ENCRYPTION_KEY` was then read from
+  `/opt/camxora/repo/musicapi/.env` on the VPS so a free account could be tested; the
+  value and the session were kept in memory and never printed.
 
-So S61 stays `OPEN` rather than being faked. To close it, add a real Suno account with
-zero credits to `suno_accounts`, or deliberately exhaust one of the free accounts (100
-credits) and capture the state before its daily reset. Then repeat the S60 method: open
-Create, submit a normal prompt, and capture the insufficient-credits state.
+**Free-account exhaustion attempt (same day).** `iamdukekh1987@gmail.com` (free, 100
+credits) was driven through Create. Four generations took the balance to **50**, and then
+Suno replaced the composer with a modal reading:
+
+> **Out of songs for now**
+> You can create again in 10:25
+
+That is the free tier's **daily song cap**, not an insufficient-credit state: 50 credits
+were still on the account. The free tier's daily grant/cap always intercepts before the
+balance reaches zero, so a free account cannot produce S61. (The attempt spent 50 free
+credits; they replenish on the daily reset.)
+
+So S61 stays `OPEN` rather than being faked. It needs a **paid** account with zero
+credits - or a free account that is already at zero when the song cap is not the blocker -
+then the S60 method: open Create, submit a normal prompt, and capture the
+insufficient-credits state.
 
 ### S60 - lyrics moderation refusal (DONE, §102)
 
