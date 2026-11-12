@@ -5238,6 +5238,7 @@ export function StudioEditorShell() {
       {clipMenu
         ? (() => {
             const clip = clips.find((item) => item.id === clipMenu.clipId);
+            const owner = tracks.find((track) => clip && track.clipIds.includes(clip.id));
             if (!clip) return null;
             const start = clip.start ?? 0;
             const duration = clip.duration ?? 4;
@@ -5575,8 +5576,18 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled
-                  title="Clips carry no plugin chain in this editor"
+                  disabled={!owner || (chains[owner.id] ?? []).length === 0}
+                  title={
+                    owner
+                      ? "Remove every plugin from this clip's track"
+                      : "No track owns this clip"
+                  }
+                  onClick={() => {
+                    if (!owner) return;
+                    commitChain(owner.id, []);
+                    setExportToast("Track effects removed.");
+                    setClipMenu(null);
+                  }}
                 >
                   <Icon name="fa-xmark" /> Remove FX
                 </button>
