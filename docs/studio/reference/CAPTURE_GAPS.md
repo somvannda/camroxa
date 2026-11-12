@@ -21,6 +21,24 @@ takes or plugins must start from a native project.**
 |---|---|---|
 | S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
 
+### S61 - no-credit account (blocked 2026-11-12)
+
+The local search for a genuinely empty Suno account came up empty:
+
+- `sunoapi.suno_accounts` has exactly three rows - `acct-1`, `acct-2` and
+  `iamduke1987@gmail.com`. All three are `paid`; the paid account has ~3,190 credits, and
+  `acct-1`/`acct-2` cannot authenticate (`401` / "no active Clerk session"). Re-probing
+  both in a browser with their stored `__client` shows `/studio-welcome` (signed out).
+- No other database has a Suno web account. The zero-balance records that exist are
+  platform users (`collab+studio-gate@example.com`, `dev.studio@camxora.com`) and
+  `musicapi` API keys with 0 credits; neither can produce Suno's own no-credit screen.
+- The production database is not reachable from this machine (SSH rejects the available
+  keys), and the production secrets file has no usable `PLATFORM_MUSICAPI_DATABASE_URL`.
+
+So S61 stays `OPEN` rather than being faked. To close it, add a real Suno account with
+zero credits to `suno_accounts` (or exhaust a throwaway one), then repeat the S60 method:
+open Create, submit a normal prompt, and capture the insufficient-credits state.
+
 ### S60 - lyrics moderation refusal (DONE, §102)
 
 Captured on https://suno.com/create while signed in as the reference account. Switched
