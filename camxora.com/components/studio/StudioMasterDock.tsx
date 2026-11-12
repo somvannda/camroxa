@@ -5,9 +5,12 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { ParamKnob } from "@/components/studio/ParamKnob";
 import {
+  applyMasterPreset,
   LIMITER_DEFAULTS,
   LIMITER_PARAMS,
+  MASTER_PRESETS,
   type MasterChainEntry,
+  type MasterPreset,
 } from "@/lib/studio-master-bus";
 
 /**
@@ -31,6 +34,7 @@ export function StudioMasterDock({
   onChange: (next: MasterChainEntry[]) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [presetOpen, setPresetOpen] = useState(false);
 
   const indexOf = (type: string) =>
     chain.findIndex((entry) => (entry.type ?? "").toLowerCase().includes(type));
@@ -66,6 +70,11 @@ export function StudioMasterDock({
     );
   }
 
+  function applyPreset(preset: MasterPreset) {
+    onChange(applyMasterPreset(chain, preset));
+    setPresetOpen(false);
+  }
+
   const hasLimiter = indexOf("limit") >= 0;
 
   return (
@@ -85,9 +94,30 @@ export function StudioMasterDock({
                   <span className="sp-dot" aria-hidden="true" />
                   <strong>Limiter</strong>
                   <span className="sp-preset-wrap">
-                    <button type="button" className="sp-preset" disabled>
+                    <button
+                      type="button"
+                      className="sp-preset"
+                      aria-expanded={presetOpen}
+                      aria-haspopup="menu"
+                      title="Master presets"
+                      onClick={() => setPresetOpen((current) => !current)}
+                    >
                       Default
                     </button>
+                    {presetOpen ? (
+                      <span className="sp-preset-menu" role="menu" aria-label="Master presets">
+                        {MASTER_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => applyPreset(preset)}
+                          >
+                            {preset.name}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="sp-slot-tools">
                     <button

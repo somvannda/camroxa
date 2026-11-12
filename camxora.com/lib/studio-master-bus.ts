@@ -45,6 +45,95 @@ export const LIMITER_PARAMS: ParamDef[] = [
 
 const MAX_DRIVE = 4;
 
+export type MasterPreset = {
+  id: string;
+  name: string;
+  limiter: Partial<typeof LIMITER_DEFAULTS>;
+  /** 0..1 amount, or null to remove an existing EQ link. */
+  eq: number | null;
+  compressor: number | null;
+};
+
+export const MASTER_PRESETS: MasterPreset[] = [
+  { id: "default", name: "Default", limiter: {}, eq: null, compressor: null },
+  { id: "clean", name: "Clean", limiter: { attack: 10, release: 120 }, eq: 0.5, compressor: null },
+  {
+    id: "warm",
+    name: "Warm",
+    limiter: { preGain: 1.5, attack: 15, release: 140 },
+    eq: 0.6,
+    compressor: 0.25,
+  },
+  {
+    id: "loud",
+    name: "Loud",
+    limiter: { preGain: 4, attack: 1, release: 60 },
+    eq: 0.55,
+    compressor: 0.6,
+  },
+];
+
+/**
+ * Return a new master chain with one preset applied.
+ *
+ * The limiter is the captured core and is always kept. A preset that names EQ or
+ * compressor adds/updates that link; `null` removes it so `Default` is the captured
+ * Limiter-only chain. Pure so it can be tested without an AudioContext.
+ */
+export function applyMasterPreset(
+  chain: MasterChainEntry[],
+  preset: MasterPreset
+): MasterChainEntry[] {
+  let next: MasterChainEntry[] = chain.map((entry) => {
+    const kind = (entry.type ?? "").toLowerCase();
+    if (!kind.includes("limit")) return entry;
+    return {
+      ...entry,
+      enabled: true,
+      // Presets are deterministic: start from the captured defaults, then apply
+      // the preset. Preserving a previous manual tweak would make "Default" a no-op.
+      params: { ...LIMITER_DEFAULTS, ...preset.limiter },
+    };
+  });
+
+  if (!next.some((entry) => (entry.type ?? "").toLowerCase().includes("limit"))) {
+    next = [
+      {
+        id: "master-limiter-preset",
+        type: "limiter",
+        enabled: true,
+        params: { ...LIMITER_DEFAULTS, ...preset.limiter },
+      },
+      ...next,
+    ];
+  }
+
+  next = next.filter((entry) => {
+    const kind = (entry.type ?? "").toLowerCase();
+    if (kind.includes("eq") && preset.eq === null) return false;
+    if (kind.includes("compress") && !kind.includes("limit") && preset.compressor === null) {
+      return false;
+    }
+    return true;
+  });
+
+  const upsert = (type: "eq" | "compressor", amount: number | null) => {
+    if (amount === null) return;
+    const index = next.findIndex((entry) => (entry.type ?? "").toLowerCase().includes(type));
+    if (index >= 0) {
+      next = next.map((entry, position) =>
+        position === index ? { ...entry, enabled: true, amount } : entry
+      );
+    } else {
+      next = [...next, { id: `master-${type}-preset`, type, enabled: true, amount }];
+    }
+  };
+  upsert("eq", preset.eq);
+  upsert("compressor", preset.compressor);
+
+  return next;
+}
+
 export type MasterBus = {
   input: AudioNode;
   output: AudioNode;
