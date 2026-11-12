@@ -47,6 +47,7 @@ export type StudioMidiEditorProps = {
   onScaleChange: (scale: string) => void;
   instrument: MidiInstrument;
   onInstrumentChange: (instrument: MidiInstrument) => void;
+  onImportMidi: (file: File) => void;
   onToggleLoop: () => void;
   onChangeNotes: (notes: MidiNote[]) => void;
   onChangeLanes: (lane: "bend" | "mod", points: MidiPoint[]) => void;
@@ -96,6 +97,7 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     onScaleChange,
     instrument,
     onInstrumentChange,
+    onImportMidi,
     onToggleLoop,
     onChangeNotes,
     onChangeLanes,
@@ -114,6 +116,7 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const [velocityDrag, setVelocityDrag] = useState<{ id: string; notes: MidiNote[] } | null>(null);
   const [velocityPreview, setVelocityPreview] = useState<number | null>(null);
   const rollRef = useRef<HTMLDivElement | null>(null);
+  const midiFileRef = useRef<HTMLInputElement | null>(null);
 
   // Start around middle C, like the capture.
   useEffect(() => {
@@ -583,6 +586,24 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         </button>
         <button type="button" className="se-pill" onClick={() => onChangeNotes([])}>
           Clear
+        </button>
+        <input
+          ref={midiFileRef}
+          type="file"
+          accept=".mid,.midi,audio/midi,audio/x-midi"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onImportMidi(file);
+            event.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          className="se-pill"
+          onClick={() => midiFileRef.current?.click()}
+        >
+          Import MIDI
         </button>
         <span className="se-midi-control">View All</span>
       </div>

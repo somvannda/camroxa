@@ -125,6 +125,7 @@ import {
   type MidiNote,
 } from "@/lib/studio-midi";
 import { buildMidiFile } from "@/lib/studio-midi-file";
+import { parseMidiFile } from "@/lib/studio-midi-import";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -2855,6 +2856,49 @@ export function StudioEditorShell() {
     setExportToast(
       `MIDI download started${chosen.length > 1 ? ` for ${chosen.length} clips` : ""}!`
     );
+  }
+
+  /** Import a Standard MIDI File into the open MIDI clip (N-05's counterpart). */
+  async function importMidiFile(file: File) {
+    if (!midiClip) return;
+    try {
+      const parsed = parseMidiFile(await file.arrayBuffer());
+      if (parsed.notes.length === 0) {
+        setExportToast("No notes found in that MIDI file.");
+        return;
+      }
+      const stamp = Date.now().toString(36);
+      const notes = sanitizeNotes(
+        parsed.notes.map((note, index) => ({
+          ...note,
+          id: `note-${stamp}-${index}`,
+        }))
+      );
+      const data = currentData() as Record<string, unknown>;
+      const lanes = clipsRef.current.map((clip) =>
+        clip.id === midiClip.id
+          ? { ...clip, midi: { ...(clip.midi ?? {}), notes } }
+          : clip
+      );
+      const nextBpm = parsed.bpm || bpm;
+      const nextSignature = `${parsed.timeSignature[0]}/${parsed.timeSignature[1]}`;
+      setBpm(nextBpm);
+      setTimeSignature(nextSignature);
+      writeProjectData(
+        {
+          ...data,
+          bpm: nextBpm,
+          time_signature: nextSignature,
+          lanes,
+        },
+        "the MIDI import"
+      );
+      setExportToast(`Imported ${notes.length} MIDI notes.`);
+    } catch (cause) {
+      setExportToast(
+        cause instanceof Error ? cause.message : "Could not read that MIDI file."
+      );
+    }
   }
 
   async function downloadClipWav(clipId: string) {
@@ -5840,6 +5884,7 @@ export function StudioEditorShell() {
           }}
           instrument={normalizeMidiInstrument(midiClip.instrument)}
           onInstrumentChange={(instrument) => setMidiInstrument(midiClip.id, instrument)}
+          onImportMidi={(file) => void importMidiFile(file)}
           onToggleLoop={() => setLoop((value) => !value)}
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
           onChangeLanes={(lane, points) => setMidiLanes(midiClip.id, lane, points)}
