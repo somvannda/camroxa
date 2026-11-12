@@ -53,8 +53,7 @@
   — either through `app/(site)/layout.tsx` or `app/studio/(public)/layout.tsx`. A new page
   outside those layouts must add the chrome instead of shipping bare.
 - The only intentional exceptions are surfaces that need the whole viewport: the Studio
-  editor (`/studio/editor*`, `/studio/shell`), the auth screens (`app/(auth)`), and the
-  `/health` route.
+  editor (`/studio/editor*`), the auth screens (`app/(auth)`), and the `/health` route.
 - `SiteChrome` owns the single `<main>` landmark. Pages must not render their own `<main>`
   (use a `div`/`section`); nested mains fail the axe gate.
 - `/studio` (home) and `/studio/shared/[token]` are product pages, not editor surfaces:
