@@ -8,13 +8,13 @@
   // end to end instead of stopping to summarize after a dozen steps.
   "agents": {
     "build": {
-      "steps": 40
+      "steps": 1200
     },
     "general": {
-      "steps": 8
+      "steps": 1200
     },
     "explore": {
-      "steps": 6
+      "steps": 1200
     }
   },
 
