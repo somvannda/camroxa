@@ -812,6 +812,26 @@ async def request_studio_stems(
     )
 
 
+class StudioMidiRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    project_id: UUID | None = None
+
+
+@router.post("/studio/generations/{task_id}/midi", status_code=202)
+async def request_studio_midi(
+    task_id: UUID,
+    body: StudioMidiRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_midi(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        project_id=body.project_id,
+    )
+
+
 class StudioExtendRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     continue_at: float | None = None

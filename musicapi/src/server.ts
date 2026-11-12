@@ -8870,6 +8870,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  app.post("/internal/studio/midi", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({
+        error: "The source clip's Suno account is not recorded.",
+      });
+    }
+    const job = newJob("midi_generate");
+    job.endpoint = "midi_generate";
+    job.credits = 0;
+    void trackJob(runMidiJob(job, { clipId }));
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
   app.post("/internal/studio/extend", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;

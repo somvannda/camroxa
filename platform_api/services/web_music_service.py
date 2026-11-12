@@ -4357,6 +4357,26 @@ class WebMusicService:
             label="stems",
         )
 
+    async def request_studio_midi(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="midi",
+            variant=variant,
+            mode="midi",
+            project_id=project_id,
+            internal_path="/internal/studio/midi",
+            internal_body={},
+            label="MIDI",
+        )
+
     async def request_studio_extend(
         self,
         user_id: UUID,

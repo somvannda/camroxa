@@ -118,6 +118,42 @@ export function sanitizeNotes(input: unknown): MidiNote[] {
   return notes;
 }
 
+/**
+ * Convert Basic Pitch's `{pitch,start,end,velocity}` transcription into editor
+ * notes. `velocity` arrives as a 0..1 confidence from the model, so scale it to the
+ * editor's 1..127 range. `offset` is the source clip's timeline position.
+ */
+export function midiNotesFromTranscription(
+  instruments: Array<{ name?: string; notes?: Array<Record<string, unknown>> }> | undefined,
+  offset = 0
+): MidiNote[] {
+  if (!Array.isArray(instruments)) return [];
+  const stamp = Date.now().toString(36);
+  const notes: MidiNote[] = [];
+  instruments.forEach((instrument, instrumentIndex) => {
+    for (const raw of instrument.notes ?? []) {
+      const pitch = Number(raw.pitch);
+      const start = Number(raw.start);
+      const end = Number(raw.end);
+      const velocity = Number(raw.velocity);
+      if (!Number.isFinite(pitch) || !Number.isFinite(start) || !Number.isFinite(end)) continue;
+      const length = Math.max(0.02, end - start);
+      if (length <= 0.05) continue;
+      notes.push({
+        id: `midi-${stamp}-${instrumentIndex}-${notes.length}`,
+        pitch: Math.round(Math.max(MIDI_MIN_PITCH, Math.min(MIDI_MAX_PITCH, pitch))),
+        start: Math.max(0, start + offset),
+        length,
+        velocity: Math.max(
+          1,
+          Math.min(127, Math.round(velocity <= 1 ? velocity * 127 : velocity))
+        ),
+      });
+    }
+  });
+  return notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+}
+
 /** Coerce an automation lane (pitch bend -1..1, modulation 0..1). */
 export function sanitizePoints(input: unknown, min: number, max: number): MidiPoint[] {
   if (!Array.isArray(input)) return [];

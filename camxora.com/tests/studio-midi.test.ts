@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMidiChordNotes,
+  midiNotesFromTranscription,
   midiToFreq,
   normalizeMidiInstrument,
   noteName,
@@ -103,6 +104,22 @@ describe("studio MIDI model", () => {
       duration: 4,
     });
     expect(late.map((note) => note.pitch)).toEqual([60]);
+  });
+
+  it("converts a Basic Pitch transcription into editor notes", () => {
+    const notes = midiNotesFromTranscription([
+      {
+        name: "Instrument",
+        notes: [
+          { pitch: 60, start: 0, end: 1, velocity: 0.8 },
+          { pitch: 200, start: 2, end: 2.5, velocity: 100 },
+          { pitch: "x", start: 0, end: 1, velocity: 1 },
+        ],
+      },
+    ]);
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toMatchObject({ pitch: 60, start: 0, length: 1, velocity: 102 });
+    expect(notes[1]).toMatchObject({ pitch: 84, start: 2, length: 0.5, velocity: 100 });
   });
 
   it("normalises the MIDI synth instrument", () => {

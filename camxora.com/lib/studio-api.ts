@@ -164,6 +164,21 @@ export async function requestStudioStems(input: {
   });
 }
 
+export async function requestStudioMidi(input: {
+  taskId: string;
+  variant: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/midi`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
 export async function getStudioOperation(id: string): Promise<StudioOperation> {
   return studioJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
 }

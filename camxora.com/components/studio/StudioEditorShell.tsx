@@ -17,6 +17,7 @@ import {
   requestStudioAddVocals,
   requestStudioAddInstrumental,
   requestStudioMashup,
+  requestStudioMidi,
   requestStudioReplaceSection,
   getStudioPricing,
   type StudioOperation,
@@ -117,6 +118,7 @@ import { StudioAutomationPanel } from "@/components/studio/StudioAutomationPanel
 import { StudioAudioEditor } from "@/components/studio/StudioAudioEditor";
 import type { WarpState } from "@/lib/studio-warp";
 import {
+  midiNotesFromTranscription,
   normalizeMidiInstrument,
   sanitizeNotes,
   sanitizePoints,
@@ -2416,6 +2418,76 @@ export function StudioEditorShell() {
       setPersonaError(cause instanceof Error ? cause.message : "Could not create persona.");
     } finally {
       setPersonaBusy(false);
+    }
+  }
+
+  /** Get MIDI (M2): transcribe the clip's audio and land it as a new MIDI track. */
+  async function generateMidiForClip(clip: ClipLike) {
+    const songId = (clip as { songId?: string }).songId;
+    if (!songId) return;
+    setClipMenu(null);
+    setExportToast("Transcribing MIDI...");
+    try {
+      const operation = await requestStudioMidi({
+        taskId: songId,
+        variant: "ok",
+        projectId,
+      });
+      const current = await pollOperation(operation, 240_000);
+      if (current.status !== "done") {
+        throw new Error(current.error_message ?? "MIDI transcription failed.");
+      }
+      const result = current.result as
+        | { midi_data?: { instruments?: Array<{ name?: string; notes?: Array<Record<string, unknown>> }> } }
+        | undefined;
+      const notes = midiNotesFromTranscription(result?.midi_data?.instruments);
+      if (notes.length === 0) throw new Error("No notes came back from the transcription.");
+      const stamp = Date.now().toString(36);
+      const start = Math.max(0, clip.start ?? playhead);
+      const duration = Math.max(
+        clip.duration ?? 8,
+        ...notes.map((note) => note.start + note.length)
+      );
+      const midiClip: ClipLike = {
+        id: `midi-${stamp}`,
+        title: `${clip.title ?? "Clip"} MIDI`,
+        start,
+        duration,
+        instrument: "triangle",
+        midi: { notes: sanitizeNotes(notes) },
+      };
+      const track: StudioTrack = {
+        id: `track-midi-${stamp}`,
+        name: "MIDI",
+        color: colorForTrackName("midi"),
+        index: tracks.length,
+        volume: 80,
+        pan: 0,
+        muted: false,
+        solo: false,
+        hidden: false,
+        collapsed: false,
+        groupId: null,
+        chain: [],
+        clipIds: [midiClip.id],
+      };
+      const data = currentData() as Record<string, unknown>;
+      const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+      const nextTracks = [...tracks, track];
+      writeProjectData(
+        { ...data, lanes: [...lanes, midiClip], tracks: nextTracks },
+        "the MIDI transcription",
+        nextTracks
+      );
+      setSelectedTrack(track.id);
+      setSelectedClip(midiClip.id);
+      setMidiClipId(midiClip.id);
+      setAudioClipId(null);
+      setExportToast(`MIDI added as a track (${notes.length} notes).`);
+    } catch (cause) {
+      setExportToast(
+        cause instanceof Error ? cause.message : "Could not transcribe this clip to MIDI."
+      );
     }
   }
 
@@ -5721,8 +5793,13 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled
-                  title="MIDI conversion is not built in this editor"
+                  disabled={!clip.songId}
+                  title={
+                    clip.songId
+                      ? "Transcribe this clip's audio into a MIDI track"
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => void generateMidiForClip(clip)}
                 >
                   <Icon name="fa-music" /> Get MIDI
                 </button>
