@@ -126,6 +126,7 @@ import {
 } from "@/lib/studio-midi";
 import { buildMidiFile } from "@/lib/studio-midi-file";
 import { parseMidiFile } from "@/lib/studio-midi-import";
+import { classifyStudioError } from "@/lib/studio-errors";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -2042,7 +2043,8 @@ export function StudioEditorShell() {
       while (Date.now() < deadline) {
         if (current.status === "done" && current.result?.clips?.length) break;
         if (current.status === "error" || current.status === "failed") {
-          setStems({ status: "error", message: current.error_message ?? "Stem separation failed." });
+          const copy = classifyStudioError(current.error_message, "Stem separation failed.");
+          setStems({ status: "error", message: copy.text });
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 2500));
@@ -2091,19 +2093,20 @@ export function StudioEditorShell() {
       );
       setStems({ status: "added" });
     } catch (cause) {
-      setStems({
-        status: "error",
-        message: cause instanceof Error ? cause.message : "Could not start stem separation.",
-      });
+      const copy = classifyStudioError(
+        cause instanceof Error ? cause.message : cause,
+        "Could not start stem separation."
+      );
+      setStems({ status: "error", message: copy.text });
     }
   }
 
   /** Surface a paid-operation failure: credits get the purchase card, anything else the reason. */
   function reportTransformFailure(cause: unknown, fallback: string) {
-    const message = cause instanceof Error ? cause.message : fallback;
+    const copy = classifyStudioError(cause instanceof Error ? cause.message : cause, fallback);
     setTransformNotice({
-      kind: /credit|insufficient|balance|402/i.test(message) ? "credits" : "failed",
-      text: message,
+      kind: copy.kind === "credits" ? "credits" : "failed",
+      text: copy.text,
     });
     setExportToast(null);
   }
@@ -4432,10 +4435,11 @@ export function StudioEditorShell() {
       setPromptValue("");
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Generation failed.";
-      if (/credit|quota|balance|insufficient/i.test(message)) {
-        setPromptNotice({ kind: "credits", text: message });
-      } else if (/moderat|policy|copyright|blocked|not allowed|sensitive|violat/i.test(message)) {
-        setPromptNotice({ kind: "moderation", text: message });
+      const copy = classifyStudioError(message, "Generation failed.");
+      if (copy.kind === "credits") {
+        setPromptNotice({ kind: "credits", text: copy.text });
+      } else if (copy.kind === "policy") {
+        setPromptNotice({ kind: "moderation", text: copy.text });
       }
       setAssistantMessages((current) =>
         current.map((item) =>
