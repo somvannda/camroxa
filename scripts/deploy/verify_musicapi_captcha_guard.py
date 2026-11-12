@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the musicapi 2Captcha guard is live in production.
+"""Verify the musicapi guards are live in production.
 
 Read-only: never restarts a service, never touches the database, and never
 submits a Suno generation (so no user credits are spent and no song rows are
@@ -10,7 +10,8 @@ Checks:
   2. camxora-musicapi is active
   3. deployed dist/ carries the solve gate and the capacity classifier
   4. TWOCAPTCHA_* knobs resolve (defaults 2 / 2000ms are fine)
-  5. --solve: run ONE real 2Captcha Turnstile solve on the VPS, using the
+  5. media storage (B2) is configured - finished songs need a durable URL
+  6. --solve: run ONE real 2Captcha Turnstile solve on the VPS, using the
      effective key the running service resolves (app_settings over .env).
      Costs roughly $0.003 of 2Captcha balance - never user credits.
 
@@ -136,6 +137,32 @@ def check_build_markers(client) -> str:
     return ", ".join(f"{label}x{count}" for label, count in counts.items())
 
 
+def check_storage(client) -> str:
+    """Durable media storage must be configured, or finished songs have no URL."""
+    command = (
+        f"cd {REMOTE_REPO} && node --env-file=.env -e "
+        "'const{loadRuntimeSettings}=require(\"./dist/runtimeSettings.js\");"
+        "const{config}=require(\"./dist/config.js\");"
+        "(async()=>{await loadRuntimeSettings();"
+        "console.log(JSON.stringify({bucket:(config.storage.bucket||\"\").length,"
+        "keyId:(config.storage.keyId||\"\").length,"
+        "applicationKey:(config.storage.applicationKey||\"\").length}));})()'"
+    )
+    raw = _run(client, command)
+    try:
+        sizes = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CheckFailed(f"storage probe returned unparsable output: {raw[:120]}") from exc
+    empty = [name for name, size in sizes.items() if int(size) <= 0]
+    if empty:
+        raise CheckFailed(
+            "media storage is not configured (empty: "
+            + ", ".join(empty)
+            + ") - finished songs will fail with media_storage_not_configured"
+        )
+    return "bucket/keyId/applicationKey all present"
+
+
 def check_knobs(client) -> str:
     raw = _run(
         client,
@@ -203,6 +230,7 @@ def main() -> int:
             ("service", lambda: check_service(client)),
             ("deployed code", lambda: check_build_markers(client)),
             ("captcha knobs", lambda: check_knobs(client)),
+            ("media storage", lambda: check_storage(client)),
         ]
         if args.solve:
             steps.append(("live solve", lambda: check_live_solve(client)))

@@ -285,7 +285,7 @@ else
   MAIL_APP_URL_DEFAULT=""
 fi
 
-sudo -u camxora tee "${MUSICAPI_DIR}/.env" >/dev/null <<EOF
+sudo -u camxora tee "${MUSICAPI_DIR}/.env.new" >/dev/null <<EOF
 NODE_ENV=production
 # Deployment target (sandbox|production). The runtime reads this to keep
 # Telegram alert delivery production-only — sandbox shares the same alert
@@ -371,12 +371,34 @@ if [[ -s "${PREV_ENV}" ]]; then
   while IFS= read -r prev_line; do
     [[ "${prev_line}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
     prev_key="${prev_line%%=*}"
-    if ! grep -q "^${prev_key}=" "${MUSICAPI_DIR}/.env"; then
-      printf '%s\n' "${prev_line}" >> "${MUSICAPI_DIR}/.env"
+    if ! grep -q "^${prev_key}=" "${MUSICAPI_DIR}/.env.new"; then
+      printf '%s\n' "${prev_line}" >> "${MUSICAPI_DIR}/.env.new"
       log "Preserved unmanaged .env key: ${prev_key}"
     fi
   done < "${PREV_ENV}"
 fi
+# Refuse to replace .env with one that blanks a credential the previous file
+# already had. Writing an empty line for an already-set key is how
+# TWOCAPTCHA_KEY and the B2 key id/application key were lost: music generation
+# then failed as soon as Suno raised its captcha gate, and finished songs could
+# no longer be stored.
+BLANKED=""
+for key in TWOCAPTCHA_KEY COOKIE_ENCRYPTION_KEY JWT_SECRET MUSICAPI_B2_KEY_ID MUSICAPI_B2_APPLICATION_KEY; do
+  old_value="$(prev_env_value "${key}")"
+  new_value="$(grep -m1 "^${key}=" "${MUSICAPI_DIR}/.env.new" | cut -d= -f2- || true)"
+  if [[ -n "${old_value}" && -z "${new_value}" ]]; then
+    BLANKED="${BLANKED} ${key}"
+  fi
+done
+if [[ -n "${BLANKED}" ]]; then
+  log "FATAL: this deploy would blank credential(s) already set in ${MUSICAPI_DIR}/.env:${BLANKED}"
+  log "Fix: add the matching MUSICAPI_* value to ${SECRETS_FILE}, or set it in .env."
+  log "Aborting BEFORE replacing .env; the live file is untouched."
+  rm -f "${MUSICAPI_DIR}/.env.new" "${PREV_ENV}"
+  exit 1
+fi
+
+mv -f "${MUSICAPI_DIR}/.env.new" "${MUSICAPI_DIR}/.env"
 rm -f "${PREV_ENV}"
 chmod 600 "${MUSICAPI_DIR}/.env"
 chown camxora:camxora "${MUSICAPI_DIR}/.env"
