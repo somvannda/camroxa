@@ -42,6 +42,23 @@ pwsh -File scripts/dev/studio-stack.ps1 -Stop -All
 and whether moto is listening, which is the quickest way to spot a half-down stack —
 musicapi in particular can be down while everything else looks fine.
 
+## Reference sessions (manual captures)
+
+The backend already holds durable Suno `__client` cookies in `suno_accounts`
+(`musicapi`'s database). `node scripts/dev/suno-session.cjs` decrypts the `iamduke1987@gmail.com`
+row, injects it for `.suno.com` and opens the reference Studio signed in — no password or
+Chrome profile involved, and the cookie is never printed.
+
+```powershell
+node scripts/dev/suno-session.cjs --probe          # headless check: signed-in=true/false
+node scripts/dev/suno-session.cjs                  # headed browser at suno.com/studio
+node scripts/dev/suno-session.cjs --label acct-2   # other account row
+```
+
+Use it for the two uncaptured states (S60 moderation, S61 no credits). **S61 needs an
+account with zero credits** — the verified account (`iamduke1987@gmail.com`) has 3,450 — and
+S60 needs a genuine policy refusal, so decide deliberately before sending one.
+
 ## Generation needs provider keys
 
 The script also starts `platform_api.worker` (logs in `%TEMP%\camxora-platform-worker*.log`).
