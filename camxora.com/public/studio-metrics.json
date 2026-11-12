@@ -1,0 +1,101 @@
+{
+  "_comment": "Reference metrics measured from the live Suno Studio (SUNO_STUDIO_IMPLEMENTATION_SPEC.md). 'feature' names the surface and 'functional' states whether that surface is actually wired in our build - so a pixel match never implies a working feature.",
+  "metrics": [
+    {
+      "id": "trackRowHeight",
+      "label": "Track row height",
+      "selector": ".se-track",
+      "measure": "height",
+      "expected": 85,
+      "tolerance": 0,
+      "spec": "52.1",
+      "feature": "Track rows",
+      "functional": "partial",
+      "note": "mute and solo wired; arm needs recording"
+    },
+    {
+      "id": "rowStep",
+      "label": "Row step (lane pitch)",
+      "selector": ".se-lane",
+      "measure": "height",
+      "expected": 86,
+      "tolerance": 0,
+      "spec": "52.1",
+      "feature": "Arrangement grid",
+      "functional": "wired",
+      "note": "lanes + clip drag share the same pitch"
+    },
+    {
+      "id": "gutterWidth",
+      "label": "Track gutter width",
+      "selector": ".se-tracks",
+      "measure": "width",
+      "expected": 260,
+      "tolerance": 0,
+      "spec": "52.1",
+      "feature": "Track panel",
+      "functional": "wired",
+      "note": "name, colour, collapse"
+    },
+    {
+      "id": "barWidth",
+      "label": "Bar width in the ruler",
+      "selector": ".se-bar-tick",
+      "measure": "spacing",
+      "expected": 96,
+      "tolerance": 0,
+      "spec": "44.3",
+      "feature": "Ruler & zoom",
+      "functional": "wired",
+      "note": "4 levels 48-192 at the captured 96 default; CTRL = / - and fit"
+    },
+    {
+      "id": "pillHeight",
+      "label": "Header pill height",
+      "selector": ".se-head .se-pill",
+      "measure": "height",
+      "expected": 36,
+      "tolerance": 0,
+      "spec": "44.1",
+      "feature": "Header controls",
+      "functional": "wired",
+      "note": "captured header pills are 36 px tall"
+    },
+    {
+      "id": "transportTarget",
+      "label": "Transport button target",
+      "selector": ".se-transport .se-icon",
+      "measure": "height",
+      "expected": 36,
+      "tolerance": 0,
+      "spec": "44.1",
+      "feature": "Transport",
+      "functional": "partial",
+      "note": "captured transport icons sit in a 36 px pill"
+    },
+    {
+      "id": "footerHeight",
+      "label": "Footer transport band height",
+      "selector": ".se-foot",
+      "measure": "height",
+      "expected": 52,
+      "tolerance": 0,
+      "spec": "1",
+      "feature": "Transport band",
+      "functional": "wired",
+      "note": "captured footer band is 52 px"
+    },
+    {
+      "id": "footerGroupHeight",
+      "label": "Footer control pill height",
+      "selector": ".se-foot-group",
+      "measure": "height",
+      "expected": 36,
+      "tolerance": 0,
+      "spec": "7",
+      "feature": "Footer transport band",
+      "functional": "visual",
+      "note": "captured footer pills are 36 px tall"
+    }
+  ]
+}

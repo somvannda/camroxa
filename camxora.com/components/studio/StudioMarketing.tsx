@@ -1,10 +1,6 @@
-import type { Metadata } from "next";
 import Link from "next/link";
-import { Icon } from "@/components/Icon";
 
-export const metadata: Metadata = {
-  title: "Camxora Studio",
-};
+import { Icon } from "@/components/Icon";
 
 const features = [
   {
@@ -29,15 +25,19 @@ const features = [
   },
 ];
 
-export default function StudioPage() {
+/**
+ * Public Studio page. Rendered for signed-out visitors by `StudioHome`, and kept
+ * separate so the signed-in product surface never inherits marketing chrome.
+ */
+export function StudioMarketing() {
   return (
-    <div className="page">
+    <main className="page">
       <div className="page-head">
         <div>
           <div className="eyebrow">Product</div>
           <h1>Camxora Studio.</h1>
           <p>
-            A desktop workspace for creators who want more control over every
+            A browser workspace for creators who want more control over every
             generation, channel, and export.
           </p>
         </div>
@@ -45,9 +45,9 @@ export default function StudioPage() {
           <Link className="btn btn-primary" href="/studio/editor">
             <Icon name="fa-table-columns" /> Open Studio editor
           </Link>
-          <a className="btn btn-ghost" href="mailto:support@camxora.com?subject=Camxora%20Studio%20access">
-            Get desktop access
-          </a>
+          <Link className="btn btn-ghost" href="/login?next=/studio">
+            Sign in
+          </Link>
         </div>
       </div>
 
@@ -121,6 +121,6 @@ export default function StudioPage() {
         <div><b>Session</b>24-bit / 48 kHz, stem export</div>
         <div><b>Account</b>Camxora account with credits</div>
       </div>
-    </div>
+    </main>
   );
 }

@@ -56,6 +56,8 @@ export type WebMusicWorkspace = {
   id: string;
   name: string;
   is_default?: boolean;
+  /** Songs in this workspace (server-side count, web_music source only). */
+  song_count?: number;
   created_at?: string | null;
 };
 

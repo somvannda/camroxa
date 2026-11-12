@@ -31,7 +31,11 @@ export function Player() {
   const progress = Math.min(100, (elapsed / current.duration) * 100);
 
   return (
-    <div className={`player${playing ? " is-playing" : ""}`}>
+    <div
+      className={`player${playing ? " is-playing" : ""}`}
+      role="region"
+      aria-label="Now playing"
+    >
       <div className="p-now">
         <img className="cover" src={current.cover} alt="" />
         <div className="p-info">

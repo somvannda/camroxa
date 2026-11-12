@@ -9,6 +9,7 @@ const nav = [
   { href: "/", icon: "fa-house", label: "Home" },
   { href: "/discover", icon: "fa-compass", label: "Discover" },
   { href: "/create", icon: "fa-plus", label: "Create" },
+  { href: "/studio", icon: "fa-table-columns", label: "Studio" },
   { href: "/charts", icon: "fa-chart-simple", label: "Charts" },
   { href: "/library", icon: "fa-rectangle-list", label: "Library" },
   { href: "/community", icon: "fa-users", label: "Community" },
@@ -23,7 +24,6 @@ const playlists = [
 ];
 
 const products = [
-  { href: "/studio", icon: "fa-table-columns", label: "Studio" },
   { href: "/developers", icon: "fa-list-ul", label: "Music API" },
 ];
 
@@ -52,7 +52,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <Link className="brand" href="/">
-        <img className="brand-mark" src="/camxora-logo.svg" alt="Camxora" />
+        <img className="brand-mark" src="/camxora-logo.svg" alt="" />
         <span className="brand-name">Camxora</span>
       </Link>
 
@@ -130,7 +130,7 @@ export function Sidebar() {
           </div>
           <div className="member-profile">
             <Link className="member-profile-main" href="/account">
-              <img src={user.avatar_url || "/hero.png"} alt={user.display_name} />
+              <img src={user.avatar_url || "/hero.png"} alt="" />
               <span className="member-copy">
                 <strong>{user.display_name}</strong>
               </span>

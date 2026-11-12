@@ -44,10 +44,21 @@ async function readError(response: Response, fallback: string): Promise<string> 
 async function studioJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await musicAuthFetch(path, init);
   if (!response.ok) {
-    throw new Error(await readError(response, `Studio request failed (${response.status})`));
+    const message = await readError(response, `Studio request failed (${response.status})`);
+    // Optimistic concurrency: the caller decides between reload and overwrite.
+    if (response.status === 409) throw new StudioConflictError(message);
+    throw new Error(message);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/** Raised when a write was based on a version the server has since moved on. */
+export class StudioConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StudioConflictError";
+  }
 }
 
 export async function listStudioProjects(
@@ -92,12 +103,18 @@ export async function updateStudioProject(
     pinned?: boolean;
     archived?: boolean;
     tags?: string[];
+    /** Version this write is based on; a mismatch makes the server reject it (409). */
+    expectedUpdatedAt?: string | null;
   }
 ): Promise<StudioProject> {
+  const { expectedUpdatedAt, ...rest } = input;
   return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...rest,
+      ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}),
+    }),
   });
 }
 
@@ -309,6 +326,7 @@ export type StudioUpload = {
   size_bytes: number;
   duration_seconds?: number | null;
   url: string;
+  created_at?: string | null;
 };
 
 export async function uploadStudioAudio(
@@ -333,6 +351,28 @@ export async function getStudioUploadUrl(id: string): Promise<string> {
     `/api/v3/web-music/studio/uploads/${encodeURIComponent(id)}`
   );
   return upload.url;
+}
+
+/** The user's imported audio, newest first (library "Uploads" tab). */
+export async function listStudioUploads(limit = 50): Promise<{ items: StudioUpload[] }> {
+  return studioJson(`/api/v3/web-music/studio/uploads?limit=${limit}`);
+}
+
+/** One row per stem clip from completed stem operations (G12/B-004). */
+export type StudioStem = {
+  clip_id: string;
+  operation_id: string;
+  task_id: string;
+  title: string;
+  stem_type: string;
+  audio_url: string;
+  image_url?: string | null;
+  duration_seconds?: number | null;
+  created_at?: string | null;
+};
+
+export async function listStudioStems(limit = 100): Promise<{ items: StudioStem[] }> {
+  return studioJson(`/api/v3/web-music/studio/stems?limit=${limit}`);
 }
 
 export type StudioProjectVersion = {
@@ -364,6 +404,25 @@ export async function createStudioProjectVersion(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ label: label || undefined }),
+    }
+  );
+}
+
+/**
+ * Ask the server for an automatic snapshot (reference §25).
+ *
+ * The server throttles to one per project every 20 seconds and keeps the newest 50, so
+ * callers can fire this after every save without flooding the version list.
+ */
+export async function autoSnapshotStudioProject(
+  projectId: string
+): Promise<StudioProjectVersion> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/versions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto: true }),
     }
   );
 }
@@ -463,6 +522,24 @@ export async function listStudioProjectComments(
 ): Promise<{ items: StudioShareComment[] }> {
   return studioJson(
     `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments?limit=${limit}`
+  );
+}
+
+export async function addStudioProjectComment(
+  projectId: string,
+  input: { authorName: string; body: string; parentId?: string | null }
+): Promise<StudioShareComment> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        author_name: input.authorName || "You",
+        body: input.body,
+        parent_id: input.parentId || undefined,
+      }),
+    }
   );
 }
 

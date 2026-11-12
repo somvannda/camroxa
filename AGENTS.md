@@ -47,6 +47,18 @@
   (`/admin/pricing`) — never hardcode a price in a route.
 - New schema changes ship as a new ordered migration file; never edit an applied migration.
 
+## Page chrome (mandatory)
+
+- Every user-facing page renders inside **`SiteChrome`** (left nav, top bar, footer, player)
+  — either through `app/(site)/layout.tsx` or `app/studio/(public)/layout.tsx`. A new page
+  outside those layouts must add the chrome instead of shipping bare.
+- The only intentional exceptions are surfaces that need the whole viewport: the Studio
+  editor (`/studio/editor*`), the auth screens (`app/(auth)`), and the `/health` route.
+- `SiteChrome` owns the single `<main>` landmark. Pages must not render their own `<main>`
+  (use a `div`/`section`); nested mains fail the axe gate.
+- `/studio` (home) and `/studio/shared/[token]` are product pages, not editor surfaces:
+  they keep the chrome. The editor alone is full-bleed.
+
 ## Legacy design system (Python/Electron only — NOT the active product)
 
 The rules below apply only to the legacy PyQt6 desktop app. Do not apply them to `musicapi/`.

@@ -1,0 +1,4145 @@
+{
+  "generatedAt": "2026-10-30T12:48:34.725Z",
+  "mode": "anonymous",
+  "source": "public /_next/static chunks referenced by the /studio marketing route",
+  "chunkCount": 134,
+  "occurrenceCount": 428,
+  "endpointCount": 322,
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/{entity_type}/{entity_id}/permissions/invites",
+      "params": [
+        "entity_type",
+        "entity_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/{entity_type}/{entity_id}/permissions/invites",
+      "params": [
+        "entity_type",
+        "entity_id"
+      ],
+      "bodyKeys": [
+        "grantee_handle",
+        "capabilities"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/{entity_type}/{entity_id}/permissions/invites/{grantee_uid}",
+      "params": [
+        "entity_type",
+        "entity_id",
+        "grantee_uid"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/ably-token",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "run_id"
+      ],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/author-plugin",
+      "params": [],
+      "bodyKeys": [
+        "instruction",
+        "required_controls",
+        "studioAgentSessionId",
+        "studioProjectId"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/author-plugin/{job_id}",
+      "params": [
+        "job_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/compact",
+      "params": [],
+      "bodyKeys": [
+        "messages",
+        "studioAgentSessionId",
+        "projectId",
+        "run_id",
+        "reports_run_completion"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/conversation/{project_id}",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "limit",
+        "include_internal"
+      ],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/conversation/{project_id}/entries",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "entries"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/conversation/{project_id}/used-actions",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "actionIds"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/plugin-load-failures",
+      "params": [],
+      "bodyKeys": [
+        "event_id",
+        "reason",
+        "surface",
+        "plugin_version_id",
+        "dsp_engine_variant",
+        "widget_path",
+        "detail"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/profiles",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/run-completions",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/step",
+      "params": [],
+      "bodyKeys": [
+        "reports_run_completion"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/step-v2",
+      "params": [],
+      "bodyKeys": [
+        "reports_run_completion"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/tool-executions",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/verify-token",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1o04qi_7s8tk9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/auto-reload",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/auto-reload/disable",
+      "params": [],
+      "bodyKeys": [
+        "source"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/auto-reload/enable",
+      "params": [],
+      "bodyKeys": [
+        "reload_amount",
+        "spend_cap",
+        "is_unlimited",
+        "source"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/auto-reload/nudge-check",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/conversion-tracking",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0k7-ua63dls0q.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/create-portal",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/info",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/pending-churn-offer",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "124nj-d8hzn40.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/set-default-payment-method",
+      "params": [],
+      "bodyKeys": [
+        "payment_method_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2lvb8o3tdb2wu.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/usage-plan-descriptions",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "variant"
+      ],
+      "chunks": [
+        "2lvb8o3tdb2wu.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/usage-plan-faq",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/usage-plan-web-table-comparison",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/usage-plans",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2lvb8o3tdb2wu.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/c/check",
+      "params": [],
+      "bodyKeys": [
+        "ctype"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clip/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js",
+        "1qwc-_bl7cox9.js",
+        "36jbnystt_2f1.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clip/{clip_id}/permissions",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/clip/{clip_id}/permissions/grants",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "grantee_handle",
+        "capabilities"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/clip/{clip_id}/permissions/grants/{grantee_uid}",
+      "params": [
+        "clip_id",
+        "grantee_uid"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/clip/{clip_id}/permissions/visibility",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "general_audience"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clip/{clip_id}/stems",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page"
+      ],
+      "chunks": [
+        "2u-vnr3lk1phb.js",
+        "43ipl3ycg5hed.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clip/{clip_id}/stems/pages",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2u-vnr3lk1phb.js",
+        "43ipl3ycg5hed.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clips/{clip_id}/attribution",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "04mcf70eyb5_v.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/clips/{clip_id}/toggle_remixes",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "can_remix"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/clips/{clip_id}/toggle_show_remixes",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "show_remix"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/clips/adjust-speed",
+      "params": [],
+      "bodyKeys": [
+        "clip_id",
+        "speed_multiplier",
+        "keep_pitch",
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clips/aligned_clip_siblings",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "clip_id"
+      ],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clips/aligned_clips",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "history_clip_id",
+        "history_end_seconds_gte",
+        "history_end_seconds_lte",
+        "future_clip_id",
+        "future_start_seconds_gte",
+        "future_start_seconds_lte"
+      ],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/clips/get_songs_by_ids",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "ids"
+      ],
+      "chunks": [
+        "3swgds97pnkcb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/clips/reverse-clip",
+      "params": [],
+      "bodyKeys": [
+        "clip_id",
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/cms/nudges/{slug}",
+      "params": [
+        "slug"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/cms/nudges/{slug}/seen",
+      "params": [
+        "slug"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/comment/{comment_id}",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/comment/{comment_id}/reaction",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [
+        "entity_type",
+        "reaction"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/comment/{comment_id}/replies",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "cursor",
+        "page_size",
+        "deeplinked_comment_id"
+      ],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/comment/{comment_id}/report",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [
+        "entity_type",
+        "reason"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/comment/block-user",
+      "params": [],
+      "bodyKeys": [
+        "handle",
+        "reason"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/comment/unblock-user",
+      "params": [],
+      "bodyKeys": [
+        "handle"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/contests",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/custom-model/{custom_model_id}/permissions",
+      "params": [
+        "custom_model_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/custom-model/{custom_model_id}/permissions/grants/{grantee_uid}",
+      "params": [
+        "custom_model_id",
+        "grantee_uid"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/custom-model/{custom_model_id}/permissions/leave",
+      "params": [
+        "custom_model_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/custom-model/archive",
+      "params": [],
+      "bodyKeys": [
+        "id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/custom-model/bases",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/custom-model/create",
+      "params": [],
+      "bodyKeys": [
+        "clip_ids",
+        "name",
+        "base_model"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/custom-model/edit",
+      "params": [],
+      "bodyKeys": [
+        "id",
+        "name"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/custom-model/pending",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/custom-model/shared",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "limit"
+      ],
+      "chunks": [
+        "0q97rdufo4ata.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/download/clip/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "format"
+      ],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/download/sample-pack/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "job_id"
+      ],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/download/sample-pack/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/edit/action/{action_clip_id}",
+      "params": [
+        "action_clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/edit/crop/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "crop_start_s",
+        "crop_end_s",
+        "is_crop_remove",
+        "title",
+        "ui_surface"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/edit/fade/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "fade_in_time",
+        "fade_out_time",
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/feed/v3",
+      "params": [],
+      "bodyKeys": [
+        "filters",
+        "limit",
+        "cursor"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js",
+        "1ih8esy3ij-jk.js",
+        "1qwc-_bl7cox9.js",
+        "2u-vnr3lk1phb.js",
+        "36jbnystt_2f1.js",
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/feed/v3/offset",
+      "params": [],
+      "bodyKeys": [
+        "offset",
+        "filters"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "36jbnystt_2f1.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/forbidden",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/aligned_lyrics/v2",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1x45npig0ngk1.js",
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{clip_id}/aligned_lyrics/v2",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/aligned_lyrics/v3",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1x45npig0ngk1.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{clip_id}/aligned_lyrics/v3",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "lyrics",
+        "enable_augmentation"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1x45npig0ngk1.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{clip_id}/comment",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/comments",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "cursor",
+        "order",
+        "id",
+        "deeplink"
+      ],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/comments/count",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{clip_id}/convert_wav",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/downbeats",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js",
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/midi",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1cfl0k_k63jzp.js",
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/novelty-sections",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{clip_id}/toggle_comments",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "can_comment"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/wav_file",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/gen/{clip_id}/waveform-aggregates",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js",
+        "43ipl3ycg5hed.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/increment_action_count",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "action",
+        "share_platform",
+        "download_source",
+        "share_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "38z8rv33wm9ul.js",
+        "3xeh3fyc24jjs.js",
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/increment_play_count/v2",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "sample_factor"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3swgds97pnkcb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/listen_milestone",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "milestone"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3swgds97pnkcb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/set_audio_description",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "user_corrected_description",
+        "gemini_description_accepted",
+        "audio_content_types"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/set_display_tags",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "display_tags"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/set_metadata",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "title",
+        "image_url",
+        "lyrics",
+        "caption",
+        "caption_mentions",
+        "is_audio_upload_tos_accepted",
+        "video_cover_upload_id",
+        "remove_image_cover",
+        "remove_video_cover",
+        "image_s3_id",
+        "opt_out_video_cover_hook"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/set_visibility",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "is_public",
+        "submit_to_contest"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/unlock-preview",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/update_feedback_state",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "feedback_reason"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/{gen_id}/update_reaction_type",
+      "params": [
+        "gen_id"
+      ],
+      "bodyKeys": [
+        "reaction",
+        "recommendation_metadata"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/bulk_increment_play_counts/v2",
+      "params": [],
+      "bodyKeys": [
+        "gen_ids",
+        "sample_factor"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/increment_action_counts",
+      "params": [],
+      "bodyKeys": [
+        "action",
+        "gen_ids",
+        "download_source"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/gen/trash",
+      "params": [],
+      "bodyKeys": [
+        "trash",
+        "clip_ids"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/generate/concat/v2",
+      "params": [],
+      "bodyKeys": [
+        "clip_id",
+        "is_infill"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/generate/cowrite-lyrics/models",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/generate/lyrics-mashup",
+      "params": [],
+      "bodyKeys": [
+        "lyrics_a",
+        "lyrics_b",
+        "create_session_token",
+        "source"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/generate/lyrics/{lyrics_id}",
+      "params": [
+        "lyrics_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/generate/sum",
+      "params": [],
+      "bodyKeys": [
+        "clip_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/generate/upsample",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/generate/v2-web",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1504wvq6mhjap.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/instrument/describe-doodle",
+      "params": [],
+      "bodyKeys": [
+        "image_data_url",
+        "existing_tags",
+        "bpm",
+        "key",
+        "include_prompt"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3gr_z8g0f84tp.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/invite",
+      "params": [],
+      "bodyKeys": [
+        "inviter_handle"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/lyricists",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "limit"
+      ],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/lyricists",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/lyricists/{lyricist_id}",
+      "params": [
+        "lyricist_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/lyricists/{lyricist_id}",
+      "params": [
+        "lyricist_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/lyricists/{lyricist_id}",
+      "params": [
+        "lyricist_id"
+      ],
+      "bodyKeys": [
+        "is_favorited"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/lyrics-projects",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "limit",
+        "sort"
+      ],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/lyrics-projects",
+      "params": [],
+      "bodyKeys": [
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/lyrics-projects/{project_id}",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/lyrics-projects/{project_id}",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/lyrics-projects/{project_id}",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/lyrics-projects/{project_id}/flush",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "lyrics"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/mango/rights",
+      "params": [],
+      "bodyKeys": [
+        "content_params",
+        "version"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1l5jgmhx98sx6.js",
+        "3_c7h_0swhid5.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/music_player/playbar_state",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3swgds97pnkcb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/music_player/playbar_state",
+      "params": [],
+      "bodyKeys": [
+        "playbar_state",
+        "playing",
+        "song_index",
+        "song_play_time",
+        "repeat_state",
+        "action_time",
+        "song_ids_in_queue",
+        "volume",
+        "device_id",
+        "device_type",
+        "playlist_context",
+        "device_context",
+        "context_id",
+        "context_type"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3swgds97pnkcb.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/notification/v2/badge-count",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/notification/v2/clear-badge",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/notification/v2/read",
+      "params": [],
+      "bodyKeys": [
+        "ids",
+        "all",
+        "before_datetime_utc"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0tf_lw9vze4jw.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/notification/v3",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "before_datetime_utc",
+        "include_hooks"
+      ],
+      "chunks": [
+        "0tf_lw9vze4jw.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/audio-upload/abort",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/audio-upload/remove",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/back",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/complete",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/current",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/skip",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/start",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/submit",
+      "params": [],
+      "bodyKeys": [
+        "step"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/persona/{persona_id}/toggle_love",
+      "params": [
+        "persona_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3gt1ydnghf76r.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/persona/create",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/persona/get-followed-personas",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page"
+      ],
+      "chunks": [
+        "3gt1ydnghf76r.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/persona/get-loved-personas",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page"
+      ],
+      "chunks": [
+        "3gt1ydnghf76r.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/persona/get-persona/{persona_id}",
+      "params": [
+        "persona_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/persona/get-personas",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page"
+      ],
+      "chunks": [
+        "3gt1ydnghf76r.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/personalization/memory",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/personalization/settings",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/personalization/settings",
+      "params": [],
+      "bodyKeys": [
+        "styles_augmentation"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist_reaction/{playlist_id}/increment_play_count",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "clip_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist_reaction/{playlist_id}/set_visibility",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "is_public"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist_reaction/{playlist_id}/update_reaction_type",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "reaction"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/playlist/{playlist_id}",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page"
+      ],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/create",
+      "params": [],
+      "bodyKeys": [
+        "name"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/playlist/me",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page",
+        "show_trashed",
+        "query",
+        "show_sharelist"
+      ],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/set_metadata",
+      "params": [],
+      "bodyKeys": [
+        "playlist_id",
+        "name",
+        "description",
+        "image_url"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/trash",
+      "params": [],
+      "bodyKeys": [
+        "playlist_id",
+        "undo_trash",
+        "is_hidden"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/update_clips",
+      "params": [],
+      "bodyKeys": [
+        "playlist_id",
+        "update_type",
+        "metadata",
+        "recommendation_metadata"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/playlist/v2/{playlist_id}",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "metadata",
+        "bio"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/v2/{playlist_id}/cover-image",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "cover_source",
+        "cover_art_session_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/playlist/v2/{playlist_id}/save",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/v2/{playlist_id}/save",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/v2/{playlist_id}/tracks/add",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "clip_ids"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/v2/{playlist_id}/tracks/remove",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "clip_ids"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/v2/{playlist_id}/tracks/reorder-by-index",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "positions"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/playlist/v2/{playlist_id}/trash",
+      "params": [
+        "playlist_id"
+      ],
+      "bodyKeys": [
+        "undo"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins",
+      "params": [],
+      "bodyKeys": [
+        "name"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/{plugin_id}",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/{plugin_id}/archive",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/{plugin_id}/default-version",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [
+        "plugin_version_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/{plugin_id}/metadata",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [
+        "name"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/{plugin_id}/presets",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/{plugin_id}/presets",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [
+        "name",
+        "plugin_version_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/{plugin_id}/presets/{preset_id}",
+      "params": [
+        "plugin_id",
+        "preset_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/{plugin_id}/save",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [
+        "payload"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/{plugin_id}/unarchive",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/{plugin_id}/versions",
+      "params": [
+        "plugin_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/catalog",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "include_archived"
+      ],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/version/{plugin_version_id}",
+      "params": [
+        "plugin_version_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1qwc-_bl7cox9.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/preferences/clip-review/opt-out",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/preferences/clip-review/pending",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/preferences/clip-review/submit",
+      "params": [],
+      "bodyKeys": [
+        "prompt_id",
+        "choice",
+        "feedback",
+        "listen_time_seconds_clip_a",
+        "listen_time_seconds_clip_b",
+        "listen_time_seconds_total"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/privacy/data-sharing-consent",
+      "params": [],
+      "bodyKeys": [
+        "state",
+        "surface"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1_qmxv7zn552j.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/processed_clip/{processed_clip_id}/waveform-aggregates",
+      "params": [
+        "processed_clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/profiles",
+      "params": [],
+      "bodyKeys": [
+        "handle",
+        "display_name",
+        "profile_description",
+        "birth_date"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/profiles/{handle}",
+      "params": [
+        "handle"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page",
+        "playlists_sort_by",
+        "clips_sort_by",
+        "include_hooks",
+        "include_artist_profile",
+        "page_size"
+      ],
+      "chunks": [
+        "2s2955-12f4pt.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/profiles/{handle}/info",
+      "params": [
+        "handle"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/profiles/follow",
+      "params": [],
+      "bodyKeys": [
+        "handle",
+        "unfollow",
+        "recommendation_metadata"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/profiles/mutual-followers",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page",
+        "query"
+      ],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/profiles/pin-clip/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [
+        "submit_to_contest",
+        "max_pins"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/profiles/pinned-clips",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/project",
+      "params": [],
+      "bodyKeys": [
+        "name",
+        "description"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/project/{project_id}",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page",
+        "query"
+      ],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/project/{project_id}/clips",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "update_type",
+        "metadata"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/project/{project_id}/collaborators",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "invited_user_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/project/{project_id}/collaborators",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/project/{project_id}/collaborators/me",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/project/{project_id}/invite",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "invited_user_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/project/{project_id}/metadata",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "name",
+        "description"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/project/{project_id}/pin",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/project/{project_id}/pin",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/project/{project_id}/pinned-clips",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "36jbnystt_2f1.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/project/feed",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "scope",
+        "entity_type",
+        "limit"
+      ],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/project/me",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "show_trashed",
+        "page",
+        "query",
+        "exclude_shared",
+        "sort"
+      ],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/project/trash",
+      "params": [],
+      "bodyKeys": [
+        "project_id",
+        "undo_trash"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/prompts/suggestions",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/prompts/suggestions/contextual",
+      "params": [],
+      "bodyKeys": [
+        "signature",
+        "count"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/prompts/upsample",
+      "params": [],
+      "bodyKeys": [
+        "original_tags",
+        "lyrics",
+        "is_instrumental",
+        "user_guidance"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/prompts/v2",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "per_page"
+      ],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/prompts/v2",
+      "params": [],
+      "bodyKeys": [
+        "tags",
+        "id",
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/prompts/v2/{prompt_id}",
+      "params": [
+        "prompt_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/queue/inject",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0k7-ua63dls0q.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/queue/start",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0k7-ua63dls0q.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/realtime/token",
+      "params": [],
+      "bodyKeys": [
+        "capabilities"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/recommend/feedback/song/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/recommend/feedback/song/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/report_v2/refund_prompt",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "clip_id",
+        "source"
+      ],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/report_v2/refund_prompt/clicked",
+      "params": [],
+      "bodyKeys": [
+        "variant"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/search",
+      "params": [],
+      "bodyKeys": [
+        "search_queries"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3gt1ydnghf76r.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/search/history",
+      "params": [],
+      "bodyKeys": [
+        "entry_type",
+        "entity_id",
+        "query"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2jmpz1r7_pgjz.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/search/users",
+      "params": [],
+      "bodyKeys": [
+        "term",
+        "boosted_user_handles"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/session",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js",
+        "1_qmxv7zn552j.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/share/attribute",
+      "params": [],
+      "bodyKeys": [
+        "source",
+        "share_id",
+        "content_id",
+        "content_type"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0k7-ua63dls0q.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/share/code/{share_id}",
+      "params": [
+        "share_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js",
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/share/event",
+      "params": [],
+      "bodyKeys": [
+        "share_id",
+        "recipient",
+        "send_notification"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/share/link",
+      "params": [],
+      "bodyKeys": [
+        "content_type",
+        "content_id",
+        "source",
+        "platform"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/share/stats",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "content_type"
+      ],
+      "chunks": [
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/signout",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/song_copy/send-song",
+      "params": [],
+      "bodyKeys": [
+        "song_uuid",
+        "target_env"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/statsig/experiment",
+      "params": [],
+      "bodyKeys": [
+        "layer_name",
+        "parameter_name",
+        "parameter_type",
+        "parameter_default",
+        "parameters"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/statsig/experiment/forked-onboarding",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio-assets",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "limit",
+        "cursor"
+      ],
+      "chunks": [
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio-assets",
+      "params": [],
+      "bodyKeys": [
+        "upload_id",
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio-assets/{asset_id}",
+      "params": [
+        "asset_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio-assets/library",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "media_type",
+        "category"
+      ],
+      "chunks": [
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio-assets/uploads",
+      "params": [],
+      "bodyKeys": [
+        "media_type",
+        "extension",
+        "category"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/{project_id}/version/{version_id}",
+      "params": [
+        "project_id",
+        "version_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/{project_id}/versions",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "return_days_only"
+      ],
+      "chunks": [
+        "2jxv8d2lignvm.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/clip/{clip_id}/download",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "format"
+      ],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/clips/{clip_id}/projects",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js",
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/create-or-load-project-for-clip/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/create-project",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/list-projects",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "cursor",
+        "limit",
+        "name",
+        "archived",
+        "sort_order",
+        "bookmarked"
+      ],
+      "chunks": [
+        "1d8998h_oxre5.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/project_revision/{revision_id}",
+      "params": [
+        "revision_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/project_revision/{revision_id}/clone",
+      "params": [
+        "revision_id"
+      ],
+      "bodyKeys": [
+        "title"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/project/{project_id}",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1d8998h_oxre5.js",
+        "1ih8esy3ij-jk.js",
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/project/{project_id}/archive",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1d8998h_oxre5.js",
+        "2jxv8d2lignvm.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/project/{project_id}/bookmark",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "bookmarked"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1d8998h_oxre5.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/project/{project_id}/metadata",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [
+        "title",
+        "notes",
+        "image_s3_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1d8998h_oxre5.js",
+        "2jxv8d2lignvm.js",
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/project/{project_id}/unarchive",
+      "params": [
+        "project_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2jxv8d2lignvm.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/render-state",
+      "params": [],
+      "bodyKeys": [
+        "title",
+        "lyrics",
+        "state",
+        "project_id",
+        "start_beats",
+        "end_beats",
+        "downbeats",
+        "web_client_pathname",
+        "render_engine",
+        "encode_latents",
+        "tags",
+        "negative_tags",
+        "style_summary",
+        "caption",
+        "studio_project_id",
+        "studio_project_version_id",
+        "export_mode"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1x45npig0ngk1.js",
+        "2u-vnr3lk1phb.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/render-state-multitrack",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3xeh3fyc24jjs.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/save-project",
+      "params": [],
+      "bodyKeys": [
+        "project_id",
+        "state",
+        "title",
+        "base_version_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3btgzx8fdnxv8.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/survey/survey-questions/{group_id}",
+      "params": [
+        "group_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/survey/survey-responses",
+      "params": [],
+      "bodyKeys": [
+        "question_id",
+        "response"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/unified/explore",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/unified/feed",
+      "params": [],
+      "bodyKeys": [
+        "feed_id",
+        "cursor",
+        "page_size",
+        "request_metadata"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0k7-ua63dls0q.js",
+        "31k1tj91yp27l.js",
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/unified/homepage",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/unified/homepage/explore",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/unified/homepage/explore/mobile",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/unified/library",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/unified/search/omnisearch",
+      "params": [],
+      "bodyKeys": [
+        "term"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/unified/search/suggest",
+      "params": [],
+      "bodyKeys": [
+        "term",
+        "suggestion_size",
+        "content_size"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2u4-ewvjg_doe.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/unified/search/suggest/history",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2u4-ewvjg_doe.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/unified/search/suggest/history/item",
+      "params": [],
+      "bodyKeys": [
+        "feed_params"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2u4-ewvjg_doe.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/audio",
+      "params": [],
+      "bodyKeys": [
+        "extension",
+        "is_stem_mix",
+        "upload_type"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3c89nzlmg-fve.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/uploads/audio/{upload_id}",
+      "params": [
+        "upload_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3c89nzlmg-fve.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/audio/{upload_id}/initialize-clip",
+      "params": [
+        "upload_id"
+      ],
+      "bodyKeys": [
+        "downbeats"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js",
+        "3c89nzlmg-fve.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/audio/{upload_id}/upload-finish",
+      "params": [
+        "upload_id"
+      ],
+      "bodyKeys": [
+        "upload_type",
+        "upload_filename",
+        "agreed_to_vip_upload_terms"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "3c89nzlmg-fve.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/image",
+      "params": [],
+      "bodyKeys": [
+        "extension"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js",
+        "43ipl3ycg5hed.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/image/{upload_id}/upload-finish",
+      "params": [
+        "upload_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/midi",
+      "params": [],
+      "bodyKeys": [
+        "extension"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/midi/{upload_id}/upload-finish",
+      "params": [
+        "upload_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/video",
+      "params": [],
+      "bodyKeys": [
+        "extension",
+        "mp4"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js",
+        "2uu9_7g_t82f2.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/uploads/video/{upload_id}",
+      "params": [
+        "upload_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js",
+        "2uu9_7g_t82f2.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/uploads/video/{upload_id}/upload-finish",
+      "params": [
+        "upload_id"
+      ],
+      "bodyKeys": [
+        "upload_type",
+        "upload_filename",
+        "fail_task_on_moderation",
+        "is_video_cover",
+        "require_video_sprite",
+        "video_upload_type",
+        "clip_id"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js",
+        "2uu9_7g_t82f2.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/delete-account",
+      "params": [],
+      "bodyKeys": [
+        "confirm_delete",
+        "force_immediate"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js",
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/get_user_session_id",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "35zg8_bbs8fni.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/me",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/metadata",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/reset_onboarding",
+      "params": [],
+      "bodyKeys": [
+        "handle"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "2_bkzigx77os4.js",
+        "42yei_0ad2t00.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/tos_acceptance",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3ssch2ey3yn98.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/tos_acceptance",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "3ssch2ey3yn98.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/update_user_config",
+      "params": [],
+      "bodyKeys": [
+        "dismissed_banners_web",
+        "shown_creation_tour",
+        "shown_claim_username",
+        "shown_create_onboarding",
+        "preferred_tags"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0tf_lw9vze4jw.js",
+        "1ique0jhvak25.js",
+        "2_bkzigx77os4.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/user_config",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0tf_lw9vze4jw.js",
+        "1ique0jhvak25.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/vip_program_acceptance",
+      "params": [],
+      "bodyKeys": [
+        "accepted"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0ma8nhus8m56u.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/integrations",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ma8nhus8m56u.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v2/integrations/musixmatch",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ma8nhus8m56u.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/integrations/musixmatch/authorize-url",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ma8nhus8m56u.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/video_gen/favorite",
+      "params": [],
+      "bodyKeys": [
+        "entity_type",
+        "entity_id",
+        "is_favorite"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video_gen/history",
+      "params": [],
+      "bodyKeys": [
+        "clip_id",
+        "created_at_offset",
+        "favorites_only",
+        "media_type",
+        "limit"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video_gen/pending_batches",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2uu9_7g_t82f2.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video_gen/poll_batches",
+      "params": [],
+      "bodyKeys": [
+        "batch_ids"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js",
+        "2uu9_7g_t82f2.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video_gen/video/{video_id}/first-frame",
+      "params": [
+        "video_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video_gen/video/{video_id}/last-frame",
+      "params": [
+        "video_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "39wb6aydz6-ou.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video_gen/video/generate",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "0ol8rk04zj6be.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video/generate/{clip_id}",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/video/generate/{clip_id}/status",
+      "params": [
+        "clip_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/video/hooks/{hook_id}",
+      "params": [
+        "hook_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2uu9_7g_t82f2.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/video/hooks/comments/{comment_id}",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [
+        "entity_type"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video/hooks/comments/{comment_id}/reaction",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [
+        "entity_type",
+        "reaction"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/video/hooks/comments/{comment_id}/replies",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "cursor",
+        "page_size",
+        "deeplinked_comment_id"
+      ],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video/hooks/comments/{comment_id}/report",
+      "params": [
+        "comment_id"
+      ],
+      "bodyKeys": [
+        "entity_type",
+        "reason"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video/hooks/comments/{hook_id}/comment",
+      "params": [
+        "hook_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/video/hooks/comments/{hook_id}/comments",
+      "params": [
+        "hook_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [
+        "cursor",
+        "order",
+        "id",
+        "deeplink"
+      ],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/video/hooks/comments/{hook_id}/comments/count",
+      "params": [
+        "hook_id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "00j83-noulqoq.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video/hooks/create",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "2uu9_7g_t82f2.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/video/hooks/fetch_hook_lyrics",
+      "params": [],
+      "bodyKeys": [
+        "hook_ids"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "31k1tj91yp27l.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/video/hooks/suggested_clips",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "page_size",
+        "is_liked",
+        "is_public_only",
+        "start_index",
+        "search_term"
+      ],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/assets",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "liked",
+        "limit"
+      ],
+      "chunks": [
+        "34pf3133yaaal.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/visual/assets/{id}",
+      "params": [
+        "id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "34pf3133yaaal.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/assets/{id}",
+      "params": [
+        "id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/visual/assets/uploads",
+      "params": [],
+      "bodyKeys": [
+        "contentType",
+        "bytes"
+      ],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/visual/assets/uploads/{id}/complete",
+      "params": [
+        "id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/characters",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/visual/characters/{assetId}",
+      "params": [
+        "assetId"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/visual/characters/{assetId}",
+      "params": [
+        "assetId"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/cost",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/generations",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [
+        "limit"
+      ],
+      "chunks": [
+        "34pf3133yaaal.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/visual/generations",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/generations/{id}",
+      "params": [
+        "id"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "34pf3133yaaal.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/visual/generations/{id}/takes/{take}",
+      "params": [
+        "id",
+        "take"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "34pf3133yaaal.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/models",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/visual/presets",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "353u9jyjiyosl.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/visual/prompts/rewrite",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/visual/signals",
+      "params": [],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "34pf3133yaaal.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/visual/workflows/{name}/run",
+      "params": [
+        "name"
+      ],
+      "bodyKeys": [],
+      "queryKeys": [],
+      "chunks": [
+        "1ih8esy3ij-jk.js"
+      ]
+    }
+  ]
+}

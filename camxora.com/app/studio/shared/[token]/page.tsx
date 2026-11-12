@@ -91,8 +91,10 @@ export default function SharedStudioPage() {
     setForkBusy(true);
     setForkError("");
     try {
-      await forkStudioSharedProject(token);
-      window.location.href = "/studio/editor";
+      // The fork endpoint returns the new project; open that exact copy rather than
+      // relying on "/studio/editor" picking the most recent project.
+      const copy = await forkStudioSharedProject(token);
+      window.location.href = `/studio/editor?project=${encodeURIComponent(copy.id)}`;
     } catch (cause) {
       setForkError(cause instanceof Error ? cause.message : "Could not fork project.");
     } finally {
@@ -157,7 +159,7 @@ export default function SharedStudioPage() {
   }
 
   return (
-    <main className="shared-studio-page">
+    <div className="shared-studio-page">
       <header className="shared-studio-head">
         <Link href="/" className="shared-studio-brand">
           <Icon name="fa-wave-square" /> CAMXORA
@@ -236,7 +238,7 @@ export default function SharedStudioPage() {
                 placeholder={
                   replyTo
                     ? `Reply to ${replyTo.author_name}…`
-                    : "Leave feedback on this project?"
+                    : "Leave feedback on this project…"
                 }
                 maxLength={2000}
                 rows={3}
@@ -246,7 +248,7 @@ export default function SharedStudioPage() {
                 onClick={() => void postComment()}
                 disabled={commentBusy || !commentBody.trim()}
               >
-                {commentBusy ? "Posting?" : replyTo ? "Post reply" : "Post comment"}
+                {commentBusy ? "Posting…" : replyTo ? "Post reply" : "Post comment"}
               </button>
               {commentError ? <small>{commentError}</small> : null}
             </div>
@@ -264,13 +266,9 @@ export default function SharedStudioPage() {
           <footer className="shared-studio-footer">
             <span>Shared from CAMXORA Studio</span>
             <div className="shared-studio-footer-actions">
-              {project.permission === "edit" && user ? (
-                <Link href={`/studio/editor?share=${encodeURIComponent(token || "")}`}>
-                  Open in Studio
-                </Link>
-              ) : user ? (
+              {user ? (
                 <button type="button" onClick={() => void forkProject()} disabled={forkBusy}>
-                  {forkBusy ? "Forking?" : "Fork to Studio"}
+                  {forkBusy ? "Forking…" : "Fork to Studio"}
                 </button>
               ) : (
                 <Link href="/login">Sign in to fork</Link>
@@ -283,6 +281,6 @@ export default function SharedStudioPage() {
           </footer>
         </section>
       )}
-    </main>
+    </div>
   );
 }

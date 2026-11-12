@@ -402,6 +402,7 @@ class WebMusicWorkspaceResponse(BaseModel):
     id: str
     name: str
     is_default: bool = False
+    song_count: int = 0
     created_at: str | None = None
 
 
@@ -536,6 +537,7 @@ async def update_studio_project(
         pinned=body.pinned,
         archived=body.archived,
         tags=body.tags,
+        expected_updated_at=body.expected_updated_at,
     )
 
 
@@ -565,6 +567,7 @@ async def fork_studio_project(
 
 class StudioVersionCreateRequest(BaseModel):
     label: str | None = Field(default=None, max_length=120)
+    auto: bool = False
 
 
 @router.get("/studio/projects/{project_id}/versions")
@@ -592,6 +595,7 @@ async def create_studio_project_version(
         UUID(ctx.user_id),
         project_id,
         label=body.label,
+        auto=body.auto,
     )
 
 
@@ -668,6 +672,22 @@ async def list_studio_project_comments(
         UUID(ctx.user_id),
         project_id,
         limit=limit,
+    )
+
+
+@router.post("/studio/projects/{project_id}/comments", status_code=201)
+async def add_studio_project_comment(
+    project_id: UUID,
+    body: StudioCommentCreateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.add_studio_project_comment(
+        UUID(ctx.user_id),
+        project_id,
+        author_name=body.author_name,
+        body=body.body,
+        parent_id=body.parent_id,
     )
 
 
@@ -1370,6 +1390,16 @@ async def list_studio_operations(
         limit=limit,
         operation_type=operation_type,
     )
+
+
+@router.get("/studio/stems")
+async def list_studio_stems(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(100, ge=1, le=200),
+) -> dict:
+    """Completed stem sets, flattened to one row per stem clip (G12)."""
+    return await service.list_studio_stems(UUID(ctx.user_id), limit=limit)
 
 
 @router.get("/studio/operations/{operation_id}")

@@ -66,7 +66,7 @@ export function AccountView() {
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <img
             src={user.avatar_url || "/hero.png"}
-            alt={user.display_name}
+            alt=""
             style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover" }}
           />
           <div style={{ minWidth: 0 }}>

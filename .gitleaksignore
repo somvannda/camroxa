@@ -1,0 +1,5 @@
+# Gitleaks fingerprints for throwaway CI-only values in pr-checks.yml.
+# The JWT_SECRET / COOKIE_ENCRYPTION_KEY literals exist only so the mocked smoke and
+# e2e servers can boot; they are not credentials to any real service.
+cbdd3dbb2205d21804e94c57b537c48f6344bd18:.github/workflows/pr-checks.yml:generic-api-key:527
+cbdd3dbb2205d21804e94c57b537c48f6344bd18:.github/workflows/pr-checks.yml:generic-api-key:528

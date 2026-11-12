@@ -67,9 +67,14 @@ async function fetchJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function fetchGenerations(limit = 50): Promise<WebMusicGeneration[]> {
+export async function fetchGenerations(
+  limit = 50,
+  workspaceId?: string | null
+): Promise<WebMusicGeneration[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (workspaceId) params.set("workspace_id", workspaceId);
   const data = await fetchJson<{ items: WebMusicGeneration[] }>(
-    `/api/v3/web-music/generations?limit=${limit}`
+    `/api/v3/web-music/generations?${params.toString()}`
   );
   return data.items ?? [];
 }

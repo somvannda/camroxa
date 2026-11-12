@@ -193,6 +193,9 @@ _STUDIO_SONG_TITLE_SUFFIX = {
     "replace_section": "Edit",
 }
 
+# Automatic snapshots (§25): at most one per project per this many seconds.
+AUTO_VERSION_MIN_SECONDS = 20
+
 
 def _studio_song_request_hash(operation_id: Any) -> str:
     """Idempotency key that links a feed row to its studio operation."""
@@ -1698,20 +1701,32 @@ class WebMusicService:
 
     async def list_workspaces(self, user_id: UUID) -> list[dict[str, Any]]:
         await self.ensure_default_workspace(user_id)
+        # Song counts come from one grouped pass over the user's generations; the
+        # library panel shows them next to each workspace (spec §19.1). A LEFT JOIN
+        # keeps a freshly created workspace at 0 instead of dropping it.
         rows = await self._pool.fetch(
             """
-            SELECT id, name, is_default, created_at
-            FROM web_music_workspaces
-            WHERE user_id = $1
-            ORDER BY is_default DESC, created_at ASC
+            SELECT w.id, w.name, w.is_default, w.created_at,
+                   COALESCE(counts.song_count, 0) AS song_count
+            FROM web_music_workspaces w
+            LEFT JOIN (
+                SELECT workspace_id, COUNT(*) AS song_count
+                FROM suno_tasks
+                WHERE user_id = $1 AND source = $2
+                GROUP BY workspace_id
+            ) counts ON counts.workspace_id = w.id
+            WHERE w.user_id = $1
+            ORDER BY w.is_default DESC, w.created_at ASC
             """,
             user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
         )
         return [
             {
                 "id": str(row["id"]),
                 "name": str(row["name"]),
                 "is_default": bool(row["is_default"]),
+                "song_count": int(row.get("song_count") or 0),
                 "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
             }
             for row in rows
@@ -1911,7 +1926,23 @@ class WebMusicService:
         pinned: bool | None = None,
         archived: bool | None = None,
         tags: list[str] | None = None,
+        expected_updated_at: datetime | None = None,
     ) -> dict[str, Any]:
+        # Optimistic concurrency: a write carrying the version it was based on must
+        # fail if another writer (a second tab, a fork, a version restore) moved it.
+        if expected_updated_at is not None:
+            current = await self._pool.fetchrow(
+                "SELECT updated_at FROM studio_projects WHERE id = $1 AND user_id = $2",
+                project_id,
+                user_id,
+            )
+            if current is not None and current["updated_at"] is not None:
+                if abs((current["updated_at"] - expected_updated_at).total_seconds()) > 0.001:
+                    raise ConflictError(
+                        "This project changed since you loaded it. Reload before saving.",
+                        details={"project_id": str(project_id)},
+                    )
+
         safe_tags = None
         if tags is not None:
             safe_tags = sorted(
@@ -2010,6 +2041,7 @@ class WebMusicService:
         project_id: UUID,
         *,
         label: str | None = None,
+        auto: bool = False,
     ) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -2021,6 +2053,23 @@ class WebMusicService:
                 "Studio project not found.",
                 details={"project_id": str(project_id)},
             )
+        if auto:
+            # Versions are automatic in the reference (§25) and cluster seconds apart.
+            # Throttle server-side so several tabs cannot multiply snapshots, and so a
+            # burst of edits cannot fill the (bounded) list.
+            newest = await self._pool.fetchrow(
+                """
+                SELECT * FROM studio_project_versions
+                WHERE project_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                project_id,
+            )
+            if newest is not None and newest["created_at"] is not None:
+                age = (datetime.now(timezone.utc) - newest["created_at"]).total_seconds()
+                if age < AUTO_VERSION_MIN_SECONDS:
+                    return self._studio_version_payload(newest)
         safe_label = str(label).strip()[:120] if label and str(label).strip() else None
         row = await self._pool.fetchrow(
             """
@@ -2608,6 +2657,60 @@ class WebMusicService:
             safe_limit,
         )
         return {"items": [self._studio_comment_payload(row) for row in rows]}
+
+    async def add_studio_project_comment(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        author_name: str,
+        body: str,
+        parent_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError(
+                "Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        safe_name = str(author_name or "").strip()[:80] or "You"
+        safe_body = str(body or "").strip()
+        if not safe_body:
+            raise ValidationError("Comment cannot be empty.", details={"field": "body"})
+        if len(safe_body) > 2000:
+            raise ValidationError(
+                "Comment must be 2000 characters or fewer.",
+                details={"field": "body"},
+            )
+        if parent_id is not None:
+            parent = await self._pool.fetchrow(
+                "SELECT id FROM studio_project_comments WHERE id = $1 AND project_id = $2",
+                parent_id,
+                project_id,
+            )
+            if parent is None:
+                raise ValidationError(
+                    "Reply target was not found.",
+                    details={"field": "parent_id"},
+                )
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_project_comments
+                (project_id, user_id, author_name, body, parent_id)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+            safe_name,
+            safe_body,
+            parent_id,
+        )
+        return self._studio_comment_payload(row)
 
     def _studio_upload_payload(self, row: Any, url: str) -> dict[str, Any]:
         return {
@@ -4943,6 +5046,72 @@ class WebMusicService:
             operation_type or None,
         )
         return {"items": [self._studio_operation_payload(row) for row in rows]}
+
+    async def list_studio_stems(self, user_id: UUID, *, limit: int = 100) -> dict[str, Any]:
+        """Flatten completed stem operations into one typed stem list (G12/B-004).
+
+        A stem operation's provider result is a clip list; the library wants one row per
+        stem, not one row per job, so project each clip with its group name.
+        """
+        safe_limit = max(1, min(int(limit), 200))
+        rows = await self._pool.fetch(
+            """
+            SELECT id, task_id, result_json, created_at FROM studio_operations
+            WHERE user_id = $1
+              AND operation_type = 'stems'
+              AND status IN ('complete', 'success', 'completed')
+              AND result_json IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id,
+            safe_limit,
+        )
+        items: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            result = row["result_json"]
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except (TypeError, ValueError):
+                    continue
+            if not isinstance(result, dict):
+                continue
+            clips = result.get("clips")
+            if not isinstance(clips, list):
+                continue
+            for clip in clips:
+                if not isinstance(clip, dict):
+                    continue
+                clip_id = str(clip.get("id") or "").strip()
+                if not clip_id or clip_id in seen:
+                    continue
+                audio = (
+                    clip.get("audio_url")
+                    or clip.get("durable_url")
+                    or clip.get("stream_audio_url")
+                )
+                if not audio:
+                    continue
+                seen.add(clip_id)
+                metadata = clip.get("metadata") if isinstance(clip.get("metadata"), dict) else {}
+                items.append(
+                    {
+                        "clip_id": clip_id,
+                        "operation_id": str(row["id"]),
+                        "task_id": str(row["task_id"]),
+                        "title": str(clip.get("title") or "Stem"),
+                        "stem_type": str(metadata.get("stem_type_group_name") or ""),
+                        "audio_url": str(audio),
+                        "image_url": clip.get("image_url") or clip.get("imageUrl"),
+                        "duration_seconds": clip.get("duration"),
+                        "created_at": row["created_at"].isoformat()
+                        if row["created_at"] is not None
+                        else None,
+                    }
+                )
+        return {"items": items}
 
     async def radio_station(
         self, user_id: UUID, task_id: UUID, *, limit: int = 20

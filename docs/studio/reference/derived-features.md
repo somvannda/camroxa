@@ -1,0 +1,1459 @@
+# Feature areas derived from shipped strings
+
+Source: 134 chunks (authenticated), 9679 unique strings.
+
+> Derived labels only. Presence of a label proves the surface exists somewhere;
+> it does not prove the behaviour. Items marked **new** are not yet in the inventory.
+
+| Area | Candidate strings |
+|---|---|
+| Transport & timing | 145 |
+| Time selection | 48 |
+| Clip editing | 359 |
+| Take lanes | 68 |
+| Track & mixer | 446 |
+| MIDI & instruments | 200 |
+| Export & download | 62 |
+| Stems & generation | 151 |
+| Project & versions | 170 |
+| Library | 125 |
+| Collaboration | 138 |
+| Lyrics | 189 |
+| Errors & validation | 827 |
+| Onboarding & help | 16 |
+
+## Transport & timing
+
+- ,bpm:
+- ,metronome:
+- ,r.sticky?
+- 120 bpm
+- 130 bpm
+- 140 bpm
+- 90 bpm
+- ; another transport is scheduled for activation
+- A steady click on the beat while you play and record.
+- Add a bass line under my loop
+- Afroswing
+- Amazon Fire Stick
+- Ask the chat to make something — try a drum loop to get going
+- Breakbeat
+- Cannot convert a server response with no transport data and no base tree.
+- Closing active transport:
+- Closing pending transport:
+- Connection to server temporarily unavailable
+- Declining to activate transport
+- Dev Status Bar
+- Disconnecting active transport:
+- Disconnecting all transports
+- Disconnecting pending transport:
+- Disconnecting proposed transport:
+- Disconnecting transport and abandoning
+- Encountered error running transport request:
+- Exact beats→seconds conversion through the full tempo map.
+- Exact seconds→beats conversion through the full tempo map.
+- Expected length for setTempo event is 3, got
+- Follow playhead
+- Generate a 4-bar drum loop
+- Generate an 8-bar drum loop and drop it here
+- Generate your first loop
+- Handling edge cases in the audio loop…
+- How many beats make a bar. Click to change it — the ruler and metronome follow.
+- Infinite loop in iterateArrangementBeatLoops
+- Jump the playhead to the song start or beat 1 — press again for the other
+- Jump the playhead to the start of the selection and play
+- Keep the timeline scrolling with the playhead while your song plays.
+- Loop
+- Loop a section while you work
+- Loop boundary
+- Loop clip
+- Loop selection
+- Make Beat 1
+- Make these notes swing
+- Metronome
+- No transports left to try
+- Optimizing the inner loop for real time…
+- Playbar
+- Previous active protocol (for transport
+- Project tempo facts: bpm, beats per bar, and project end in beats and seconds.
+- Quantize
+- Quantize Warp Markers
+- Quantize notes
+- Repeat the looped stretch of the timeline while you work on it.
+- Sending AUTH message on active transport
+- Set the loop on one arrangement at a time.
+- Show stats bar
+- Simulated upload failure (debug toolbar)
+- Swing
+- Tell me whether the clip should loop.
+- Tempo
+- Tempo, time signature, and the grid
+- That's the transport — space always starts and stops playback.
+- The build likely contains an unbounded loop or far too much work.
+- The loop change didn't take effect.
+- The loop region must have a positive length.
+- The playhead position in minutes and seconds. Click to choose which clocks show.
+- Time signature
+- Timeout waiting for heartbeat response
+- Timeout waiting for transport to indicate itself viable
+- Toggle Loop
+- Toggle Metronome
+- Transport disabled
+- Transport params =
+- Transport recovery mode = recover; recoveryKey =
+- Transport.onConnect(): Connect message recieved without connectionDetails
+- Transport.onIdleTimerExpire(): lastActivity/maxIdleInterval not set
+- Unexpected exception in transport.send():
+- Upload failure forced via the debug toolbar
+- Want a quick start? Ask me to generate a drum loop and I'll take it from there.
+- WebSocketTransport.dispose(): wsConnection is not defined
+- WebSocketTransport; uri=
+- XHRPollingTransport; uri=
+- a 4-bar drum loop
+- add a bass line under my loop
+- afro beat
+- arrangements_edit split: at_beats must be a finite timeline beat.
+- arrangements_edit: set_loop edits exactly one arrangement — pass arrangement_id.
+- arrangements_edit: set_loop needs loop_enabled (a boolean).
+- arrangements_edit: the loop change did not take effect.
+- available transports = [
+- bar-reveal bar-reveal-click relative
+- bar-reveal-expanded absolute inset-x-0 bottom-0
+- bar-reveal-pill flex justify-center px-1 pt-2 pb-4
+- big beat
+- contemporary r&b
+- disconnecting active transport
+- drawbar organ
+- drum loop
+- electro swing
+- error counting tracks
+- fast tempo
+- group-data-[collapsed=true]/sidebar:h-1.5!
+- group-data-[collapsed=true]/sidebar:min-w-0!
+- group-data-[collapsed=true]/sidebar:w-1.5!
+- group/sidebar relative h-full w-full
+- h-full overflow-y-auto [&::-webkit-scrollbar]:hidden
+- heartbeat; connectionId =
+- high tempo
+- in r?r.beat:0);if(
+- isAvailable not implemented for transport
+- medium tempo
+- mid tempo
+- midi_generate: composer.prompt.bpm must be a whole number 40-240.
+- moves ghost (playhead-relative motion)
+- new jack swing
+- no supported HTTP transports available
+- re not running an evented main loop, it
+
+## Time selection
+
+- ,confirmWaveformSelection:
+- ,e.selectionHasLyrics?
+- ,e.selectionOverlapsOtherTrackContent?
+- ,makeWaveformSelection:
+- ,projectRelativeContext:P,projectRelativeSelection:S,renderEngine:
+- ,projectRelativeContext:g,projectRelativeSelection:m,renderEngine:
+- ,projectRelativeContext:p,projectRelativeSelection:p,renderEngine:
+- ,projectRelativeContext:u,projectRelativeSelection:u,renderEngine:
+- ,selection_type:
+- ===e.tab.selection.focusedArea)?(0,S.f)(e):
+- Delete Time
+- Delete Time on Selected Tracks
+- Duplicate Time
+- Extend Selection Left
+- Extend Selection Right
+- Fit your whole song — or the current selection — on screen.
+- I couldn't read which selection to cover — please try again.
+- I couldn't start on that — too many context clips to also cover the selection.
+- Jump the playhead to the start of the selection and play
+- Loop selection
+- Move Selection Left
+- Move Selection Right
+- Nice — that selection is what generation and editing will target.
+- Play from Selection Start
+- Play from selection
+- Promote Take Lane Selection
+- Render the selection and download it as a WAV file
+- Rendering the selection failed on the server.
+- Rendering the selection is taking unusually long.
+- Rendering the selection…
+- Select All
+- Select All Tracks
+- Select All Warp Markers
+- Selection
+- Selection from "
+- Selection is empty
+- The arrangement already lies within the kept time ranges.
+- The project needs to be saved before I can render the selection.
+- The selection is too short to sample cycles from.
+- There is nothing audible in that selection to cover.
+- Transcribe the selection to a MIDI file (10 credits)
+- Transcribing the selection. This may take a few minutes.
+- With a region selected, split the clip at your selection (Cmd+E)
+- Zoom to Selection
+- change click focusin focusout input keydown keyup selectionchange
+- got non-finite selectionStartBeats in useStudioPlaybackController
+- midi_score.source must be one of "selection_midi", "notes", or "transcription".
+- the selection
+
+## Clip editing
+
+- !==e.name.trim()?e.name.trim():
+- !==t)return;let n=(0,a.y)(e)?.title?.trim()??
+- #extension GL_ANGLE_clip_cull_distance : require
+- (fetching clip records…)
+- ))continue;let r=t.split(
+- ))return e;let t=e.split(
+- ))return ea(e,t.substring(5).split(
+- ),enableForIncompleteClips:!0,children:
+- ),r,n);let i=t.split(
+- ),r=t.trimStart().match(/^[+-]/)?.[0]??
+- );for(var t=d[0].split(
+- );let e=t.split(
+- );return Number(e.digest.split(
+- );return e.digest.split(
+- );t=r[0].toLowerCase().trim();let s=r[1].substring(0,r[1].length-1);
+- )?i.currency||(i.currency=s.trim()):
+- )],l=r?.sourceCode.trim();return l&&o.push([
+- +i.shaderName,w,i.extensionClipCullDistance?
+- , over an audio clip
+- ,5),o=parseInt(t,10),a=(isNaN(o)?60:o)*1e3;if(n)for(let e of n.split(
+- ,Clip:
+- ,Icon:g.f,conditionType:P.s.FADE_IN,actionName:
+- ,Icon:h.f,conditionType:P.s.FADE_OUT,actionName:
+- ,Icon:k.f,conditionType:P.s.CROP,actionName:
+- ,SplitHighlightScopeFull:
+- ,SplitInner:
+- ,SplitInnerLeading:
+- ,SplitInnerTrailing:
+- ,SplitRoot:
+- ,SplitTrailingVisibilityOnHover:
+- ,clip:
+- ,clipId:e,clipPlayback:t,density:
+- ,clipId:e.clipId,title:
+- ,clipId:n,createNew:
+- ,clipPath:
+- ,clipRule:
+- ,clipTags:(0,D.l)(a),initialEngagementMode:u?void 0:
+- ,clipping_planes_fragment:
+- ,clipping_planes_pars_fragment:
+- ,clipping_planes_pars_vertex:
+- ,clipping_planes_vertex:
+- ,clips_sort_by:
+- ,cover_clip_id:
+- ,effectsReversed:!1,chatEyebrow:
+- ,es=eo.trim()?
+- ,faders:
+- ,gainParam:
+- ,midiReversed:!1,effectsEyebrow:
+- ,projectRelativeContext:P,projectRelativeSelection:S,renderEngine:
+- ,projectRelativeContext:g,projectRelativeSelection:m,renderEngine:
+- ,projectRelativeContext:p,projectRelativeSelection:p,renderEngine:
+- ,projectRelativeContext:u,projectRelativeSelection:u,renderEngine:
+- ,renderEngine:
+- ,render_arrangements:
+- ,rendered_failed_moderation:
+- ,rendered_in_moderation:
+- ,rendered_passed_moderation:
+- ,rendererVersion:
+- ,rendering:
+- ,stem_split:
+- ,store:na.clipCreationIntents,idKey:
+- ,store:na.clips,idKey:
+- ,upsampleClip:
+- .clip-interaction-button, .context-menu-button, button, a, input, label
+- :await b(r.id,p.Y.CROP);break;case
+- :await b(r.id,p.Y.FADE_IN);break;case
+- :await b(r.id,p.Y.FADE_OUT);break;case
+- :let a=t.split(
+- :return a.Clip;case
+- :return e.text.trim()?(0,el.L)(e.text):
+- :return e.text.trim()?(0,el.Z)(e.text):
+- :return ei(e.clip);case
+- :return i.q.PitchBend;case
+- :return t?.stretchArmed&&t.canStretchEdge(e.arrangementId,
+- :t;let r=e.type.split(
+- ;if((0,S.W)(e))return new URL(e).hostname;let t=this.clip?.audio_url??
+- ;justify-content:stretch;flex-direction:
+- ;let o=e.split(
+- ;overflow:clip;overflow-clip-margin:0.25rem;pointer-events:
+- ;return r.split(
+- ===(0,n.d)(eo(e).trim())?
+- ===A.trim())throw Error(
+- ===G.kind?G.clipId:
+- ===n.position,clip:
+- ===t.type?[t.payload.clipId]:
+- ==typeof e&&e.endsWith(t)&&1===e.split(
+- ==typeof e)return c(e).split(
+- ==typeof e.message?e.message.trim():
+- ==typeof t&&t.split(
+- ==typeof t?t:t.path,s)).reverse(),e.X,s],o=[
+- Audio clip
+- Audio processing timed out. Please try again.
+- Bounce
+- Cannot call an event handler while rendering.
+- Cannot regenerate from a private clip not shared with you
+- Client session not found. Please try clearing cookies and signing in again.
+- Clip
+- Clip Info
+- Clip audience request failed
+- Clip editor
+- Clip failed
+- Clip feedback request failed
+- Clip gain only applies to audio arrangements.
+- Clip generation failed, please try again
+- Clip generation timed out, please try again
+- Clip header
+- Clip is not complete
+- Clip reaction request failed
+- Clip timed out
+- Clip trash request failed
+- Clip visibility request failed
+- Clip volume
+- ClipMenuItem must be rendered in a ClipContext
+- Clips returned → take lanes (preview Take 1)
+- Comparing it against the previous version…
+- Crop
+- Crop clip end
+- Crop clip start
+- Crop operation failed:
+- Crop worker reported error
+
+## Take lanes
+
+- ,AutomationLane:
+- ,AutomationLaneCC:
+- ,AutomationLaneVelocity:
+- ,arrange_take:
+- ,clipping_planes_fragment:
+- ,clipping_planes_pars_fragment:
+- ,clipping_planes_pars_vertex:
+- ,clipping_planes_vertex:
+- ,store:na.takeLanes,idKey:
+- ,takes_edit:
+- ===e.key&&(e.ctrlKey||e.metaKey)?(e.preventDefault(),e.shiftKey?f():m()):
+- ===e.key&&(e.metaKey||e.ctrlKey)?e.shiftKey?p():u():
+- ==typeof e.take_lane_id?e.take_lane_id:void 0,track_id:
+- A smoothed tuner needs one message tap and a valid input note lane.
+- Audition and commit takes
+- Authoring the plugin — this usually takes a few minutes.
+- Clips returned → take lanes (preview Take 1)
+- Creating a new version of the plugin — this usually takes a few minutes.
+- Creating your own version of the plugin — this usually takes a few minutes.
+- Discarding token request response; overtaken by newer one
+- Dismiss Take Lane
+- Failed to delete the take
+- I could not find that take.
+- Move Notes Left (Velocity Lane)
+- Move Notes Right (Velocity Lane)
+- No submit visual-api can take
+- Only generated audio takes can be placed on an audio track.
+- Pass a take_lane_id from inspect_track.
+- Place Take Lane
+- Plane
+- Promote Take Lane Selection
+- Run completes (auto-audition first take)
+- Show the selected track's automation lanes to draw parameter changes over time.
+- Take lanes
+- Takes start streaming
+- That generation produced no usable take.
+- That take has no audio yet — wait for it to finish generating.
+- That take is no longer available; run inspect_track again.
+- That take is still starting; retry when its arrangement appears.
+- The copy didn't take effect.
+- The fade change didn't take effect.
+- The gain change didn't take effect.
+- The loop change didn't take effect.
+- The mute change didn't take effect.
+- The placed take could not be verified on the destination track.
+- The take dismissal could not be verified.
+- The take has no audio to place yet.
+- There are no tracks to arrange a take onto.
+- Toggle Lanes Panel
+- Toggle Take Lanes
+- Transcribing the selection. This may take a few minutes.
+- Unfocus Take Lane
+- Want a quick start? Ask me to generate a drum loop and I'll take it from there.
+- arrange_take: no tracks are available.
+- arrangements_edit rename: the name change did not take effect on every target.
+- arrangements_edit: crop with keep_ranges_seconds takes one arrangement_id.
+- arrangements_edit: reverse did not take effect on all targets.
+- arrangements_edit: the amplitude change did not take effect.
+- arrangements_edit: the crop did not take effect on all targets.
+- arrangements_edit: the duplicate did not take effect.
+- arrangements_edit: the fade change did not take effect.
+- arrangements_edit: the loop change did not take effect.
+- arrangements_edit: the mute change did not take effect.
+- arrangements_edit: transposition did not take effect on all targets.
+- changed which takes are auditioning
+- please take full snapshot after start recording
+- the take
+- visual-api cannot take this submit
+
+## Track & mixer
+
+- !==r?'add_plugin_to_chain: placement must be
+- !=typeof e.track_id)return
+- !=typeof e.track_name)return
+- %3E%3Cfilter id=
+- ));let e=t[0].track_id,s=this.getTrackById(e);if(!s)throw Error(
+- ),o=t(e.muted?
+- ),s.mime+=s.tracks[t].codec;return s.mime+='
+- ).filter(Boolean),n=t.at(-1),r=void 0!==n&&n.startsWith(
+- ).filter(Boolean),r=0;for(let e of t)if(e.startsWith(
+- );let r=!1===n.alignDelimiters?1:Math.max(1,u[h]-t.length-i.length),o=t+
+- );return[e.trackId??
+- +i.specularMapUv:
+- , sending annotation with messageSerial =
+- , will not send event.
+- ,PresetNav:
+- ,TrackLevelAutomation:
+- ,TrackSignalChain:
+- ,Tracks:
+- ,add_plugin_to_chain:
+- ,author_plugin:
+- ,e.hasLyricsEarlierOnTrack?
+- ,e.selectionOverlapsOtherTrackContent?
+- ,e.trackType??
+- ,faders:
+- ,filter:
+- ,i.specularMap?
+- ,i.specularMapUv?
+- ,inspect_plugin:
+- ,inspect_track:
+- ,o=e.trackName??
+- ,plugin_manage:
+- ,plugins_list:
+- ,preChorus:
+- ,remove_plugin_from_chain:
+- ,resetFilter:
+- ,set_plugin_params:
+- ,specularmap_fragment:
+- ,specularmap_pars_fragment:
+- ,store:na.plugins,idKey:
+- ,suicide_self_harm:
+- ,tracks_edit:
+- ,webUserEvent:
+- --filter-elements-row-h:
+- .send-to-chat-button *
+- /%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width=
+- 1 · Plugins in this project
+- :n,o=t.delimiter,s=void 0===o?
+- :return t?.stretchArmed&&t.canStretchEdge(e.arrangementId,
+- ; see: https://github.com/date-fns/date-fns/blob/master/docs/unicodeTokens.md
+- ;--filter-elements-row-p:
+- ;background:var(--color-background-primary);backdrop-filter:
+- ;if(void 0!==e.track_id&&
+- ;if(void 0!==e.track_name&&
+- ;transition:filter 0.2s ease-in-out;
+- ===a.focusedArea||o,tracksAreaFocused:
+- ===e.kind?e.track.color:
+- ===t.load.kind||t.load.seq!==e.seq)return t;let r=
+- ===t.type&&(r=new f.Track(t,e)),
+- ===t?(0,s.f)(e.trackId,r):
+- ==typeof a?a:0,presetName:
+- ==typeof e.artifact_id?e.artifact_id:void 0,catalogPluginId:
+- ==typeof e.catalog_plugin_id?e.catalog_plugin_id:void 0,descriptor:t,trackId:
+- ==typeof e.take_lane_id?e.take_lane_id:void 0,track_id:
+- ==typeof e.track_id?e.track_id:void 0,max_notes:
+- ==typeof e.track_id?e.track_id:void 0,recency:
+- ==typeof e.track_id?e.track_id:void 0,trackName:
+- ==typeof e.track_name?e.track_name:void 0,placement:r,replacePluginId:
+- A custom plugin.
+- Active worker found, sending claim message
+- Add Audio Track
+- Add MIDI Track
+- Add Track
+- Add a new MIDI or Audio track
+- Add a track
+- Add a track with a signal chain first.
+- Add a warm reverb to this track
+- Add an **audio** or **MIDI** track, or upload a file from your computer.
+- Add to track
+- Add track
+- Allowed Tracking Origins must be an array
+- Already on Master
+- Always available project context and track list.
+- Anti-abuse checks timed out after 10 seconds
+- Arm for recording
+- Arm the track and pick its input, and recording lands right here.
+- Ask me to write or change notes on this track
+- Audio Track
+- Authoring the plugin — this usually takes a few minutes.
+- Build a gritty delay and put it on this track
+- Bulk-export presets
+- Can't dismiss view events using beforeSend!
+- Cannot create moof for samples from different tracks:
+- Cannot insert before a reference node from a different parent
+- Chassis / reverb-pan bleed
+- Choose a different reference track for the reorder.
+- Choose audio or MIDI for the new track.
+- Clear Solo
+- Client Token is not configured, we will not send any data.
+- Compressor
+- Could not resolve the plugin descriptor for that chain entry.
+- Could not resolve the plugin descriptor to validate the parameters.
+- Creating a new version of the plugin — this usually takes a few minutes.
+- Creating media fragment on track #
+- Creating your own version of the plugin — this usually takes a few minutes.
+- Debug plugin controls
+- Delete Time on Selected Tracks
+- Destroying compression worker
+- EQ curve
+- Error in compression worker
+- Error in compression worker:
+- Error sending batch
+- Error sending event
+- Error sending invite:
+- Error stopping audio tracks:
+- Error while sending envelope:
+- Exception from ws connection when trying to send:
+- Expected length for endOfTrack event is 0, got
+- Exporting on track #
+- Extend the addTarget method to add your plugin to another plugin's target
+- Extract stems and add them to the project as tracks
+
+## MIDI & instruments
+
+- ),dataFootnoteBackref:
+- ),upgradeNote:
+- )?n.push('midi_generate: composer.prompt.description must not contain
+- ,ArrangementEditorMidi:
+- ,AutomationLaneVelocity:
+- ,Instrumental:
+- ,Synth:
+- ,[s.B.MIDI]:
+- ,instrument:
+- ,instrumental:
+- ,midiEffect:
+- ,midiHeadlineLines:[],midiBody:
+- ,midiReversed:!1,effectsEyebrow:
+- ,midi_edit:
+- ,midi_generate:
+- ,midi_transcription:
+- ,target:'the Composer\'s instrument field is composer.prompt.instrument (
+- ,twoUpItems:[],midiEyebrow:
+- ===i?r:(0,D.e)(n.sessionSampleRate)?(0,D.e)(n.sessionReplaySampleRate)?
+- ==typeof e.track_id?e.track_id:void 0,max_notes:
+- A custom MIDI effect.
+- A custom instrument.
+- A smoothed tuner needs one message tap and a valid input note lane.
+- Add MIDI Track
+- Add a new MIDI or Audio track
+- Add an **audio** or **MIDI** track, or upload a file from your computer.
+- Add audio or MIDI files to the project
+- An instrumentation-client router transition hook failed
+- Arpeggiated Synth
+- Arpeggiator
+- Ask me to write or change notes on this track
+- Bad MIDI file.  Expected 'MHdr', got: '
+- Bad MIDI file.  Expected 'MTrk', got: '
+- Brass Instruments
+- Choose audio or MIDI for the new track.
+- Chord
+- Chords
+- Converting to MIDI…
+- Decrease Velocity
+- Download MIDI
+- Download the selected MIDI clips as a MIDI file
+- Every midi_score note needs pitch, start_beats, and a positive duration_beats.
+- Failed to start MIDI recording:
+- Focus a track with a signal chain (audio or MIDI) first.
+- Footnotes
+- Generated MIDI
+- Get MIDI
+- Get MIDI failed:
+- Guitar Synth
+- I could not find the MIDI clip to replace.
+- Increase Velocity
+- Instrument Stem
+- Instruments
+- Invalid MIDI data
+- Lengthen Notes
+- MIDI Clip
+- MIDI Effects
+- MIDI Track
+- MIDI clip
+- MIDI context as condition
+- MIDI effects can only load onto a MIDI track.
+- MIDI file contains no tracks
+- MIDI transcription failed without an error detail.
+- MIDI transcription failed, please try again.
+- MIDI transcription requires a Premier subscription
+- Make a variation of this MIDI clip
+- Make these notes swing
+- Move Notes Left
+- Move Notes Left (Velocity Lane)
+- Move Notes Right
+- Move Notes Right (Velocity Lane)
+- No MIDI score was staged for this generation.
+- No MIDI track is selected.
+- One track in detail, including active MIDI notes (capped at 4096 per read).
+- Open the editor for the selected clip: notes for MIDI, warp and fades for audio.
+- Quantize Warp Markers
+- Quantize notes
+- Record your voice or an instrument
+- Rhythm Acoustic Guitar (Arpeggio)
+- Rhythm Electric Guitar (Arpeggio)
+- Select All Warp Markers
+- Select a span of time below your audio and add another instrument
+- Select or create a MIDI track before generating MIDI.
+- Sentry syntheticException
+- Snap the clip to the selected grid — warp markers for audio, notes for MIDI.
+- Suno Studio MIDI
+- Synth
+- Synth Ambiant
+- Synth Bass
+- Synth Brass
+- Synth Flute
+- Synth Keys
+- Synth Lead
+- Synth Pad
+- Synth Room 1
+- Synth Room 2
+- Synth Room 3
+- Synth Room 4
+- Synth Room 5
+- Synth Strings
+- Synth Voice
+- Synthetic Resonance
+- Synthpop
+- Synthwave
+- THREE.WebGLRenderer: Texture samplers can not be part of an uniforms group.
+- Tell me which instrument to isolate.
+- That's a MIDI clip — its notes are edited directly rather than warped.
+- To rewrite a clip's own content pass replace_midi_id.
+- Toggle Notes Disabled
+- Transcribe the selection to a MIDI file (10 credits)
+- Transpose this clip up an octave
+- Unrecognised MIDI event type byte:
+- Unrecognised MIDI event type:
+- Velocity policy
+- Vocals + Instrumental
+- We couldn't check your MIDI file. Please try again.
+- Wind Instruments
+- Write and edit MIDI notes
+- [DspSyncEngine] attaching MIDI clips to the track source threw — skipping track
+- [studio] creating simple synth (saw) for track
+
+## Export & download
+
+- );return o.href=i,o.download=
+- ,[i.Endpoint._download_config_specs]:
+- ,confirmWaveformSelection:
+- ,downloadMP3:
+- ,downloadVideo:
+- ,downloadWAV:
+- ,downloadWAVTimeout:
+- ,downloadWAVUrlRetrieved:
+- ,makeWaveformSelection:
+- ,mp3:
+- ,partialBundledLanguages:!1,saveMissing:!1,updateMissing:!1,saveMissingTo:
+- ,waveformParam:
+- 3 · Wavetables
+- Add audio or MIDI files to the project
+- Bad MIDI file.  Expected 'MHdr', got: '
+- Bad MIDI file.  Expected 'MTrk', got: '
+- Bulk-export presets
+- Chillwave
+- Completed video has no download URL
+- Download .WAV
+- Download MIDI
+- Download URL missing. Please try again.
+- Download WAV failed:
+- Download bundle
+- Download failed.
+- Download failed:
+- Download preparation failed.
+- Download preparation timed out. Please try again.
+- Download the selected MIDI clips as a MIDI file
+- Error disconnecting WaveformGetterWorklet:
+- Export
+- Export JSON
+- Export failed.
+- Exporting on track #
+- Failed to get download URL.
+- Failed to load your wavetables.
+- Failed to save designed wavetable:
+- Falling back to progressive download
+- LFO waveform
+- LazyFiles on gzip forces download of the whole file when length is accessed
+- M4A download URL resolution failed:
+- M4A download failed.
+- MIDI file contains no tracks
+- MP4 download URL refresh failed
+- MSE not supported, using progressive download
+- Multitrack download failed.
+- No download URL returned from server
+- Progressive: Download complete
+- Progressive: Starting download
+- Render the selection and download it as a WAV file
+- Synthwave
+- Transcribe the selection to a MIDI file (10 credits)
+- Waveform
+- We couldn't check your MIDI file. Please try again.
+- When your song is ready, **download the mix** or share it from the export menu.
+- dark wave
+- export const instant = false\
+- new wave
+- synth wave
+- t find variable:\s*tapAt\b/i,nW=/\bsyncDownloadState is not defined\b|can
+- turbopack exports
+- ” — only wavetables can be ingested as standard assets today.
+
+## Stems & generation
+
+- !==o[w.l.CUSTOM].title,audioMode:c?.[w.s.COVER]?
+- ),hasVoxPersona:
+- );return(0,b.c)(t.stem_task)===b.e.Remove?
+- ,Icon:C.f,conditionType:P.s.COVER,mode:
+- ,Icon:M.f,conditionType:P.s.STEM_CONDITION,actionName:
+- ,Icon:f.f,conditionType:P.s.EXTEND,actionName:
+- ,Persona:
+- ,StemsModal:
+- ,[f.s.COVER]:
+- ,[f.s.PERSONA]:
+- ,[f.s.VOX_PERSONA]:
+- ,audioUploadBanner:
+- ,clickDisabledCoverSong:
+- ,clickDisabledGetStems:
+- ,coverSong:
+- ,coverSongBtnClick:
+- ,cover_clip_id:
+- ,extendSong:
+- ,extendSongBtnClick:
+- ,failedToUpload:
+- ,getStems:
+- ,i.alphaToCoverage?
+- ,impersonation:
+- ,stem_split:
+- ,uploadSong:
+- ,youCanOnlyUploadFileTypes:
+- :N&&L(g.l.CUSTOM),await b(r.id,p.Y.COVER,void 0);break;case
+- :N&&L(g.l.CUSTOM),y(u.U),y((0,S.f)(r)),await b(r.id,p.Y.COVER,void 0);break;case
+- :await b(r.id,p.Y.EXTEND,void 0);break;case
+- :c?.[w.s.EXTEND]?
+- ==typeof e.infill_context_start_s?e.infill_context_start_s:0,contextEndSeconds:
+- ==typeof e.persona_id?e.persona_id:void 0;if(!r)break;let n=
+- ==typeof t.recover&&i(
+- Add an **audio** or **MIDI** track, or upload a file from your computer.
+- Audio upload rate limited
+- Audio upload restricted for account
+- Cannot create a new upload: already uploading.
+- Cannot sign without a key, an uploadId, and a partNumber
+- Classic Persona
+- Cover
+- Cover (With Original Audio)
+- Duplicate non-persona reference types are not allowed
+- Error Extending Analytics Session ID
+- Error in extending analytics session id
+- Error starting image upload:
+- Error toggling persona love:
+- Error uploading image:
+- Extend
+- Extend Selection Left
+- Extend Selection Right
+- Extend cannot be combined with other operations
+- Extend the addTarget method to add your plugin to another plugin's target
+- Extract stems and add them to the project as tracks
+- Failed to fetch cover art:
+- Failed to fetch followed personas
+- Failed to fetch loved personas
+- Failed to fetch persona
+- Failed to fetch upload parameters
+- Failed to fetch user personas
+- Failed to get upload ID
+- Failed to load pending upload:
+- Failed to load stems
+- Failed to report audio upload error
+- Failed to start lyrics mashup
+- File is too large to upload (500MB max)
+- GenStem cannot be combined with other operations
+- Get Stems
+- I can't run stem separation from here.
+- I could not reach the stems service.
+- I couldn't read which selection to cover — please try again.
+- I couldn't start on that — a song in a voice can cover only one clip.
+- I couldn't start on that — too many context clips to also cover the selection.
+- Infill cannot be combined with both cover and persona
+- Infill cover is not supported
+- Instrument Stem
+- Lyrics mashup failed
+- Lyrics mashup timed out. Please try again.
+- MSE rolling: seek recovery complete
+- MSE rolling: seek recovery triggered
+- Mashup
+- Mashup cannot be combined with other operations
+- Mashup lyrics generation failed
+- Mashup lyrics generation failed:
+- No font coverage for U+
+- No high-quality stems found
+- No stem clips to arrange
+- No uploader type plugins are used
+- Nonexistent upload
+- Not enough data in stream to parse the extended size of the "
+- Not starting the upload because onBeforeUpload returned false
+- Our moderation system wasn't sure about those lyrics, please try again
+- Our moderation system wasn't sure about those lyrics, please try again.
+- Persona
+- Playlist cannot be combined with other operations except persona
+- Please select a video file or wait for it to upload.
+- Please wait for all clips to finish uploading
+- Reupload failed:
+- Simulated upload failure (debug toolbar)
+- Split a clip into stems
+- Stack cannot be combined with references other than Persona
+- Starting decode failure recovery process.
+- Starting stem separation…
+- Stem
+- Stem generation is missing its context render.
+- Stem separation applies to audio arrangements.
+- Stems
+- Studio file upload failed:
+- THREE.CubeCamera.updateCoordinateSystem(): Invalid coordinate system:
+- THREE.Frustum.setFromProjectionMatrix(): Invalid coordinate system:
+- THREE.Matrix4.makeOrthographic(): Invalid coordinate system:
+- THREE.Matrix4.makePerspective(): Invalid coordinate system:
+- The cover destination must be an audio track.
+- The installed uploader plugin does not allow removing files during an upload.
+- The separation is taking unusually long — the stems may still arrive.
+- There is nothing audible in that selection to cover.
+- Transport recovery mode = recover; recoveryKey =
+- Turnstile widget did not recover after error
+- Upload
+- Upload aborted
+- Upload cancelled
+
+## Project & versions
+
+- " has been upgraded from version
+- ));var o=s.match(/^pk_test/),c=3===(i=e.version)?
+- );return e.VERSION&&this.log(
+- ,SdkVersion:
+- ,i.glslVersion===f?
+- ,library_version:
+- ,noDuplicates:
+- ,partialBundledLanguages:!1,saveMissing:!1,updateMissing:!1,saveMissingTo:
+- ,projectRelativeContext:P,projectRelativeSelection:S,renderEngine:
+- ,projectRelativeContext:g,projectRelativeSelection:m,renderEngine:
+- ,projectRelativeContext:p,projectRelativeSelection:p,renderEngine:
+- ,projectRelativeContext:u,projectRelativeSelection:u,renderEngine:
+- ,project_settings:
+- ,project_title:t2??
+- ,project_vertex:
+- ,rendererVersion:
+- ,size:4980736,storeName:
+- ,version:
+- 1 · Plugins in this project
+- ;return e.storeName!==t.storeName&&(r+=e.storeName+
+- ===e.major_model_version?d.n.V3:
+- ===e.major_model_version?d.n.V3_5:
+- ===e.major_model_version?d.n.V4:
+- ===e.selected_version?e.selected_version:
+- ==typeof t.projectId&&
+- Activating without reload - version mismatch possible!
+- Active version:
+- Add audio or MIDI files to the project
+- Always available project context and track list.
+- Carrying your settings into the new version…
+- Clone project function not available
+- Comparing it against the previous version…
+- Compiling the new version…
+- Context Restored
+- Creating a new version of the plugin — this usually takes a few minutes.
+- Creating your own version of the plugin — this usually takes a few minutes.
+- DataStream.save: Can't create object URL.
+- Demo projects are only defined in staging and prod
+- Duplicate
+- Duplicate Box of uuid:
+- Duplicate Time
+- Duplicate non-persona reference types are not allowed
+- Duplicate one arrangement at a time.
+- Error removing self from project:
+- Error saving project details:
+- Error while executing get_version in worker
+- Event dropped due to being a duplicate of previously captured event.
+- Exact beats→seconds conversion through the full tempo map.
+- Exact seconds→beats conversion through the full tempo map.
+- Extract stems and add them to the project as tracks
+- Failed to clone project
+- Failed to clone project:
+- Failed to create or load project for clip
+- Failed to fetch latest version:
+- Failed to fetch project
+- Failed to fetch project revision
+- Failed to fetch project version
+- Failed to fetch projects for clip
+- Failed to get version:
+- Failed to load the plugin version history.
+- Failed to rename the model
+- Failed to restore clips to playlist
+- Failed to save SessionID
+- Failed to save StableID to storage
+- Failed to save designed impulse response:
+- Failed to save designed wavetable:
+- Failed to save preferences:
+- Failed to save project
+- Failed to save project:
+- Failed to save queue state:
+- Failed to update project details
+- Filing it over the previous version…
+- Fixed duplicate clip id:
+- GET /api/lyrics-projects
+- I can't generate — the project isn't loaded.
+- Incorrect schema version; need 1, got
+- Invalid project state
+- Invalid project state format
+- Left the project room
+- Loading the current version onto the bench…
+- Missing Vcdiff decoder (https://github.com/ably-forks/vcdiff-decoder)
+- New version activated, reloading...
+- Newer versions kept landing during the save
+- No project ID in cloned project response
+- No project ID in response
+- No project version ID available for cloning
+- No revision data found
+- No studio project ID available
+- No version ID in save response
+- Not in a project room
+- Packaging the new version…
+- Page restored from bfcache, reconnecting
+- Plugin version id
+- Preparing a new version…
+- Project
+- Project ID not found for version
+- Project tempo facts: bpm, beats per bar, and project end in beats and seconds.
+- Pulling the schematic of the current version…
+- Rename
+- Rename Focused Track
+- Rename one track at a time.
+- Restored DUST configuration from storage
+- Save
+- Save Project
+- Save your latest changes now (the studio also saves automatically)
+- Search projects
+- Stamping the new version number…
+- Studio project is not loaded.
+- THREE.Frustum.setFromProjectionMatrix(): Invalid coordinate system:
+- THREE.WebGLRenderer: Context Restored.
+- The character was removed while it was being saved
+- The destination track is no longer in the project.
+- The project has no arrangements to analyze.
+- The project needs to be saved before I can render the selection.
+- The project needs to be saved before I can render.
+- The project room refused or failed the connection
+- There is no active project to load into.
+- This project is read-only; use the available copy, restore, or upgrade action.
+- Unable to save failed logs to storage
+- Unknown Version
+
+## Library
+
+- %3E%3Cfilter id=
+- ),E=tJ(await tQ(O,b));return y.searchParams.set(
+- ).filter(Boolean),n=t.at(-1),r=void 0!==n&&n.startsWith(
+- ).filter(Boolean),r=0;for(let e of t)if(e.startsWith(
+- );return l.searchParams.set(
+- ,LIBRARY_PAGE:
+- ,Playlist:
+- ,PlaylistShortcut:
+- ,SEARCH_PAGE:
+- ,Workspace:
+- ,[f.s.PLAYLIST]:
+- ,[u.ex.Library]:
+- ,audioUploadBanner:
+- ,clips_sort_by:
+- ,completionMethodForOmnisearch:
+- ,dislikePlaylist:
+- ,enterTextToSearch:
+- ,failedToUpload:
+- ,filter:
+- ,help_search:
+- ,library_version:
+- ,likePlaylist:
+- ,noSearchResults:
+- ,playlistActionEvent:
+- ,playlistPageOpen:
+- ,resetFilter:
+- ,resetSearch:
+- ,search:
+- ,searchEvent:
+- ,searchImages:
+- ,sharePlaylistWithLink:
+- ,songSearch:
+- ,songsPlaylistId:
+- ,sortBy:
+- ,sortDirection:
+- ,t.origin);return n.searchParams.set(
+- ,undoDislikePlaylist:
+- ,undoLikePlaylist:
+- ,uploadSong:
+- ,youCanOnlyUploadFileTypes:
+- --filter-elements-row-h:
+- /%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width=
+- :return a.Playlist;case
+- ;--filter-elements-row-p:
+- ;background:var(--color-background-primary);backdrop-filter:
+- ;transition:filter 0.2s ease-in-out;
+- ===e:return i.br.LIBRARY_PAGE;case
+- ===e:return i.br.SEARCH_PAGE;case
+- ==typeof location?(e=r(),(location.search||
+- Add an **audio** or **MIDI** track, or upload a file from your computer.
+- Audio upload rate limited
+- Audio upload restricted for account
+- Cannot create a new upload: already uploading.
+- Cannot sign without a key, an uploadId, and a partNumber
+- Error fetching workspaces
+- Error starting image upload:
+- Error uploading image:
+- Failed to add clips to playlist
+- Failed to fetch search suggestions
+- Failed to fetch the library workspaces feed
+- Failed to fetch upload parameters
+- Failed to get upload ID
+- Failed to load pending upload:
+- Failed to load playlist
+- Failed to load playlists
+- Failed to load the impulse-response library.
+- Failed to load the soundfont library.
+- Failed to remove clips from playlist
+- Failed to report audio upload error
+- Failed to restore clips to playlist
+- Failed to set playlist visibility
+- Failed to trash playlist
+- File is too large to upload (500MB max)
+- Filters
+- Import a clip from your Library
+- It shows in your Visuals library and the song's videos when it's ready.
+- Library
+- New workspace
+- No uploader type plugins are used
+- Nonexistent upload
+- Not starting the upload because onBeforeUpload returned false
+- Open the Library
+- Pick a view in the Library, then drag a clip onto the timeline
+- Playlist
+- Playlist cannot be combined with other operations except persona
+- Please select a video file or wait for it to upload.
+- Please wait for all clips to finish uploading
+- Reupload failed:
+- Search projects
+- Search request failed
+- Simulated upload failure (debug toolbar)
+- Sortable
+- Studio file upload failed:
+- That's the Library — drag anything from there straight onto the timeline.
+- The installed uploader plugin does not allow removing files during an upload.
+- The plugin library is unavailable right now.
+- The render is taking unusually long — it may still land in the library.
+- Toggle Library
+- Toggle library
+- Upload
+- Upload aborted
+- Upload cancelled
+- Upload cancelled, skipping finalize API call
+- Upload error:
+- Upload failed
+- Upload failure forced via the debug toolbar
+- Upload finish failed
+- Upload finish failed:
+- Upload processing timed out
+- Uploaded Image
+- Uploading
+- Uploads
+- Video upload completed without an upload id
+- Workspace query failed
+- Your songs and generations live in the Library — open it from the top right
+- [&_a]:[backdrop-filter:none] [&_button]:[backdrop-filter:none]
+- \n  filter:
+- help_search action search requires a non-empty query.
+- help_search action show_control requires an entry_id.
+- making playlists
+
+## Collaboration
+
+- " into the presence set
+- );case o.I.Commenter:return e(
+- , hasPresence =
+- ,REALTIME_HOST:
+- ,SHARE_PAGE:
+- ,comment:-1!==i?e.slice(4,i):
+- ,requestPushPermission:
+- ,shareArtistWithLink:
+- ,shareOnEmailClick:
+- ,shareOnFackbookClick:
+- ,shareOnLinkedInClick:
+- ,shareOnRedditClick:
+- ,shareOnXClick:
+- ,sharePlaylistWithLink:
+- ,shareSongWithEmail:
+- ,shareSongWithFacebook:
+- ,shareSongWithInApp:
+- ,shareSongWithLink:
+- ,shareSongWithLinkedIn:
+- ,shareSongWithReddit:
+- ,shareSongWithX:
+- ,shareToBtnClick:
+- ;border-radius:0.75rem;text-align:left;cursor:
+- ;border-radius:6.25rem;cursor:pointer;background:
+- ;cursor:
+- ;cursor:pointer;background:
+- ;position:relative;cursor:
+- ;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:
+- ==typeof navigator.share&&(
+- ==typeof window.safari.pushNotification.permission&&
+- A shared license request failed
+- Ably requested re-authentication, but unable to obtain a new token:
+- Ably:
+- Cannot regenerate from a private clip not shared with you
+- Comment
+- Could not open cursor for
+- Cursor closed midway through for
+- Encryption not enabled; use ably.encryption.js instead
+- Error fetching collaborators:
+- Error generating share link:
+- Error removing collaborator:
+- Error sending invite:
+- Expected DefaultRealtime._MsgPack to have been set
+- Failed to create share event:
+- Failed to invite the recipient
+- Failed to leave the shared model
+- Failed to load shared custom models
+- Failed to mint realtime token
+- Failed to remove access
+- Failed to send invite:
+- Failed to update remix permission
+- Forward events to Datadog RUM for realtime visibility
+- In order to record audio, please allow microphone access for this site.
+- Invalid access: Add Yjs type to a document before reading data.
+- Invariant: AsyncLocalStorage accessed in runtime where it is not available
+- Last known activity from realtime was
+- LazyFiles on gzip forces download of the whole file when length is accessed
+- Microphone access not supported
+- Missing Vcdiff decoder (https://github.com/ably-forks/vcdiff-decoder)
+- No activity seen from realtime in
+- No realtime channel was granted
+- Please allow access to your microphone
+- Presence auto re-enter failed
+- Presence auto re-enter failed; reason =
+- Presence state is out of sync due to channel being in the SUSPENDED state
+- Realtime
+- Realtime connection failed
+- Realtime token minting is not configured
+- RealtimeChannel retry timer expired
+- RealtimePresence.
+- Share link unavailable
+- The collaboration message is too large to send
+- Trying to access beyond buffer length
+- Unable to access
+- Unable to access localStorage
+- Unable to leave presence channel (incompatible state)
+- When your song is ready, **download the mix** or share it from the export menu.
+- [realtime resync] clip transition failed:
+- [realtime resync] reconcile failed:
+- [useRealtime] channel attach failed:
+- [useRealtime] channel status listener error:
+- [useRealtime] getToken failed, retrying:
+- [useRealtime] message handler error:
+- [useRealtime] presence enter failed:
+- [useRealtime] presence leave failed:
+- [useRealtime] presence listener error:
+- [useRealtime] presence read failed:
+- [useRealtime] resync listener error:
+- [useRealtime] token renewal failed, retrying:
+- absolute inset-0 cursor-pointer
+- absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40
+- accessing an object - but returnObjects options is not enabled!
+- aria-selected:bg-background-glass-thick aria-disabled:cursor-default
+- clientId must be specified to enter a presence channel
+- clientId must be specified to update presence data
+- clientId must have been specified to enter or leave a presence channel
+- collab work
+- cursor-default not-aria-disabled:hover:bg-transparent
+- cursor-default opacity-10
+- cursor-grab touch-none
+- cursor-not-allowed opacity-50
+- cursor-not-allowed opacity-50 hover:bg-transparent
+- cursor-not-allowed opacity-60
+- cursor-pointer data-[active]:cursor-default
+- cursor-pointer hover:bg-background-tertiary
+- cursor-pointer hover:bg-black/20
+- cursor-pointer opacity-100
+- cursor-pointer opacity-30
+- cursor-pointer text-sm text-white/50 transition-colors hover:text-white/80
+- cursor:
+- cursor: default;
+- data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50
+- disabled:cursor-not-allowed disabled:opacity-50
+- display:flex;align-items:center;justify-content:center;cursor:
+- flex cursor-pointer touch-none items-center justify-center select-none
+- flex h-4 cursor-pointer touch-none items-center
+- flex h-full w-full cursor-pointer flex-col gap-4 rounded-lg p-2
+- group relative cursor-pointer
+- group/play relative h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-md
+- h-4 w-4 cursor-pointer opacity-50 hover:opacity-100
+
+## Lyrics
+
+- !==t.state)return t.alignment;throw Error(t.error_message||
+- )+E+t+t;case 4095:case 3583:case 4068:case 2532:return i(t,/(.+)-inline(.+)/,E+
+- )+O+t+t;case 4095:case 3583:case 4068:case 2532:return i(t,/(.+)-inline(.+)/,O+
+- ),contextLyrics:
+- ),contextLyrics:p,infillLyrics:h||m,lyricsUpdated:
+- );line-height:calc(1.25rem *
+- );line-height:calc(1rem *
+- )||void 0:(0,i.l)(e.lyrics)||void 0,s=n?(0,i.y)(t?.body??
+- ,"primary-outline":
+- ,Timeline:
+- ,b=e.lyrics??
+- ,baseline:
+- ,cancelConfirmLyricsReplacement:
+- ,chatHeadline:
+- ,closingHeadline:
+- ,closingSubline:
+- ,confirmLyricsReplacement:
+- ,dominantBaseline:
+- ,e.hasLyricsEarlierOnTrack?
+- ,e.selectionHasLyrics?
+- ,editLyrics:
+- ,editorialHeadline:
+- ,effectsHeadline:
+- ,infillLyrics:t,lyricsUpdated:
+- ,lyric_video:
+- ,lyrics:
+- ,lyrics:l,language:
+- ,lyrics:n.metadata?.prompt??
+- ,lyrics:t?.lyrics??
+- ,lyrics:t?.metadata?.prompt??
+- ,lyricsPrompt:
+- ,lyrics_inspect:
+- ,playsinline:
+- ,r.multiline?
+- ,songsHeadline:
+- ,startLyricsReplacement:
+- ,this.message=r,this.line=o?o.line:void 0,this.name=J(i.place)||
+- ,threeUpHeadline:
+- ,title:e.title,text:(s?e.lyrics:e.tags)??
+- ,twoUpHeadline:
+- ,updateLyricsReplacement:
+- ,workflowHeadline:
+- -mb-[1px] ml-1.5 inline-block h-3 w-3
+- -mt-[0.125rem] inline-block
+- /b-side/lyrics-eval-reports/:slug*?
+- /b-side/lyrics-eval/:slug*?
+- :e.lyrics,o=n?t?.preview||(0,i.l)(t?.body??
+- :l.lyrics??
+- ;line-height:
+- ;line-height:1;transition:color 0.12s ease-out;
+- ;outline-offset:3px;transition:outline-color 0.12s ease-in-out;
+- ;outline:
+- ===o?t.o.FEMALE:t.o.UNSPECIFIED,lyricsPrompt:
+- ==typeof i.lyrics?i.lyrics:
+- A scene must declare inline 'nodes' or instantiate a def via 'use'.
+- Add a bass line here
+- Add a bass line under my loop
+- Aligned lyrics are still processing
+- Click and drag on the timeline to select a few bars
+- ConnectionManager caught browser ‘offline’ event
+- ConnectionManager caught browser ‘online’ event
+- Error fetching v3 lyrics, falling back to v2
+- Failed to copy lyrics to clipboard:
+- Failed to create lyricist
+- Failed to delete lyricist
+- Failed to load aligned lyrics
+- Failed to load lyricists
+- Failed to start lyrics mashup
+- Failed to update lyricist
+- GET /api/lyrics-projects
+- I could not reach the lyrics service.
+- Invalid alignment spec
+- Keep the timeline scrolling with the playhead while your song plays.
+- Line
+- Lyric video started
+- Lyrics 2.0 M1 cowriter drafts.
+- Lyrics appear to contain copyrighted material.
+- Lyrics likely contain copyrighted material
+- Lyrics mashup failed
+- Lyrics mashup timed out. Please try again.
+- MSE eager: runFormatPipeline threw unexpectedly:
+- MSE rolling: runFormatPipeline threw unexpectedly:
+- Make lyric video
+- Mashup lyrics generation failed
+- Mashup lyrics generation failed:
+- No aligned words found in v2 response
+- No timed lyrics found in that range.
+- Nothing in scope has lyrics to read.
+- Our moderation system wasn't sure about those lyrics, please try again
+- Our moderation system wasn't sure about those lyrics, please try again.
+- Pick a view in the Library, then drag a clip onto the timeline
+- Repeat the looped stretch of the timeline while you work on it.
+- Select a spot on the timeline and ask me to add a part
+- Select part of the timeline
+- Spoken Word
+- Tell me where on the timeline the copy should start.
+- That's the Library — drag anything from there straight onto the timeline.
+- The Internet connection appears to be offline.
+- The arrangement is already aligned — nothing to shift.
+- Try selecting the part you want to work on — click and drag on the timeline.
+- USLT frame value should be an object with keys description and lyrics
+- Write a bassline on this track
+- Your lyrics contain copyrighted material. Please change it and try again.
+- Your lyrics contain inappropriate material. Please change them and try again.
+- Zoom In Timeline
+- Zoom Out Timeline
+- [--hxc-btn-font-size:0.875rem] [--hxc-btn-line-height:1.5rem]
+- [--hxc-btn-font-size:0.875rem] [--hxc-btn-line-height:2rem]
+- [lyrics-editor] delete failed:
+- [lyrics-editor] discard empty draft failed:
+- [lyrics-editor] get failed:
+- [lyrics-editor] lazy backend create failed:
+- [lyrics-editor] list failed:
+- [lyrics-editor] prune empty drafts failed:
+- add a bass line under my loop
+- arrangements_edit split: at_beats must be a finite timeline beat.
+- bass line
+- display: inline !important; border: 0px !important; margin: 0px !important;
+- display:inline-block;will-change:transform,opacity;animation:
+- display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:
+
+## Errors & validation
+
+- !==N[0])throw Error('
+- !==e.type)throw Error(
+- !==e[i+1]))throw TypeError(
+- !==t)throw Error(
+- !==t.state)return t.alignment;throw Error(t.error_message||
+- !=tf(n))return n;throw TypeError(
+- !=typeof e)return i.error(
+- !=typeof e)throw TypeError(
+- !=typeof e[t])return Error(
+- !=typeof h)return i.error(
+- !=typeof i.expires.toUTCString)throw TypeError(
+- !=typeof n)throw Error(
+- !=typeof n.async&&!n.onLoad&&!n.onError&&n.src&&
+- !=typeof s)throw Error(
+- !=typeof t)throw TypeError(
+- !=typeof t)throw TypeError('
+- " is invalid for argument "value"
+- ");if(e.includes(".",1))throw Error("
+- )).response.ok)throw Error(
+- ));let e=t[0].track_id,s=this.getTrackById(e);if(!s)throw Error(
+- ))throw Error(
+- ),!u.isEncoding(i))throw TypeError(
+- ),r,e);throw TypeError(
+- ),y=!0,e=new WebAssembly.RuntimeError(e+
+- );break;default:throw Error(
+- );for(let e of n)if(!r.has(e))throw Error(
+- );if(!(0,s.z)(r))throw Error(
+- );if(!Array.isArray(t.text)||!Array.isArray(t.text[0]))throw Error(
+- );if(!i)throw Error(
+- );if(!i.i)throw Error(
+- );if(!t)throw Error(
+- );if(401===t.status||403===t.status)throw Error(
+- );if(a.error)throw a.error.dispose(),Error(
+- );if(i&&!e?.subscription)throw Error(
+- );if(n)throw Error(
+- );if(void 0!==s[t])throw Error(
+- )throw Error(
+- + stack.replace(/^Error(:[^\n]*)?\n/,
+- +typeof i;I.logAction(this.logger,I.LOG_ERROR,
+- ,!0))?.id;if(!a)return console.error(
+- ,/is not defined|can't find variable/i),nv=ny(
+- ,Failed:
+- ,InvalidPublishableKeyErrorMessage:
+- ,MissingPublishableKeyErrorMessage:
+- ,MissingSecretKeyErrorMessage:
+- ,buffer_population_failed:
+- ,children:eK instanceof Error?eK.message:N(
+- ,companionError:
+- ,ctx_error:
+- ,drm_decode_error:
+- ,error:
+- ,errorCategory:
+- ,errorCode:
+- ,failedToUpload:
+- ,missingRequiredMetaField:
+- ,missingRequiredMetaFieldOnFile:
+- ,rendered_failed_moderation:
+- ,runtimeError:
+- ,s);if(e.keyLength&&e.keyLength!==i.keyLength)throw Error(
+- ,songCreateResponseError:
+- ,this);if(!e.material.map)return void console.error(
+- ,this);if(!e.material.materials)return void console.error(
+- ,to:r,error:
+- ,to:r,error:u(n),errorCategory:
+- .concat(i).concat(t);var r=document.head||document.body;if(!r)throw Error(
+- .concat(r));if(!l)throw TypeError(
+- 1 argument is required
+- :(n=e.errorCode,w.has(n))?e.errorCode:
+- :e instanceof E.g?e.error_type:
+- :if(!(e=n.documentElement))throw Error(u(452));return e;case
+- :if(!(e=n.head))throw Error(u(453));return e;case
+- :if(!Array.isArray(t)||!Array.isArray(t[0]))throw Error(
+- :if(!e.material)return void console.error(
+- :if(!e.skeleton)return void console.error(
+- :if(!this.getContext().oneOfSet)throw Error('
+- :if(!this.getContext().or)throw Error('
+- ; Error:
+- ; push.error=
+- ; waiting until either connected or failed
+- ;break;default:throw TypeError(
+- ;let r=e.required_controls;if(void 0!==r&&!(t=er(r)))return
+- ;throw Error(a(510,
+- ;throw Error(a(517,
+- ;throw I.logAction(this.logger,I.LOG_ERROR,
+- ===A.trim())throw Error(
+- ===e[i])throw TypeError('Pattern cannot start with
+- ===i.mode&&128!==i.keyLength&&256!==i.keyLength)throw Error(
+- ===r.status)throw Error(r.error_message||
+- ===y.modifier)throw TypeError('Can not repeat
+- ==typeof console.error&&console.error(
+- ==typeof l)i=l;else throw TypeError(
+- ==typeof l?f=l.apply(void 0,s):console.error(
+- ==typeof r&&r instanceof Promise)throw Error(
+- ==typeof r)throw TypeError('The
+- ==typeof t)throw Error(
+- ==typeof t.error&&t.error(e.status),
+- @prelude.so/js-sdk core worker error:
+- @prelude.so/js-sdk core worker unknown error, using fallback
+- A network error occurred.
+- A shared license request failed
+- Ably requested re-authentication, but unable to obtain a new token:
+- AbortError: BodyStreamBuffer was aborted
+- AbortError: Fetch is aborted
+- AbortError: The operation was aborted
+- AbortError: The play() request was interrupted
+- AbortError: The user aborted a request
+- AbortError: signal is aborted without reason
+- Adding invalid event
+- An error occurred after update.
+- An error occurred during flush
+- An instrumentation-client router transition hook failed
+- An unknown error occurred
+- An unknown error occurred.
+- Anti-abuse checks timed out after 10 seconds
+- ApiSetup for the worker failed:
+- Array or object too long 0x
+- Audio engine error
+- Audio play error:
+- Audio processing timed out. Please try again.
+- Audio source failed
+
+## Onboarding & help
+
+- ),showTooltip:e,isTooltipDisabled:v,className:
+- ,companionUnauthorizeHint:
+- ,tutorialClick:
+- ,tutorialCtaHref:
+- ,tutorialCtaLabel:
+- ,tutorialImageUrl:
+- ,tutorialVideoDesktopUrl:
+- ,tutorialVideoMobileUrl:
+- ,tutorialYoutubeUrl:
+- Does Not Meet Guidelines
+- Learn
+- Quick Start tutorial track setup failed
+- What's This?
+- [data-tour-target], [data-knob-param]
+- learning center
+- what's this
