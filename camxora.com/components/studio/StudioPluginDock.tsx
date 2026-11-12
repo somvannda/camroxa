@@ -41,10 +41,13 @@ import {
 } from "@/lib/studio-plugin-chain";
 import {
   IMPULSE_CATEGORIES,
+  customImpulseResponses,
   findImpulseResponse,
   impulseEnvelope,
   impulseLabel,
+  type ImpulseResponse,
 } from "@/lib/studio-ir";
+import { StudioIRDesigner } from "@/components/studio/StudioIRDesigner";
 
 type Props = {
   chain: PluginChainEntry[];
@@ -188,8 +191,10 @@ function ConvolutionCard({
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
   const [menuBox, setMenuBox] = useState<{ left: number; top: number } | null>(null);
+  const [custom, setCustom] = useState<ImpulseResponse[]>(() => customImpulseResponses());
+  const [designOpen, setDesignOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const response = findImpulseResponse(assetId);
+  const response = custom.find((item) => item.id === assetId) ?? findImpulseResponse(assetId);
 
   useEffect(() => {
     if (!open) return;
@@ -226,6 +231,7 @@ function ConvolutionCard({
     : "";
 
   return (
+    <>
     <div className="sp-conv-body">
       <div className="sp-conv-slot">
         <svg
@@ -300,6 +306,47 @@ function ConvolutionCard({
                     : null}
                 </div>
               ))}
+              {custom.length > 0 ? (
+                <div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="sp-ir-cat"
+                    aria-expanded={category === "Custom"}
+                    onClick={() =>
+                      setCategory((current) => (current === "Custom" ? null : "Custom"))
+                    }
+                  >
+                    Custom
+                  </button>
+                  {category === "Custom"
+                    ? custom.map((ir) => (
+                        <button
+                          key={ir.id}
+                          type="button"
+                          role="menuitem"
+                          className={assetId === ir.id ? "on" : undefined}
+                          onClick={() => {
+                            onAsset(ir.id);
+                            setOpen(false);
+                          }}
+                        >
+                          {ir.name}
+                        </button>
+                      ))
+                    : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  setDesignOpen(true);
+                }}
+              >
+                <Icon name="fa-plus" /> Design response.
+              </button>
             </div>
           ) : null}
         </div>
@@ -320,6 +367,17 @@ function ConvolutionCard({
         ))}
       </div>
     </div>
+    {designOpen ? (
+      <StudioIRDesigner
+        onSave={(saved) => {
+          setCustom(customImpulseResponses());
+          onAsset(saved.id);
+          setDesignOpen(false);
+        }}
+        onClose={() => setDesignOpen(false)}
+      />
+    ) : null}
+    </>
   );
 }
 

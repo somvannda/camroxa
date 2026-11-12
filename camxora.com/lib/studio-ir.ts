@@ -66,9 +66,85 @@ export const IMPULSE_RESPONSES: ImpulseResponse[] = IMPULSE_CATEGORIES.flatMap(
   (category) => category.items
 );
 
+const CUSTOM_KEY = "studio:custom-impulses";
+let customResponses: ImpulseResponse[] = [];
+let customsLoaded = false;
+
+function ensureCustomsLoaded(): void {
+  if (customsLoaded || typeof window === "undefined") return;
+  customsLoaded = true;
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return;
+    customResponses = parsed
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const value = item as Record<string, unknown>;
+        const seconds = Number(value.seconds);
+        const decay = Number(value.decay);
+        if (
+          typeof value.id !== "string" ||
+          typeof value.name !== "string" ||
+          !Number.isFinite(seconds) ||
+          !Number.isFinite(decay)
+        ) {
+          return null;
+        }
+        return {
+          id: value.id,
+          name: value.name,
+          category: "Custom",
+          seconds: Math.max(0.1, Math.min(8, seconds)),
+          decay: Math.max(0.2, Math.min(10, decay)),
+        } satisfies ImpulseResponse;
+      })
+      .filter((item): item is ImpulseResponse => item !== null);
+  } catch {
+    /* private mode / corrupt blob: the built-in library still works */
+  }
+}
+
+export function customImpulseResponses(): ImpulseResponse[] {
+  ensureCustomsLoaded();
+  return [...customResponses];
+}
+
+export function designImpulseResponse(input: {
+  name: string;
+  seconds: number;
+  decay: number;
+}): ImpulseResponse {
+  return {
+    id: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    category: "Custom",
+    name: input.name.trim().slice(0, 60) || "Custom IR",
+    seconds: Math.max(0.1, Math.min(8, input.seconds)),
+    decay: Math.max(0.2, Math.min(10, input.decay)),
+  };
+}
+
+export function saveCustomImpulseResponse(response: ImpulseResponse): void {
+  ensureCustomsLoaded();
+  customResponses = [response, ...customResponses.filter((item) => item.id !== response.id)];
+  customsLoaded = true;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CUSTOM_KEY, JSON.stringify(customResponses));
+  } catch {
+    /* private mode / quota */
+  }
+}
+
 export function findImpulseResponse(id: string | null | undefined): ImpulseResponse | null {
   if (!id) return null;
-  return IMPULSE_RESPONSES.find((response) => response.id === id) ?? null;
+  ensureCustomsLoaded();
+  return (
+    customResponses.find((response) => response.id === id) ??
+    IMPULSE_RESPONSES.find((response) => response.id === id) ??
+    null
+  );
 }
 
 /** Display label for the picker breadcrumb: "Halls › New England Hall". */
