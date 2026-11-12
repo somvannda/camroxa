@@ -196,11 +196,16 @@ export function scheduleMidiNote(
   when: number,
   rate = 1,
   automation?: { bend?: number; mod?: number },
-  instrument: MidiInstrument = "triangle"
+  instrument: MidiInstrument = "triangle",
+  wavetable?: { real: Float32Array; imag: Float32Array } | null
 ): AudioScheduledSourceNode[] {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
-  oscillator.type = instrument;
+  if (wavetable) {
+    oscillator.setPeriodicWave(context.createPeriodicWave(wavetable.real, wavetable.imag));
+  } else {
+    oscillator.type = instrument;
+  }
   oscillator.frequency.value = midiToFreq(note.pitch);
   // Pitch bend is applied as detune at the note's start (captured lane, simplified).
   oscillator.detune.value = (automation?.bend ?? 0) * 200;

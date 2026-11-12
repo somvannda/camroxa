@@ -130,6 +130,34 @@ test("track groups create, assign and mute", async ({ page }) => {
   expect(saved.data.tracks[0].groupId).toBe(saved.data.groups[0].id);
 });
 
+test("Wavetable Designer saves a table and selects it on the MIDI clip", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  const projectId = await createStudioProject(page, { title: "Wavetable" });
+
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  await page.getByRole("menuitem", { name: /MIDI/ }).click();
+  const panel = page.getByRole("region", { name: "MIDI editor" });
+  await expect(panel).toBeVisible();
+
+  await panel.getByRole("button", { name: "Design table" }).click();
+  const dialog = page.getByRole("dialog", { name: "Wavetable designer" });
+  await dialog.getByLabel("Name").fill("Studio Table");
+  await dialog.getByLabel("Harmonic 2").fill("0.5");
+  await dialog.getByRole("button", { name: /Save table/ }).click();
+
+  const picker = page.getByLabel("MIDI wavetable");
+  const selected = await picker.inputValue();
+  expect(selected).not.toBe("");
+
+  const saved = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    return response.json();
+  }, projectId);
+  const midiClip = saved.data.lanes.find((clip: { midi?: unknown }) => clip.midi);
+  expect(midiClip.wavetableId).toBe(selected);
+});
+
 test("Create Section stamps a ruler marker that survives a reload", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1689, height: 1277 });

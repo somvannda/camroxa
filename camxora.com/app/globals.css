@@ -5253,6 +5253,9 @@ html{color-scheme:dark}
 .se-dialog h2{margin:0;font-size:24px;font-weight:700;text-align:center}
 .se-dialog-lead{margin:0;font-size:14px;font-weight:600;line-height:1.5}
 .se-dialog .se-dialog-note{font-size:14px;line-height:1.5;opacity:.8}
+.se-wavetable-harmonics{display:flex;align-items:flex-end;justify-content:space-between;gap:6px;height:96px;margin:6px 0}
+.se-wavetable-harmonics label{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:#8b90a6}
+.se-wavetable-harmonics input[type="range"]{writing-mode:vertical-lr;direction:rtl;width:16px;height:72px}
 .se-dialog-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto;margin:0;padding:0;list-style:none}
 .se-dialog-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid hsl(var(--border))}
 .se-dialog-row .se-dialog-title{flex:1}
