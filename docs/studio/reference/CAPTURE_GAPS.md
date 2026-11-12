@@ -32,12 +32,17 @@ The local search for a genuinely empty Suno account came up empty:
 - No other database has a Suno web account. The zero-balance records that exist are
   platform users (`collab+studio-gate@example.com`, `dev.studio@camxora.com`) and
   `musicapi` API keys with 0 credits; neither can produce Suno's own no-credit screen.
-- The production database is not reachable from this machine (SSH rejects the available
-  keys), and the production secrets file has no usable `PLATFORM_MUSICAPI_DATABASE_URL`.
+- The deploy key in `.deploy/camxora_deploy_ed25519` does reach the production VPS, so
+  the production `sunoapi.suno_accounts` was checked read-only: 10 rows, including four
+  free accounts, but **none at zero** (free accounts show 100 credits, the lowest paid
+  account 50, the highest 3,130). The production cookie key in `.deploy` does not match
+  the stored rows, so those sessions cannot be used locally without fetching the live
+  key from the VPS.
 
 So S61 stays `OPEN` rather than being faked. To close it, add a real Suno account with
-zero credits to `suno_accounts` (or exhaust a throwaway one), then repeat the S60 method:
-open Create, submit a normal prompt, and capture the insufficient-credits state.
+zero credits to `suno_accounts`, or deliberately exhaust one of the free accounts (100
+credits) and capture the state before its daily reset. Then repeat the S60 method: open
+Create, submit a normal prompt, and capture the insufficient-credits state.
 
 ### S60 - lyrics moderation refusal (DONE, §102)
 
