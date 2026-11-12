@@ -1925,6 +1925,34 @@ export function StudioEditorShell() {
     if (timelineRef.current) timelineRef.current.scrollLeft = 0;
   }
 
+  /** `Z` zoom-to-selection (spec §36): the time range, else the selected clips. */
+  function zoomToSelection() {
+    const viewport = timelineRef.current?.clientWidth ?? view.width;
+    let from = timeSelection?.start;
+    let to = timeSelection?.end;
+    if (from == null || to == null) {
+      const selected = clips.filter((clip) => selectedIds.includes(clip.id));
+      if (selected.length === 0) {
+        zoomToFit();
+        return;
+      }
+      from = Math.min(...selected.map((clip) => clip.start ?? 0));
+      to = Math.max(...selected.map((clip) => (clip.start ?? 0) + (clip.duration ?? 0)));
+    }
+    const span = Math.max(0.5, to - from);
+    const bars = span / secondsPerBar;
+    const next = Math.max(8, Math.min(192, (viewport * 0.9) / Math.max(1, bars)));
+    setBarWidth(next);
+    requestAnimationFrame(() => {
+      if (timelineRef.current) {
+        timelineRef.current.scrollLeft = Math.max(
+          0,
+          (from / secondsPerBar) * next - 16
+        );
+      }
+    });
+  }
+
   /** Track menu actions (spec §65). All persist through the history-aware write path. */
   function updateTrack(trackId: string, patch: Partial<StudioTrack>) {
     commitTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
@@ -3187,6 +3215,18 @@ export function StudioEditorShell() {
           toggleLibrary();
           return;
         }
+      }
+
+      // Plain Z zooms to the time range or selected clips (spec §36).
+      if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "z"
+      ) {
+        event.preventDefault();
+        zoomToSelection();
+        return;
       }
 
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
