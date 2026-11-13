@@ -292,6 +292,10 @@ NODE_ENV=production
 # bot/chat as production. Do not remove; see musicapi/src/config.ts.
 MUSICAPI_ENV=${MUSICAPI_ENV}
 PORT=${MUSICAPI_PORT}
+# Shared secret for the Studio mirror's internal routes (platform_api sends it
+# as x-internal-token). The platform deploy writes the same value as
+# PLATFORM_STUDIO_INTERNAL_TOKEN; empty disables the mirror (503).
+STUDIO_INTERNAL_TOKEN=${STUDIO_INTERNAL_TOKEN:-}
 # Bind loopback only: nginx (on this host) is the sole edge, so the core API
 # must not be reachable directly on the public interface. See src/serve.ts.
 HOST=127.0.0.1

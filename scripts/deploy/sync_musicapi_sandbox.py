@@ -213,6 +213,11 @@ def upload_and_run(
         if key.startswith("MUSICAPI_") and val:
             export_env.setdefault(key, val)
 
+    # One shared secret for the Studio mirror's internal API, the same value the
+    # platform deploy writes as PLATFORM_STUDIO_INTERNAL_TOKEN.
+    if secrets.get("STUDIO_INTERNAL_TOKEN"):
+        export_env["STUDIO_INTERNAL_TOKEN"] = secrets["STUDIO_INTERNAL_TOKEN"]
+
     # Reuse the platform's ops Telegram channel for musicapi health alerts
     # (task 4.6) unless dedicated MUSICAPI_ALERT_* creds were supplied above.
     alert_token = (
