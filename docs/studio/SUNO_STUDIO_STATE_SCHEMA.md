@@ -132,7 +132,7 @@ local note id.
 | `lanes[].start/duration` | `startBeats/endBeats` | MIDI verified live |
 | `lanes[].midi.notes` | `clips[].midi.notes` | verified live |
 | generated clip asset | `asset {id,type:"song"}` | when the local clip carries a Suno clip id |
-| local upload without a Suno asset | — | **not mirrored**; the clip is reported in `skipped_clip_ids` |
+| local upload without a Suno asset | — | — | **not mirrored**; the clip is reported in `skipped_clip_ids` |
 | audio clips already on Suno | preserved from the baseline | never dropped by a save |
 
 Track/clip ids are stable UUIDs derived from the local id, stored back as
@@ -151,6 +151,10 @@ Throwaway project, saved through the same API the mirror uses:
 | read back | `bps=1.5`, `latest_version_id == B`, 1 track |
 | stale save (base A) | **409** with `latest_version_id = B` |
 | archive | 200 |
+
+Second probe (audio): a saved audio clip kept `asset {id, type:"clip"}`,
+`clipId`, `startBeats 0 / endBeats 16` and Suno's default `warp`; the project was
+archived afterwards.
 
 The project was archived after the probe.
 
