@@ -3704,6 +3704,13 @@ export function StudioEditorShell() {
             hideTrack(selectedTrack);
             return;
           }
+          // SHIFT L toggles the arrangement/track panel (the reference's "Toggle
+          // Arrangement Panel"); this build's arrangement panel is the track rail.
+          if (letter === "l") {
+            event.preventDefault();
+            setTracksCollapsed((collapsed) => !collapsed);
+            return;
+          }
           // SHIFT A toggles the automation band (spec §36).
           if (letter === "a") {
             if (!selectedTrack) return;

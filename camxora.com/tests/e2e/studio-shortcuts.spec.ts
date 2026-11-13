@@ -123,6 +123,14 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
   await page.keyboard.press("2");
   await expect(dock).toHaveCount(1);
 
+  // SHIFT L collapses the arrangement (track) panel.
+  const tracks = page.getByRole("complementary", { name: "Tracks" });
+  await expect(tracks).not.toHaveClass(/is-collapsed/);
+  await page.keyboard.press("Shift+L");
+  await expect(tracks).toHaveClass(/is-collapsed/);
+  await page.keyboard.press("Shift+L");
+  await expect(tracks).not.toHaveClass(/is-collapsed/);
+
   // SHIFT TAB swaps the two bottom bands.
   const takeLanes = page.getByRole("region", { name: "Take lanes" });
   const automation = page.getByRole("region", { name: "Track automation" });

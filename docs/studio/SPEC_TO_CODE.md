@@ -77,13 +77,13 @@ implements it, and how it was verified. Only rows that exist are listed.
 | `2` toggles the bottom plugin/master panel | S14 overlay | `bottomPanelOpen`; clip editors still open on their own |
 | `ENTER` promotes the focused take | S14 overlay "Promote Take Lane Selection" | take rows are buttons, so native activation promotes; asserted in the takes e2e |
 | `CTRL K` turns on musical typing | S14 overlay | MIDI panel only: `A`–`;` audition, `Z`/`X` octave, `C`/`V` velocity; the control bar's **Keys** pill does the same when a browser swallows the accelerator |
+| `SHIFT L` collapses the track panel | S14 overlay "Toggle Arrangement Panel" | the track rail is this build's arrangement panel; `tracksCollapsed` |
 
 ### S14 shortcut coverage still open
 
 | Binding | Why it is not wired yet |
 |---|---|
-| `SHIFT L` arrangement panel | there is no collapsible arrangement panel to toggle |
-| `CTRL SHIFT ,` Studio settings | settings are a stored preference object, not a dialog |
+| `CTRL SHIFT ,` Studio settings | already wired: the project menu owns the dialog and the accelerator (covered by the project-menu e2e) |
 
 ## Not copied — by rule, not by accident
 
