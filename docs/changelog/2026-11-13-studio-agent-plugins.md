@@ -3,7 +3,7 @@
 **Date:** 2026-11-13
 **Branch:** `feat/studio-agent-plugins` (stacked on `fix/studio-pull-chain-merge`)
 **Surfaces:** camxora.com (Studio editor), platform_api, musicapi, docs
-**Status:** implemented, gates green, not merged or deployed
+**Status:** merged to `main` (`8b3f116f`), gates green, not deployed
 
 ## Summary
 
@@ -71,4 +71,4 @@ registry.
   Suno's plugin code is out of scope.
 - Authoring spends Suno credits and has no local pricing row yet, so the sync
   chip does not show a cost.
-- Merge to `main` and deploy remain ship decisions (not done here).
+- Deployment remains a ship decision (not done here); musicapi migration `0045` ships with it.

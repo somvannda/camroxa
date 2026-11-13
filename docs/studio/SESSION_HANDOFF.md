@@ -4,8 +4,8 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
 
 ## Update 2026-11-13 (later) — Designed plugins on Suno's authoring agent
 
-- **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`, branch stack
-  `fix/studio-pull-chain-merge` → `feat/studio-agent-plugins` (clean, **not pushed or merged**).
+- **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`, **merged and pushed**
+  to `origin/main` (`8b3f116f`); the worktree is detached at that commit, clean.
 - **The last open parity item is closed.** "Build it" now asks Suno's authoring agent
   (`POST /api/agent/author-plugin`), polls, saves the descriptor into the pinned account's
   plugin library and mirrors the chain entry as `catalogPluginId` + `pluginVersionId`.
@@ -19,8 +19,8 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   filesystem failures) · vitest 334 · Playwright **156 passed / 2 skipped** · `check:ui`
   clean · internal authoring route exercised live (401/400 guards, ready path, idempotent
   second poll) without spending credits.
-- **Before shipping:** merge the stack, apply musicapi migration `0045`, then deploy the web
-  and platform API together. Local audio still approximates authored DSP by family.
+- **Before shipping:** apply musicapi migration `0045`, then deploy the web and platform API
+  together. Local audio still approximates authored DSP by family.
 
 ## Update 2026-11-13 — Suno Studio project mirror
 
