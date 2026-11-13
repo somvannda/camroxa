@@ -905,6 +905,40 @@ test("loading re-keys a pulled chain to local track ids and keeps custom effects
   assert.deepEqual(merged.keptLocalEffects, ["fx-designed"]);
 });
 
+test("a save/pull round trip leaves the chain on the local track", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "fx-reverb",
+        pluginId: "reverb",
+        presetName: "Custom",
+        params: { time: 2, mix: 30, width: 100, damping: 40, predelay: 20, lowCut: 120, highCut: 14000 },
+      },
+      { entryId: "fx-designed", pluginId: "designed-abc", params: { amount: 50 } },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "Chain round trip",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const merged = mergeSunoProjectIntoLocal(data, sunoStateToProjectData(state));
+  const sunoTrackId = stableSunoId("track-1");
+  // The editor only reads chains keyed by the local track id.
+  assert.equal(merged.data.chains?.[sunoTrackId], undefined);
+  const chain = merged.data.chains?.["track-1"] ?? [];
+  assert.deepEqual(
+    chain.map((entry) => entry.pluginId),
+    ["reverb", "designed-abc"]
+  );
+  assert.equal((chain[0].params as Record<string, number>).mix, 30);
+  assert.deepEqual(merged.keptLocalEffects, ["fx-designed"]);
+});
+
 test("loading drops a local effect that Suno deleted", () => {
   const sunoTrackId = "33333333-3333-5333-a333-333333333333";
   const local: LocalDocument = {
