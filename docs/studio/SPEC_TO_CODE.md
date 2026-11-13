@@ -113,21 +113,20 @@ which we cannot honour).
 | S59 conflict UI | no banner; silent overwrite |
 | S62 offline | browser error page on cold load |
 
-## Known open defect: `src=""` browser warning
+## Resolved: `src=""` browser warning
 
-Two `An empty string ("") was passed to the src attribute` lines appear in the dev log
-during the **full parallel Playwright suite**, and only there. What has been ruled out:
+Two `An empty string ("") was passed to the src attribute` lines appeared in the dev log
+during the full Playwright suite. Attribution method that finally worked: run each spec
+on its own and measure the dev-log delta. Only `tests/e2e/library-uploads.spec.ts`
+produced them (2), because playing an upload hands it to the shared `Player`, and an
+upload has no artwork — `Player` rendered `src={current.cover}` with an empty value. Both
+player images now fall back to `/hero.png`, and the uploads spec asserts no `[src=""]`
+element exists after playback.
 
-- A page-by-page walk of all 32 routes (navigation smoke) logs none.
-- Opening the studio library and its song rows logs none.
-- Patching `console.error`/`console.warn` from an init script never fires, so the
-  message does not pass through the page's console object; it comes from Next's own
-  hydration/overlay channel.
-- The `discover` and `community` creator images were genuinely empty and are fixed;
-  the remaining pair survives that fix.
-
-Next probe when it matters: collect `page.on("console")` per spec to attribute the two
-lines to a spec, then snapshot that spec's DOM at warning time.
+Dead ends worth not repeating: console patching from an init script never fires (the
+message does not pass through the page console), walking every route individually shows
+nothing, and the `discover`/`community` creator images were a separate, already-fixed
+cause.
 
 ## How to check this yourself
 

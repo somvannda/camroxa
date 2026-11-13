@@ -37,7 +37,7 @@ export function Player() {
       aria-label="Now playing"
     >
       <div className="p-now">
-        <img className="cover" src={current.cover} alt="" />
+        <img className="cover" src={current.cover || "/hero.png"} alt="" />
         <div className="p-info">
           <div className="p-title-row">
             <span className="p-eq" aria-hidden="true">
@@ -138,7 +138,7 @@ export function Player() {
             type="button"
             onClick={() => loadIndex(trackIndex)}
           >
-            <img src={track.cover} alt="" />
+            <img src={track.cover || "/hero.png"} alt="" />
             <span>
               <b>{track.title}</b>
               <small>
