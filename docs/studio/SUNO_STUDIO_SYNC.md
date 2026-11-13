@@ -235,7 +235,7 @@ Mapping summary:
 | `chains` (all built-ins) | `tracks[].signalChain` | both | compressor, convolution, delay, distortion, chorus, gate, limiter, reverb, EQ; custom plugins stay local |
 | `masterChain` | `masterSignalChain` | both | limiter, EQ and compressor (verified live) |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
-| `groups` | routing / group tracks | both | pending |
+| track groups | — | removed | no group/bus field exists in the document (D-034) |
 | custom wavetable ids | `wavetables` asset | removed | Suno has wavetables as assets, not an editor |
 
 Rules (strict, D-034):

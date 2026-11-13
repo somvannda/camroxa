@@ -40,6 +40,7 @@ kept beside the clone. This is the audit that decides which ones those are.
 | Clip-settings copy / paste | ARR-014 (clip copy/paste) `H`; no captured "Copy settings" label | VERIFY |
 | Remix | No `Remix` string in the harvested set, but it is a core song action on the reference | VERIFY |
 | Footer Plugins / Automation / Clip editor / Take lanes | all four labels in strings | KEEP |
+| **Track groups** (named groups with volume/mute/solo) | No `group`/`bus`/`folder`/`parent` key in any of 11 real documents; the S19 track menu has no group item; the "A" badge is a route indicator | **REMOVED** 2026-11-13 |
 | **Wavetable Designer** (harmonic partials, save custom table, select on clip) | No counterpart: `Wavetable` exists only as an asset category (`3 × Wavetables`, `used on`), never as an editor | **REMOVED** 2026-11-13 |
 
 ## What removal means for the document
