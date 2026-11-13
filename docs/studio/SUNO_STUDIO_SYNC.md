@@ -389,6 +389,15 @@ the real Studio API.
   with 2 notes plus bend and mod points, 1 section, 1 master limiter.
 - `DELETE` on the local project archived the Suno copy (`archived: true`).
 
+The conflict loop was verified the same way:
+
+1. Create locally → `synced` (Suno project `01e284a6`, version `d97b9e04`).
+2. Edit the Suno document directly (rename the track, add a clip) → version `23e30361`.
+3. `POST …/refresh` → mirror status **`conflict`**, remote version `23e30361`.
+4. `POST …/load-suno` → local track renamed to the Suno name, **2 clips**: the
+   Suno-added clip plus the local clip (`keptLocal: 1`), status back to `synced`.
+5. `DELETE` → 204, Suno copy archived.
+
 Local run recipe: seed one `suno_accounts` row with `COOKIE_ENCRYPTION_KEY` set,
 run `npm start` in `musicapi`, point the platform API at it with
 `PLATFORM_SUNO_API_BASE_URL` and a matching `PLATFORM_STUDIO_INTERNAL_TOKEN`, and
