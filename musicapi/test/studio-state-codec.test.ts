@@ -434,6 +434,56 @@ test("delay maps its mode, beats and 0–1 wet controls", () => {
   assert.equal((entry?.params as Record<string, number>).mix, 25);
 });
 
+test("MIDI bend and mod lanes become Suno point lists", () => {
+  const data = localDocument();
+  data.lanes = [
+    {
+      id: "clip-lanes",
+      title: "Lanes",
+      start: 0,
+      duration: 4,
+      midi: {
+        notes: [{ id: "n1", pitch: 60, start: 0, length: 1, velocity: 100 }],
+        bend: [
+          { at: 0, value: -0.5 },
+          { at: 2, value: 0.25 },
+        ],
+        mod: [{ at: 1, value: 0.8 }],
+      },
+    },
+  ];
+  data.tracks = [
+    { id: "track-lanes", name: "Lead", index: 0, clipIds: ["clip-lanes"] },
+  ];
+  const { state } = projectDocumentToSunoState({
+    title: "Lanes",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const clip = (state.tracks as Array<Record<string, unknown>>)[0].clips as Array<
+    Record<string, unknown>
+  >;
+  const midi = clip[0].midi as Record<string, unknown>;
+  assert.deepEqual(midi.pitchBend, [
+    { beats: 0, value: -0.5 },
+    { beats: 4, value: 0.25 },
+  ]);
+  assert.deepEqual(midi.controlChanges, [
+    { controller: 1, channel: 0, points: [{ beats: 2, value: 0.8 }] },
+  ]);
+
+  const projected = sunoStateToProjectData(state);
+  const lane = projected.lanes[0];
+  assert.deepEqual(lane.midi?.bend, [
+    { at: 0, value: -0.5 },
+    { at: 2, value: 0.25 },
+  ]);
+  assert.deepEqual(lane.midi?.mod, [{ at: 1, value: 0.8 }]);
+});
+
 test("a fresh Suno project has the fields the client validates", () => {
   const state = emptySunoState("Untitled Project");
   assert.ok(state.timing);

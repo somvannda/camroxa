@@ -53,7 +53,13 @@ export interface LocalClip {
   songId?: string | null;
   sunoId?: string | null;
   sunoAssetId?: string | null;
-  midi?: { notes?: LocalMidiNote[] };
+  midi?: {
+    notes?: LocalMidiNote[];
+    /** Seconds; -1..1. Mapped to `midi.pitchBend[{beats,value}]`. */
+    bend?: Array<{ at: number; value: number }>;
+    /** Seconds; 0..1. Mapped to CC 1 (`modWheel`) inside `midi.controlChanges`. */
+    mod?: Array<{ at: number; value: number }>;
+  };
   [key: string]: unknown;
 }
 
@@ -175,6 +181,14 @@ function midiFromLocal(
 ): Record<string, unknown> | null {
   if (!clip.midi) return null;
   const notes = Array.isArray(clip.midi.notes) ? clip.midi.notes : [];
+  const bend = (Array.isArray(clip.midi.bend) ? clip.midi.bend : []).map((point) => ({
+    beats: beatsFromSeconds(Number(point.at) || 0, bps),
+    value: Math.max(-1, Math.min(1, Number(point.value) || 0)),
+  }));
+  const mod = (Array.isArray(clip.midi.mod) ? clip.midi.mod : []).map((point) => ({
+    beats: beatsFromSeconds(Number(point.at) || 0, bps),
+    value: Math.max(0, Math.min(1, Number(point.value) || 0)),
+  }));
   return {
     notes: notes.map((note, index) => ({
       id: noteId(note.id, index),
@@ -183,8 +197,11 @@ function midiFromLocal(
       pitch: Math.max(0, Math.min(127, Math.round(Number(note.pitch) || 0))),
       velocity: Math.max(1, Math.min(127, Math.round(Number(note.velocity) || 100))),
     })),
-    controlChanges: [],
-    pitchBend: [],
+    // Controller entries group their points; pitch bend is a flat point list.
+    controlChanges: mod.length
+      ? [{ controller: 1, channel: 0, points: mod }]
+      : [],
+    pitchBend: bend,
     channelPressure: [],
     sysex: [],
   };
@@ -695,7 +712,27 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
       const clip = (raw ?? {}) as Record<string, unknown>;
       const clipId = typeof clip.id === "string" ? clip.id : `${trackId}-clip-${clipIndex}`;
       clipIds.push(clipId);
-      const midi = clip.midi as { notes?: Array<Record<string, unknown>> } | undefined;
+      const midi = clip.midi as
+        | {
+            notes?: Array<Record<string, unknown>>;
+            pitchBend?: Array<Record<string, unknown>>;
+            controlChanges?: Array<Record<string, unknown>>;
+          }
+        | undefined;
+      const bend = (Array.isArray(midi?.pitchBend) ? midi?.pitchBend : []).map((point) => ({
+        at: secondsFromBeats(Number(point.beats) || 0, bps),
+        value: Number(point.value) || 0,
+      }));
+      const mod = (Array.isArray(midi?.controlChanges) ? midi?.controlChanges : [])
+        .filter((change) => Number(change.controller) === 1)
+        .flatMap((change) =>
+          (Array.isArray(change.points) ? change.points : []).map(
+            (point: Record<string, unknown>) => ({
+              at: secondsFromBeats(Number(point.beats) || 0, bps),
+              value: Number(point.value) || 0,
+            })
+          )
+        );
       lanes.push({
         id: clipId,
         sunoId: clipId,
@@ -717,6 +754,8 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
                 length: secondsFromBeats(Number(note.durationBeats) || 0, bps),
                 velocity: Number(note.velocity) || 100,
               })),
+              ...(bend.length ? { bend } : {}),
+              ...(mod.length ? { mod } : {}),
             }
           : undefined,
         songId: (clip.asset as { id?: string } | undefined)?.id,
