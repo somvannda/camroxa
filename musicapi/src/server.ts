@@ -8962,6 +8962,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       time_signature: merged.timeSignature,
       data: merged.data,
       kept_local_clips: merged.keptLocalClips,
+      kept_local_effects: merged.keptLocalEffects,
       dropped_tracks: merged.droppedTracks,
       suno_version_id: merged.versionId,
     });

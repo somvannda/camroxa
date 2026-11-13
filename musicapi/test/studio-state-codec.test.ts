@@ -860,6 +860,73 @@ test("loading adds Suno tracks and clips that the local project lacks", () => {
   assert.deepEqual(added?.clipIds, [clip?.id]);
 });
 
+test("loading re-keys a pulled chain to local track ids and keeps custom effects", () => {
+  const sunoTrackId = "11111111-1111-5111-a111-111111111111";
+  const local: LocalDocument = {
+    tracks: [{ id: "track-1", sunoId: sunoTrackId, index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      "track-1": [
+        { entryId: "fx-reverb", pluginId: "reverb", params: { mix: 30 } },
+        { entryId: "fx-designed", pluginId: "designed-abc", params: { amount: 50 } },
+      ],
+    },
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [
+      { id: sunoTrackId, sunoId: sunoTrackId, name: "Keys", index: 0, clipIds: [] },
+    ],
+    lanes: [],
+    chains: {
+      [sunoTrackId]: [
+        {
+          entryId: "entry-dec400a6",
+          pluginId: "reverb",
+          presetId: null,
+          presetName: "Custom",
+          mode: undefined,
+          params: { time: 2, mix: 45 },
+          sunoId: "22222222-2222-5222-a222-222222222222",
+        },
+      ],
+    },
+  });
+  // A chain keyed by the Suno id is not something the editor can read.
+  assert.equal(merged.data.chains?.[sunoTrackId], undefined);
+  const chain = merged.data.chains?.["track-1"] ?? [];
+  assert.equal(chain.length, 2);
+  // The representable effect comes from Suno in Suno's order...
+  assert.equal(chain[0].pluginId, "reverb");
+  assert.equal((chain[0].params as Record<string, number>).mix, 45);
+  // ...and the effect Suno cannot express is kept rather than wiped.
+  assert.equal(chain[1].pluginId, "designed-abc");
+  assert.deepEqual(merged.keptLocalEffects, ["fx-designed"]);
+});
+
+test("loading drops a local effect that Suno deleted", () => {
+  const sunoTrackId = "33333333-3333-5333-a333-333333333333";
+  const local: LocalDocument = {
+    tracks: [{ id: "track-1", sunoId: sunoTrackId, index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      "track-1": [{ entryId: "fx-reverb", pluginId: "reverb", params: { mix: 30 } }],
+    },
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [
+      { id: sunoTrackId, sunoId: sunoTrackId, name: "Keys", index: 0, clipIds: [] },
+    ],
+    lanes: [],
+    chains: { [sunoTrackId]: [] },
+  });
+  assert.deepEqual(merged.data.chains?.["track-1"], []);
+  assert.deepEqual(merged.keptLocalEffects, []);
+});
+
 test("an empty local-only track is dropped when Suno no longer has it", () => {
   const local: LocalDocument = {
     tracks: [
@@ -867,6 +934,10 @@ test("an empty local-only track is dropped when Suno no longer has it", () => {
       { id: "track-2", index: 1, clipIds: [] },
     ],
     lanes: [],
+    chains: {
+      "track-1": [{ entryId: "fx-1", pluginId: "reverb", params: {} }],
+      "track-2": [{ entryId: "fx-2", pluginId: "reverb", params: {} }],
+    },
   };
   const merged = mergeSunoProjectIntoLocal(local, {
     bpm: 120,
@@ -893,6 +964,9 @@ test("an empty local-only track is dropped when Suno no longer has it", () => {
     ["track-1"]
   );
   assert.deepEqual(merged.droppedTracks, ["track-2"]);
+  // A dropped track's chain must not be left behind as an orphan.
+  assert.deepEqual(Object.keys(merged.data.chains ?? {}), ["track-1"]);
+  assert.deepEqual(merged.keptLocalEffects, []);
 });
 
 test("a disabled note rides on isDisabled in both directions", () => {

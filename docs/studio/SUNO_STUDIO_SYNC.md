@@ -237,7 +237,7 @@ Mapping summary:
 | `lanes[].instrument` | synth `waveform1` | both | sine/triangle/saw (verified live) |
 | `lanes[].takes` | `tracks[].takeLanes[].clips` | both | alternates need a Suno asset |
 | local upload audio | `clips[].asset` | both | imported once into the pinned account, clip id cached |
-| `chains` (all built-ins) | `tracks[].signalChain` | both | compressor, convolution, delay, distortion, chorus, gate, limiter, reverb, EQ; custom plugins stay local |
+| `chains` (all built-ins) | `tracks[].signalChain` | both | compressor, convolution, delay, distortion, chorus, gate, limiter, reverb, EQ; an entry with no Suno translation (custom/designed plugin) stays on the local track across a pull, because Suno cannot carry it (see the open decision in `PARITY_REMOVAL_LIST.md`) |
 | `masterChain` | `masterSignalChain` | both | limiter, EQ and compressor (verified live) |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | track groups | — | removed | no group/bus field exists in the document (D-034) |
@@ -354,7 +354,12 @@ audio clips are preserved untouched rather than dropped.
     re-reads Suno, projects it with `sunoStateToProjectData`, and merges it into
     the local document (`mergeSunoProjectIntoLocal`): matched tracks/clips update,
     Suno-only ones are added, and local-only clips are **kept** and reported.
-    The applied version is recorded so the next autosave is a no-op.
+    Effect chains merge per entry and are re-keyed from Suno's track ids to the
+    local track ids the editor reads: a representable effect is replaced by
+    Suno's copy (so a delete on Suno propagates), while an entry Suno cannot
+    express is kept and reported in `kept_local_effects`. Chains left on dropped
+    tracks are pruned. The applied version is recorded so the next autosave is a
+    no-op.
   - **Keep mine** — `POST /studio/projects/{id}/keep-mine` rebases onto Suno's
     observed version and pushes the local document.
   - **Duplicate locally** — forks the project; the copy mirrors as its own Suno

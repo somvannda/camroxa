@@ -690,6 +690,7 @@ export class StudioProjectSync {
     timeSignature: string;
     data: unknown;
     keptLocalClips: string[];
+    keptLocalEffects: string[];
     droppedTracks: string[];
     versionId: string | null;
   } | null> {
@@ -709,6 +710,7 @@ export class StudioProjectSync {
       timeSignature: projection.timeSignature,
       data: merged.data,
       keptLocalClips: merged.keptLocalClips,
+      keptLocalEffects: merged.keptLocalEffects,
       droppedTracks: merged.droppedTracks,
       versionId: fresh?.suno_version_id ?? null,
     };

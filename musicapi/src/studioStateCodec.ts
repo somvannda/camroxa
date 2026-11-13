@@ -1120,6 +1120,11 @@ function shortId(value: string): string {
  * anything Suno does not know about — a local upload, a clip that has not been
  * uploaded yet — is kept rather than silently deleted. The caller is told what
  * was kept so the UI can explain the result.
+ *
+ * Effects follow the same rule per entry: an effect Suno can represent is
+ * replaced by Suno's copy (so deletes propagate), while an entry with no Suno
+ * translation — a custom/designed plugin — is appended to the pulled chain
+ * instead of being wiped by a pull.
  */
 export function mergeSunoProjectIntoLocal(
   local: LocalDocument,
@@ -1132,7 +1137,12 @@ export function mergeSunoProjectIntoLocal(
     chains?: Record<string, Array<Record<string, unknown>>>;
     masterChain?: Array<Record<string, unknown>>;
   }
-): { data: LocalDocument; keptLocalClips: string[]; droppedTracks: string[] } {
+): {
+  data: LocalDocument;
+  keptLocalClips: string[];
+  keptLocalEffects: string[];
+  droppedTracks: string[];
+} {
   const localTracks = Array.isArray(local.tracks) ? local.tracks : [];
   const localLanes = Array.isArray(local.lanes) ? local.lanes : [];
   const localTrackBySunoId = new Map<string, LocalTrack>();
@@ -1147,13 +1157,27 @@ export function mergeSunoProjectIntoLocal(
   const usedTrackIds = new Set<string>();
   const usedClipIds = new Set<string>();
   const keptLocalClips: string[] = [];
+  const keptLocalEffects: string[] = [];
+  /** Pulled chains keyed by *local* track id (Suno sends them by Suno id). */
+  const pulledChains: Record<string, Array<Record<string, unknown>>> = {};
 
   const tracks: LocalTrack[] = suno.tracks.map((track, index) => {
     const match =
       localTrackBySunoId.get(track.id) ??
       localTracks.find((candidate) => candidate.index === index && !candidate.sunoId);
     const id = match?.id ?? `track-${shortId(track.id)}`;
-    usedTrackIds.add(match?.id ?? id);
+    usedTrackIds.add(id);
+    const sunoChain = suno.chains?.[track.id];
+    if (sunoChain) {
+      const localChain = match ? (local.chains ?? {})[match.id] : undefined;
+      const unrepresentable = (Array.isArray(localChain) ? localChain : []).filter(
+        (entry) => !SUNO_PLUGIN_CATALOG[String((entry ?? {}).pluginId ?? "")]
+      );
+      for (const entry of unrepresentable) {
+        keptLocalEffects.push(String(entry.entryId ?? entry.pluginId ?? "effect"));
+      }
+      pulledChains[id] = [...sunoChain, ...unrepresentable];
+    }
     const clipIds: string[] = [];
     for (const sunoClip of suno.lanes.filter((clip) => clipIdsOf(track).includes(clip.id))) {
       const clipMatch = localClipBySunoId.get(sunoClip.id);
@@ -1220,21 +1244,33 @@ export function mergeSunoProjectIntoLocal(
     }
   }
 
+  const trackIds = new Set(tracks.map((track) => track.id));
+  const chains: Record<string, Array<Record<string, unknown>>> = {};
+  for (const [trackId, chain] of Object.entries(local.chains ?? {})) {
+    // Keep chains for tracks that survived; this also drops keys a previous
+    // pull wrote under Suno's ids and chains left behind by dropped tracks.
+    if (trackIds.has(trackId)) chains[trackId] = chain;
+  }
+  for (const [trackId, chain] of Object.entries(pulledChains)) {
+    chains[trackId] = chain;
+  }
+
   return {
     data: {
       ...local,
       tracks,
       lanes: localLanes,
       markers: suno.markers ?? local.markers,
-      // Per-track merge: a Suno chain we could not fully map leaves the local
-      // chain in place rather than dropping effects silently.
-      chains: { ...(local.chains ?? {}), ...(suno.chains ?? {}) },
+      // Per-track, per-entry merge: representable effects come from Suno, an
+      // entry Suno cannot express stays on the track rather than being wiped.
+      chains,
       masterChain:
         suno.masterChain && suno.masterChain.length > 0
           ? suno.masterChain
           : local.masterChain,
     },
     keptLocalClips,
+    keptLocalEffects,
     droppedTracks,
   };
 }
