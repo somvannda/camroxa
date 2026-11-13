@@ -61,3 +61,13 @@ map onto the reference's MIDI clip.
   Suno's trademarked look is out of scope.
 - **Unverified features stay** until a capture proves Suno does not have them.
   `Remix` and clip-settings copy/paste are VERIFY, not removal candidates.
+
+## Sync coverage after the live capture
+
+The document side is now measured against a real schema
+(`SUNO_STUDIO_STATE_SCHEMA.md`). Mapped today: bpm/meter, master level, loop,
+track name/colour/hidden/mute/solo/volume/pan, MIDI clips and notes, track volume
+automation. Still pending: audio assets, clip trim/fades, effects chains, master
+chain, section markers, groups, pan automation. `STUDIO_STATE_COVERAGE` in
+`musicapi/src/sunoStudio.ts` is the list the health endpoint reports, so this
+section cannot drift from the code.

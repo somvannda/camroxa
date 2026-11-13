@@ -52,21 +52,24 @@ gain match — see D-010.
 
 ## Phase 5 - Suno Studio project mirror (2026-11-13)
 
-Phase 1 is implemented: `musicapi/migrations/0044_studio_suno_sync.sql`, the
-pinned-account link, the coalescing outbox and the editor's sync dot. Full details
-in `SUNO_STUDIO_SYNC.md`.
+Phase 0 (schema capture), Phase 1 (link/outbox) and Phase 2 (save translation) are
+done and live-verified: a throwaway project was created, saved twice, read back
+with the expected bpm/meter/tracks/MIDI notes, hit with a stale save (409), then
+archived. Details in `SUNO_STUDIO_STATE_SCHEMA.md`.
 
 Next, in order:
 
-1. **Capture one live `GET /api/studio/project/{id}`.** The transport contract and
-   every top-level `state` key are decoded from the shipped bundle, but the nested
-   track/clip/note/plugin field names still need a real sample. This is the only
-   thing blocking `STUDIO_SUNO_STATE_SYNC=1`.
-2. **Prove the link end to end.** With a live account, create a project and confirm
-   exactly one Suno project appears (and a retry does not create a second).
-3. **Enable the arrangement merge** and run the round-trip test in
-   `SUNO_STUDIO_SYNC.md` section 12.
-4. **Pull/reconcile + conflict UI** (`Load Suno`, `Keep mine`, `Duplicate`).
+1. **Audio asset mapping.** Local upload clips have no Suno asset yet, so they are
+   counted in `skipped_clips` and left out of the mirrored project. The platform
+   generation record already knows the Suno clip id; carry it onto the studio clip
+   as `sunoAssetId` so audio clips mirror too.
+2. **Pull/reconcile.** `sunoStateToProjectData` reads a Suno document into local
+   fields; apply it on open and add the conflict UI (`Load Suno`, `Keep mine`,
+   `Duplicate`).
+3. **Effects and master chain.** `tracks[].signalChain` and `masterSignalChain`
+   are captured; our plugin ids still need mapping to Suno `pluginVersionId`s.
+4. **Section markers.** `state.sections` was empty in every captured project; one
+   project with a section is needed to finish the shape.
 5. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
 
 Known test lesson (fixed 2026-11-13): the automation and section-marker specs used

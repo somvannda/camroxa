@@ -202,35 +202,39 @@ blocks on Suno.
 
 ## 7. Document translation
 
-The local document (`studio_projects.data`) is ours. Suno's `state` schema must be
-captured from a real project before this mapping can be finalized. Phase 0 below
-captures `GET /api/studio/project/{id}` for a generated project and stores a
-sanitized sample under `docs/studio/reference/suno-project-state.sample.json`.
+The local document (`studio_projects.data`) is ours; the Suno document is
+authoritative. The verified field map, the exact schema and the live probe
+results live in `SUNO_STUDIO_STATE_SCHEMA.md`; `musicapi/src/studioStateCodec.ts`
+is the implementation.
 
-Mapping table (to be completed after Phase 0):
+Mapping summary:
 
 | Camxora | Suno `state` | Direction | Notes |
 |---|---|---|---|
-| `title` | project `title` | both | metadata route may also carry it |
-| `bpm`, `time_signature` | tempo/meter fields | both | `timing.bps` is confirmed; meter key is TBD |
-| `tracks[]` | track list | both | id, name, colour, index, mute/solo/volume/pan |
-| `lanes[]` (clips) | clip list | both | start/duration/offset/fade, audio/song id, type |
-| `midi.notes`, bend, mod | MIDI clip fields | both | pitch/start/length/velocity |
-| `chains` (effects) | effect chain | both | plugin ids/params must map to Suno device ids |
-| `masterChain` | master chain | both | limiter/EQ/compressor amounts |
-| `markers` | `sections` | both | section markers |
-| `groups` | track groups | both | reference has groups A–D |
-| `volumeAutomation`/`panAutomation` | automation lanes | both | point schema TBD |
-| custom wavetable ids | `wavetables` asset | removed | Suno treats wavetables as assets, not an editor |
+| `title`, `majorVersion` | `title`, `majorVersion` | both | metadata route also carries the title |
+| `bpm` | `timing.bps` | both | `bps = bpm/60` (verified) |
+| `time_signature` | `timeSignatureChanges` | both | verified |
+| `masterVolume`, loop | `amplitude`, `loop` | both | verified |
+| `tracks[]` | `tracks[]` | both | name, colour, hidden, mute/solo, volume→amplitude, pan→balance |
+| MIDI clips + notes | `tracks[].clips[].midi` | both | seconds→beats, numeric note ids (verified live) |
+| `volumeAutomation` | `tracks[].faderAutomation` | both | written; read-back pending |
+| audio clips with a Suno asset | `clips[].asset` | both | asset id comes from the local Suno clip id |
+| audio clips without an asset | — | — | not mirrored; reported in `skipped_clip_ids` |
+| `chains` (effects) | `tracks[].signalChain` | both | plugin id mapping pending |
+| `masterChain` | `masterSignalChain` | both | id mapping pending |
+| `markers` | `sections` | both | entry shape pending (all captures empty) |
+| `groups` | routing / group tracks | both | pending |
+| custom wavetable ids | `wavetables` asset | removed | Suno has wavetables as assets, not an editor |
 
 Rules (strict, D-034):
 
 1. Every local key must map to a Suno key or be deleted from the document and
    its editor control. Nothing is "kept locally" as an exception.
-2. Unknown **Suno** keys are preserved in a `sunoExtras` bag, so a Suno edit
+2. Unknown **Suno** keys are preserved from the baseline document, so a Suno edit
    never erases fields we do not model yet.
 3. A round-trip test must prove `local -> Suno -> local` is stable (semantic hash
-   equality, ignoring ids/order where Suno normalizes).
+   equality, ignoring ids/order where Suno normalizes). The codec tests do this
+   offline, and the live probe proved the API side.
 4. The coverage matrix doubles as a removal list: an unmapped feature is either
    wired to a Suno field or removed before the mirror is called complete.
 
@@ -291,10 +295,14 @@ so re-provisioning is a data migration, not a redesign.
 
 ## 11. Phased implementation
 
-**Phase 0 — schema capture (partial).**
-The shipped client bundle was decoded from the captured authenticated session, so
-the transport contract and the top-level document keys are known without a live
-call:
+**Phase 0 — schema capture. DONE (2026-11-13).**
+Full schema, provenance and the live verification table are in
+`SUNO_STUDIO_STATE_SCHEMA.md`. In short: 11 real projects were read, the nested
+track/clip/MIDI shapes are known, and the contract was verified by creating,
+saving twice, reading back and provoking a stale-version 409 on a throwaway
+project (archived afterwards).
+
+The client bundle facts that still anchor the contract:
 
 | Fact | Evidence |
 |---|---|
@@ -303,30 +311,29 @@ call:
 | `409` carries `{latest_version_id}`; `429` is a rate limit | same chunk |
 | `GET /api/studio/project/{id}` → `{state, latest_version_id, title, ...}`; `state` may be a JSON string | chunk `2u-vnr3lk1phb.js` |
 | A loaded state must contain `timing` and `tracks` | same chunk |
-| `timing` holds `bps` and `bpsAutomation` (so `bpm → bps = bpm/60`) | transport planner |
-| Top-level keys: `title, majorVersion, metadata, styleSummary, sections, timing, timeSignatureChanges, tracks, takePreviews, tab, loop, metronome, recording, routing, masterRoutingMode, masterSignalChain, amplitude, songFadeInBeats, songFadeOutBeats, midiCcMappings, midiController, midiControllerSignalChain, midiNotePreviewEnabled, limiterLookaheadMs, layout, libraryPanelState, contextualWindowConfig, editClipId, editorPointerModes, lyricsCorrectionsByClipId, overrideLyrics, caption, actors` | audibility map + `rootKey()` literals |
-
-Still missing: a real `state` sample proving the nested track/clip/notes/plugin
-field names and their defaults. That needs one live `GET project/{id}` from a
-pinned account, which is the remaining Phase 0 step.
 
 **Phase 1 — create/list/link. DONE.**
 Migration `0044`, link table, account pinning, coalescing outbox, create route,
 status route and the editor's sync dot. Creating a local project queues exactly
 one Suno project; an advisory lock makes retries idempotent.
 
-**Phase 2 — save translation (staged).**
-`mergeLocalDocumentIntoSunoState` merges only verified fields into the last Suno
-document and preserves every Suno key it does not model. It is gated by
-`STUDIO_SUNO_STATE_SYNC=1` until the nested schema is captured, so no guessed
-document can reach a real project.
+**Phase 2 — save translation. DONE (live-verified).**
+`studioStateCodec.ts` converts bpm/meter, master level, loop, tracks, mixer
+values, MIDI clips and notes into Suno's document and back. It merges into the
+last Suno document, so keys we do not model survive. Writes are on by default;
+`STUDIO_SUNO_STATE_SYNC=0` is the kill switch.
+
+Clips whose audio has no Suno asset are **not** represented; they are counted in
+the link's `skipped_clip_ids` and surfaced in the sync chip, and existing Suno
+audio clips are preserved untouched rather than dropped.
 
 **Phase 3 — pull/reconcile.**
 Change detection is live: `refresh` marks `conflict` when Suno advanced, and
 `/internal/studio/sync/health` reports the per-field coverage registry
-(`STUDIO_STATE_COVERAGE`, `mapped`/`pending`/`remove`). Remaining: applying the
-Suno document to local `data` and the conflict UI (`Load Suno`, `Keep mine`,
-`Duplicate`), both of which need the reverse mapping.
+(`STUDIO_STATE_COVERAGE`, `mapped`/`pending`/`remove`). `sunoStateToProjectData`
+already reads a Suno document back into local fields (used by tests and the live
+probe). Remaining: apply it on open and the conflict UI (`Load Suno`,
+`Keep mine`, `Duplicate`).
 
 **Phase 4 — coverage matrix = removal list (D-034).**
 Per-feature tests: tracks, clips, MIDI, effects, automation, markers, metadata,
@@ -341,11 +348,12 @@ re-auth flow for dead Suno sessions, metrics and alerts.
 | Case | Expected |
 |---|---|
 | Create local project | exactly one Suno project; link row `synced`; retry does not create a second |
-| Edit local track/clip | Suno `project/{id}` state matches after the debounce; version advances |
-| Edit in Suno | reopening the local project detects the newer version and applies it |
-| Both sides changed | `409`; conflict UI appears; no silent overwrite |
+| Edit local track/MIDI clip | Suno `project/{id}` state matches after the debounce; version advances (**verified on a live probe**) |
+| Audio clip without a Suno asset | not silently dropped: counted in `skipped_clips`, Suno-side audio preserved |
+| Edit in Suno | reopening the local project detects the newer version (`refresh` → `conflict`); applying it is Phase 3 |
+| Both sides changed | `409`; no silent overwrite (**409 contract verified live**) |
 | Suno offline | local edit saves; status `pending`; outbox retries; no data loss |
-| Expired account | status `error/reauth_required`; no other account is tried |
+| Expired account | status `error`; no other account is tried |
 | Other Camxora user | 404/403; no cross-account read or write |
 | Unsupported local field | removed from the editor and the document (D-034), never carried local-only |
 
