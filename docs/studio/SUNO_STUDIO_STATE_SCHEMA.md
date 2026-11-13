@@ -168,7 +168,6 @@ The project was archived after the probe.
 - `asset.type` values other than `"clip"` (uploads).
 
 ## 9. Section markers (`sections`)
-
 `sections` is a registry keyed by id:
 
 ```
@@ -181,3 +180,39 @@ Verified on 2026-11-13 by saving two synthetic markers on a throwaway project an
 reading them back: both survived with their ids, names, colours and beat ranges
 (the first ends where the next begins). The codec writes this shape from
 `data.markers` and projects it back when loading a Suno document.
+
+## 10. Plugin catalog ids (signalChain)
+
+Captured read-only from the same account's project chains on 2026-11-13
+(`pluginVersionId`, use count, parameter names). This is what a future effects
+mapping needs; the codec does not write chains yet.
+
+| Role | `pluginVersionId` | Uses | Parameters |
+|---|---|---|---|
+| Synth (MIDI voice) | `77cd4e27-c6cc-47ae-981a-7342778e8ff5` | 11 | 119 params (oscillators, envelopes, filters, LFO matrix) |
+| Compressor | `a4838315-…` | 25 | attack, gain, input, knee, makeupGain, output, ratio, release, threshold |
+| Convolution | `ddcfbfdc-…` | 7 | crossImpulseResponse, gain, impulseResponse, mix, predelay, trimEnd, trimStart, width |
+| Limiter | `bf422c67-…` | 5 | attack, link, lookahead, preGain, release |
+| EQ (v1) | `b1a718a1-…` | 28 | enabled1–6, freq1–6, gain1–6, q1–6, … (31 params) |
+| EQ (v2) | `91a75c2b-…` | 3 | same 31-param shape |
+| Reverb | `dec400a6-…` | 6 | damping, highCut, lowCut, mix, predelay, time, width |
+| Delay (v1) | `e2b9270b-…` | 14 | beats, feedback, highCut, lowCut, milliseconds, mix, mode |
+| Delay (v2/v3) | `e871ca3a-…`, `1b5d6b90-…` | 6 | same shape |
+| Distortion / crusher | `20c5b585-…` | 5 | Bias, Crush, Input Gain, Mix, Output Gain, Post Cutoff, Post Resonance, Pre Tilt, Shape |
+| Chorus | `537ba288-…` | 3 | attack, depth, mix, rate (1/16, 1/8, 1/4), release |
+| Gate | `14fb47e6-…` | 6 | attack, floor, hold, release, threshold |
+| Filter / warm drive | `d51aa72c-…` | 3 | cutoff, filter type, high-pass resonance, low-pass resonance, mix, warm drive |
+| Stereo / master utility | `d645cdcd-…` | 3 | Bass Mono Crossover, Level, Output Trim, Pan, Phase Invert, Stereo Flip, Width |
+
+Notes for the mapping:
+
+- Parameter names are case-sensitive (`Bias`, `Input Gain`, …), and some ids exist
+  in several versions (EQ, Delay) — pick the most-used one and keep the others in
+  a fallback list.
+- Our local plugin ids are semantic (`compressor`, `reverb`, …), so a mapping table
+  plus a per-parameter translation (`gain` → `output`) is required.
+- Entries are `{ id, pluginVersionId, presetId?, bypassed, params, paramAutomation }`;
+  `params` values are numbers, and `paramAutomation` is an object (empty in every
+  captured entry).
+- The synth plugin carries the MIDI instrument voice; our `instrument` selector
+  currently maps to a simple oscillator, which is a separate gap.
