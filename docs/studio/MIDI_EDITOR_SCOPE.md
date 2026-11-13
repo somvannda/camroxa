@@ -21,10 +21,19 @@ Evidence: `reference/screens/S31-midi-clip-editor.jpeg` (3200×560, 2× DPR),
   (panel geometry, add/move/delete, persistence, reopen).
 
 Velocity editing and key/scale are built too: dragging the lane sets the nearest note velocity,
-and Key/Scale dim out-of-scale rows and snap new notes into the selected scale. Focused notes transpose with ↑/↓ (semitone) and Shift+↑/↓ (octave), documented in the shortcut
-map. Pitch bend and modulation lanes are built too (click adds a point, double-click removes;
-bend detunes the note at its start and modulation applies a tremolo). Still open: MIDI file
-import/export.
+and Key/Scale dim out-of-scale rows and snap new notes into the selected scale. Pitch bend and
+modulation lanes are built too (click adds a point, double-click removes; bend detunes the note
+at its start and modulation applies a tremolo).
+
+The captured S14 clip-editor map is built as well: `CTRL A` selects every note, `SHIFT Q`
+quantizes the selection, `0` toggles notes disabled (they stay in the clip but playback and
+export skip them), arrows nudge and transpose, `DELETE` removes, `SHIFT ←/→` shortens or
+lengthens, `SHIFT ↑/↓` is an octave and `SHIFT 1/2` doubles or halves the grid. The panel takes
+focus when it opens, so those keys never fall through to the arrangement bindings. Still open:
+MIDI file import/export, `CTRL =/-` zoom and `Z` zoom to selection.
+
+A disabled note has no verified counterpart in the Suno document yet, so the flag is local until
+the probe in `SUNO_STUDIO_SYNC.md` §7 runs.
 
 ## What the capture shows
 

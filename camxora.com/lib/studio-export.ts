@@ -297,7 +297,7 @@ export async function renderMix(
   // MIDI clips render through the same track inputs, so chains/mix apply to them too.
   for (const clip of clips) {
     if (options.clipIds && !options.clipIds.has(clip.id)) continue;
-    const notes = clip.midi?.notes ?? [];
+    const notes = (clip.midi?.notes ?? []).filter((note) => !note.disabled);
     if (notes.length === 0) continue;
     const track = tracks.find((item) => item.clipIds.includes(clip.id));
     const audible = track ? !track.muted && (!anySolo || track.solo) : true;

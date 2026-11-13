@@ -131,3 +131,40 @@ test("MIDI notes persist and reopen from the clip", async ({ page }) => {
   await expect(reopened).toBeVisible();
   await expect(reopened.locator(".se-midi-note")).toHaveCount(1);
 });
+
+test("Ctrl A plus 0 mutes the selected notes and the mute persists", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, { title: "MIDI mute" });
+
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  await page.getByRole("menuitem", { name: /MIDI/ }).click();
+  const panel = page.getByRole("region", { name: "MIDI editor" });
+  const grid = panel.locator(".se-midi-grid");
+  await grid.click({ position: { x: 60, y: 96 } });
+  await grid.click({ position: { x: 150, y: 60 } });
+  await expect(panel.locator(".se-midi-note")).toHaveCount(2);
+
+  // Focus stays inside the panel after adding, so the panel owns the keys.
+  await page.keyboard.press("Control+a");
+  await expect(panel.locator(".se-midi-note.is-selected")).toHaveCount(2);
+  await page.keyboard.press("0");
+  await expect(panel.locator(".se-midi-note.is-disabled")).toHaveCount(2);
+  await expect(panel.locator(".se-midi-note.is-disabled").first()).toHaveAttribute(
+    "aria-label",
+    /disabled/
+  );
+
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(800);
+  await page.reload();
+  await expect(page.locator(".se-clip")).toHaveCount(2, { timeout: 30_000 });
+  await page.getByRole("button", { name: /^MIDI clip/ }).first().click();
+  const reopened = page.getByRole("region", { name: "MIDI editor" });
+  await expect(reopened.locator(".se-midi-note.is-disabled")).toHaveCount(2);
+
+  // 0 again restores them, so the toggle is not one-way.
+  await page.keyboard.press("Control+a");
+  await page.keyboard.press("0");
+  await expect(reopened.locator(".se-midi-note.is-disabled")).toHaveCount(0);
+});

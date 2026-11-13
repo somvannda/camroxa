@@ -12,6 +12,8 @@ export type MidiNote = {
   start: number;
   length: number;
   velocity: number;
+  /** Muted in playback/export; the reference's "Toggle Notes Disabled" (0). */
+  disabled?: boolean;
 };
 
 export type MidiPoint = { at: number; value: number };
@@ -113,6 +115,7 @@ export function sanitizeNotes(input: unknown): MidiNote[] {
       start: Math.max(0, start),
       length: Math.max(0.02, Number.isFinite(length) ? length : 0.25),
       velocity: Math.min(127, Math.max(1, Number.isFinite(velocity) ? Math.round(velocity) : 100)),
+      ...(note.disabled === true ? { disabled: true } : {}),
     });
   }
   return notes;

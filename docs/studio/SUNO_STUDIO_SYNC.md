@@ -224,6 +224,7 @@ Mapping summary:
 | `tracks[]` | `tracks[]` | both | name, colour, hidden, mute/solo, volume→amplitude, pan→balance |
 | MIDI clips + notes | `tracks[].clips[].midi` | both | seconds→beats, numeric note ids (verified live) |
 | MIDI bend / mod | `midi.pitchBend`, `midi.controlChanges` (CC1) | both | point lists in beats (verified live) |
+| disabled notes (`0`) | unknown | pending | the captured note objects only show `{id,startBeats,durationBeats,pitch,velocity}`; the flag must be probed before we claim round-trip parity |
 | clip offset / fades | `readStartBeats` / `fadeInBeats` / `fadeOutBeats` | both | seconds→beats |
 | `volumeAutomation` / `panAutomation` | `tracks[].faderAutomation.gain/.pan` | both | 0–1 values, `{beats,value,curve}` (verified live) |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |

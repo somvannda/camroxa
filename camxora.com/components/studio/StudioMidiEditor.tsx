@@ -115,7 +115,10 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const [preview, setPreview] = useState<MidiNote | null>(null);
   const [velocityDrag, setVelocityDrag] = useState<{ id: string; notes: MidiNote[] } | null>(null);
   const [velocityPreview, setVelocityPreview] = useState<number | null>(null);
+  /** Notes targeted by the keyboard actions (Ctrl A / arrows / Q / 0 / Delete). */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const rollRef = useRef<HTMLDivElement | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const midiFileRef = useRef<HTMLInputElement | null>(null);
 
   // Start around middle C, like the capture.
@@ -123,6 +126,20 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     const element = rollRef.current;
     if (!element) return;
     element.scrollTop = Math.max(0, (MIDI_MAX_PITCH - 72) * MIDI_ROW - 24);
+  }, [clip.id]);
+
+  // The panel owns its shortcuts while it is open; focus it on arrival so the
+  // keys do not fall through to the arrangement's global bindings. The frame
+  // delay matters: the click that opened the panel would otherwise steal focus
+  // back to the clip once its default action runs.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => sectionRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [clip.id]);
+
+  // A different clip starts with nothing selected.
+  useEffect(() => {
+    setSelectedIds(new Set());
   }, [clip.id]);
 
   const step = secondsPerBar / Number(quantize);
@@ -168,12 +185,23 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             existing.pitch === note.pitch && Math.abs(existing.start - note.start) < 0.005
         )
     );
-    if (fresh.length) onChangeNotes([...notes, ...fresh]);
+    if (fresh.length) {
+      onChangeNotes([...notes, ...fresh]);
+      setSelectedIds(new Set(fresh.map((note) => note.id)));
+      sectionRef.current?.focus();
+    }
   }
 
   function startDrag(event: React.PointerEvent<HTMLButtonElement>, note: MidiNote) {
     event.stopPropagation();
     if (event.button !== 0) return;
+    const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+    setSelectedIds((current) => {
+      const next = new Set(additive ? current : []);
+      if (additive && next.has(note.id)) next.delete(note.id);
+      else next.add(note.id);
+      return next;
+    });
     setDrag({
       id: note.id,
       startX: event.clientX,
@@ -264,9 +292,101 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         )
       : notes;
 
+  /**
+   * Reference shortcut map (S14, CLIP EDITOR – MIDI): Ctrl A selects every note,
+   * Shift Q quantizes, 0 toggles the disabled state, arrows nudge/transpose,
+   * Delete removes and Shift 1 / Shift 2 double or halve the grid.
+   */
+  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+
+    const mod = event.metaKey || event.ctrlKey;
+    if (mod && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelectedIds(new Set(notes.map((note) => note.id)));
+      return;
+    }
+
+    const denser = event.shiftKey && (event.key === "1" || event.key === "!");
+    const sparser = event.shiftKey && (event.key === "2" || event.key === "@");
+    if (denser || sparser) {
+      event.preventDefault();
+      event.stopPropagation();
+      setQuantize((current) =>
+        denser ? (current === "4" ? "8" : "16") : current === "16" ? "8" : "4"
+      );
+      return;
+    }
+
+    if (event.key === "Escape") {
+      if (selectedIds.size) {
+        event.stopPropagation();
+        setSelectedIds(new Set());
+      }
+      return;
+    }
+
+    const selected = notes.filter((note) => selectedIds.has(note.id));
+    if (!selected.length) return;
+    const ids = new Set(selected.map((note) => note.id));
+    const patchSelected = (patch: (note: MidiNote) => Partial<MidiNote>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onChangeNotes(notes.map((note) => (ids.has(note.id) ? { ...note, ...patch(note) } : note)));
+    };
+
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const delta = (event.key === "ArrowRight" ? 1 : -1) * step;
+      if (event.shiftKey) {
+        // Shift ↔ lengthens/shortens, as the captured map does.
+        patchSelected((note) => ({
+          length: Math.max(
+            0.02,
+            Math.min(Math.max(0.02, duration - note.start), note.length + delta)
+          ),
+        }));
+        return;
+      }
+      patchSelected((note) => ({
+        start: Math.max(0, Math.min(Math.max(0, duration - note.length), note.start + delta)),
+      }));
+      return;
+    }
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      const amount = (event.key === "ArrowUp" ? 1 : -1) * (event.shiftKey ? 12 : 1);
+      patchSelected((note) => ({
+        pitch: Math.max(MIDI_MIN_PITCH, Math.min(MIDI_MAX_PITCH, note.pitch + amount)),
+      }));
+      return;
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault();
+      event.stopPropagation();
+      onChangeNotes(notes.filter((note) => !ids.has(note.id)));
+      setSelectedIds(new Set());
+      return;
+    }
+    if (event.key === "0") {
+      const disable = selected.some((note) => !note.disabled);
+      patchSelected(() => (disable ? { disabled: true } : { disabled: undefined }));
+      return;
+    }
+    if (event.shiftKey && event.key.toLowerCase() === "q") {
+      patchSelected((note) => ({ start: Math.max(0, Math.round(note.start / step) * step) }));
+    }
+  }
+
   return (
     <>
-    <section className="se-midi" aria-label="MIDI editor">
+    <section
+      className="se-midi"
+      aria-label="MIDI editor"
+      ref={sectionRef}
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+    >
       <header className="se-midi-head">
         <strong>{clip.title || "MIDI clip"}</strong>
         <button type="button" className="se-icon" aria-label="Close MIDI editor" onClick={onClose}>
@@ -333,29 +453,22 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             <button
               key={note.id}
               type="button"
-              className="se-midi-note"
+              className={`se-midi-note${selectedIds.has(note.id) ? " is-selected" : ""}${
+                note.disabled ? " is-disabled" : ""
+              }`}
               style={{
                 left: (note.start / duration) * width,
                 top: (MIDI_MAX_PITCH - note.pitch) * MIDI_ROW + 1,
                 width: Math.max(6, (note.length / duration) * width),
                 background: clip.color || "hsl(var(--accent))",
               }}
-              aria-label={`Note ${noteName(note.pitch)} at ${note.start.toFixed(2)}s, velocity ${note.velocity}`}
+              aria-label={`Note ${noteName(note.pitch)} at ${note.start.toFixed(2)}s, velocity ${note.velocity}${
+                note.disabled ? ", disabled" : ""
+              }`}
+              aria-pressed={selectedIds.has(note.id)}
               data-velocity={note.velocity}
+              data-disabled={note.disabled ? "true" : undefined}
               onPointerDown={(event) => startDrag(event, note)}
-              onKeyDown={(event) => {
-                if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-                event.preventDefault();
-                const direction = event.key === "ArrowUp" ? 1 : -1;
-                const amount = event.shiftKey ? 12 : 1;
-                const pitch = Math.max(
-                  MIDI_MIN_PITCH,
-                  Math.min(MIDI_MAX_PITCH, note.pitch + direction * amount)
-                );
-                onChangeNotes(
-                  notes.map((item) => (item.id === note.id ? { ...item, pitch } : item))
-                );
-              }}
               onDoubleClick={(event) => {
                 event.stopPropagation();
                 onChangeNotes(notes.filter((item) => item.id !== note.id));

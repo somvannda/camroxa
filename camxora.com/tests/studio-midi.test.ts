@@ -32,6 +32,15 @@ describe("studio MIDI model", () => {
     expect(sanitizeNotes("nope")).toEqual([]);
   });
 
+  it("keeps the reference's disabled flag, and only when it is true", () => {
+    const notes = sanitizeNotes([
+      { id: "a", pitch: 60, start: 0, length: 0.5, velocity: 100, disabled: true },
+      { id: "b", pitch: 62, start: 0.5, length: 0.5, velocity: 100, disabled: false },
+      { id: "c", pitch: 64, start: 1, length: 0.5, velocity: 100 },
+    ]);
+    expect(notes.map((note) => note.disabled)).toEqual([true, undefined, undefined]);
+  });
+
   it("quantises starts to the step", () => {
     const notes: MidiNote[] = [
       { id: "a", pitch: 60, start: 0.31, length: 0.4, velocity: 100 },

@@ -109,4 +109,109 @@ describe("StudioMidiEditor", () => {
     expect(Number(note.getAttribute("data-velocity"))).toBeLessThan(100);
     spy.mockRestore();
   });
+
+  describe("captured keyboard shortcuts (S14)", () => {
+    const notes = [
+      { id: "n1", pitch: 60, start: 0.1, length: 0.4, velocity: 100 },
+      { id: "n2", pitch: 64, start: 0.35, length: 0.4, velocity: 100 },
+    ];
+
+    function renderWithNotes() {
+      const view = renderEditor({ clip: { id: "clip", duration: 4, midi: { notes } } });
+      const section = view.container.querySelector(".se-midi") as HTMLElement;
+      return { ...view, section };
+    }
+
+    const selectAll = (section: HTMLElement) =>
+      fireEvent.keyDown(section, { key: "a", ctrlKey: true });
+
+    it("selects every note with Ctrl A and transposes the selection", () => {
+      const { section, onChangeNotes, container } = renderWithNotes();
+      selectAll(section);
+      expect(container.querySelectorAll(".se-midi-note.is-selected")).toHaveLength(2);
+
+      fireEvent.keyDown(section, { key: "ArrowUp" });
+      const raised = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(raised.map((note) => note.pitch)).toEqual([61, 65]);
+
+      fireEvent.keyDown(section, { key: "ArrowDown", shiftKey: true });
+      // The mock does not feed the previous patch back as a prop, so this is
+      // measured from the original pitches: shift transposes by an octave.
+      const dropped = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(dropped.map((note) => note.pitch)).toEqual([48, 52]);
+    });
+
+    it("nudges selected notes by the quantize grid", () => {
+      const { section, onChangeNotes } = renderWithNotes();
+      selectAll(section);
+      // Default grid is 1/8, so with two seconds per bar a step is 0.25s.
+      fireEvent.keyDown(section, { key: "ArrowRight" });
+      const moved = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(moved[0].start).toBeCloseTo(0.35, 6);
+      expect(moved[1].start).toBeCloseTo(0.6, 6);
+
+      // Shift ↔ lengthens the selection instead of moving it.
+      fireEvent.keyDown(section, { key: "ArrowRight", shiftKey: true });
+      const longer = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(longer[0].length).toBeCloseTo(0.65, 6);
+      expect(longer[0].start).toBeCloseTo(0.1, 6);
+    });
+
+    it("toggles notes disabled with 0 and marks them in the grid", () => {
+      const { section, onChangeNotes, rerender } = renderWithNotes();
+      selectAll(section);
+      fireEvent.keyDown(section, { key: "0" });
+      const muted = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(muted.every((note) => note.disabled === true)).toBe(true);
+
+      rerender(
+        <StudioMidiEditor
+          clip={{ id: "clip", duration: 4, midi: { notes: muted } }}
+          barWidth={96}
+          secondsPerBar={2}
+          loop={false}
+          keyName="C"
+          scaleName="off"
+          instrument="triangle"
+          onInstrumentChange={() => {}}
+          onImportMidi={() => {}}
+          onKeyChange={() => {}}
+          onScaleChange={() => {}}
+          onToggleLoop={() => {}}
+          onChangeNotes={onChangeNotes}
+          onChangeLanes={() => {}}
+          onClose={() => {}}
+        />
+      );
+      expect(document.querySelectorAll(".se-midi-note.is-disabled")).toHaveLength(2);
+    });
+
+    it("quantizes the selection with Shift Q", () => {
+      const { section, onChangeNotes } = renderWithNotes();
+      selectAll(section);
+      fireEvent.keyDown(section, { key: "Q", shiftKey: true });
+      const quantized = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(quantized.map((note) => note.start)).toEqual([0, 0.25]);
+    });
+
+    it("deletes the selection and closes the grid on Escape", () => {
+      const { section, onChangeNotes, container } = renderWithNotes();
+      selectAll(section);
+      fireEvent.keyDown(section, { key: "Delete" });
+      expect(onChangeNotes.mock.calls.at(-1)?.[0]).toEqual([]);
+
+      selectAll(section);
+      fireEvent.keyDown(section, { key: "Escape" });
+      expect(container.querySelectorAll(".se-midi-note.is-selected")).toHaveLength(0);
+    });
+
+    it("doubles or halves the grid with Shift 1 and Shift 2", () => {
+      const { section } = renderWithNotes();
+      const quantize = screen.getByLabelText("Quantize") as HTMLSelectElement;
+      fireEvent.keyDown(section, { key: "!", shiftKey: true });
+      expect(quantize.value).toBe("16");
+      fireEvent.keyDown(section, { key: "@", shiftKey: true });
+      expect(quantize.value).toBe("8");
+    });
+  });
 });

@@ -4116,7 +4116,9 @@ export function StudioEditorShell() {
     // MIDI clips: synth voices into the same track input, so chains, mute, solo and
     // volume all apply exactly like audio clips.
     for (const clip of arrangement) {
-      const notes = sanitizeNotes((clip as ClipLike).midi?.notes);
+      const notes = sanitizeNotes((clip as ClipLike).midi?.notes).filter(
+        (note) => !note.disabled
+      );
       if (notes.length === 0) continue;
       const start = clip.start ?? 0;
       const track = tracks.find((item) => item.clipIds.includes(clip.id));
