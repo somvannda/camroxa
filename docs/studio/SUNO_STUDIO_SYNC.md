@@ -218,11 +218,12 @@ Mapping summary:
 | `tracks[]` | `tracks[]` | both | name, colour, hidden, mute/solo, volume→amplitude, pan→balance |
 | MIDI clips + notes | `tracks[].clips[].midi` | both | seconds→beats, numeric note ids (verified live) |
 | `volumeAutomation` | `tracks[].faderAutomation` | both | written; read-back pending |
+| `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | audio clips with a Suno asset | `clips[].asset` | both | asset id comes from the local Suno clip id |
 | audio clips without an asset | — | — | not mirrored; reported in `skipped_clip_ids` |
 | `chains` (effects) | `tracks[].signalChain` | both | plugin id mapping pending |
 | `masterChain` | `masterSignalChain` | both | id mapping pending |
-| `markers` | `sections` | both | entry shape pending (all captures empty) |
+| `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | `groups` | routing / group tracks | both | pending |
 | custom wavetable ids | `wavetables` asset | removed | Suno has wavetables as assets, not an editor |
 

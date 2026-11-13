@@ -64,11 +64,9 @@ Next, in order:
    it between accounts) so it can join the mirror instead of being skipped.
 2. **Effects and master chain.** `tracks[].signalChain` and `masterSignalChain`
    are captured; our plugin ids still need mapping to Suno `pluginVersionId`s.
-3. **Section markers.** `state.sections` was empty in every captured project; one
-   project with a section is needed to finish the shape.
-4. **Clip offset/fades and MIDI bend/mod lanes** (`readStartBeats`, fades,
+3. **Clip offset/fades and MIDI bend/mod lanes** (`readStartBeats`, fades,
    `pitchBend`/`controlChanges`).
-5. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
+4. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
 
 Known test lesson (fixed 2026-11-13): the automation and section-marker specs used
 to reload while a serialized document write was still queued, so the reload won

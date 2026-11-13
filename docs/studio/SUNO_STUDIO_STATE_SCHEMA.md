@@ -160,11 +160,24 @@ The project was archived after the probe.
 
 ## 8. Still unmapped
 
-- `sections` (section markers): the key exists but every captured project had it
-  empty, so the entry shape is unknown.
 - `signalChain` plugin params: captured (hundreds of parameter names) but our
   plugin ids do not map to Suno's `pluginVersionId` yet.
 - `masterSignalChain`: captured compressor/EQ params, same id-mapping problem.
 - Audio clip timing/trim/fades for clips whose audio is not on Suno.
 - `takeLanes` semantics (alternate takes) beyond an empty lane.
-- `asset.type` values other than `"song"` (uploads).
+- `asset.type` values other than `"clip"` (uploads).
+
+## 9. Section markers (`sections`)
+
+`sections` is a registry keyed by id:
+
+```
+sections: {
+  "<id>": { id, name, startBeats, endBeats, color }
+}
+```
+
+Verified on 2026-11-13 by saving two synthetic markers on a throwaway project and
+reading them back: both survived with their ids, names, colours and beat ranges
+(the first ends where the next begins). The codec writes this shape from
+`data.markers` and projects it back when loading a Suno document.
