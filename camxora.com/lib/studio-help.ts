@@ -188,6 +188,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Delete / Backspace", action: "Delete the selection" },
   { keys: "Shift M / Shift S", action: "Mute / solo the focused track" },
   { keys: "0", action: "Mute / unmute the arrangement output" },
+  { keys: "Shift 1 / Shift 2", action: "Double / halve the arrangement grid density" },
   { keys: "Shift H", action: "Hide & mute the focused track" },
   { keys: "Shift F", action: "Toggle a short fade on the selected clip" },
   { keys: "MIDI editor · Ctrl/⌘ + A", action: "Select every note" },

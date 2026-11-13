@@ -131,3 +131,45 @@ test("the range menu loops the selection and the export scope unlocks", async ({
     page.getByRole("menuitem", { name: /Selected time range/ })
   ).toBeEnabled();
 });
+
+test("Shift 1 and Shift 2 double and halve the arrangement grid", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, {
+    title: `Grid density ${Math.random().toString(36).slice(2, 8)}`,
+  });
+
+  const ruler = page.locator(".se-ruler-bars");
+  const box = await ruler.boundingBox();
+  if (!box) throw new Error("ruler has no box");
+  const x = box.x + 200;
+  const y = box.y + box.height / 2;
+
+  // Shift-clicking the ruler selects exactly one grid step.
+  const selectStep = async () => {
+    await page.keyboard.press("Escape");
+    await page.keyboard.down("Shift");
+    await page.mouse.click(x, y);
+    await page.keyboard.up("Shift");
+  };
+  const stepWidth = async () => {
+    const range = page.getByTestId("se-range");
+    await expect(range).toBeVisible();
+    return Number.parseFloat(
+      await range.evaluate((element) => (element as HTMLElement).style.width)
+    );
+  };
+
+  await selectStep();
+  const beats = await stepWidth();
+
+  // SHIFT 1 halves the step, so the same click selects half the width.
+  await page.keyboard.press("Shift+1");
+  await selectStep();
+  const eighths = await stepWidth();
+  expect(eighths).toBeCloseTo(beats / 2, 0);
+
+  // SHIFT 2 puts it back.
+  await page.keyboard.press("Shift+2");
+  await selectStep();
+  expect(await stepWidth()).toBeCloseTo(beats, 0);
+});

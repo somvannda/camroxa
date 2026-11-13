@@ -49,3 +49,12 @@ export function dragToStart(
 export function isDrag(deltaPx: number, threshold = DRAG_THRESHOLD_PX): boolean {
   return Math.abs(deltaPx) > threshold;
 }
+
+/**
+ * Double (`direction` 1) or halve (-1) the snap grid, clamped to 1..32
+ * subdivisions per bar. The captured "Double / Halve Grid Density" pair.
+ */
+export function scaleGrid(divisions: number, direction: 1 | -1): number {
+  const base = Number.isFinite(divisions) && divisions > 0 ? Math.round(divisions) : 4;
+  return direction > 0 ? Math.min(32, base * 2) : Math.max(1, Math.floor(base / 2));
+}

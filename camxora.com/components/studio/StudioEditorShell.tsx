@@ -69,7 +69,7 @@ import { StudioSongDetail } from "@/components/studio/StudioSongDetail";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { fetchGeneration, generateSong } from "@/lib/create-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
-import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
+import { dragToStart, isDrag, scaleGrid, snapToGrid } from "@/lib/studio-snap";
 import {
   clipRate,
   dbToGain,
@@ -756,6 +756,17 @@ export function StudioEditorShell() {
   const [timeSignature, setTimeSignature] = useState("4/4");
   const beatsPerBar = parseBeatsPerBar(timeSignature);
   const secondsPerBar = secondsPerBarFor(bpm, timeSignature);
+  /**
+   * Arrangement snap grid, in subdivisions per bar. Defaults to the meter's beats
+   * and SHIFT 1 / SHIFT 2 double or halve it (captured "Grid Density").
+   */
+  const [gridDivisions, setGridDivisions] = useState(beatsPerBar);
+  const gridDivisionsRef = useRef(gridDivisions);
+  gridDivisionsRef.current = gridDivisions;
+  // A new meter resets the grid to its beats, like a fresh bar.
+  useEffect(() => {
+    setGridDivisions(beatsPerBar);
+  }, [beatsPerBar]);
   /** Master level (reference F-01/F-02), persisted in the document. */
   const [masterVolume, setMasterVolume] = useState(85);
   const [masterMuted, setMasterMuted] = useState(false);
@@ -1329,7 +1340,7 @@ export function StudioEditorShell() {
           clip: {
             id: `clip-take-${upload.id}`,
             title: `Take ${take}`,
-            start: snapToGrid(active.start, secondsPerBar, beatsPerBar),
+            start: snapToGrid(active.start, secondsPerBar, gridDivisions),
             duration,
             volume: 1,
             pan: 0,
@@ -1425,7 +1436,7 @@ export function StudioEditorShell() {
         clip: {
           id: `stem-${stem.clip_id}-${Date.now().toString(36)}`,
           title: label,
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
           duration: stem.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -1611,7 +1622,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-${song.id}-${Date.now().toString(36)}`,
           title: clip.title || song.title || "Song",
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
           duration: clip.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -1634,7 +1645,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-upload-${upload.id}-${Date.now().toString(36)}`,
           title,
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
           duration: upload.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -1661,7 +1672,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-${song.id}-${Date.now().toString(36)}`,
           title: clip.title || song.title || "Song",
-          start: snapToGrid(seconds, secondsPerBar, beatsPerBar),
+          start: snapToGrid(seconds, secondsPerBar, gridDivisions),
           duration: clip.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -1974,7 +1985,7 @@ export function StudioEditorShell() {
       if (!lanes) return;
       const rect = lanes.getBoundingClientRect();
       const seconds = ((event.clientX - rect.left) / barWidth) * secondsPerBar;
-      setLoopEnd(Math.max(loopStart + secondsPerBar / beatsPerBar, snapToGrid(seconds, secondsPerBar, beatsPerBar)));
+      setLoopEnd(Math.max(loopStart + secondsPerBar / beatsPerBar, snapToGrid(seconds, secondsPerBar, gridDivisions)));
     };
     const up = () => {
       if (!loopDragRef.current) return;
@@ -2001,7 +2012,7 @@ export function StudioEditorShell() {
 
   /** Snap a time to the project grid and keep it inside the arrangement. */
   function snapProjectTime(seconds: number): number {
-    return Math.max(0, Math.min(duration, snapToGrid(seconds, secondsPerBar, beatsPerBar)));
+    return Math.max(0, Math.min(duration, snapToGrid(seconds, secondsPerBar, gridDivisions)));
   }
 
   /**
@@ -2016,7 +2027,7 @@ export function StudioEditorShell() {
     setSelectedIds([]);
     setSelectedClip(null);
     if (event.shiftKey) {
-      const step = secondsPerBar / beatsPerBar;
+      const step = secondsPerBar / gridDivisions;
       setTimeSelection((current) => {
         if (!current) return normaliseRange(snapped, snapped + step);
         // The far edge stays put; the clicked end moves to the pointer.
@@ -2081,7 +2092,7 @@ export function StudioEditorShell() {
 
   /** Shift+arrow grows the selection one grid step at a time (spec §36). */
   function extendTimeSelection(direction: "left" | "right") {
-    const step = secondsPerBar / beatsPerBar;
+    const step = secondsPerBar / gridDivisions;
     setSelectedIds([]);
     setSelectedClip(null);
     setTimeSelection((current) => {
@@ -3090,7 +3101,7 @@ export function StudioEditorShell() {
     const entries = clipboardRef.current;
     if (entries.length === 0) return;
     const earliest = Math.min(...entries.map((entry) => entry.clip.start ?? 0));
-    const target = snapToGrid(playhead, secondsPerBar, beatsPerBar);
+    const target = snapToGrid(playhead, secondsPerBar, gridDivisions);
     insertClips(duplicateEntries(entries, target - earliest));
   }
 
@@ -3544,6 +3555,17 @@ export function StudioEditorShell() {
             extendTimeSelection(event.key === "ArrowRight" ? "right" : "left");
             return;
           }
+          // S14 "Double / Halve Grid Density" (SHIFT 1 / SHIFT 2).
+          if (event.key === "1" || event.key === "!") {
+            event.preventDefault();
+            setGridDivisions((current) => scaleGrid(current, 1));
+            return;
+          }
+          if (event.key === "2" || event.key === "@") {
+            event.preventDefault();
+            setGridDivisions((current) => scaleGrid(current, -1));
+            return;
+          }
           if (letter === "c") {
             event.preventDefault();
             setMetronome((value) => {
@@ -3749,7 +3771,7 @@ export function StudioEditorShell() {
     return lanes.map((clip) => {
       const origin = current.origins[clip.id];
       if (origin === undefined) return clip;
-      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, beatsPerBar);
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, gridDivisions);
       return Math.abs(start - origin) > 0.0001 ? { ...clip, start } : clip;
     });
   }
@@ -3759,7 +3781,7 @@ export function StudioEditorShell() {
     for (const id of current.ids) {
       const origin = current.origins[id];
       if (origin === undefined) continue;
-      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, beatsPerBar);
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, gridDivisions);
       if (Math.abs(start - origin) > 0.0001) next[id] = start;
     }
     if (Object.keys(next).length > 0) commitClipStarts(next);
@@ -4614,7 +4636,7 @@ export function StudioEditorShell() {
         0,
         Math.min(
           ceiling,
-          snapToGrid(raw, secondsPerBarRef.current, beatsPerBarRef.current)
+          snapToGrid(raw, secondsPerBarRef.current, gridDivisionsRef.current)
         )
       );
       return session.edge === "in"
@@ -4627,12 +4649,12 @@ export function StudioEditorShell() {
       clientX: number
     ) => {
       const deltaSec = ((clientX - session.startX) / barWidthRef.current) * secondsPerBarRef.current;
-      const step = secondsPerBarRef.current / beatsPerBarRef.current;
+      const step = secondsPerBarRef.current / gridDivisionsRef.current;
       const end = session.start + session.duration;
       if (session.edge === "end") {
         const newEnd = Math.max(
           session.start + step,
-          snapToGrid(end + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+          snapToGrid(end + deltaSec, secondsPerBarRef.current, gridDivisionsRef.current)
         );
         return {
           id: session.id,
@@ -4647,7 +4669,7 @@ export function StudioEditorShell() {
         0,
         Math.min(
           end - step,
-          snapToGrid(session.start + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+          snapToGrid(session.start + deltaSec, secondsPerBarRef.current, gridDivisionsRef.current)
         )
       );
       return {
@@ -5084,7 +5106,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-${song.id}-${take.variant}-${Date.now().toString(36)}`,
           title: take.title || song.title || "Song",
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
           duration: take.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
