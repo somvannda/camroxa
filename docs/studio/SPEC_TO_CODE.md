@@ -70,6 +70,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | `SHIFT 1` / `SHIFT 2` double or halve the arrangement grid | S14 overlay / gap G44 | `scaleGrid` in `lib/studio-snap.ts` + `gridDivisions` in the shell |
 | Project menu sends the project to Suno on demand | S14 overlay "Send to Suno Sync" | `syncStudioProject` in `lib/studio-api.ts` + the menu's sync dialog |
 | Library `↓`/`↑` audition the next/previous song and `→` replays the current one | S14 library panel / gap G44 | `onAudition` + `handleAuditionKeys` in `StudioLibrary` (cursor follows visible, expanded rows) |
+| Split Arrangement cuts every clip crossing the playhead | S14 overlay | time-selection menu → `splitClips` with every clip id |
 
 ### S14 shortcut coverage still open
 

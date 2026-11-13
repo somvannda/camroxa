@@ -6266,6 +6266,18 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
+                  title="Split every clip that crosses the playhead"
+                  onClick={() => {
+                    splitClips(clipsRef.current.map((clip) => clip.id), playhead);
+                    setRangeMenu(null);
+                    setExportToast("Arrangement split at the playhead.");
+                  }}
+                >
+                  <Icon name="fa-scissors" /> Split Arrangement
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
                   onClick={() => duplicateSelectedTime()}
                 >
                   <Icon name="fa-clone" /> Duplicate time <span>Ctrl Shift D</span>

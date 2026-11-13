@@ -173,3 +173,30 @@ test("Shift 1 and Shift 2 double and halve the arrangement grid", async ({ page 
   await selectStep();
   expect(await stepWidth()).toBeCloseTo(beats, 0);
 });
+
+test("split arrangement cuts every clip at the playhead", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Split arrangement ${Math.random().toString(36).slice(2, 8)}` });
+  await expect(page.locator(".se-clip")).toHaveCount(1);
+
+  // A time selection is what opens the arrangement menu that owns this verb. Build it
+  // first: dragging the ruler parks the playhead at the drag anchor.
+  await selectRange(page, 0, 1);
+
+  // Roll the transport so the playhead sits inside the fixture clip (0-4s).
+  await page.getByLabel("Play", { exact: true }).click();
+  await page.waitForTimeout(700);
+  await page.getByLabel("Stop", { exact: true }).click();
+
+  const ruler = page.locator(".se-ruler-bars");
+  const box = await ruler.boundingBox();
+  if (!box) throw new Error("ruler has no box");
+  await page.mouse.click(box.x + 40, box.y + box.height / 2, { button: "right" });
+
+  const menu = page.getByRole("menu", { name: "Time selection options" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Split Arrangement" }).click();
+
+  await expect(page.locator(".se-clip")).toHaveCount(2);
+  await expect(page.getByText("Arrangement split at the playhead.", { exact: true })).toBeVisible();
+});
