@@ -227,16 +227,16 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
       setVelocityPreview(Math.max(1, Math.min(127, Math.round(ratio * 127))));
     };
     const onUp = () => {
-      setVelocityDrag((current) => {
-        if (current && velocityPreview !== null) {
-          onChangeNotes(
-            current.notes.map((note) =>
-              note.id === current.id ? { ...note, velocity: velocityPreview } : note
-            )
-          );
-        }
-        return null;
-      });
+      // A state updater has to stay pure: writing the parent's document from inside
+      // one updates another component while React is rendering this one.
+      if (velocityDrag && velocityPreview !== null) {
+        onChangeNotes(
+          velocityDrag.notes.map((note) =>
+            note.id === velocityDrag.id ? { ...note, velocity: velocityPreview } : note
+          )
+        );
+      }
+      setVelocityDrag(null);
       setVelocityPreview(null);
     };
     window.addEventListener("pointermove", onMove);
