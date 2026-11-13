@@ -34,6 +34,9 @@ export type StudioClipInfoProps = {
   source: WebMusicGeneration | null;
   stems: { status: string; message?: string } | null;
   onRequestStems: () => void;
+  /** Generate a variation from the source song's style (S37 Remix). */
+  onRemix?: () => void;
+  remixing?: boolean;
   onClose: () => void;
 };
 
@@ -52,7 +55,17 @@ function sourceDate(source: WebMusicGeneration | null): string | null {
 }
 
 export function StudioClipInfo(props: StudioClipInfoProps) {
-  const { width, clip, trackName, source, stems, onRequestStems, onClose } = props;
+  const {
+    width,
+    clip,
+    trackName,
+    source,
+    stems,
+    onRequestStems,
+    onRemix,
+    remixing = false,
+    onClose,
+  } = props;
   // Ready assets reject the raw stream URL (encrypted-player guard); the download
   // endpoint returns the same audio as a plain file and is what the waveform can decode.
   const waveformUrl =
@@ -86,10 +99,15 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
         <button
           type="button"
           className="se-clip-remix"
-          disabled
-          title="Remix is not built in this editor"
+          disabled={!onRemix || remixing}
+          title={
+            onRemix
+              ? "Generate a variation from this song's style"
+              : "This clip has no source song"
+          }
+          onClick={() => onRemix?.()}
         >
-          <Icon name="fa-rotate" /> Remix
+          <Icon name="fa-rotate" /> {remixing ? "Remixing..." : "Remix"}
         </button>
 
         <div className="se-clip-player">

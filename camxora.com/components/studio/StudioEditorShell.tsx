@@ -5234,6 +5234,8 @@ export function StudioEditorShell() {
                 source={clipSource}
                 stems={stems}
                 onRequestStems={openStemsDialog}
+                onRemix={clipSource ? () => void remixSong(clipSource) : undefined}
+                remixing={clipSource ? remixingSongId === clipSource.id : false}
                 onClose={() => setInspectorOpen(false)}
               />
             );

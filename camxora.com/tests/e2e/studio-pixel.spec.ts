@@ -445,8 +445,11 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Paste Ctrl V",
     "Duplicate Ctrl D",
     "Delete Backspace",
+    "Copy settings",
+    "Paste settings",
     "Heal Edits",
     "Split Ctrl E",
+    "Create Section",
     "Rename",
     "Clip Info",
     "Clip Color",
@@ -608,13 +611,13 @@ test("track panel head toggles every track's controls", async ({ page }) => {
   await page.setViewportSize(REFERENCE_VIEWPORT);
   await createStudioProject(page, { title: "Pixel head" });
   const head = page.locator(".se-tracks-head");
-  await expect(head.locator("button")).toHaveCount(2);
+  await expect(head.locator("button")).toHaveCount(3);
   const sizes = await head.locator("button").evaluateAll((nodes) =>
     nodes.map((node) => Math.round(node.getBoundingClientRect().width))
   );
-  // S16: 24 px icons at each end of the 29 px head. The right control collapses the
-  // panel to a 44 px rail and brings it back.
-  expect(sizes).toEqual([24, 24]);
+  // S16: 24 px icons in the 29 px head. The newest control opens track groups; the
+  // right control collapses the panel to a 44 px rail and brings it back.
+  expect(sizes).toEqual([24, 24, 24]);
   await head.getByRole("button", { name: "Collapse track panel" }).click();
   const panel = page.locator(".se-tracks");
   await expect(panel).toHaveClass(/is-collapsed/);
@@ -852,7 +855,7 @@ test("the convolution card loads an impulse response from the library", async ({
 
   await slot.getByRole("button", { name: "Impulse response" }).click();
   const menu = page.getByRole("menu", { name: "Impulse responses" });
-  await expect(menu.getByRole("menuitem")).toHaveCount(6);
+  await expect(menu.getByRole("menuitem")).toHaveCount(7);
   await menu.getByRole("menuitem", { name: "Halls" }).click();
   await menu.getByRole("menuitem", { name: "New England Hall" }).click();
   await expect(menu).toHaveCount(0);
