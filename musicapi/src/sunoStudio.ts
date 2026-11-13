@@ -998,7 +998,19 @@ export class StudioProjectSync {
     );
     if (!row) return null;
     // `saving` means another poll owns the library write; `ready`/`error` are
-    // terminal. Return the recorded state instead of calling Suno again.
+    // terminal. A stale claim (crashed worker) is released after five minutes.
+    if (
+      row.status === "saving" &&
+      Date.now() - new Date(row.updated_at).getTime() > 5 * 60_000
+    ) {
+      row =
+        (await queryOne<StudioPluginJobRow>(
+          `UPDATE studio_plugin_authoring_jobs SET status = 'pending', updated_at = now()
+           WHERE job_id = $1 AND status = 'saving'
+           RETURNING *`,
+          [jobId]
+        )) ?? row;
+    }
     if (row.status !== "pending") return pluginJobView(row);
 
     const link = await this.link(row.local_project_id);
@@ -1025,10 +1037,20 @@ export class StudioProjectSync {
       }
       try {
         const payload = pluginSavePayload(job.descriptor);
-        const created = await client.createPlugin(
-          String(payload.displayName ?? "").trim().slice(0, 120) || "Designed plugin"
-        );
-        const version = await client.savePluginVersion(created.id, payload);
+        // Reuse the plugin created by an earlier attempt: a failed version save
+        // must not leave an orphan library plugin behind on every retry.
+        let pluginId = claimed.suno_plugin_id ?? "";
+        if (!pluginId) {
+          const created = await client.createPlugin(
+            String(payload.displayName ?? "").trim().slice(0, 120) || "Designed plugin"
+          );
+          pluginId = created.id;
+          await query(
+            "UPDATE studio_plugin_authoring_jobs SET suno_plugin_id = $2, updated_at = now() WHERE job_id = $1",
+            [jobId, pluginId]
+          );
+        }
+        const version = await client.savePluginVersion(pluginId, payload);
         row = await queryOne<StudioPluginJobRow>(
           `UPDATE studio_plugin_authoring_jobs SET
              status = 'ready',
@@ -1047,7 +1069,7 @@ export class StudioProjectSync {
             phase,
             JSON.stringify(progress),
             String(payload.displayName ?? "").slice(0, 120) || null,
-            created.id,
+            pluginId,
             version.versionId,
             JSON.stringify(job.descriptor),
           ]
