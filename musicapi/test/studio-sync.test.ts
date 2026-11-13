@@ -210,8 +210,8 @@ test("no remote baseline still pushes a fresh project document", () => {
 test("the coverage registry counts every field and names the pending ones", () => {
   const summary = coverageSummary();
   assert.equal(summary.mapped + summary.pending + summary.remove, STUDIO_STATE_COVERAGE.length);
-  assert.ok(summary.mapped >= 15);
-  assert.ok(summary.pending_keys.includes("audio clips (Suno asset)"));
+  assert.ok(summary.mapped >= 16);
+  assert.ok(summary.pending_keys.includes("uploads (no Suno asset)"));
   assert.ok(summary.pending_keys.includes("chains"));
   // A removed feature must never quietly return as a "pending" mapping.
   const removed = STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "remove");

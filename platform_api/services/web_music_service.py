@@ -1986,6 +1986,62 @@ class WebMusicService:
             # rather than failing the write that triggered it.
             logger.debug("no event loop for studio mirror %s", action)
 
+    async def _enrich_studio_assets(
+        self, user_id: str, document: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Attach the Suno clip id to audio clips that came from a generation.
+
+        The editor stores the generation id (`songId`) and the variant, because
+        the provider clip id is not exposed to the browser. The mirror needs the
+        provider id to reference the audio asset, so resolve it here — one query
+        for the whole document. Clips that cannot be resolved stay local and are
+        reported by the mirror.
+        """
+        data = document.get("data")
+        lanes = data.get("lanes") if isinstance(data, dict) else None
+        if not isinstance(lanes, list):
+            return document
+        pending: list[str] = []
+        for clip in lanes:
+            if not isinstance(clip, dict) or clip.get("sunoAssetId"):
+                continue
+            song_id = str(clip.get("songId") or "").strip()
+            variant = str(clip.get("songVariant") or "").strip()
+            if not song_id or variant not in ("ok", "alt"):
+                continue
+            try:
+                UUID(song_id)
+            except ValueError:
+                continue
+            pending.append(song_id)
+        if not pending:
+            return document
+        try:
+            rows = await self._pool.fetch(
+                """
+                SELECT id, audio_id_ok, audio_id_alt
+                FROM suno_tasks
+                WHERE user_id = $1 AND id = ANY($2::uuid[])
+                """,
+                UUID(user_id),
+                [UUID(value) for value in dict.fromkeys(pending)],
+            )
+        except Exception as exc:  # noqa: BLE001 - enrichment is best-effort
+            logger.info("studio asset enrichment failed: %s", exc)
+            return document
+        assets: dict[str, str] = {}
+        for row in rows:
+            assets[str(row["id"]) + ":ok"] = str(row["audio_id_ok"] or "")
+            assets[str(row["id"]) + ":alt"] = str(row["audio_id_alt"] or "")
+        for clip in lanes:
+            if not isinstance(clip, dict) or clip.get("sunoAssetId"):
+                continue
+            key = f"{clip.get('songId')}:{clip.get('songVariant')}"
+            asset = assets.get(key)
+            if asset:
+                clip["sunoAssetId"] = asset
+        return document
+
     async def _studio_sync_request(
         self,
         user_id: str,
@@ -1997,6 +2053,8 @@ class WebMusicService:
         if endpoint is None:
             return None
         base, token = endpoint
+        if document is not None and action in ("enqueue", "sync"):
+            document = await self._enrich_studio_assets(user_id, document)
         # A status read backs the editor chip and must fail fast; a push may wait
         # for a slow provider save.
         timeout = 10 if action in ("status", "refresh") else 90

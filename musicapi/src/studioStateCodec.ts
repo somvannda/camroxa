@@ -205,9 +205,7 @@ function sunoClipFromLocal(
   const endBeats = beatsFromSeconds(start + duration, bps);
   const midi = midiFromLocal(clip, bps);
   const assetId =
-    (typeof clip.sunoAssetId === "string" && clip.sunoAssetId) ||
-    (typeof clip.songId === "string" && /^[0-9a-f-]{20,}$/i.test(clip.songId) ? clip.songId : null);
-
+    typeof clip.sunoAssetId === "string" && clip.sunoAssetId ? clip.sunoAssetId : null;
   if (!midi && !assetId) return { skip: clip.id };
 
   const body: Record<string, unknown> = {
@@ -220,13 +218,24 @@ function sunoClipFromLocal(
     readStartBeats: 0,
     fadeInBeats: 0,
     fadeOutBeats: 0,
-    fadeInCurve: 0,
-    fadeOutCurve: 0,
+    fadeInCurve: 1,
+    fadeOutCurve: 1,
     mute: false,
     loop: { enabled: false, startBeats: 0, endBeats },
   };
   if (midi) body.midi = midi;
-  if (assetId) body.asset = { id: assetId, type: "song" };
+  if (assetId) {
+    // Audio clips reference a Suno-owned clip asset. `type` is always "clip" in
+    // every captured project; `clipId` is the source clip, not the timeline id.
+    body.asset = { id: assetId, type: "clip" };
+    body.clipId = assetId;
+    body.amplitude = 1;
+    body.transposition = 0;
+    body.streaming = false;
+    body.reversed = false;
+    body.formantCorrection = 0;
+    body.warp = { enabled: false, markersHash: "", awaitingAnalysis: false };
+  }
   return { clip: body };
 }
 
@@ -427,6 +436,7 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
             }
           : undefined,
         songId: (clip.asset as { id?: string } | undefined)?.id,
+        sunoAssetId: (clip.asset as { id?: string } | undefined)?.id,
       });
     });
     tracks.push({

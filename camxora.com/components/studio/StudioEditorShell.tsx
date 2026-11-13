@@ -1532,7 +1532,8 @@ export function StudioEditorShell() {
           pan: 0,
           audioUrl: clip.audio_url,
           songId: song.id,
-        } as ClipLike & { audioUrl?: string | null; songId?: string },
+          songVariant: clip.variant,
+        } as ClipLike & { audioUrl?: string | null; songId?: string; songVariant?: string },
       },
     ]);
   }
@@ -1581,7 +1582,8 @@ export function StudioEditorShell() {
           pan: 0,
           audioUrl: clip.audio_url,
           songId: song.id,
-        } as ClipLike & { audioUrl?: string | null; songId?: string },
+          songVariant: clip.variant,
+        } as ClipLike & { audioUrl?: string | null; songId?: string; songVariant?: string },
       },
     ]);
   }
