@@ -16,8 +16,9 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   `COOKIE_ENCRYPTION_KEY`; a mirror-enabled platform API on `:8101` (sandbox DB,
   migration `199`). `:8100` is deliberately left mirror-off so e2e runs do not
   create real Suno projects.
-- **Gates:** musicapi 191 unit · platform 3377 pytest · web 308 Vitest ·
-  Studio e2e 47/47 · `check:ui` compliant · typecheck clean.
+- **Gates:** musicapi 193 unit · platform 3384 pytest · web 308 Vitest ·
+  full Playwright **143 passed / 2 skipped** · `check:ui` compliant · typechecks
+  clean · production builds pass (web + admin portal).
 - **Before shipping:** merge the branch, deploy with migration `199`, then start
   the production API with `PLATFORM_SUNO_API_BASE_URL` and
   `PLATFORM_STUDIO_INTERNAL_TOKEN`; decide the account policy (shared pool vs a
