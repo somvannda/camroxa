@@ -57,7 +57,7 @@ test("the fade handle and Shift+F set a fade that is audible in the export", asy
 
   // Select the clip and drag the fade handle one bar (2 s, clamped to the clip length).
   await page.locator(".se-clip").first().click();
-  const handle = page.locator(".se-fade-handle");
+  const handle = page.locator('.se-fade-handle[data-fade="in"]');
   await expect(handle).toHaveCount(1);
   const box = await handle.boundingBox();
   if (!box) throw new Error("fade handle has no box");
@@ -81,8 +81,53 @@ test("the fade handle and Shift+F set a fade that is audible in the export", asy
   await expect.poll(lane, { timeout: 15_000 }).toBe(0.5);
 });
 
-test("fades are refused on a MIDI arrangement", async ({ page }) => {
+test("the fade-out handle ramps the tail of the export", async ({ page }) => {
   test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, {
+    title: `Fade out ${tag}`,
+    clips: [
+      { id: "clip", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" },
+    ],
+  });
+
+  const laneOut = () =>
+    page.evaluate(async (id) => {
+      const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+      const project = (await response.json()) as {
+        data?: { lanes?: Array<{ fadeOut?: number }> };
+      };
+      return project.data?.lanes?.[0]?.fadeOut ?? 0;
+    }, projectId);
+
+  const exportMix = async () => {
+    await page.getByLabel("Export menu").click();
+    const download = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+    return download;
+  };
+
+  const plainTail = await wavWindowRms(await exportMix(), 3.4, 3.8);
+
+  await page.locator(".se-clip").first().click();
+  const handle = page.locator('.se-fade-handle[data-fade="out"]');
+  await expect(handle).toHaveCount(1);
+  const box = await handle.boundingBox();
+  if (!box) throw new Error("fade-out handle has no box");
+  await page.mouse.move(box.x + 4, box.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 4 - 96, box.y + 4, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(laneOut, { timeout: 15_000 }).toBe(2);
+
+  const fadedTail = await wavWindowRms(await exportMix(), 3.4, 3.8);
+  // The last 0.4 s now sits inside a 2 s ramp down, so it must be clearly quieter.
+  expect(fadedTail).toBeLessThan(plainTail * 0.75);
+});
+
+test("fades are refused on a MIDI arrangement", async ({ page }) => {  test.setTimeout(120_000);
   const projectId = await createStudioProject(page, {
     title: `Midi fade ${Math.random().toString(36).slice(2, 6)}`,
     clips: [

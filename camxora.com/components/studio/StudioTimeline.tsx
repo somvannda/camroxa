@@ -373,6 +373,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
                           />
                           <span
                             className="se-fade-handle"
+                            data-fade="in"
                             aria-hidden="true"
                             onPointerDown={(event) => {
                               event.stopPropagation();
@@ -381,6 +382,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
                           />
                           <span
                             className="se-fade-handle is-out"
+                            data-fade="out"
                             aria-hidden="true"
                             onPointerDown={(event) => {
                               event.stopPropagation();
