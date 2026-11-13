@@ -2046,6 +2046,7 @@ class WebMusicService:
             "suno_version_id": None,
             "last_error": None,
             "synced_at": None,
+            "skipped_clips": [],
             "state_sync": False,
         }
 
@@ -2065,6 +2066,7 @@ class WebMusicService:
             "suno_version_id": None,
             "last_error": None,
             "synced_at": None,
+            "skipped_clips": [],
             "state_sync": False,
         }
 
