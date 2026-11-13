@@ -78,6 +78,8 @@ export interface LocalTrack {
 export interface LocalDocument {
   tracks?: LocalTrack[];
   lanes?: LocalClip[];
+  /** Ruler section markers: seconds + label, as the editor stores them. */
+  markers?: Array<{ id: string; time: number; label?: string; color?: string }>;
   masterVolume?: number;
   masterMuted?: boolean;
   loopStart?: number;
@@ -255,6 +257,52 @@ function automationToBeats(
     .sort((a, b) => a.timeBeats - b.timeBeats);
 }
 
+/** Sections are a registry keyed by id: {id, name, startBeats, endBeats, color}. */
+function sectionsFromMarkers(
+  markers: LocalDocument["markers"],
+  bps: number,
+  contentEndBeats: number
+): Record<string, unknown> {
+  const list = (Array.isArray(markers) ? markers : [])
+    .map((marker) => ({
+      id: String(marker.id),
+      beats: beatsFromSeconds(Number(marker.time) || 0, bps),
+      name: String(marker.label ?? "Section").slice(0, 80) || "Section",
+      color: typeof marker.color === "string" ? marker.color : "#7c5cff",
+    }))
+    .sort((a, b) => a.beats - b.beats);
+  const sections: Record<string, unknown> = {};
+  list.forEach((marker, index) => {
+    const next = list[index + 1];
+    const endBeats = next
+      ? next.beats
+      : Math.max(marker.beats + 1, contentEndBeats);
+    sections[marker.id] = {
+      id: marker.id,
+      name: marker.name,
+      startBeats: marker.beats,
+      endBeats,
+      color: marker.color,
+    };
+  });
+  return sections;
+}
+
+function markersFromState(
+  sections: unknown,
+  bps: number
+): Array<{ id: string; time: number; label: string; color?: string }> {
+  if (!sections || typeof sections !== "object" || Array.isArray(sections)) return [];
+  return Object.entries(sections as Record<string, Record<string, unknown>>)
+    .map(([key, section]) => ({
+      id: String(section?.id ?? key),
+      time: secondsFromBeats(Number(section?.startBeats) || 0, bps),
+      label: String(section?.name ?? "Section"),
+      color: typeof section?.color === "string" ? section.color : undefined,
+    }))
+    .sort((a, b) => a.time - b.time);
+}
+
 /**
  * Build the Suno document for one Camxora project.
  *
@@ -338,7 +386,13 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
   const fallbackTracks = Array.isArray((input.baseline ?? {}).tracks)
     ? ((input.baseline ?? {}).tracks as unknown[])
     : null;
-  // A local document with no tracks is ambiguous: it can mean "every track was
+  const contentEndBeats = sunoTracks.reduce((max, track) => {
+    for (const clip of track.clips as Array<Record<string, unknown>>) {
+      const end = Number(clip.endBeats) || 0;
+      if (end > max) max = end;
+    }
+    return max;
+  }, 0);  // A local document with no tracks is ambiguous: it can mean "every track was
   // deleted" or "the data never loaded". Never wipe a Suno-only project on the
   // ambiguous case; a real delete still pushes when at least one track remains.
   const nextTracks = sunoTracks.length > 0 || fallbackTracks === null ? sunoTracks : fallbackTracks;
@@ -370,6 +424,7 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
     },
     metronome: { enabled: false, amplitude: 1 },
     editorPointerModes: { midi: "select", audio: "select" },
+    sections: sectionsFromMarkers(data.markers, bps, contentEndBeats),
     tracks: nextTracks,
     selection: {
       trackIds: nextTracks.map((track) => (track as { id?: string }).id ?? ""),
@@ -396,6 +451,7 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
   timeSignature: string;
   tracks: LocalTrack[];
   lanes: LocalClip[];
+  markers: Array<{ id: string; time: number; label: string; color?: string }>;
 } {
   const bpm = bpmFromState(state.timing);
   const bps = round(bpm / 60);
@@ -454,7 +510,7 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
     });
   });
 
-  return { bpm, timeSignature: signature, tracks, lanes };
+  return { bpm, timeSignature: signature, tracks, lanes, markers: markersFromState(state.sections, bps) };
 }
 
 /** Short, readable suffix for ids created from a Suno id. */
@@ -473,7 +529,13 @@ function shortId(value: string): string {
  */
 export function mergeSunoProjectIntoLocal(
   local: LocalDocument,
-  suno: { bpm: number; timeSignature: string; tracks: LocalTrack[]; lanes: LocalClip[] }
+  suno: {
+    bpm: number;
+    timeSignature: string;
+    tracks: LocalTrack[];
+    lanes: LocalClip[];
+    markers?: Array<{ id: string; time: number; label: string; color?: string }>;
+  }
 ): { data: LocalDocument; keptLocalClips: string[]; droppedTracks: string[] } {
   const localTracks = Array.isArray(local.tracks) ? local.tracks : [];
   const localLanes = Array.isArray(local.lanes) ? local.lanes : [];
@@ -567,6 +629,7 @@ export function mergeSunoProjectIntoLocal(
       ...local,
       tracks,
       lanes: localLanes,
+      markers: suno.markers ?? local.markers,
     },
     keptLocalClips,
     droppedTracks,

@@ -183,6 +183,60 @@ test("ids are stable per local id and valid UUIDs", () => {
   assert.equal(secondsFromBeats(3, 2), 1.5);
 });
 
+test("section markers become Suno sections with beat ranges", () => {
+  const data = localDocument();
+  data.markers = [
+    { id: "m2", time: 16, label: "Chorus", color: "#00ff00" },
+    { id: "m1", time: 4, label: "Intro" },
+  ];
+  const { state } = projectDocumentToSunoState({
+    title: "Marked",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const sections = state.sections as Record<string, Record<string, unknown>>;
+  assert.deepEqual(Object.keys(sections).sort(), ["m1", "m2"]);
+  assert.deepEqual(sections.m1, {
+    id: "m1",
+    name: "Intro",
+    startBeats: 8,
+    endBeats: 32,
+    color: "#7c5cff",
+  });
+  // The last section closes at the next marker; a marker past the content end
+  // still gets a positive range.
+  assert.equal(sections.m2.startBeats, 32);
+  assert.equal(sections.m2.endBeats, 33);
+
+  const projected = sunoStateToProjectData(state);
+  assert.deepEqual(
+    projected.markers.map((marker) => [marker.id, marker.time, marker.label]),
+    [
+      ["m1", 4, "Intro"],
+      ["m2", 16, "Chorus"],
+    ]
+  );
+});
+
+test("loading a Suno document replaces the local markers with Suno's sections", () => {
+  const local: LocalDocument = {
+    tracks: [],
+    lanes: [],
+    markers: [{ id: "old", time: 1, label: "Old" }],
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [],
+    lanes: [],
+    markers: [{ id: "new", time: 8, label: "New" }],
+  });
+  assert.deepEqual(merged.data.markers, [{ id: "new", time: 8, label: "New" }]);
+});
+
 test("a fresh Suno project has the fields the client validates", () => {
   const state = emptySunoState("Untitled Project");
   assert.ok(state.timing);
