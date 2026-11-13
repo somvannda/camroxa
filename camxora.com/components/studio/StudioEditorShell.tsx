@@ -147,11 +147,6 @@ import {
   type AutomationPoint,
 } from "@/lib/studio-automation";
 import { sanitizeSectionMarkers, type SectionMarker } from "@/lib/studio-markers";
-import {
-  effectiveTrackMix,
-  sanitizeGroups,
-  type StudioGroup,
-} from "@/lib/studio-groups";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -196,7 +191,6 @@ type ClipLike = {
   pan?: number;
   muted?: boolean;
   solo?: boolean;
-  groupId?: string | null;
   audioUrl?: string | null;
   songId?: string;
   offset?: number;
@@ -796,7 +790,6 @@ export function StudioEditorShell() {
         setMarkers(
           sanitizeSectionMarkers((next.data as { markers?: unknown } | undefined)?.markers)
         );
-        setGroups(sanitizeGroups((next.data as { groups?: unknown } | undefined)?.groups));
         const master = (next.data || {}) as { masterVolume?: unknown; masterMuted?: unknown };
         if (typeof master.masterVolume === "number" && Number.isFinite(master.masterVolume)) {
           setMasterVolume(Math.max(0, Math.min(100, master.masterVolume)));
@@ -882,7 +875,6 @@ export function StudioEditorShell() {
       setMarkers(
         sanitizeSectionMarkers((next.data as { markers?: unknown } | undefined)?.markers)
       );
-      setGroups(sanitizeGroups((next.data as { groups?: unknown } | undefined)?.groups));
       projectVersionRef.current = next.updated_at ?? projectVersionRef.current;
       setSunoSync((current) =>
         current ? { ...current, status: "synced", last_error: null } : current
@@ -985,13 +977,11 @@ export function StudioEditorShell() {
         pan: clip.pan,
         muted: clip.muted,
         solo: clip.solo,
-        groupId: clip.groupId ?? null,
       }))
     );
   }, [project, clips]);
 
   const [localTracks, setLocalTracks] = useState<StudioTrack[] | null>(null);
-  const [groups, setGroups] = useState<StudioGroup[]>([]);
   const tracks = localTracks ?? derivedTracks;
 
   // Pointer handlers are registered once; these refs give them the current data
@@ -2193,49 +2183,13 @@ export function StudioEditorShell() {
     commitTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
   }
 
-  function commitGroups(next: StudioGroup[]) {
-    setGroups(next);
-    writeProjectData({ ...currentData(), groups: next }, "the track groups");
-  }
-
-  function createGroup(name?: string): StudioGroup {
-    const group: StudioGroup = {
-      id: `group-${Date.now().toString(36)}`,
-      name: (name || `Group ${groups.length + 1}`).slice(0, 60),
-      color: ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"][groups.length % 5],
-      volume: 100,
-      muted: false,
-      solo: false,
-    };
-    commitGroups([...groups, group]);
-    return group;
-  }
-
-  function updateGroup(groupId: string, patch: Partial<StudioGroup>) {
-    commitGroups(groups.map((group) => (group.id === groupId ? { ...group, ...patch } : group)));
-  }
-
-  /** Effective track mix after the group's volume/mute/solo are applied. */
+  /** Effective track mix for playback and export. */
   function mixFor(track: StudioTrack) {
-    return effectiveTrackMix(track, groups, tracks.some((item) => item.solo));
+    return { volume: track.volume, muted: track.muted, solo: track.solo };
   }
 
-  /** Group volume scales the track's automation curve as well as its fader. */
   function volumeAutomationFor(track: StudioTrack) {
-    const factor =
-      (groups.find((group) => group.id === track.groupId)?.volume ?? 100) / 100;
-    return track.volumeAutomation?.map((point) => ({
-      ...point,
-      value: Math.max(0, Math.min(100, point.value * factor)),
-    }));
-  }
-
-  function deleteGroup(groupId: string) {
-    commitGroups(groups.filter((group) => group.id !== groupId));
-    const nextTracks = tracks.map((track) =>
-      track.groupId === groupId ? { ...track, groupId: null } : track
-    );
-    commitTracks(nextTracks);
+    return track.volumeAutomation;
   }
 
   /** Live slider movement: update state without a history entry; commit on release. */
@@ -2395,7 +2349,6 @@ export function StudioEditorShell() {
         solo: false,
         hidden: false,
       collapsed: false,
-        groupId: null,
         chain: [],
         clipIds: [addedLanes[index].id],
       }));
@@ -2595,7 +2548,6 @@ export function StudioEditorShell() {
         solo: false,
         hidden: false,
         collapsed: false,
-        groupId: null,
         chain: [],
         clipIds: [lane.id],
       };
@@ -2729,7 +2681,6 @@ export function StudioEditorShell() {
         solo: false,
         hidden: false,
         collapsed: false,
-        groupId: null,
         chain: [],
         clipIds: [midiClip.id],
       };
@@ -2841,7 +2792,6 @@ export function StudioEditorShell() {
       solo: false,
       hidden: false,
       collapsed: false,
-      groupId: null,
       chain: [],
       clipIds: [],
     };
@@ -2867,7 +2817,6 @@ export function StudioEditorShell() {
       solo: false,
       hidden: false,
       collapsed: false,
-      groupId: null,
       chain: [],
       clipIds: [clipId],
     };
@@ -4042,7 +3991,7 @@ export function StudioEditorShell() {
       const hasVolume = Boolean(track.volumeAutomation?.length);
       const hasPan = Boolean(track.panAutomation?.length);
       if (!hasVolume && !hasPan) continue;
-      const mix = effectiveTrackMix(track, groups, anySoloAtStart);
+    const mix = mixFor(track);
       const audible = !mix.muted;
       trackInput(track.id, audible ? mix.volume : 0, track.pan);
       const gain = trackGainRef.current.get(track.id);
@@ -4452,7 +4401,6 @@ export function StudioEditorShell() {
       solo: false,
       hidden: false,
       collapsed: false,
-      groupId: null,
       chain: [],
       clipIds: [clipId],
     };
@@ -5282,13 +5230,6 @@ export function StudioEditorShell() {
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
           onToggleAllCollapsed={toggleAllCollapsed}
-  groups={groups}
-  onCreateGroup={() => {
-    createGroup();
-  }}
-  onUpdateGroup={updateGroup}
-  onDeleteGroup={deleteGroup}
-  onAssignGroup={(trackId, groupId) => updateTrack(trackId, { groupId })}
           masterVolume={masterVolume}
           masterMuted={masterMuted}
           onMasterVolume={(value) => {

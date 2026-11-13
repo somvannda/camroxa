@@ -115,33 +115,6 @@ test("clip settings copy and paste through the clip menu", async ({ page }) => {
   expect(clipB.audio).toMatchObject({ gainDb: 6, pitch: 2 });
 });
 
-test("track groups create, assign and mute", async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.setViewportSize({ width: 1689, height: 1277 });
-  const projectId = await createStudioProject(page, { title: "Track groups" });
-
-  const tracksPanel = page.locator(".se-tracks");
-  await tracksPanel.getByRole("button", { name: "Track groups" }).click();
-  const groupsPopover = page.locator(".se-groups-popover");
-  await groupsPopover.getByRole("button", { name: "New" }).click();
-  await groupsPopover.getByLabel(/Rename Group/).first().fill("Band");
-  await tracksPanel.getByRole("button", { name: "Track groups" }).click();
-
-  await page.getByLabel("Options for Track 1").click();
-  await page.getByLabel("Group for Track 1").selectOption({ label: "Band" });
-  await tracksPanel.getByRole("button", { name: "Track groups" }).click();
-  await groupsPopover.getByRole("button", { name: "Mute Band" }).click();
-  await page.waitForTimeout(1200);
-
-  const saved = await page.evaluate(async (id) => {
-    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
-    return response.json();
-  }, projectId);
-  expect(saved.data.groups).toHaveLength(1);
-  expect(saved.data.groups[0]).toMatchObject({ name: "Band", muted: true });
-  expect(saved.data.tracks[0].groupId).toBe(saved.data.groups[0].id);
-});
-
 test("dragging the fade-out handle stores a fade on the clip", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1689, height: 1277 });

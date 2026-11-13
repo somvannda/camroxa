@@ -250,7 +250,7 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "lanes[].instrument", suno: "tracks[].signalChain synth waveform", status: "mapped" },
   { key: "chains (all built-ins)", suno: "tracks[].signalChain", status: "mapped", note: "custom plugins stay local" },
   { key: "masterChain (limiter/eq/compressor)", suno: "masterSignalChain", status: "mapped" },
-  { key: "groups", suno: "routing / group tracks", status: "pending" },
+  { key: "groups", suno: "—", status: "remove", note: "no group/bus field exists in the document (captured 11 projects)" },
   { key: "panAutomation", suno: "tracks[].paramAutomation", status: "pending" },
   { key: "pluginPresets", suno: "signalChain[].params", status: "mapped", note: "a preset is a param snapshot; the params mirror" },
   { key: "wavetableId", suno: "—", status: "remove", note: "designer removed (D-034)" },

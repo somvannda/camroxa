@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
-import type { StudioGroup } from "@/lib/studio-groups";
 import type { StudioTrack } from "@/lib/studio-tracks";
 
 /**
@@ -61,12 +60,6 @@ export type StudioTrackPanelProps = {
   /** Capture head: one control expands or collapses every visible track. */
   onToggleAllCollapsed: () => void;
 
-  /** Track groups: assign, create, rename, mix and remove. */
-  groups?: StudioGroup[];
-  onCreateGroup?: () => void;
-  onUpdateGroup?: (groupId: string, patch: Partial<StudioGroup>) => void;
-  onDeleteGroup?: (groupId: string) => void;
-  onAssignGroup?: (trackId: string, groupId: string | null) => void;
 
   /** Master strip pinned at the panel bottom (reference F-01/F-02). */
   masterVolume: number;
@@ -150,11 +143,6 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onToggleHidden,
     onShowAllHidden,
     onToggleAllCollapsed,
-    groups = [],
-    onCreateGroup = () => {},
-    onUpdateGroup = () => {},
-    onDeleteGroup = () => {},
-    onAssignGroup = () => {},
     masterVolume,
     masterMuted,
     onMasterVolume,
@@ -173,7 +161,6 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
   // Add-track menu (§8.3). Local state: nothing outside this panel depends on it.
   const [addOpen, setAddOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
-  const [groupsOpen, setGroupsOpen] = useState(false);
   /** Fixed coordinates so the colour flyout escapes the scrolling list's clip. */
   const [colorPos, setColorPos] = useState<{ top: number; left: number } | null>(null);
   /** Fixed coordinates: the menu must escape the scrolling list so it is never clipped. */
@@ -233,16 +220,6 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
         <button
           type="button"
           className="se-icon"
-          aria-label="Track groups"
-          aria-expanded={groupsOpen}
-          title="Track groups"
-          onClick={() => setGroupsOpen((open) => !open)}
-        >
-          <Icon name="fa-layer-group" />
-        </button>
-        <button
-          type="button"
-          className="se-icon"
           aria-label="Collapse track panel"
           title="Collapse track panel"
           onClick={onToggleCollapsed}
@@ -250,67 +227,6 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
           <Icon name="fa-angles-right" />
         </button>
       </div>
-
-      {groupsOpen ? (
-        <div className="se-groups-popover" role="group" aria-label="Track groups">
-          <div className="se-groups-head">
-            <strong>Groups</strong>
-            <button type="button" className="se-pill" onClick={onCreateGroup}>
-              <Icon name="fa-plus" /> New
-            </button>
-          </div>
-          {groups.length === 0 ? (
-            <small>Create a group, then assign tracks from the track menu.</small>
-          ) : (
-            groups.map((group) => (
-              <div key={group.id} className="se-group-row">
-                <input
-                  className="se-group-name"
-                  value={group.name}
-                  aria-label={`Rename ${group.name}`}
-                  onChange={(event) => onUpdateGroup(group.id, { name: event.target.value })}
-                />
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={group.volume}
-                  aria-label={`${group.name} volume`}
-                  onChange={(event) =>
-                    onUpdateGroup(group.id, { volume: Number(event.target.value) })
-                  }
-                />
-                <button
-                  type="button"
-                  className={`se-icon${group.muted ? " on" : ""}`}
-                  aria-label={`Mute ${group.name}`}
-                  aria-pressed={group.muted}
-                  onClick={() => onUpdateGroup(group.id, { muted: !group.muted })}
-                >
-                  M
-                </button>
-                <button
-                  type="button"
-                  className={`se-icon${group.solo ? " on" : ""}`}
-                  aria-label={`Solo ${group.name}`}
-                  aria-pressed={group.solo}
-                  onClick={() => onUpdateGroup(group.id, { solo: !group.solo })}
-                >
-                  S
-                </button>
-                <button
-                  type="button"
-                  className="se-icon"
-                  aria-label={`Delete ${group.name}`}
-                  onClick={() => onDeleteGroup(group.id)}
-                >
-                  <Icon name="fa-xmark" />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      ) : null}
 
       <div className="se-track-list">
         {visible.map((track, index) => {
@@ -337,23 +253,6 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   <button type="button" role="menuitem" onClick={() => onRenameStart(track)}>
                     <Icon name="fa-pen" /> Rename track
                   </button>
-                  <label className="se-track-group">
-                    <span>Group</span>
-                    <select
-                      aria-label={`Group for ${track.name}`}
-                      value={track.groupId ?? ""}
-                      onChange={(event) =>
-                        onAssignGroup(track.id, event.target.value || null)
-                      }
-                    >
-                      <option value="">None</option>
-                      {groups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                   <div className="se-menu-sub">
                     <button
                       type="button"

@@ -611,13 +611,12 @@ test("track panel head toggles every track's controls", async ({ page }) => {
   await page.setViewportSize(REFERENCE_VIEWPORT);
   await createStudioProject(page, { title: "Pixel head" });
   const head = page.locator(".se-tracks-head");
-  await expect(head.locator("button")).toHaveCount(3);
+  await expect(head.locator("button")).toHaveCount(2);
   const sizes = await head.locator("button").evaluateAll((nodes) =>
     nodes.map((node) => Math.round(node.getBoundingClientRect().width))
   );
-  // S16: 24 px icons in the 29 px head. The newest control opens track groups; the
-  // right control collapses the panel to a 44 px rail and brings it back.
-  expect(sizes).toEqual([24, 24, 24]);
+  // S16: 24 px icons in the 29 px head — expand/collapse all, and the rail toggle.
+  expect(sizes).toEqual([24, 24]);
   await head.getByRole("button", { name: "Collapse track panel" }).click();
   const panel = page.locator(".se-tracks");
   await expect(panel).toHaveClass(/is-collapsed/);

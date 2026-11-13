@@ -35,7 +35,6 @@ export type StudioTrack = {
   /** Per-track controls collapsed in the panel (reference T-02). */
   collapsed: boolean;
   /** Visual group A–D from the legacy model. */
-  groupId: string | null;
   /** Ordered plugin chain; signal order. */
   chain: PluginChainEntry[];
   /** Volume automation points (0-100) in timeline seconds. */
@@ -55,7 +54,6 @@ type LegacyClipLike = {
   pan?: number;
   muted?: boolean;
   solo?: boolean;
-  groupId?: string | null;
 };
 
 /** Reference colour families: vocals magenta, bass blue, strings/violet, SFX orange, drums olive. */
@@ -91,7 +89,6 @@ export function migrateLanesToTracks(lanes: LegacyClipLike[]): StudioTrack[] {
     solo: Boolean(clip.solo),
     hidden: false,
     collapsed: false,
-    groupId: clip.groupId ?? null,
     chain: [],
     clipIds: [clip.id],
   }));
@@ -122,8 +119,7 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
       hidden: Boolean(candidate.hidden),
       armed: Boolean(candidate.armed),
       collapsed: Boolean(candidate.collapsed),
-      groupId: typeof candidate.groupId === "string" ? candidate.groupId : null,
-      chain: [], // chains are sanitised separately, by track id
+          chain: [], // chains are sanitised separately, by track id
       volumeAutomation: sanitizeAutomation(candidate.volumeAutomation, 0, 100),
       panAutomation: sanitizeAutomation(candidate.panAutomation, -100, 100),
       clipIds,
