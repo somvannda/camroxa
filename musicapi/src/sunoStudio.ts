@@ -249,6 +249,12 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "lanes[].midi.mod", suno: "clips[].midi.controlChanges (CC1)", status: "mapped" },
   { key: "lanes[].instrument", suno: "tracks[].signalChain synth waveform", status: "mapped" },
   { key: "chains (all built-ins)", suno: "tracks[].signalChain", status: "mapped", note: "custom plugins stay local" },
+  {
+    key: "designed plugins (custom chain entries)",
+    suno: "—",
+    status: "pending",
+    note: "no parameter import; Suno authors plugins through an agent job (decision in PARITY_REMOVAL_LIST.md). A pull keeps these entries on the local chain until the decision lands.",
+  },
   { key: "masterChain (limiter/eq/compressor)", suno: "masterSignalChain", status: "mapped" },
   { key: "groups", suno: "—", status: "remove", note: "no group/bus field exists in the document (captured 11 projects)" },
   { key: "pluginPresets", suno: "signalChain[].params", status: "mapped", note: "a preset is a param snapshot; the params mirror" },

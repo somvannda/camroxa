@@ -97,7 +97,9 @@ mapping. Three ways forward, and one of them must be chosen:
 3. **Keep it local and record it as a deliberate divergence** — honest, documented, and
    reversible; the chain entry simply stays out of `signalChain` on Suno.
 
-Until someone picks, the codec keeps custom entries out of `signalChain` and the sync
-docs list them under "still unmapped". Nothing silently drops: a project with a
-designed plugin reports the same `skipped_clips`-style gap through the coverage list.
+Until someone picks, the codec keeps custom entries out of `signalChain`, a pull
+appends them back onto the local chain (reported as `kept_local_effects`), and the
+sync coverage registry lists "designed plugins (custom chain entries)" as pending.
+Nothing silently drops: a project with a designed plugin reports the gap through
+the coverage list instead.
 
