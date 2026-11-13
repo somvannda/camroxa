@@ -105,15 +105,23 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
   await page.keyboard.press("Control+ArrowDown");
   await expect(page.locator(".se-track-name")).toHaveText(["Lead", "Track 1"]);
 
-  // 1 and 3 toggle the assistant and take-lanes panels.
+  // 1 toggles the assistant, 3 the take lanes, 2 the bottom plugin panel.
   await page.keyboard.press("1");
   await expect(page.getByRole("complementary", { name: "Studio assistant" })).toBeVisible();
   await page.keyboard.press("1");
   await expect(page.getByRole("complementary", { name: "Studio assistant" })).toHaveCount(0);
+
   await page.keyboard.press("3");
   await expect(page.getByRole("region", { name: "Take lanes" })).toBeVisible();
   await page.keyboard.press("3");
   await expect(page.getByRole("region", { name: "Take lanes" })).toHaveCount(0);
+
+  const dock = page.locator(".sp-dock");
+  await expect(dock).toHaveCount(1);
+  await page.keyboard.press("2");
+  await expect(dock).toHaveCount(0);
+  await page.keyboard.press("2");
+  await expect(dock).toHaveCount(1);
 
   // SHIFT TAB swaps the two bottom bands.
   const takeLanes = page.getByRole("region", { name: "Take lanes" });
@@ -139,7 +147,7 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
 test("Ctrl S saves immediately through the write queue", async ({ page }) => {
   test.setTimeout(120_000);
   const projectId = await createStudioProject(page, {
-    title: `Save now ${Math.random().toString(36).slice(2, 8)}`,
+    title: `Write queue ${Math.random().toString(36).slice(2, 8)}`,
   });
 
   await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });

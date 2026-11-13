@@ -74,12 +74,12 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Split on Transients cuts a clip at the onsets in its audio | S14 overlay | clip menu → `computePeaks` + `detectOnsets` + `splitClipAtTimes` |
 | Make Beat 1 snaps a clip's start onto its bar line | S14 overlay | clip menu → `makeClipBeatOne` |
 | `SHIFT TAB` swaps the take-lanes and automation bands | S14 overlay | shell keydown; the two bands are the bottom panels this build has |
+| `2` toggles the bottom plugin/master panel | S14 overlay | `bottomPanelOpen`; clip editors still open on their own |
 
 ### S14 shortcut coverage still open
 
 | Binding | Why it is not wired yet |
 |---|---|
-| `2` bottom panel | this build has no persistent bottom panel; Plugins and Clip editor open on demand |
 | `SHIFT L` arrangement panel | there is no collapsible arrangement panel to toggle |
 | `CTRL S` save | wired: `saveNow` re-saves the current document through the same coalescing queue, and the browser's own save dialog is suppressed |
 | `CTRL K` toggle keyboard | there is no musical typing keyboard to show; `SHIFT ?` already opens this list |

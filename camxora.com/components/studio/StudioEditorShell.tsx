@@ -715,6 +715,8 @@ export function StudioEditorShell() {
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [masterSelected, setMasterSelected] = useState(false);
   const [takeLanesOpen, setTakeLanesOpen] = useState(false);
+  /** Bottom plugin/master panel; `2` toggles it (captured "Toggle Bottom Panel"). */
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(true);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
   /** A clip explicitly attached with the prompt bar's + menu (not just selected). */
   const [attachedClipId, setAttachedClipId] = useState<string | null>(null);
@@ -3762,11 +3764,15 @@ export function StudioEditorShell() {
           openUploadLibrary();
           return;
         }
-        // Panel toggles (spec §36): 1 chat, 3 take lanes, 4 library. The captured
-        // "2 bottom panel" has no persistent state in this build yet.
+        // Panel toggles (spec §36): 1 chat, 2 bottom panel, 3 take lanes, 4 library.
         if (event.key === "1") {
           event.preventDefault();
           setAssistantOpen((open) => !open);
+          return;
+        }
+        if (event.key === "2") {
+          event.preventDefault();
+          setBottomPanelOpen((open) => !open);
           return;
         }
         if (event.key === "3") {
@@ -6806,9 +6812,9 @@ export function StudioEditorShell() {
           onAudio={(next) => commitClipAudio(audioClip.id, next)}
           onClose={() => setAudioClipId(null)}
         />
-      ) : masterSelected ? (
+      ) : bottomPanelOpen && masterSelected ? (
         <StudioMasterDock chain={masterChain} onChange={commitMasterChain} />
-      ) : selectedTrack ? (
+      ) : bottomPanelOpen && selectedTrack ? (
         <StudioPluginDock
           chain={chains[selectedTrack] ?? []}
           trackName={tracks.find((track) => track.id === selectedTrack)?.name}
@@ -6862,6 +6868,7 @@ export function StudioEditorShell() {
           setTakeLanesOpen(false);
           setAutomationOpen(false);
           setMasterSelected(false);
+          setBottomPanelOpen(true);
           if (!selectedTrack) setSelectedTrack(tracks[0]?.id ?? null);
         }}
         onShowClipEditor={() => {

@@ -50,7 +50,7 @@ test("home renames, duplicates, archives and deletes a project", async ({ page }
   await page.getByRole("menuitem", { name: "Rename" }).click();
   const renamed = `${title} renamed`;
   await page.getByLabel("Project title").fill(renamed);
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: `Actions for ${renamed}` }).first()).toBeVisible({
     timeout: 15_000,
   });

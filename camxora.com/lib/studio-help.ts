@@ -208,6 +208,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Shift Alt H", action: "Show all hidden tracks" },
   { keys: "F2", action: "Rename the focused track" },
   { keys: "1 / 3 / 4", action: "Toggle the assistant, take lanes, library" },
+  { keys: "2", action: "Toggle the bottom plugin panel" },
   { keys: "Library · ↓ / ↑", action: "Audition the next / previous song" },
   { keys: "Library · →", action: "Replay the auditioned song from the top" },
   { keys: "Ctrl/⌘ + Z", action: "Undo" },
