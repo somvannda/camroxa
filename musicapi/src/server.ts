@@ -9011,6 +9011,31 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   });
 
+  /** Batch mirror status for the project list (one round trip, no provider call). */
+  app.post("/internal/studio/projects/status", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as { user_id?: string; project_ids?: unknown };
+    const userId = typeof body.user_id === "string" ? body.user_id : "";
+    const ids = Array.isArray(body.project_ids)
+      ? body.project_ids.filter((value): value is string => typeof value === "string")
+      : [];
+    if (!STUDIO_UUID_RE.test(userId)) {
+      return reply.code(400).send({ error: "user_id is required." });
+    }
+    if (ids.length === 0) return reply.send({ statuses: {} });
+    const safe = ids.filter((id) => STUDIO_UUID_RE.test(id)).slice(0, 100);
+    const rows = await query<{ local_project_id: string; status: string }>(
+      `SELECT local_project_id, status FROM studio_suno_projects
+       WHERE user_id = $1 AND local_project_id = ANY($2::uuid[])`,
+      [userId, safe]
+    );
+    return reply.send({
+      statuses: Object.fromEntries(
+        rows.map((row) => [row.local_project_id, row.status])
+      ),
+    });
+  });
+
   app.post("/internal/studio/projects/:id/archive", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { id } = req.params as { id: string };

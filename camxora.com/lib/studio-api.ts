@@ -25,6 +25,8 @@ export type StudioProject = {
   last_comment_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  /** Mirror state for list surfaces; absent when the mirror is unreachable. */
+  sync?: { status: "pending" | "linked" | "synced" | "conflict" | "error" } | null;
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {

@@ -4416,6 +4416,11 @@ html{color-scheme:dark}
 .studio-card.is-menu-open{z-index:35}
 .studio-card-main{display:flex;flex-direction:column;gap:6px;width:100%;height:100%;padding:16px 16px 14px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .studio-card-title{font-size:15px;font-weight:650;letter-spacing:-.02em;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.studio-sync-dot{display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:#8b90a6;vertical-align:middle}
+.studio-sync-dot[data-state="linked"]{background:#8b6efe}
+.studio-sync-dot[data-state="synced"]{background:#52d17c}
+.studio-sync-dot[data-state="conflict"]{background:#d6bd12}
+.studio-sync-dot[data-state="error"]{background:#dc2626}
 .studio-card-meta{font-size:12px;color:var(--muted2)}
 .studio-card-foot{display:inline-flex;align-items:center;gap:5px;margin-top:auto;font-size:11px;color:var(--muted)}
 .studio-card-foot .icon,.studio-card-foot svg{width:10px;height:10px}

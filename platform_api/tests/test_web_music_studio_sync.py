@@ -138,6 +138,34 @@ async def test_asset_enrichment_attaches_the_suno_clip_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_attaches_the_mirror_status_to_each_project() -> None:
+    service = _service()
+    row = _project_row()
+    service._pool.fetch = AsyncMock(return_value=[row])
+    service._pool.fetchval = AsyncMock(return_value=1)
+    service._studio_batch_sync_statuses = AsyncMock(
+        return_value={str(row["id"]): "synced"}
+    )
+
+    result = await service.list_studio_projects(row["user_id"])
+
+    assert result["items"][0]["sync"] == {"status": "synced"}
+
+
+@pytest.mark.asyncio
+async def test_list_renders_when_the_mirror_is_unreachable() -> None:
+    service = _service()
+    row = _project_row()
+    service._pool.fetch = AsyncMock(return_value=[row])
+    service._pool.fetchval = AsyncMock(return_value=1)
+    service._studio_batch_sync_statuses = AsyncMock(return_value={})
+
+    result = await service.list_studio_projects(row["user_id"])
+
+    assert "sync" not in result["items"][0]
+
+
+@pytest.mark.asyncio
 async def test_upload_assets_reuse_a_cached_suno_clip_id() -> None:
     service = _service()
     upload_id = uuid4()

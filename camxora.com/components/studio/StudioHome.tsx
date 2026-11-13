@@ -23,6 +23,14 @@ import {
   type StudioProject,
 } from "@/lib/studio-api";
 
+const SYNC_LABEL: Record<string, string> = {
+  pending: "waiting for the first copy",
+  linked: "project exists, arrangement mirroring is staged",
+  synced: "mirrored",
+  conflict: "has newer changes",
+  error: "sync failed",
+};
+
 const PAGE_SIZE = 50;
 
 type SortMode = "updated" | "title";
@@ -398,7 +406,18 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
                       className="studio-card-main"
                       onClick={() => openProject(project)}
                     >
-                      <span className="studio-card-title">{project.title}</span>
+                      <span className="studio-card-title">
+                        {project.title}
+                        {project.sync ? (
+                          <span
+                            className="studio-sync-dot"
+                            data-state={project.sync.status}
+                            role="img"
+                            aria-label={`Suno Studio: ${SYNC_LABEL[project.sync.status]}`}
+                            title={`Suno Studio: ${SYNC_LABEL[project.sync.status]}`}
+                          />
+                        ) : null}
+                      </span>
                       <span className="studio-card-meta">{projectMeta(project)}</span>
                       <span className="studio-card-foot">
                         {project.pinned ? <Icon name="fa-thumbtack" /> : null}

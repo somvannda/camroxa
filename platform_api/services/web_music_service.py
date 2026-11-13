@@ -1837,12 +1837,50 @@ class WebMusicService:
             user_id,
             bool(include_archived),
         )
+        items = [self._studio_project_payload(row, include_data=False) for row in rows]
+        statuses = await self._studio_batch_sync_statuses(
+            str(user_id), [str(row["id"]) for row in rows]
+        )
+        if statuses:
+            for item in items:
+                status = statuses.get(item["id"])
+                item["sync"] = {"status": status} if status else None
         return {
-            "items": [self._studio_project_payload(row, include_data=False) for row in rows],
+            "items": items,
             "total": int(total or 0),
             "limit": safe_limit,
             "offset": safe_offset,
         }
+
+    async def _studio_batch_sync_statuses(
+        self, user_id: str, project_ids: list[str]
+    ) -> dict[str, str]:
+        """Mirror status per project for the list; best-effort and never blocking."""
+        endpoint = self._studio_sync_endpoint()
+        if endpoint is None or not project_ids:
+            return {}
+        base, token = endpoint
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(
+                    f"{base}/internal/studio/projects/status",
+                    headers={"x-internal-token": token},
+                    json={"user_id": user_id, "project_ids": project_ids},
+                )
+            if response.status_code >= 400:
+                return {}
+            payload = response.json() or {}
+            statuses = payload.get("statuses")
+            if not isinstance(statuses, dict):
+                return {}
+            return {
+                str(key): str(value)
+                for key, value in statuses.items()
+                if isinstance(value, str)
+            }
+        except Exception as exc:  # noqa: BLE001 - the list must render regardless
+            logger.info("studio batch status failed: %s", exc)
+            return {}
 
     @staticmethod
     def _studio_project_payload(row: Any, *, include_data: bool = True) -> dict[str, Any]:
