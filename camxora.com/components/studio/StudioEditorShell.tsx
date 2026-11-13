@@ -3699,6 +3699,21 @@ export function StudioEditorShell() {
             setAutomationOpen((open) => !open);
             return;
           }
+          // SHIFT TAB swaps the two bottom bands: take lanes and automation.
+          if (event.key === "Tab") {
+            event.preventDefault();
+            if (takeLanesOpen && selectedTrack) {
+              setTakeLanesOpen(false);
+              setAutomationOpen(true);
+            } else if (automationOpen) {
+              setAutomationOpen(false);
+              setTakeLanesOpen(true);
+            } else {
+              setAutomationOpen(false);
+              setTakeLanesOpen(true);
+            }
+            return;
+          }
           if (letter === "f") {
             const id = selectedClip ?? selectedIds[0];
             const clip = id ? clipsRef.current.find((item) => item.id === id) : undefined;

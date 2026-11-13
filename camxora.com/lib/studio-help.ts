@@ -171,6 +171,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Ctrl/⌘ + L", action: "Toggle loop" },
   { keys: "Shift C", action: "Toggle the metronome" },
   { keys: "Shift A", action: "Toggle the automation band" },
+  { keys: "Shift Tab", action: "Swap the take lanes and automation bands" },
   { keys: "Ctrl/⌘ + A", action: "Select all clips" },
   { keys: "Ctrl/⌘ + C", action: "Copy the selected clips" },
   { keys: "Ctrl/⌘ + X", action: "Cut the selection" },

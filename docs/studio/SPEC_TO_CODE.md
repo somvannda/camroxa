@@ -73,6 +73,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Split Arrangement cuts every clip crossing the playhead | S14 overlay | time-selection menu → `splitClips` with every clip id |
 | Split on Transients cuts a clip at the onsets in its audio | S14 overlay | clip menu → `computePeaks` + `detectOnsets` + `splitClipAtTimes` |
 | Make Beat 1 snaps a clip's start onto its bar line | S14 overlay | clip menu → `makeClipBeatOne` |
+| `SHIFT TAB` swaps the take-lanes and automation bands | S14 overlay | shell keydown; the two bands are the bottom panels this build has |
 
 ### S14 shortcut coverage still open
 

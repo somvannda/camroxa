@@ -115,6 +115,20 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
   await page.keyboard.press("3");
   await expect(page.getByRole("region", { name: "Take lanes" })).toHaveCount(0);
 
+  // SHIFT TAB swaps the two bottom bands.
+  const takeLanes = page.getByRole("region", { name: "Take lanes" });
+  const automation = page.getByRole("region", { name: "Track automation" });
+  await page.keyboard.press("3");
+  await expect(takeLanes).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(takeLanes).toHaveCount(0);
+  await expect(automation).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(automation).toHaveCount(0);
+  await expect(takeLanes).toBeVisible();
+  await page.keyboard.press("3");
+  await expect(takeLanes).toHaveCount(0);
+
   // 4 toggles the library drawer.
   await page.keyboard.press("4");
   await expect(library).toBeVisible();
