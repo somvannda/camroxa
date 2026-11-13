@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   restoreStudioProjectVersion: vi.fn(),
   createStudioProject: vi.fn(),
   forkStudioProject: vi.fn(),
+  syncStudioProject: vi.fn(),
 }));
 
 vi.mock("@/lib/studio-api", async (importOriginal) => {
@@ -63,6 +64,7 @@ describe("StudioProjectMenu", () => {
       "Duplicate Project",
       "Version History",
       "Share Project",
+      "Send to Suno Sync",
       "Open a copy in v1",
       "Studio Settings ctrl shift ,",
       "Show Quick Start again",
@@ -70,9 +72,49 @@ describe("StudioProjectMenu", () => {
 
     expect((items[0] as HTMLButtonElement).disabled).toBe(false);
     expect((items[5] as HTMLButtonElement).disabled).toBe(false);
-    expect((items[6] as HTMLButtonElement).disabled).toBe(true);
-    expect(items[6].getAttribute("title")).toMatch(/v1/);
-    expect((items[7] as HTMLButtonElement).disabled).toBe(false);
+    expect((items[6] as HTMLButtonElement).disabled).toBe(false);
+    expect((items[7] as HTMLButtonElement).disabled).toBe(true);
+    expect(items[7].getAttribute("title")).toMatch(/v1/);
+    expect((items[8] as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("pushes the project to Suno and reports the result", async () => {
+    const user = userEvent.setup();
+    api.syncStudioProject.mockResolvedValue({
+      status: "synced",
+      suno_project_id: "suno-1",
+      suno_version_id: "version-2",
+      last_error: null,
+      synced_at: "2026-11-13T07:00:00Z",
+      skipped_clips: ["clip-b"],
+      state_sync: true,
+    });
+    renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Send to Suno Sync/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Suno sync" });
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent ?? "").toMatch(/Pushed to Suno at/)
+    );
+    expect(dialog.textContent ?? "").toMatch(/1 clip stays local/);
+    expect(api.syncStudioProject).toHaveBeenCalledWith("p1");
+  });
+
+  it("surfaces a rejected push instead of pretending it worked", async () => {
+    const user = userEvent.setup();
+    api.syncStudioProject.mockRejectedValue(new Error("The Suno Studio mirror is not configured."));
+    renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Send to Suno Sync/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Suno sync" });
+    await waitFor(() =>
+      expect(dialog.textContent ?? "").toMatch(/mirror is not configured/)
+    );
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("shows the captured settings sections and toggles ghost drag", async () => {

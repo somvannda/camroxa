@@ -68,6 +68,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | `0` toggles the arrangement (master) mute | §36 / gap G44 | `toggleMasterMute` + `Mute main` in the track panel |
 | Back to Start alternates the song start and beat 1 | S14 hint / gap G44 | `backToStart` + `backToStartAnchorRef` in `StudioEditorShell` |
 | `SHIFT 1` / `SHIFT 2` double or halve the arrangement grid | S14 overlay / gap G44 | `scaleGrid` in `lib/studio-snap.ts` + `gridDivisions` in the shell |
+| Project menu sends the project to Suno on demand | S14 overlay "Send to Suno Sync" | `syncStudioProject` in `lib/studio-api.ts` + the menu's sync dialog |
 
 ### S14 shortcut coverage still open
 

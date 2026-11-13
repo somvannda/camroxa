@@ -186,6 +186,10 @@ blocks on Suno.
   - **Load Suno version** (replace local `data` after confirmation)
   - **Keep mine** (rebase `base_version_id` and push again)
   - **Duplicate locally** (new local project; leave Suno unchanged)
+- **Send to Suno Sync** in the project menu calls the same push path on demand, so a
+  user never has to wait for the background outbox. It reports the server's answer in
+  a dialog (status, or the reason the mirror refused) and lists how many clips stay
+  local because they have no Suno asset.
 
 ### 6.3 Pull
 

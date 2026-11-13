@@ -11,9 +11,11 @@ import {
   listStudioProjects,
   listStudioProjectVersions,
   restoreStudioProjectVersion,
+  syncStudioProject,
   updateStudioProject,
   type StudioProject,
   type StudioProjectShare,
+  type StudioProjectSync,
   type StudioProjectVersion,
 } from "@/lib/studio-api";
 import type { StudioSettings } from "@/lib/studio-settings";
@@ -39,6 +41,7 @@ type Dialog =
   | "share"
   | "name-to-share"
   | "settings"
+  | "sync"
   | null;
 
 export type StudioProjectMenuProps = {
@@ -57,6 +60,29 @@ const initialOf = (value: string) => (value.trim()[0] || "P").toUpperCase();
 function isUnnamed(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.length === 0 || trimmed.toLowerCase() === UNTITLED.toLowerCase();
+}
+
+/** One sentence the "Send to Suno Sync" dialog can show for a push result. */
+function syncSentence(status: StudioProjectSync): string {
+  if (!status.state_sync) {
+    return "Suno state sync is off in this environment, so the arrangement stays local.";
+  }
+  switch (status.status) {
+    case "synced":
+      return status.synced_at
+        ? `Pushed to Suno at ${new Date(status.synced_at).toLocaleTimeString()}.`
+        : "Pushed to Suno.";
+    case "linked":
+      return "Linked to Suno; the push is queued.";
+    case "pending":
+      return "Queued — Suno picks it up in the background.";
+    case "conflict":
+      return "Suno moved ahead. Resolve the conflict from the sync chip before pushing again.";
+    case "error":
+      return status.last_error
+        ? `Suno rejected the push: ${status.last_error}`
+        : "Suno rejected the push.";
+  }
 }
 
 /** Prefer an existing live link over minting a second one for the same project. */
@@ -93,6 +119,8 @@ export function StudioProjectMenu({
   const [share, setShare] = useState<StudioProjectShare | null>(null);
   const [shareName, setShareName] = useState(title);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  /** Result of the last "Send to Suno Sync" push, shown in its dialog. */
+  const [syncResult, setSyncResult] = useState<StudioProjectSync | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -197,6 +225,19 @@ export function StudioProjectMenu({
     void run(async () => {
       const copy = await forkStudioProject(projectId, `${label} copy`);
       navigate(copy.id);
+    });
+  }
+
+  /**
+   * Captured "Send to Suno Sync": push now instead of waiting for the background
+   * outbox, and report what the server answered.
+   */
+  function sendToSuno() {
+    setOpen(false);
+    setSyncResult(null);
+    setDialog("sync");
+    void run(async () => {
+      setSyncResult(await syncStudioProject(projectId));
     });
   }
 
@@ -331,6 +372,9 @@ export function StudioProjectMenu({
           <button type="button" role="menuitem" onClick={startSharing} disabled={busy}>
             <Icon name="fa-arrow-up-from-bracket" /> Share Project
           </button>
+          <button type="button" role="menuitem" onClick={sendToSuno} disabled={busy}>
+            <Icon name="fa-cloud-arrow-up" /> Send to Suno Sync
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -458,7 +502,9 @@ export function StudioProjectMenu({
                   ? "Share project"
                   : dialog === "name-to-share"
                     ? "Name project before sharing"
-                    : "Studio settings"
+                    : dialog === "sync"
+                      ? "Suno sync"
+                      : "Studio settings"
           }
         >
           <div className={`se-dialog${dialog === "open" ? " se-projects-dialog" : ""}`}>
@@ -642,6 +688,25 @@ export function StudioProjectMenu({
                   <p className="se-dialog-note">Not captured yet.</p>
                 </section>
               </>
+            ) : dialog === "sync" ? (
+              <>
+                <h2>Suno sync</h2>
+                {busy ? (
+                  <p className="se-dialog-note">Pushing this project to Suno…</p>
+                ) : null}
+                {syncResult ? (
+                  <p className="se-dialog-note" role="status">
+                    {syncSentence(syncResult)}
+                  </p>
+                ) : null}
+                {syncResult && syncResult.skipped_clips.length > 0 ? (
+                  <p className="se-dialog-note">
+                    {syncResult.skipped_clips.length} clip
+                    {syncResult.skipped_clips.length === 1 ? " stays" : "s stay"} local: no Suno
+                    asset yet.
+                  </p>
+                ) : null}
+              </>
             ) : (
               <>
                 <h2>Share “{shareName}”</h2>
@@ -716,6 +781,19 @@ export function StudioProjectMenu({
                     {copyState === "copied" ? "Copied" : "Copy Link"}
                   </button>
                 </>
+              ) : null}
+              {dialog === "sync" ? (
+                <button
+                  type="button"
+                  className="se-pill"
+                  onClick={() => {
+                    setDialog(null);
+                    setSyncResult(null);
+                  }}
+                  disabled={busy}
+                >
+                  Close
+                </button>
               ) : null}
               {dialog === "settings" ? (
                 <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>

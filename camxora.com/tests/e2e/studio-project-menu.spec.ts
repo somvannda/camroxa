@@ -22,11 +22,12 @@ test("project menu renames the project and the name survives a reload", async ({
   const menu = page.getByRole("menu", { name: "Project options" });
   await expect(menu).toBeVisible();
 
-  // The order matches the capture; the two we cannot honour are disabled.
-  await expect(menu.getByRole("menuitem")).toHaveCount(9);
+  // The order matches the capture; the one we cannot honour is disabled.
+  await expect(menu.getByRole("menuitem")).toHaveCount(10);
   await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Share Project
-  await expect(menu.getByRole("menuitem").nth(6)).toBeDisabled(); // v1 copy
-  await expect(menu.getByRole("menuitem").nth(7)).toBeEnabled(); // Settings
+  await expect(menu.getByRole("menuitem").nth(6)).toBeEnabled(); // Send to Suno Sync
+  await expect(menu.getByRole("menuitem").nth(7)).toBeDisabled(); // v1 copy
+  await expect(menu.getByRole("menuitem").nth(8)).toBeEnabled(); // Settings
 
   await menu.getByRole("menuitem", { name: "Rename" }).click();
   const dialog = page.getByRole("dialog", { name: "Rename project" });
@@ -48,6 +49,27 @@ test("project menu renames the project and the name survives a reload", async ({
 
   await page.reload();
   await expect(page.locator(".se-project .se-chip")).toHaveText(renamed);
+});
+
+test("send to Suno sync reports the mirror's answer", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, { title: `Suno sync ${tag}` });
+
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Send to Suno Sync" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Suno sync" });
+  await expect(dialog).toBeVisible();
+  // The sandbox API runs with the mirror unconfigured, so the honest answer is the
+  // error; a configured server answers with the push status. Either must appear.
+  await expect(
+    dialog.getByRole("status").or(dialog.locator(".se-dialog-error"))
+  ).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test("share creates a view link that resolves without the editor", async ({ page }) => {  test.setTimeout(120_000);

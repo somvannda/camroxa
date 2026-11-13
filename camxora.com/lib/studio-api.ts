@@ -98,6 +98,17 @@ export async function getStudioProjectSync(id: string): Promise<StudioProjectSyn
 }
 
 /**
+ * Push this project to Suno now instead of waiting for the background outbox.
+ * The captured "Send to Suno Sync" action; harmless when the mirror is off, since
+ * the server answers with the current status.
+ */
+export async function syncStudioProject(id: string): Promise<StudioProjectSync> {
+  return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/sync`, {
+    method: "POST",
+  });
+}
+
+/**
  * Ask Suno whether the project moved ahead. Read-only for the local document:
  * a newer remote version only flips the chip to `conflict`.
  */
