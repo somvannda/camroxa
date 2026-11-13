@@ -205,7 +205,10 @@ export function pluginFromAuthoring(
 
 /** Pre-build message: restate the request and ask before spending credits. */
 export function restateDesign(prompt: string): string {
-  const text = prompt.trim().replace(/^make me a new plugin[.:]?\s*/i, "");
+  const text = prompt
+    .replace(/^.*?here'?s what i have in mind:\s*/i, "")
+    .replace(/^make me a new plugin[.:]?\s*/i, "")
+    .trim();
   const subject = text || "the effect you described";
   return `I can have the plugin agent build ${subject.startsWith("a ") || subject.startsWith("an ") ? subject : `a plugin for: ${subject}`}. It authors real DSP code, usually takes a few minutes, and uses generation credits. The finished plugin is saved to your plugin library, not inserted automatically. Build it?`;
 }

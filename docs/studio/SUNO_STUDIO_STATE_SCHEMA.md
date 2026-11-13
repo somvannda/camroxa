@@ -179,9 +179,8 @@ one part still unproven — closing that needs a UI capture with a disabled note
 
 ## 8. Still unmapped
 
-- `signalChain` plugin params: captured (hundreds of parameter names) but our
-  plugin ids do not map to Suno's `pluginVersionId` yet.
-- `masterSignalChain`: captured compressor/EQ params, same id-mapping problem.
+- Authored-plugin DSP: the chain entry and params mirror, but our engine cannot
+  execute Suno's plugin `source.code`; local playback approximates by family.
 - Audio clip timing/trim/fades for clips whose audio is not on Suno.
 - `takeLanes` semantics (alternate takes) beyond an empty lane.
 - `asset.type` values other than `"clip"` (uploads).
