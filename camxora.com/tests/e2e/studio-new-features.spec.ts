@@ -54,11 +54,15 @@ test("track Automation draws a volume point that persists", async ({ page }) => 
   // still settling its width when the panel just opened.
   await volumeLane.click();
   await expect(panel.locator(".se-automation-point")).toHaveCount(1);
+  // Wait for the queued document write to land before switching lanes: the
+  // editor serialises writes, and the next one is queued behind this one.
+  await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });
 
   await panel.getByRole("button", { name: "Pan" }).click();
   const panLane = panel.getByRole("group", { name: "Pan automation lane" });
   await panLane.click({ position: { x: 320, y: 40 } });
   await expect(panel.locator(".se-automation-point")).toHaveCount(1);
+  await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });
 
   await page.reload();
   await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
@@ -210,6 +214,9 @@ test("Create Section stamps a ruler marker that survives a reload", async ({ pag
   const label = await marker.first().getAttribute("aria-label");
   expect(label).toMatch(/Section .+ at /);
 
+  // The marker write is queued behind the previous document write; wait for it
+  // to reach the server before reloading, or the reload wins the race.
+  await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });
   await page.reload();
   await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".se-section-marker")).toHaveCount(1);

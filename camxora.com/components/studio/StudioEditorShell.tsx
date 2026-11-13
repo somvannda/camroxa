@@ -27,6 +27,7 @@ import {
   type ProjectPresence,
   type StudioProjectSync,
   getStudioProjectSync,
+  refreshStudioProject,
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
@@ -792,16 +793,17 @@ export function StudioEditorShell() {
   }, [authLoading, user, projectId]);
 
   // Suno Studio mirror status: read once, then refresh on a slow poll and after
-  // each successful local save. This is a status read only — the push itself is
-  // queued by the platform API and retried by musicapi's outbox.
+  // each successful local save. `refresh` asks Suno whether it moved ahead; the
+  // server throttles provider reads so several open editors share one check.
   useEffect(() => {
     if (!projectId || !user) {
       setSunoSync(null);
       return;
     }
     let active = true;
-    const read = () => {
-      getStudioProjectSync(projectId)
+    const read = (checkRemote: boolean) => {
+      const request = checkRemote ? refreshStudioProject(projectId) : getStudioProjectSync(projectId);
+      request
         .then((next) => {
           if (active) setSunoSync(next);
         })
@@ -809,8 +811,12 @@ export function StudioEditorShell() {
           /* the chip keeps its last known state */
         });
     };
-    read();
-    const timer = window.setInterval(read, 15_000);
+    read(true);
+    let ticks = 0;
+    const timer = window.setInterval(() => {
+      ticks += 1;
+      read(ticks % 4 === 0);
+    }, 15_000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -821,7 +827,7 @@ export function StudioEditorShell() {
     if (!projectId || !user || saveStatus !== "saved") return;
     // Give the provider a moment after the local write, then read the mirror.
     const timer = window.setTimeout(() => {
-      void getStudioProjectSync(projectId)
+      void refreshStudioProject(projectId)
         .then(setSunoSync)
         .catch(() => undefined);
     }, 2_000);
@@ -1684,6 +1690,10 @@ export function StudioEditorShell() {
     if (writeInFlightRef.current) {
       queuedWriteRef.current = { run, failure };
       setSaveStatus("saving");
+      // The queued write only starts when the in-flight one answers. If the tab
+      // is reloaded before that, the queued burst would be lost, so mirror it
+      // into the draft (cleared as soon as the queue drains).
+      if (projectId) saveDraft(projectId, currentData() as Record<string, unknown>);
       return;
     }
     void performWrite(run, failure);
