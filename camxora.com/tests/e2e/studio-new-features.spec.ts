@@ -239,3 +239,32 @@ test("Create Section stamps a ruler marker that survives a reload", async ({ pag
   await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".se-section-marker")).toHaveCount(1);
 });
+
+test("Split on Transients cuts the clip at the onsets in its audio", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, {
+    title: `Transients ${Math.random().toString(36).slice(2, 8)}`,
+    clips: [
+      {
+        id: "loop",
+        title: "Clicks",
+        start: 0,
+        duration: 2,
+        audioUrl: "/seed/transients.wav",
+      },
+    ],
+  });
+  await expect(page.locator(".se-clip")).toHaveCount(1);
+
+  await page.locator(".se-clip").first().click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "Clip options" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Split on Transients" }).click();
+
+  // The asset is silence with four sharp clicks, so the clip becomes five segments.
+  await expect
+    .poll(async () => page.locator(".se-clip").count(), { timeout: 20_000 })
+    .toBe(5);
+  await expect(page.getByText("Split into 5 clips at 4 transients.")).toBeVisible();
+});

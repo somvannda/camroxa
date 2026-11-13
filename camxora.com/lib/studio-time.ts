@@ -121,6 +121,36 @@ function uniqueId(base: string, taken: Set<string>): string {
   return id;
 }
 
+/**
+ * Split one clip at the given absolute times.
+ *
+ * The first segment keeps the clip's id so selection and history stay put; later
+ * segments get `<id>-split-2`, `-3`… Cuts at or outside the clip's own bounds are
+ * ignored, so callers can pass raw transient times.
+ */
+export function splitClipAtTimes<T extends TimeClip>(clip: T, times: number[]): T[] {
+  const span = clipSpan(clip);
+  const cuts = Array.from(new Set(times.map(round)))
+    .filter((time) => time > span.start + TIME_EPSILON && time < span.end - TIME_EPSILON)
+    .sort((a, b) => a - b);
+  if (cuts.length === 0) return [clip];
+  const bounds = [span.start, ...cuts, span.end];
+  const taken = new Set([clip.id]);
+  const segments: T[] = [];
+  for (let index = 0; index < bounds.length - 1; index += 1) {
+    const from = bounds[index];
+    const to = bounds[index + 1];
+    const id = index === 0 ? clip.id : uniqueId(`${clip.id}-split`, taken);
+    segments.push(part(clip, from, to, from, id) as T);
+  }
+  // A hard cut only keeps the outer fades: in on the head, out on the tail.
+  segments.forEach((segment, index) => {
+    if (index > 0) delete segment.fadeIn;
+    if (index < segments.length - 1) delete segment.fadeOut;
+  });
+  return segments;
+}
+
 /** Rebuild each track's clip list in lane order, including the ids the edit created. */
 function rebuildTracks<T extends TimeTrack>(
   tracks: T[],

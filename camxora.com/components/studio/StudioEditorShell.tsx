@@ -82,9 +82,11 @@ import {
   deleteTimeRange,
   duplicateTimeRange,
   normaliseRange,
+  splitClipAtTimes,
   type TimeRange,
 } from "@/lib/studio-time";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
+import { computePeaks, detectOnsets } from "@/lib/studio-peaks";
 import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
 import { EXPORT_TARGET_PEAK_DB } from "@/lib/studio-normalise";
 import {
@@ -3284,6 +3286,48 @@ export function StudioEditorShell() {
     );
   }
 
+  /**
+   * Clip menu ▸ Split on Transients: cut the clip at the onsets found in its own
+   * audio. The capture names the verb but not its key, so it lives in the clip menu.
+   */
+  async function splitOnTransients(clip: ClipLike) {
+    const url = clip.audioUrl ?? clip.sourceAudioUrl;
+    if (!url) {
+      setExportToast("This clip has no audio to analyse.");
+      return;
+    }
+    setClipMenu(null);
+    setExportToast("Finding transients…");
+    const peaks = await computePeaks(url).catch(() => null);
+    const onsets = detectOnsets(peaks);
+    const start = clip.start ?? 0;
+    const duration = clip.duration ?? 4;
+    const times = onsets
+      .map((fraction) => start + fraction * duration)
+      .filter((time) => time > start + 0.02 && time < start + duration - 0.02);
+    if (times.length === 0) {
+      setExportToast("No transients found in this clip.");
+      return;
+    }
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const segments = splitClipAtTimes(clip, times);
+    const segmentIds = segments.map((segment) => segment.id);
+    const nextLanes = lanes.flatMap((lane) => (lane.id === clip.id ? segments : [lane]));
+    const nextTracks = tracks.map((track) => ({
+      ...track,
+      clipIds: track.clipIds.flatMap((id) => (id === clip.id ? segmentIds : [id])),
+    }));
+    writeProjectData(
+      { ...data, lanes: nextLanes, tracks: nextTracks },
+      "splitting the clip on transients",
+      nextTracks
+    );
+    setExportToast(
+      `Split into ${segments.length} clips at ${times.length} transient${times.length === 1 ? "" : "s"}.`
+    );
+  }
+
   function commitClipRename() {
     if (!clipRename) return;
     const title = clipRename.value.trim();
@@ -5979,6 +6023,19 @@ export function StudioEditorShell() {
                   }}
                 >
                   <Icon name="fa-scissors" /> Split <span>Ctrl E</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.audioUrl && !clip.sourceAudioUrl}
+                  title={
+                    clip.audioUrl || clip.sourceAudioUrl
+                      ? "Cut this clip at the onsets found in its audio"
+                      : "This clip has no audio to analyse"
+                  }
+                  onClick={() => void splitOnTransients(clip)}
+                >
+                  <Icon name="fa-wave-square" /> Split on Transients
                 </button>
                 <button
                   type="button"

@@ -71,6 +71,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Project menu sends the project to Suno on demand | S14 overlay "Send to Suno Sync" | `syncStudioProject` in `lib/studio-api.ts` + the menu's sync dialog |
 | Library `↓`/`↑` audition the next/previous song and `→` replays the current one | S14 library panel / gap G44 | `onAudition` + `handleAuditionKeys` in `StudioLibrary` (cursor follows visible, expanded rows) |
 | Split Arrangement cuts every clip crossing the playhead | S14 overlay | time-selection menu → `splitClips` with every clip id |
+| Split on Transients cuts a clip at the onsets in its audio | S14 overlay | clip menu → `computePeaks` + `detectOnsets` + `splitClipAtTimes` |
 
 ### S14 shortcut coverage still open
 
