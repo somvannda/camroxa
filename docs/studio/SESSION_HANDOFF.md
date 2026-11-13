@@ -2,6 +2,27 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-13 — Suno Studio project mirror
+
+- **Worktree:** `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-midi-modes`, branch `feat/studio-midi-modes` (clean, **not merged**).
+- **The mirror is feature-complete and verified end to end** against real Suno
+  projects: create → edit → Suno-side change → conflict → load → delete. Details
+  in `SUNO_STUDIO_SYNC.md` and `SUNO_STUDIO_STATE_SCHEMA.md`.
+- **Every document field** is mapped or deliberately removed (`groups`,
+  `wavetableId`); the coverage registry has 31 mapped, 0 pending, 2 removed.
+- **Strict parity (D-034):** track groups and the wavetable designer were removed
+  because no Suno document field represents them.
+- **Local run:** musicapi `:4003` with a seeded `suno_accounts` row and a matching
+  `COOKIE_ENCRYPTION_KEY`; a mirror-enabled platform API on `:8101` (sandbox DB,
+  migration `199`). `:8100` is deliberately left mirror-off so e2e runs do not
+  create real Suno projects.
+- **Gates:** musicapi 191 unit · platform 3377 pytest · web 308 Vitest ·
+  Studio e2e 47/47 · `check:ui` compliant · typecheck clean.
+- **Before shipping:** merge the branch, deploy with migration `199`, then start
+  the production API with `PLATFORM_SUNO_API_BASE_URL` and
+  `PLATFORM_STUDIO_INTERNAL_TOKEN`; decide the account policy (shared pool vs a
+  dedicated Suno account per user).
+
 ## Where things are
 
 | | |
