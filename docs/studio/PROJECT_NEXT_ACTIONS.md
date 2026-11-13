@@ -61,10 +61,9 @@ Next, in order:
 
 1. **Track groups.** Group volume/mute/solo is local; Suno models routing and
    `routing`/group tracks, but the captured routing shape has not been decoded.
-2. **Pan automation and fade-out.** Volume automation mirrors via
-   `faderAutomation`; pan automation and a clip fade-out have no captured target
-   (`paramAutomation` was empty in every capture, and our clip model has no
-   fade-out field).
+2. **Pan automation.** Volume automation mirrors via `faderAutomation`; pan
+   automation has no captured target (`paramAutomation` was empty in every
+   capture).
 3. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
 
 Known test lesson (fixed 2026-11-13): the automation and section-marker specs used

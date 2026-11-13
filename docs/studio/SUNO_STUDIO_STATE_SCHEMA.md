@@ -134,10 +134,16 @@ Both shapes were verified by saving synthetic lanes and reading them back.
 | `tracks[].color/name` | `color/name` | verified |
 | `tracks[].volumeAutomation` | `faderAutomation[{timeBeats,value}]` | written, pending read-back |
 | `lanes[].start/duration` | `startBeats/endBeats` | MIDI verified live |
+| `lanes[].offset/fadeIn/fadeOut` | `readStartBeats/fadeInBeats/fadeOutBeats` | seconds→beats |
 | `lanes[].midi.notes` | `clips[].midi.notes` | verified live |
-| generated clip asset | `asset {id,type:"song"}` | when the local clip carries a Suno clip id |
-| local upload without a Suno asset | — | — | **not mirrored**; the clip is reported in `skipped_clip_ids` |
-| audio clips already on Suno | preserved from the baseline | never dropped by a save |
+| `lanes[].midi.bend/mod` | `pitchBend` / `controlChanges` (CC 1) | verified live |
+| `lanes[].instrument` | synth `waveform1` | verified live |
+| `lanes[].takes` | `tracks[].takeLanes[].clips` | alternates need a Suno asset |
+| generated clip asset | `clips[].asset {id,type:"clip"}` | verified live |
+| local upload | `clips[].asset` | imported once, clip id cached |
+| `chains` (built-ins) | `tracks[].signalChain` | verified live |
+| `masterChain` | `masterSignalChain` | verified live |
+| `markers` | `sections` | verified live |
 
 Track/clip ids are stable UUIDs derived from the local id, stored back as
 `sunoId` when a document is pulled, so saves update instead of duplicating.
