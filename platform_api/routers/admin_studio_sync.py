@@ -10,10 +10,11 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from platform_api.config import get_settings
 from platform_api.middleware.auth import AuthContext, require_admin
+from platform_api.routers.web_music import WebMusicServiceDep
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -44,3 +45,13 @@ async def studio_sync_health(_admin: AdminDep) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"configured": True, "ok": False}
     return {"configured": True, "ok": True, **payload}
+
+
+@router.post("/studio-sync/backfill")
+async def backfill_studio_sync(
+    service: WebMusicServiceDep,
+    _admin: AdminDep,
+    limit: int = Query(20, ge=1, le=50),
+) -> dict[str, int]:
+    """Queue mirror links for a bounded batch of existing projects."""
+    return await service.backfill_studio_mirror(limit)

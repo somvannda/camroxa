@@ -1852,8 +1852,42 @@ class WebMusicService:
             "offset": safe_offset,
         }
 
-    async def _studio_batch_sync_statuses(
-        self, user_id: str, project_ids: list[str]
+    async def backfill_studio_mirror(self, limit: int = 20) -> dict[str, int]:
+        """Queue links for projects created before the mirror existed.
+
+        Bounded and idempotent: only projects without a link are queued, and
+        repeated calls make progress because linked projects gain a status.
+        """
+        if self._studio_sync_endpoint() is None:
+            return {"scanned": 0, "queued": 0}
+        safe = max(1, min(int(limit), 50))
+        rows = await self._pool.fetch(
+            """
+            SELECT id, user_id, title, major_version, bpm, time_signature, data
+            FROM studio_projects
+            ORDER BY updated_at ASC
+            LIMIT $1
+            """,
+            safe,
+        )
+        if not rows:
+            return {"scanned": 0, "queued": 0}
+        by_user: dict[str, list[Any]] = {}
+        for row in rows:
+            by_user.setdefault(str(row["user_id"]), []).append(row)
+        queued = 0
+        for user_id, user_rows in by_user.items():
+            statuses = await self._studio_batch_sync_statuses(
+                user_id, [str(row["id"]) for row in user_rows]
+            )
+            for row in user_rows:
+                if str(row["id"]) in statuses:
+                    continue
+                self.queue_studio_mirror(row)
+                queued += 1
+        return {"scanned": len(rows), "queued": queued}
+
+    async def _studio_batch_sync_statuses(        self, user_id: str, project_ids: list[str]
     ) -> dict[str, str]:
         """Mirror status per project for the list; best-effort and never blocking."""
         endpoint = self._studio_sync_endpoint()

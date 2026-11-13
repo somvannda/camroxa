@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, RefreshCw } from 'lucide-react';
 
@@ -24,11 +25,29 @@ type StudioSyncHealth = {
 };
 
 export default function StudioSyncPage() {
+  const [backfilling, setBackfilling] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['studio-sync-health'],
     queryFn: () => httpClient.get<StudioSyncHealth>('/api/v3/admin/studio-sync'),
     refetchInterval: 30_000,
   });
+
+  async function backfill() {
+    setBackfilling(true);
+    setNotice(null);
+    try {
+      const result = await httpClient.post<{ scanned: number; queued: number }>(
+        '/api/v3/admin/studio-sync/backfill?limit=20',
+      );
+      setNotice(`Queued ${result.queued} of ${result.scanned} project(s) for linking.`);
+      await refetch();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : 'Backfill failed.');
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -64,7 +83,21 @@ export default function StudioSyncPage() {
           <RefreshCw className={`mr-2 h-4 w-4${isFetching ? ' animate-spin' : ''}`} />
           Refresh
         </Button>
+        <Button variant="outline" onClick={() => void backfill()} disabled={backfilling}>
+          {backfilling ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
+          Backfill 20
+        </Button>
       </div>
+
+      {notice ? (
+        <p className="rounded-md border border-slate-800 bg-slate-900/60 px-4 py-2 text-sm text-slate-300">
+          {notice}
+        </p>
+      ) : null}
 
       {!data?.configured ? (
         <Card className="border-slate-800 bg-slate-900/50">

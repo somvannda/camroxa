@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -163,6 +163,37 @@ async def test_list_renders_when_the_mirror_is_unreachable() -> None:
     result = await service.list_studio_projects(row["user_id"])
 
     assert "sync" not in result["items"][0]
+
+
+@pytest.mark.asyncio
+async def test_backfill_queues_only_projects_without_a_link() -> None:
+    service = _service()
+    first = _project_row()
+    second = _project_row()
+    second["user_id"] = first["user_id"]
+    service._pool.fetch = AsyncMock(return_value=[first, second])
+    service._studio_batch_sync_statuses = AsyncMock(
+        return_value={str(first["id"]): "synced"}
+    )
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    service.queue_studio_mirror = MagicMock()
+
+    result = await service.backfill_studio_mirror(20)
+
+    assert result == {"scanned": 2, "queued": 1}
+    service.queue_studio_mirror.assert_called_once_with(second)
+
+
+@pytest.mark.asyncio
+async def test_backfill_is_a_noop_without_a_configured_mirror() -> None:
+    service = _service()
+    service._studio_sync_endpoint = lambda: None
+    service._pool.fetch = AsyncMock()
+
+    result = await service.backfill_studio_mirror(20)
+
+    assert result == {"scanned": 0, "queued": 0}
+    service._pool.fetch.assert_not_called()
 
 
 @pytest.mark.asyncio
