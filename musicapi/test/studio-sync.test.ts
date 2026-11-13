@@ -63,8 +63,9 @@ test("a dead session or a stale version is not retried; provider blips are", () 
   assert.equal(isRetryableStudioSyncError(new Error("Suno 429 too many requests")), true);
 });
 
-test("state sync stays off until the document schema is verified", () => {
-  assert.equal(stateSyncEnabled({} as NodeJS.ProcessEnv), false);
+test("state sync is on by default and can be killed with an env flag", () => {
+  assert.equal(stateSyncEnabled({} as NodeJS.ProcessEnv), true);
+  assert.equal(stateSyncEnabled({ STUDIO_SUNO_STATE_SYNC: "0" } as NodeJS.ProcessEnv), false);
   assert.equal(stateSyncEnabled({ STUDIO_SUNO_STATE_SYNC: "1" } as NodeJS.ProcessEnv), true);
 });
 
@@ -76,7 +77,7 @@ test("studioProjectMetadata trims the title and falls back when blank", () => {
   });
 });
 
-test("merge keeps Suno keys we do not model and writes only verified fields", () => {
+test("merge writes the verified fields and keeps the rest of the baseline", () => {
   const baseline = {
     title: "Old",
     majorVersion: 2,
@@ -89,23 +90,37 @@ test("merge keeps Suno keys we do not model and writes only verified fields", ()
   assert.equal(merged.title, "My Song");
   assert.equal(merged.majorVersion, 2);
   assert.equal((merged.timing as { bps: number }).bps, 2);
-  // Unknown and unmodelled keys survive verbatim.
-  assert.deepEqual(merged.tracks, baseline.tracks);
+  // Keys the codec does not model survive verbatim.
   assert.deepEqual(merged.somethingNew, baseline.somethingNew);
-  assert.deepEqual((merged.timing as { bpsAutomation: unknown[] }).bpsAutomation, []);
+  // The arrangement is regenerated from the local document, not copied.
+  assert.ok(Array.isArray(merged.tracks));
   // The baseline itself is never mutated, so a failed save cannot corrupt it.
   assert.equal(baseline.title, "Old");
-  assert.equal((baseline.timing as { bps: number }).bps, 1);
+  assert.equal(baseline.timing.bps, 1);
 });
 
-test("merge refuses to invent a document when Suno gave us no baseline", () => {
-  assert.equal(mergeLocalDocumentIntoSunoState(null, doc()), null);
+test("merge builds a complete document even without a baseline", () => {
+  const merged = mergeLocalDocumentIntoSunoState(null, doc());
+  assert.equal(merged.title, "My Song");
+  assert.deepEqual(merged.timing, {
+    type: "manual",
+    bps: 2.133333,
+    bpsAutomation: [],
+    lockBPS: false,
+  });
+  assert.ok(Array.isArray(merged.tracks));
+  assert.ok(merged.selection);
 });
 
-test("merge leaves a non-object timing value alone", () => {
-  const merged = mergeLocalDocumentIntoSunoState({ timing: "manual" }, doc());
+test("a non-object timing in the baseline is replaced by a structured block", () => {
+  const merged = mergeLocalDocumentIntoSunoState({ timing: "manual" }, doc({ bpm: 120 }));
   assert.ok(merged);
-  assert.equal(merged.timing, "manual");
+  assert.deepEqual(merged.timing, {
+    type: "manual",
+    bps: 2,
+    bpsAutomation: [],
+    lockBPS: false,
+  });
 });
 
 test("state sync is skipped while arrangement writes are disabled", () => {
@@ -176,7 +191,7 @@ test("the first push after a create uses the remote version as its base", () => 
   assert.equal(decision.baseVersionId, "v7");
 });
 
-test("no remote baseline means no push instead of an invented document", () => {
+test("no remote baseline still pushes a fresh project document", () => {
   const decision = decideStateSync({
     enabled: true,
     linkVersionId: null,
@@ -185,15 +200,19 @@ test("no remote baseline means no push instead of an invented document", () => {
     remoteState: null,
     doc: doc(),
   });
-  assert.deepEqual(decision, { kind: "no-baseline" });
+  assert.equal(decision.kind, "push");
+  if (decision.kind !== "push") return;
+  assert.equal(decision.baseVersionId, null);
+  assert.ok(Array.isArray(decision.state.tracks));
+  assert.deepEqual(decision.skippedClipIds, []);
 });
 
 test("the coverage registry counts every field and names the pending ones", () => {
   const summary = coverageSummary();
   assert.equal(summary.mapped + summary.pending + summary.remove, STUDIO_STATE_COVERAGE.length);
-  assert.equal(summary.mapped, 3);
-  assert.ok(summary.pending_keys.includes("tracks"));
-  assert.ok(summary.pending_keys.includes("lanes[] (clips)"));
+  assert.ok(summary.mapped >= 15);
+  assert.ok(summary.pending_keys.includes("audio clips (Suno asset)"));
+  assert.ok(summary.pending_keys.includes("chains"));
   // A removed feature must never quietly return as a "pending" mapping.
   const removed = STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "remove");
   assert.deepEqual(removed.map((entry) => entry.key), ["wavetableId"]);

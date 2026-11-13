@@ -23,3 +23,4 @@ import "./suno-error.test.js";
 import "./poll-clips.test.js";
 import "./captcha.test.js";
 import "./studio-sync.test.js";
+import "./studio-state-codec.test.js";

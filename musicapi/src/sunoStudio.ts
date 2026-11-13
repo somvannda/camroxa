@@ -10,6 +10,10 @@ import {
 } from "./client.js";
 import { withTransaction, query, queryOne } from "./db.js";
 import type { AccountPool } from "./pool.js";
+import {
+  projectDocumentToSunoState,
+  type LocalDocument,
+} from "./studioStateCodec.js";
 
 /**
  * Suno Studio project mirror.
@@ -53,6 +57,7 @@ export interface StudioSyncLink {
   suno_title: string | null;
   suno_state: unknown;
   state_hash: string | null;
+  skipped_clip_ids: unknown;
   archived: boolean;
   status: StudioSyncStatus;
   last_error: string | null;
@@ -67,6 +72,8 @@ export interface StudioSyncStatusView {
   suno_version_id: string | null;
   last_error: string | null;
   synced_at: string | null;
+  /** Local clips with no Suno asset yet; they are not in the mirrored project. */
+  skipped_clips: string[];
   /** True when arrangement writes are enabled; metadata-only otherwise. */
   state_sync: boolean;
 }
@@ -78,7 +85,9 @@ export interface StudioSyncStatusView {
  * project unopenable.
  */
 export function stateSyncEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.STUDIO_SUNO_STATE_SYNC === "1";
+  // On by default: the codec round-trips against a live project (see
+  // SUNO_STUDIO_STATE_SCHEMA.md). `STUDIO_SUNO_STATE_SYNC=0` is the kill switch.
+  return env.STUDIO_SUNO_STATE_SYNC !== "0";
 }
 
 /** `state` comes back as an object or (for older projects) a JSON string. */
@@ -174,21 +183,16 @@ export function studioProjectMetadata(doc: StudioProjectDocument): {
 export function mergeLocalDocumentIntoSunoState(
   baseline: Record<string, unknown> | null,
   doc: StudioProjectDocument
-): Record<string, unknown> | null {
-  if (!baseline) return null;
-  const next: Record<string, unknown> = { ...baseline };
-  const metadata = studioProjectMetadata(doc);
-  next.title = metadata.title;
-  next.majorVersion = metadata.majorVersion;
-
-  const timing = next.timing;
-  if (timing && typeof timing === "object" && !Array.isArray(timing)) {
-    const bpm = Number(doc.bpm);
-    if (Number.isFinite(bpm) && bpm > 0) {
-      next.timing = { ...(timing as Record<string, unknown>), bps: bpm / 60 };
-    }
-  }
-  return next;
+): Record<string, unknown> {
+  const { state } = projectDocumentToSunoState({
+    title: doc.title,
+    majorVersion: doc.majorVersion,
+    bpm: doc.bpm,
+    timeSignature: doc.timeSignature,
+    data: (doc.data ?? {}) as LocalDocument,
+    baseline,
+  });
+  return state;
 }
 
 /**
@@ -212,30 +216,31 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "title", suno: "title", status: "mapped" },
   { key: "majorVersion", suno: "majorVersion", status: "mapped" },
   { key: "bpm", suno: "timing.bps", status: "mapped" },
-  { key: "timeSignature", suno: "timeSignatureChanges / timing", status: "pending" },
-  { key: "tracks", suno: "tracks", status: "pending" },
-  { key: "tracks[].volume", suno: "tracks[].volume", status: "pending" },
-  { key: "tracks[].pan", suno: "tracks[].pan", status: "pending" },
-  { key: "tracks[].muted", suno: "tracks[].mute", status: "pending" },
-  { key: "tracks[].solo", suno: "tracks[].solo", status: "pending" },
-  { key: "tracks[].color", suno: "tracks[].color", status: "pending" },
-  { key: "tracks[].groupId", suno: "group tracks", status: "pending" },
-  { key: "lanes[] (clips)", suno: "clips", status: "pending" },
-  { key: "lanes[].start/duration", suno: "clips[].startBeats/endBeats", status: "pending" },
+  { key: "timeSignature", suno: "timeSignatureChanges", status: "mapped" },
+  { key: "masterVolume/masterMuted", suno: "amplitude", status: "mapped" },
+  { key: "loopStart/loopEnd", suno: "loop", status: "mapped" },
+  { key: "tracks", suno: "tracks", status: "mapped" },
+  { key: "tracks[].volume", suno: "tracks[].amplitude", status: "mapped" },
+  { key: "tracks[].pan", suno: "tracks[].balance", status: "mapped" },
+  { key: "tracks[].muted", suno: "tracks[].mute", status: "mapped" },
+  { key: "tracks[].solo", suno: "tracks[].solo", status: "mapped" },
+  { key: "tracks[].hidden", suno: "tracks[].hidden", status: "mapped" },
+  { key: "tracks[].color", suno: "tracks[].color", status: "mapped" },
+  { key: "lanes[] (MIDI clips)", suno: "tracks[].clips (type midi)", status: "mapped" },
+  { key: "lanes[].start/duration", suno: "clips[].startBeats/endBeats", status: "mapped" },
+  { key: "lanes[].midi.notes", suno: "clips[].midi.notes", status: "mapped" },
+  { key: "track volumeAutomation", suno: "tracks[].faderAutomation", status: "mapped" },
+  { key: "audio clips (Suno asset)", suno: "clips[].asset", status: "pending", note: "needs the Suno clip id per local clip" },
   { key: "lanes[].offset", suno: "clips[].readStartBeats", status: "pending" },
   { key: "lanes[].fades", suno: "clips[].fadeInBeats/fadeOutBeats", status: "pending" },
-  { key: "lanes[].midi.notes", suno: "notes (pitch/start/velocity)", status: "pending" },
-  { key: "lanes[].midi.bend", suno: "automation lane", status: "pending" },
-  { key: "lanes[].midi.mod", suno: "automation lane", status: "pending" },
-  { key: "lanes[].instrument", suno: "clip instrument voice", status: "pending" },
-  { key: "chains", suno: "plugins", status: "pending" },
+  { key: "lanes[].midi.bend/mod", suno: "clips[].midi.pitchBend/controlChanges", status: "pending" },
+  { key: "lanes[].instrument", suno: "tracks[].signalChain synth", status: "pending" },
+  { key: "chains", suno: "tracks[].signalChain", status: "pending" },
   { key: "masterChain", suno: "masterSignalChain", status: "pending" },
   { key: "markers", suno: "sections", status: "pending" },
-  { key: "groups", suno: "group tracks", status: "pending" },
-  { key: "volumeAutomation", suno: "automation", status: "pending" },
-  { key: "panAutomation", suno: "automation", status: "pending" },
-  { key: "masterVolume/masterMuted", suno: "routing / amplitude", status: "pending" },
-  { key: "pluginPresets", suno: "plugins[].params", status: "pending" },
+  { key: "groups", suno: "routing / group tracks", status: "pending" },
+  { key: "panAutomation", suno: "tracks[].paramAutomation", status: "pending" },
+  { key: "pluginPresets", suno: "signalChain[].params", status: "pending" },
   { key: "wavetableId", suno: "—", status: "remove", note: "designer removed (D-034)" },
 ];
 
@@ -267,8 +272,12 @@ export function coverageSummary(): {
 export type StateSyncDecision =
   | { kind: "skip" }
   | { kind: "conflict" }
-  | { kind: "no-baseline" }
-  | { kind: "push"; state: Record<string, unknown>; baseVersionId: string | null };
+  | {
+      kind: "push";
+      state: Record<string, unknown>;
+      baseVersionId: string | null;
+      skippedClipIds: string[];
+    };
 
 export function decideStateSync(args: {
   enabled: boolean;
@@ -289,9 +298,20 @@ export function decideStateSync(args: {
   if (args.stateHash && args.stateHash === studioDocumentHash(args.doc.data)) {
     return { kind: "skip" };
   }
-  const merged = mergeLocalDocumentIntoSunoState(args.remoteState, args.doc);
-  if (!merged) return { kind: "no-baseline" };
-  return { kind: "push", state: merged, baseVersionId: args.remoteVersionId };
+  const { state, skippedClipIds } = projectDocumentToSunoState({
+    title: args.doc.title,
+    majorVersion: args.doc.majorVersion,
+    bpm: args.doc.bpm,
+    timeSignature: args.doc.timeSignature,
+    data: (args.doc.data ?? {}) as LocalDocument,
+    baseline: args.remoteState,
+  });
+  return {
+    kind: "push",
+    state,
+    baseVersionId: args.remoteVersionId,
+    skippedClipIds,
+  };
 }
 
 /**
@@ -439,6 +459,9 @@ export class StudioProjectSync {
       let status: StudioSyncStatus = "linked";
       let version = remoteVersion;
       let nextState = remoteState;
+      let skippedClipIds: string[] = Array.isArray(link.skipped_clip_ids)
+        ? (link.skipped_clip_ids as string[])
+        : [];
       const decision = decideStateSync({
         enabled: stateSyncEnabled(),
         linkVersionId: link.suno_version_id,
@@ -460,6 +483,7 @@ export class StudioProjectSync {
         });
         version = saved.versionId;
         nextState = decision.state;
+        skippedClipIds = decision.skippedClipIds;
         status = "synced";
       } else if (decision.kind === "skip" && stateSyncEnabled()) {
         status = "synced";
@@ -472,6 +496,7 @@ export class StudioProjectSync {
            suno_state = COALESCE($4::jsonb, suno_state),
            state_hash = $5,
            status = $6,
+           skipped_clip_ids = $7::jsonb,
            last_error = NULL,
            synced_at = now(),
            updated_at = now()
@@ -484,6 +509,7 @@ export class StudioProjectSync {
           nextState ? JSON.stringify(nextState) : null,
           hash,
           status,
+          JSON.stringify(skippedClipIds),
         ]
       );
       await query("DELETE FROM studio_suno_outbox WHERE local_project_id = $1", [
@@ -673,6 +699,9 @@ function statusView(link: StudioSyncLink | null): StudioSyncStatusView {
     suno_version_id: link?.suno_version_id ?? null,
     last_error: link?.last_error ?? null,
     synced_at: link?.synced_at ? new Date(link.synced_at).toISOString() : null,
+    skipped_clips: Array.isArray(link?.skipped_clip_ids)
+      ? (link?.skipped_clip_ids as string[])
+      : [],
     state_sync: stateSyncEnabled(),
   };
 }

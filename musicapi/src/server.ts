@@ -8928,7 +8928,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!status) {
       // No link yet is a valid state for a project created before the mirror.
       return reply.send({ status: "pending", suno_project_id: null, suno_version_id: null,
-        last_error: null, synced_at: null, state_sync: stateSyncEnabled() });
+        last_error: null, synced_at: null, skipped_clips: [], state_sync: stateSyncEnabled() });
     }
     return reply.send(status);
   });

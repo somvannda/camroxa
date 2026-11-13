@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS studio_suno_projects (
   suno_title TEXT,
   suno_state JSONB,
   state_hash TEXT,
+  skipped_clip_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
   archived BOOLEAN NOT NULL DEFAULT false,
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'linked', 'synced', 'conflict', 'error')),
