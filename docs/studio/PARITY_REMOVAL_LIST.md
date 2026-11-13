@@ -73,33 +73,24 @@ chain, section markers, groups, pan automation. `STUDIO_STATE_COVERAGE` in
 `musicapi/src/sunoStudio.ts` is the list the health endpoint reports, so this
 section cannot drift from the code.
 
-## Designed plugins: a decision, not a wiring gap (2026-11-13)
+## Designed plugins: rebuilt on Suno's agent (decided 2026-11-13)
 
-Our custom plugin designer writes parameters to a local document; Suno has no
-parameter-import endpoint. What it has is an **agent job**:
+**Decision: option 1.** The designer's "Build it" asks Suno's authoring agent for
+a plugin, saves the descriptor into the account's plugin library, and the chain
+entry references it with `catalogPluginId` + `pluginVersionId`. The local
+deterministic designer is gone.
 
-```
-POST /api/agent/author-plugin
-  { instruction, required_controls, studioAgentSessionId, studioProjectId }
-  -> { job_id }
-GET  /api/agent/author-plugin/{job_id}
-```
+The alternatives were dropping the designer (deletes capability Suno has) or
+keeping it local (a documented divergence, against D-034). The live contract,
+payloads, probe evidence and implementation map are in
+`SUNO_STUDIO_AGENT_PLUGINS.md`.
 
-(from `reference/endpoint-inventory.json`). So mirroring a designed plugin means
-asking Suno's agent to author one and then referencing the returned
-`pluginVersionId` — a generative, credit-spending, non-deterministic flow, not a field
-mapping. Three ways forward, and one of them must be chosen:
+Consequences:
 
-1. **Rebuild the designer on their agent** — closest to parity, spends credits per
-   design and changes a shipped feature's architecture.
-2. **Drop the designer** — what D-034 says when a feature has no mapped document field,
-   but Suno *does* have plugin authoring, so this deletes capability the reference has.
-3. **Keep it local and record it as a deliberate divergence** — honest, documented, and
-   reversible; the chain entry simply stays out of `signalChain` on Suno.
+- A build spends Suno credits and is generative (the agent decides the DSP).
+- The local audio engine still approximates the authored effect by family; it
+  cannot execute Suno's plugin code (recorded as the remaining audio gap).
+- The codec maps designed entries in both directions, and a pull hydrates the
+  control snapshot from `/api/plugins/{id}` so the plugin renders on any device.
 
-Until someone picks, the codec keeps custom entries out of `signalChain`, a pull
-appends them back onto the local chain (reported as `kept_local_effects`), and the
-sync coverage registry lists "designed plugins (custom chain entries)" as pending.
-Nothing silently drops: a project with a designed plugin reports the gap through
-the coverage list instead.
 

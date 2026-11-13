@@ -253,4 +253,6 @@ fold distortion and a chorus read back as
 and the master chain as
 `[limiter, eq(gain3:6), compressor(threshold:-18, ratio:5)]`.
 
-Custom plugins stay local: they have no Suno `pluginVersionId`.
+Custom plugins authored by Suno's agent carry `catalogPluginId` + `pluginVersionId`
+and mirror like any other effect; the authoring flow and payloads are in
+`SUNO_STUDIO_AGENT_PLUGINS.md`.
