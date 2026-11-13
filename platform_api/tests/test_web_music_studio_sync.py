@@ -66,14 +66,38 @@ async def test_status_checks_ownership_before_calling_the_mirror() -> None:
 @pytest.mark.asyncio
 async def test_refresh_proxies_the_read_only_check() -> None:
     service = _service()
-    service._pool.fetchrow = AsyncMock(return_value={"id": uuid4()})
-    service._studio_sync_request = AsyncMock(return_value={**PENDING, "status": "conflict"})
+    row = _project_row()
+    service._pool.fetchrow = AsyncMock(return_value=row)
+    service._studio_sync_request = AsyncMock(
+        return_value={**PENDING, "status": "conflict", "suno_project_id": "suno-1"}
+    )
 
-    result = await service.refresh_studio_project(uuid4(), uuid4())
+    result = await service.refresh_studio_project(row["user_id"], row["id"])
 
     assert result["status"] == "conflict"
     service._studio_sync_request.assert_awaited_once()
     assert service._studio_sync_request.await_args.args[2] == "refresh"
+
+
+@pytest.mark.asyncio
+async def test_refresh_rearms_a_mirror_that_never_reached_musicapi() -> None:
+    service = _service()
+    row = _project_row()
+    service._pool.fetchrow = AsyncMock(return_value=row)
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    service._studio_sync_request = AsyncMock(
+        side_effect=[
+            {**PENDING, "status": "pending", "suno_project_id": None},
+            {"status": "queued"},
+            {**PENDING, "status": "synced", "suno_project_id": "suno-2"},
+        ]
+    )
+
+    result = await service.refresh_studio_project(row["user_id"], row["id"])
+
+    assert result["status"] == "synced"
+    actions = [call.args[2] for call in service._studio_sync_request.await_args_list]
+    assert actions == ["refresh", "enqueue", "refresh"]
 
 
 @pytest.mark.asyncio

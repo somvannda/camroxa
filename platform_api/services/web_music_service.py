@@ -1965,9 +1965,27 @@ class WebMusicService:
         if document is None or self._studio_sync_endpoint() is None:
             return
         project_id = str(row["id"])
-        self._schedule_studio_request(
-            str(row["user_id"]), project_id, "enqueue", document
-        )
+        try:
+            asyncio.create_task(
+                self._studio_enqueue_with_retry(str(row["user_id"]), project_id, document)
+            )
+        except RuntimeError:
+            logger.debug("no event loop for studio mirror enqueue")
+
+    async def _studio_enqueue_with_retry(
+        self, user_id: str, project_id: str, document: dict[str, Any]
+    ) -> None:
+        """Retry the initial enqueue so a provider outage cannot drop it.
+
+        If musicapi itself is unreachable the request never reaches its outbox, so
+        the platform retries a few times; a periodic `refresh` re-arms it later if
+        every attempt fails.
+        """
+        for attempt in range(3):
+            result = await self._studio_sync_request(user_id, project_id, "enqueue", document)
+            if result is not None:
+                return
+            await asyncio.sleep(2**attempt)
 
     def _schedule_studio_request(
         self,
@@ -2299,15 +2317,25 @@ class WebMusicService:
         }
 
     async def refresh_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
-        """Ask Suno whether it moved ahead; never touches the local document."""
+        """Ask Suno whether it moved ahead; never touches the local document.
+
+        If the project has no link yet — the first enqueue never reached musicapi
+        because it was down — re-arm the mirror here. The editor calls this on open
+        and periodically, so a missed create heals on its own.
+        """
         project = await self._pool.fetchrow(
-            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
             project_id,
             user_id,
         )
         if project is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         view = await self._studio_sync_request(str(user_id), str(project_id), "refresh")
+        if view is None or not view.get("suno_project_id"):
+            document = self._studio_sync_document(project)
+            if document is not None and self._studio_sync_endpoint() is not None:
+                await self._studio_sync_request(str(user_id), str(project_id), "enqueue", document)
+                view = await self._studio_sync_request(str(user_id), str(project_id), "refresh")
         return view or {
             "status": "pending",
             "suno_project_id": None,
