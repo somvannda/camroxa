@@ -306,6 +306,19 @@ export class StudioProjectSync {
       }
       const client = this.clientFor(link.account_label);
       const metadata = studioProjectMetadata(doc);
+      const hash = studioDocumentHash(doc.data);
+
+      // Metadata-only mode: if the link already reflects this exact document
+      // there is nothing to push and no reason to spend a provider round trip.
+      if (
+        !stateSyncEnabled() &&
+        link.suno_title === metadata.title &&
+        link.state_hash === hash &&
+        !link.archived &&
+        link.status !== "error"
+      ) {
+        return statusView(link);
+      }
 
       // Title and archive state are cheap and safe; push them only on change.
       if (link.suno_title !== metadata.title) {
@@ -318,7 +331,6 @@ export class StudioProjectSync {
       const remote = await client.getStudioProject(link.suno_project_id);
       const remoteState = parseStudioState(remote.state);
       const remoteVersion = remote.latest_version_id ?? link.suno_version_id;
-      const hash = studioDocumentHash(doc.data);
 
       let status: StudioSyncStatus = "linked";
       let version = remoteVersion;

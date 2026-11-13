@@ -575,7 +575,9 @@ export class SunoClient {
     if (opts.majorVersion !== undefined) {
       params.set("major_version", String(opts.majorVersion));
     }
-    const res = await this.request(`/api/studio/create-project?${params.toString()}`);
+    const res = await this.request(`/api/studio/create-project?${params.toString()}`, {
+      method: "POST",
+    });
     if (!res.ok) throw await sunoHttpError("studio/create-project", res);
     const data = (await res.json()) as { id?: string; title?: string };
     if (!data.id) throw new Error("Suno did not return a Studio project id.");
@@ -624,8 +626,12 @@ export class SunoClient {
       }),
     });
     if (res.status === 409) {
-      const body = (await res.json().catch(() => ({}))) as { latest_version_id?: string | null };
-      throw new StudioProjectConflictError(body.latest_version_id ?? null);
+      const body = (await res.json().catch(() => ({}))) as {
+        latest_version_id?: string | null;
+        error?: { latest_version_id?: string | null };
+      };
+      const latest = body.latest_version_id ?? body.error?.latest_version_id ?? null;
+      throw new StudioProjectConflictError(latest);
     }
     if (res.status === 429) throw new StudioProjectRateLimitedError();
     if (!res.ok) throw await sunoHttpError("studio/save-project", res);
