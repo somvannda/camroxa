@@ -205,6 +205,8 @@ function sunoClipFromLocal(
   const duration = Math.max(0, Number(clip.duration) || 0);
   const startBeats = beatsFromSeconds(start, bps);
   const endBeats = beatsFromSeconds(start + duration, bps);
+  const readStartBeats = beatsFromSeconds(Number(clip.offset) || 0, bps);
+  const fadeInBeats = Math.max(0, beatsFromSeconds(Number(clip.fadeIn) || 0, bps));
   const midi = midiFromLocal(clip, bps);
   const assetId =
     typeof clip.sunoAssetId === "string" && clip.sunoAssetId ? clip.sunoAssetId : null;
@@ -217,13 +219,13 @@ function sunoClipFromLocal(
     color: clip.color ?? track.color,
     startBeats,
     endBeats,
-    readStartBeats: 0,
-    fadeInBeats: 0,
+    readStartBeats,
+    fadeInBeats,
     fadeOutBeats: 0,
     fadeInCurve: 1,
     fadeOutCurve: 1,
     mute: false,
-    loop: { enabled: false, startBeats: 0, endBeats },
+    loop: { enabled: false, startBeats: readStartBeats, endBeats },
   };
   if (midi) body.midi = midi;
   if (assetId) {
@@ -480,6 +482,8 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
           (Number(clip.endBeats) || 0) - (Number(clip.startBeats) || 0),
           bps
         ),
+        offset: secondsFromBeats(Number(clip.readStartBeats) || 0, bps),
+        fadeIn: secondsFromBeats(Number(clip.fadeInBeats) || 0, bps),
         midi: midi
           ? {
               notes: (midi.notes ?? []).map((note) => ({

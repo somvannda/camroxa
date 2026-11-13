@@ -60,6 +60,8 @@ function localDocument(): LocalDocument {
         title: "Song",
         start: 8,
         duration: 4,
+        offset: 1,
+        fadeIn: 0.5,
         sunoAssetId: "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
       },
     ],
@@ -130,6 +132,9 @@ test("an audio clip without a Suno asset is skipped and reported", () => {
   });
   assert.equal(audioClips[0].clipId, "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a");
   assert.equal(audioClips[0].startBeats, 16);
+  assert.equal(audioClips[0].readStartBeats, 2);
+  assert.equal(audioClips[0].fadeInBeats, 1);
+  assert.deepEqual(audioClips[0].loop, { enabled: false, startBeats: 2, endBeats: 24 });
 });
 
 test("unknown Suno keys survive a rebuild", () => {
