@@ -243,7 +243,7 @@ test("the coverage registry counts every field and names the pending ones", () =
   // A removed feature must never quietly return as a "pending" mapping.
   const removed = STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "remove");
   assert.deepEqual(removed.map((entry) => entry.key).sort(), ["groups", "wavetableId"]);
-  // The designed-plugin mirror has no field mapping; it must stay visible as a
-  // pending gap until the product decision (agent authoring / drop / diverge).
-  assert.ok(summary.pending_keys.includes("designed plugins (custom chain entries)"));
+  // Designed plugins are authored by Suno's agent, so their chain entries mirror
+  // through catalogPluginId + pluginVersionId (no local-only exception).
+  assert.ok(!summary.pending_keys.includes("designed plugins (Suno agent)"));
 });

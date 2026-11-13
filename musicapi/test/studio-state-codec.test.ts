@@ -10,6 +10,7 @@ import {
   secondsFromBeats,
   stableSunoId,
   SUNO_SYNTH_PLUGIN_ID,
+  sunoPluginToLocalCustom,
   sunoStateToProjectData,
   timeSignatureFromState,
   timeSignatureParts,
@@ -1000,6 +1001,114 @@ test("an empty local-only track is dropped when Suno no longer has it", () => {
   assert.deepEqual(merged.droppedTracks, ["track-2"]);
   // A dropped track's chain must not be left behind as an orphan.
   assert.deepEqual(Object.keys(merged.data.chains ?? {}), ["track-1"]);
+  assert.deepEqual(merged.keptLocalEffects, []);
+});
+
+test("a designed plugin mirrors through its Suno library ids", () => {
+  const data = localDocument();
+  const sunoPluginId = "10c35bed-09ff-4bfe-86a8-f386bc281934";
+  const sunoPluginVersionId = "53004c03-2451-47d2-957a-3acac99a626a";
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "custom-entry",
+        pluginId: "custom",
+        presetName: "Custom",
+        params: { Cutoff: 300, Mix: 0.6 },
+        custom: {
+          name: "Gentle High-Pass",
+          sunoPluginId,
+          sunoPluginVersionId,
+        },
+      },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "Designed plugin",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
+    Record<string, unknown>
+  >;
+  const authored = chain.find((entry) => entry.catalogPluginId === sunoPluginId);
+  assert.ok(authored);
+  assert.equal(authored.pluginVersionId, sunoPluginVersionId);
+  assert.deepEqual(authored.params, { Cutoff: 300, Mix: 0.6 });
+
+  const snapshot = sunoPluginToLocalCustom({
+    plugin: { id: sunoPluginId, name: "Gentle High-Pass" },
+    version: {
+      plugin_version_id: sunoPluginVersionId,
+      payload: {
+        displayName: "Gentle High-Pass",
+        description: "A smooth stereo high-pass filter.",
+        parameters: [
+          { name: "Cutoff", label: "Cutoff", default: 120, range: { min: 20, max: 2000 }, unit: "hz" },
+          { name: "Mix", label: "Mix", default: 0.5, range: { min: 0, max: 1 }, unit: "percent" },
+        ],
+      },
+    },
+    prompt: "a gentle high-pass filter",
+  });
+  assert.ok(snapshot);
+  const projected = sunoStateToProjectData(state, {
+    customPlugins: { [sunoPluginId]: snapshot },
+  });
+  const pulled = projected.chains[stableSunoId("track-1")]?.[0];
+  assert.ok(pulled);
+  assert.equal(pulled.pluginId, "custom");
+  assert.equal(pulled.sunoPluginId, sunoPluginId);
+  assert.equal(pulled.sunoPluginVersionId, sunoPluginVersionId);
+  assert.equal((pulled.params as Record<string, number>).Mix, 0.6);
+  assert.equal((pulled.custom as Record<string, unknown>)?.sunoPluginId, sunoPluginId);
+});
+
+test("a pull does not duplicate a designed plugin Suno already carries", () => {
+  const sunoTrackId = "11111111-1111-5111-a111-111111111111";
+  const sunoPluginId = "10c35bed-09ff-4bfe-86a8-f386bc281934";
+  const sunoPluginVersionId = "53004c03-2451-47d2-957a-3acac99a626a";
+  const local: LocalDocument = {
+    tracks: [{ id: "track-1", sunoId: sunoTrackId, index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      "track-1": [
+        {
+          entryId: "custom-entry",
+          pluginId: "custom",
+          presetName: "Custom",
+          params: { Cutoff: 300 },
+          sunoPluginId,
+          sunoPluginVersionId,
+        },
+      ],
+    },
+  };
+  const pulledEntryId = stableSunoId("custom-entry");
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [{ id: sunoTrackId, sunoId: sunoTrackId, name: "Keys", index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      [sunoTrackId]: [
+        {
+          entryId: "entry-22222222",
+          pluginId: "custom",
+          presetName: "Custom",
+          params: { Cutoff: 300 },
+          sunoPluginId,
+          sunoPluginVersionId,
+          sunoId: pulledEntryId,
+        },
+      ],
+    },
+  });
+  const chain = merged.data.chains?.["track-1"] ?? [];
+  assert.equal(chain.length, 1);
   assert.deepEqual(merged.keptLocalEffects, []);
 });
 
