@@ -1,0 +1,522 @@
+import { createHash } from "node:crypto";
+
+import {
+  StudioAccountError,
+  StudioProjectConflictError,
+  StudioProjectMissingError,
+  StudioProjectRateLimitedError,
+  SunoClient,
+  type SunoStudioProject,
+} from "./client.js";
+import { withTransaction, query, queryOne } from "./db.js";
+import type { AccountPool } from "./pool.js";
+
+/**
+ * Suno Studio project mirror.
+ *
+ * A Camxora project has at most one Suno Studio project, pinned to one Suno
+ * account for its whole life. This module owns that mapping, the coalescing
+ * outbox that retries pushes, and the (deliberately conservative) translation
+ * from the local document to Suno's `state`.
+ *
+ * The authoritative project document lives in the platform database, so callers
+ * pass a snapshot with every sync request. Nothing here reads another service's
+ * tables; the link table only holds what the mirror itself needs.
+ *
+ * Suno's Studio document schema is not published. The keys and the versioning
+ * contract below come from the shipped client bundle
+ * (`docs/studio/reference/endpoint-inventory.md`, `docs/studio/SUNO_STUDIO_SYNC.md`),
+ * so writes start with the fields we can prove and grow from there. A save
+ * always merges into the last document Suno returned, so fields we do not model
+ * survive a round trip instead of being dropped.
+ */
+
+export type StudioSyncStatus = "pending" | "linked" | "synced" | "conflict" | "error";
+
+/** Everything the mirror needs from the platform-side project row. */
+export interface StudioProjectDocument {
+  localProjectId: string;
+  userId: string;
+  title: string;
+  majorVersion: number;
+  bpm: number;
+  timeSignature: string;
+  data: unknown;
+}
+
+export interface StudioSyncLink {
+  local_project_id: string;
+  user_id: string;
+  account_label: string;
+  suno_project_id: string;
+  suno_version_id: string | null;
+  suno_title: string | null;
+  suno_state: unknown;
+  state_hash: string | null;
+  archived: boolean;
+  status: StudioSyncStatus;
+  last_error: string | null;
+  synced_at: string | Date | null;
+  updated_at: string | Date;
+}
+
+export interface StudioSyncStatusView {
+  status: StudioSyncStatus;
+  suno_project_id: string | null;
+  suno_version_id: string | null;
+  last_error: string | null;
+  synced_at: string | null;
+  /** True when arrangement writes are enabled; metadata-only otherwise. */
+  state_sync: boolean;
+}
+
+/**
+ * Arrangement writes stay off until the Suno `state` schema has been captured
+ * from a live project. Creating the project and mirroring its metadata is safe
+ * on its own; guessing keys is not, because a bad document can make a real Suno
+ * project unopenable.
+ */
+export function stateSyncEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.STUDIO_SUNO_STATE_SYNC === "1";
+}
+
+/** `state` comes back as an object or (for older projects) a JSON string. */
+export function parseStudioState(value: unknown): Record<string, unknown> | null {
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** Stable hash of the mirrored document, used to skip no-op pushes. */
+export function studioDocumentHash(document: unknown): string {
+  return createHash("sha256").update(canonicalJson(document)).digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+}
+
+/**
+ * Retry schedule for the outbox: quick first retries while a provider blip is
+ * likely, then a slow hourly probe so a dead session still recovers without
+ * hammering Suno.
+ */
+export function studioSyncBackoffMs(attempts: number): number {
+  const ladder = [2_000, 8_000, 30_000, 120_000, 600_000, 3_600_000];
+  const index = Math.min(Math.max(attempts, 1) - 1, ladder.length - 1);
+  return ladder[index];
+}
+
+/**
+ * Errors worth retrying. A dead session, a stale version and a missing project
+ * all need a human or a reconcile step, so they stop the loop instead of
+ * burning retries forever.
+ */
+export function isRetryableStudioSyncError(error: unknown): boolean {
+  if (
+    error instanceof StudioAccountError ||
+    error instanceof StudioProjectConflictError ||
+    error instanceof StudioProjectMissingError
+  ) {
+    return false;
+  }
+  if (error instanceof StudioProjectRateLimitedError) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return !/session|401|403|forbidden|unauthori[sz]ed/i.test(message);
+}
+
+/**
+ * The project metadata Phase 1 mirrors. Kept separate from the arrangement so
+ * the title can be pushed through the dedicated metadata route without touching
+ * the document.
+ */
+export function studioProjectMetadata(doc: StudioProjectDocument): {
+  title: string;
+  majorVersion: number;
+} {
+  const title = String(doc.title ?? "").trim().slice(0, 120);
+  return {
+    title: title || "Untitled Project",
+    majorVersion: Number.isFinite(doc.majorVersion) ? doc.majorVersion : 2,
+  };
+}
+
+/**
+ * Merge the fields of the local document that we can prove map onto Suno's
+ * `state` into the last document Suno returned.
+ *
+ * Every other key — including keys Suno owns that we have never seen — is
+ * preserved. Returns `null` when there is no baseline to merge into, because
+ * building a document from scratch would discard Suno's defaults.
+ *
+ * Verified now: `title`, `majorVersion`, and `timing.bps` (beats per second;
+ * Suno's transport derives tempo from `bps`/`bpsAutomation`).
+ */
+export function mergeLocalDocumentIntoSunoState(
+  baseline: Record<string, unknown> | null,
+  doc: StudioProjectDocument
+): Record<string, unknown> | null {
+  if (!baseline) return null;
+  const next: Record<string, unknown> = { ...baseline };
+  const metadata = studioProjectMetadata(doc);
+  next.title = metadata.title;
+  next.majorVersion = metadata.majorVersion;
+
+  const timing = next.timing;
+  if (timing && typeof timing === "object" && !Array.isArray(timing)) {
+    const bpm = Number(doc.bpm);
+    if (Number.isFinite(bpm) && bpm > 0) {
+      next.timing = { ...(timing as Record<string, unknown>), bps: bpm / 60 };
+    }
+  }
+  return next;
+}
+
+/**
+ * Owns the mapping table, account pinning and the retry loop. One instance per
+ * process; `buildServer` creates one for the routes and `serve` starts a second
+ * one on a timer. They share nothing but the database, so either can run alone.
+ */
+export class StudioProjectSync {
+  constructor(private readonly pool: AccountPool) {}
+
+  /** The pinned account for a user, or null before their first project. */
+  private async pinnedAccount(userId: string): Promise<string | null> {
+    const row = await queryOne<{ account_label: string }>(
+      "SELECT account_label FROM studio_suno_accounts WHERE user_id = $1",
+      [userId]
+    );
+    return row?.account_label ?? null;
+  }
+
+  /**
+   * Pin an account for the user on first use.
+   *
+   * Suno projects are account-scoped, so the pin is permanent for that user:
+   * every project they create later is mirrored through the same account.
+   * Selection prefers a paid account that advertises Studio; when the pool has
+   * none (sandbox, fresh host) it falls back to the normal picker so local
+   * development still exercises the path.
+   */
+  private async pinAccount(userId: string): Promise<string> {
+    const existing = await this.pinnedAccount(userId);
+    if (existing) return existing;
+    let client: SunoClient;
+    try {
+      client = await this.pool.pickFeature("studio", undefined, "paid_only");
+    } catch {
+      client = await this.pool.pick(undefined, "any");
+    }
+    await query(
+      `INSERT INTO studio_suno_accounts (user_id, account_label)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId, client.account.id]
+    );
+    const stored = await this.pinnedAccount(userId);
+    if (!stored) throw new Error("Could not pin a Suno account for this user.");
+    return stored;
+  }
+
+  private clientFor(accountLabel: string): SunoClient {
+    const client = this.pool.get(accountLabel);
+    if (!client) {
+      throw new StudioAccountError(
+        `The pinned Suno account ${accountLabel} is not active; re-authenticate it before syncing.`
+      );
+    }
+    return client;
+  }
+
+  async link(localProjectId: string): Promise<StudioSyncLink | null> {
+    return queryOne<StudioSyncLink>(
+      "SELECT * FROM studio_suno_projects WHERE local_project_id = $1",
+      [localProjectId]
+    );
+  }
+
+  /**
+   * Ensure the Suno project exists and return the link.
+   *
+   * Creation is serialized per local project with an advisory transaction lock
+   * so two workers (or a retry racing a request) can never create two Suno
+   * projects for one Camxora project. The lock is held across the provider call
+   * on purpose: correctness here is worth one short transaction.
+   */
+  async ensureLink(doc: StudioProjectDocument): Promise<StudioSyncLink> {
+    const existing = await this.link(doc.localProjectId);
+    if (existing) return existing;
+
+    const accountLabel = await this.pinAccount(doc.userId);
+    const client = this.clientFor(accountLabel);
+    const metadata = studioProjectMetadata(doc);
+
+    await withTransaction(async (tx) => {
+      await tx("SELECT pg_advisory_xact_lock(hashtext($1))", [`studio-suno:${doc.localProjectId}`]);
+      const raced = await tx<{ local_project_id: string }>(
+        "SELECT local_project_id FROM studio_suno_projects WHERE local_project_id = $1",
+        [doc.localProjectId]
+      );
+      if (raced.length > 0) return;
+      const created = await client.createStudioProject(metadata.title, {
+        majorVersion: metadata.majorVersion,
+      });
+      await tx(
+        `INSERT INTO studio_suno_projects
+           (local_project_id, user_id, account_label, suno_project_id, suno_title, status)
+         VALUES ($1, $2, $3, $4, $5, 'pending')
+         ON CONFLICT (local_project_id) DO NOTHING`,
+        [doc.localProjectId, doc.userId, accountLabel, created.id, created.title]
+      );
+    });
+
+    const link = await this.link(doc.localProjectId);
+    if (!link) throw new Error("The Suno project link could not be stored.");
+    return link;
+  }
+
+  /**
+   * Push one project. Idempotent: it ensures the link, mirrors metadata and —
+   * when arrangement writes are enabled — saves the merged document, adopting
+   * the returned version.
+   */
+  async syncProject(doc: StudioProjectDocument): Promise<StudioSyncStatusView> {
+    try {
+      const link = await this.ensureLink(doc);
+      if (link.user_id !== doc.userId) {
+        throw new StudioAccountError("This Suno project belongs to another Camxora user.");
+      }
+      const client = this.clientFor(link.account_label);
+      const metadata = studioProjectMetadata(doc);
+
+      // Title and archive state are cheap and safe; push them only on change.
+      if (link.suno_title !== metadata.title) {
+        await client.updateStudioProjectMetadata(link.suno_project_id, { title: metadata.title });
+      }
+      if (link.archived) {
+        await client.setStudioProjectArchived(link.suno_project_id, true);
+      }
+
+      const remote = await client.getStudioProject(link.suno_project_id);
+      const remoteState = parseStudioState(remote.state);
+      const remoteVersion = remote.latest_version_id ?? link.suno_version_id;
+      const hash = studioDocumentHash(doc.data);
+
+      let status: StudioSyncStatus = "linked";
+      let version = remoteVersion;
+      let nextState = remoteState;
+      if (stateSyncEnabled()) {
+        if (link.suno_version_id && remoteVersion && link.suno_version_id !== remoteVersion) {
+          // Somebody saved on Suno since our last push: keep the remote state
+          // for the reconciliation UI instead of overwriting it.
+          status = "conflict";
+        } else if (link.state_hash !== hash) {
+          const merged = mergeLocalDocumentIntoSunoState(remoteState, doc);
+          if (merged) {
+            const saved = await client.saveStudioProject({
+              projectId: link.suno_project_id,
+              state: merged,
+              title: metadata.title,
+              baseVersionId: remoteVersion,
+            });
+            version = saved.versionId;
+            nextState = merged;
+            status = "synced";
+          }
+        } else {
+          status = "synced";
+        }
+      }
+
+      const updated = await queryOne<StudioSyncLink>(
+        `UPDATE studio_suno_projects SET
+           suno_version_id = $2,
+           suno_title = $3,
+           suno_state = COALESCE($4::jsonb, suno_state),
+           state_hash = $5,
+           status = $6,
+           last_error = NULL,
+           synced_at = now(),
+           updated_at = now()
+         WHERE local_project_id = $1
+         RETURNING *`,
+        [
+          doc.localProjectId,
+          version,
+          metadata.title,
+          nextState ? JSON.stringify(nextState) : null,
+          hash,
+          status,
+        ]
+      );
+      await query("DELETE FROM studio_suno_outbox WHERE local_project_id = $1", [
+        doc.localProjectId,
+      ]);
+      return statusView(updated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await query(
+        `UPDATE studio_suno_projects SET
+           status = 'error',
+           last_error = $2,
+           updated_at = now()
+         WHERE local_project_id = $1`,
+        [doc.localProjectId, message.slice(0, 500)]
+      );
+      throw error;
+    }
+  }
+
+  /** Mark a project dirty with the newest document. Bursts coalesce. */
+  async enqueue(doc: StudioProjectDocument): Promise<void> {
+    await query(
+      `INSERT INTO studio_suno_outbox (local_project_id, user_id, document)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (local_project_id) DO UPDATE SET
+         user_id = EXCLUDED.user_id,
+         document = EXCLUDED.document,
+         attempts = 0,
+         next_attempt_at = now(),
+         last_error = NULL,
+         updated_at = now()`,
+      [doc.localProjectId, doc.userId, JSON.stringify(doc)]
+    );
+  }
+
+  /** Process due outbox rows. Safe to call from a timer; never throws. */
+  async runDue(limit = 5): Promise<number> {
+    const rows = await query<{ local_project_id: string; attempts: number; document: unknown }>(
+      `SELECT local_project_id, attempts, document FROM studio_suno_outbox
+       WHERE next_attempt_at <= now()
+       ORDER BY next_attempt_at
+       LIMIT $1`,
+      [limit]
+    );
+    let done = 0;
+    for (const row of rows) {
+      const doc = outboxDocument(row.document, row.local_project_id);
+      try {
+        if (!doc) throw new Error("The queued project document is unreadable.");
+        await this.syncProject(doc);
+        done += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const retryable = isRetryableStudioSyncError(error);
+        const attempts = row.attempts + 1;
+        await query(
+          `UPDATE studio_suno_outbox SET
+             attempts = $2,
+             last_error = $3,
+             next_attempt_at = now() + ($4::bigint * interval '1 millisecond'),
+             updated_at = now()
+           WHERE local_project_id = $1`,
+          [
+            row.local_project_id,
+            attempts,
+            message.slice(0, 500),
+            retryable ? studioSyncBackoffMs(attempts) : 86_400_000,
+          ]
+        );
+      }
+    }
+    return done;
+  }
+
+  async status(localProjectId: string, userId: string): Promise<StudioSyncStatusView | null> {
+    const link = await this.link(localProjectId);
+    if (!link) return null;
+    if (link.user_id !== userId) return null;
+    return statusView(link);
+  }
+
+  /**
+   * Mirror the local archive flag. Archiving does not need the document, so it
+   * is applied directly instead of through the outbox; a failure is recorded on
+   * the link so the status chip can show it. The Suno project is archived, never
+   * deleted, so a local delete cannot destroy the user's Suno copy.
+   */
+  async setArchived(localProjectId: string, userId: string, archived: boolean): Promise<boolean> {
+    const link = await this.link(localProjectId);
+    if (!link || link.user_id !== userId) return false;
+    try {
+      const client = this.clientFor(link.account_label);
+      await client.setStudioProjectArchived(link.suno_project_id, archived);
+      await query(
+        `UPDATE studio_suno_projects SET archived = $2, last_error = NULL, updated_at = now()
+         WHERE local_project_id = $1`,
+        [localProjectId, archived]
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await query(
+        `UPDATE studio_suno_projects SET archived = $2, last_error = $3, updated_at = now()
+         WHERE local_project_id = $1`,
+        [localProjectId, archived, message.slice(0, 500)]
+      );
+    }
+    return true;
+  }
+}
+
+/** The outbox payload is the serialized `StudioProjectDocument`. */
+function outboxDocument(value: unknown, localProjectId: string): StudioProjectDocument | null {
+  const parsed = parseStudioState(value);
+  if (!parsed) return null;
+  const data = parsed as Record<string, unknown>;
+  if (typeof data.userId !== "string" || !data.userId) return null;
+  return {
+    localProjectId,
+    userId: data.userId,
+    title: typeof data.title === "string" ? data.title : "Untitled Project",
+    majorVersion: Number(data.majorVersion) || 2,
+    bpm: Number(data.bpm) || 120,
+    timeSignature: typeof data.timeSignature === "string" ? data.timeSignature : "4/4",
+    data: data.data,
+  };
+}
+
+function statusView(link: StudioSyncLink | null): StudioSyncStatusView {
+  return {
+    status: link?.status ?? "pending",
+    suno_project_id: link?.suno_project_id ?? null,
+    suno_version_id: link?.suno_version_id ?? null,
+    last_error: link?.last_error ?? null,
+    synced_at: link?.synced_at ? new Date(link.synced_at).toISOString() : null,
+    state_sync: stateSyncEnabled(),
+  };
+}
+
+/** Read a Suno project and return its normalised document and version. */
+export async function readStudioProject(
+  client: SunoClient,
+  projectId: string
+): Promise<{
+  state: Record<string, unknown> | null;
+  versionId: string | null;
+  project: SunoStudioProject;
+}> {
+  const project = await client.getStudioProject(projectId);
+  return {
+    state: parseStudioState(project.state),
+    versionId: project.latest_version_id ?? null,
+    project,
+  };
+}

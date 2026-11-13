@@ -2,6 +2,7 @@ import "dotenv/config";
 import { existsSync } from "node:fs";
 import { AccountPool } from "./pool.js";
 import { buildServer } from "./server.js";
+import { StudioProjectSync } from "./sunoStudio.js";
 import { pool as dbPool, query, queryOne } from "./db.js";
 import { encryptCookie } from "./cookieCrypto.js";
 import { config, storageConfigured } from "./config.js";
@@ -84,6 +85,23 @@ if (pool.size === 0) {
 }
 
 const app = await buildServer({ pool });
+
+// Suno Studio mirror outbox. The route handlers enqueue and kick a one-off run;
+// this timer is the durable retry path for provider outages and restarts. It is
+// unref'd so it never keeps the process alive on its own.
+const studioSync = new StudioProjectSync(pool);
+const studioSyncTimer = setInterval(
+  () => {
+    void studioSync.runDue(5).catch((error: unknown) => {
+      console.error(
+        "[studio-sync] outbox run failed:",
+        error instanceof Error ? error.message : error,
+      );
+    });
+  },
+  Number(process.env.STUDIO_SYNC_INTERVAL_MS ?? 5_000),
+);
+studioSyncTimer.unref();
 
 let shuttingDown = false;
 async function shutdown(signal: string, exitCode = 0): Promise<void> {

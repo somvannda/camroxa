@@ -7,6 +7,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy, daysUntilRenewal, forecastRenewals } from "./pool.js";
 import { SunoClient } from "./client.js";
+import { StudioProjectSync, isRetryableStudioSyncError, stateSyncEnabled, type StudioProjectDocument } from "./sunoStudio.js";
 import { isCapacityExhaustionError, isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
@@ -604,6 +605,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // 25MB accommodates a 10MB image plus encoding overhead.
     bodyLimit: Number(process.env.BODY_LIMIT_BYTES ?? 26_214_400),
   });
+
+  // Suno Studio mirror: project link, account pinning and the retrying outbox.
+  const studioSync = new StudioProjectSync(pool);
 
   // Keep the exact JSON bytes alongside the parsed body: ChmabaPay signs
   // `t=<unix>.<rawBody>`, so the webhook HMAC has to run over the bytes as
@@ -8840,6 +8844,131 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     return true;
   }
+
+  // --- Suno Studio project mirror -------------------------------------------------
+  // platform_api owns the Camxora project document and checks ownership before
+  // it calls these routes. The document is passed in the body because the two
+  // services do not share a database; the link table only stores what the mirror
+  // itself needs and never exposes cookies, JWTs or the Suno document.
+
+  function studioDocumentFrom(
+    id: string,
+    body: Record<string, unknown>
+  ): StudioProjectDocument | null {
+    const userId = typeof body.user_id === "string" ? body.user_id : "";
+    if (!STUDIO_UUID_RE.test(id) || !STUDIO_UUID_RE.test(userId)) return null;
+    const data = body.data;
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    return {
+      localProjectId: id,
+      userId,
+      title: typeof body.title === "string" ? body.title : "Untitled Project",
+      majorVersion: Number(body.major_version) || 2,
+      bpm: Number(body.bpm) || 120,
+      timeSignature: typeof body.time_signature === "string" ? body.time_signature : "4/4",
+      data,
+    };
+  }
+
+  app.post("/internal/studio/projects/:id/link", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    const doc = studioDocumentFrom(id, (req.body ?? {}) as Record<string, unknown>);
+    if (!doc) return reply.code(400).send({ error: "A valid user_id and data are required." });
+    try {
+      const link = await studioSync.ensureLink(doc);
+      return reply.code(201).send({
+        status: link.status,
+        suno_project_id: link.suno_project_id,
+        suno_version_id: link.suno_version_id,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Studio link failed.";
+      return reply.code(502).send({ error: message, retryable: isRetryableStudioSyncError(error) });
+    }
+  });
+
+  app.post("/internal/studio/projects/:id/sync", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    const doc = studioDocumentFrom(id, (req.body ?? {}) as Record<string, unknown>);
+    if (!doc) return reply.code(400).send({ error: "A valid user_id and data are required." });
+    try {
+      return reply.send(await studioSync.syncProject(doc));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Studio sync failed.";
+      return reply.code(502).send({ error: message, retryable: isRetryableStudioSyncError(error) });
+    }
+  });
+
+  /** Queue a push instead of waiting for Suno; the editor's save path uses this. */
+  app.post("/internal/studio/projects/:id/enqueue", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    const doc = studioDocumentFrom(id, (req.body ?? {}) as Record<string, unknown>);
+    if (!doc) return reply.code(400).send({ error: "A valid user_id and data are required." });
+    await studioSync.enqueue(doc);
+    void studioSync.runDue(1).catch((error: unknown) => {
+      req.log.warn({ err: error, projectId: id }, "studio suno outbox run failed");
+    });
+    return reply.code(202).send({ status: "queued" });
+  });
+
+  app.get("/internal/studio/projects/:id/status", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const { user_id: userId } = req.query as { user_id?: string };
+    if (!userId) return reply.code(400).send({ error: "user_id is required." });
+    const link = await studioSync.link(id);
+    if (link && link.user_id !== userId) {
+      return reply.code(404).send({ error: "Project not found." });
+    }
+    const status = await studioSync.status(id, userId);
+    if (!status) {
+      // No link yet is a valid state for a project created before the mirror.
+      return reply.send({ status: "pending", suno_project_id: null, suno_version_id: null,
+        last_error: null, synced_at: null, state_sync: stateSyncEnabled() });
+    }
+    return reply.send(status);
+  });
+
+  app.post("/internal/studio/projects/:id/archive", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const body = (req.body ?? {}) as { user_id?: string; archived?: boolean };
+    const userId = typeof body.user_id === "string" ? body.user_id : "";
+    if (!STUDIO_UUID_RE.test(userId)) {
+      return reply.code(400).send({ error: "user_id is required." });
+    }
+    const ok = await studioSync.setArchived(id, userId, body.archived !== false);
+    if (!ok) return reply.code(404).send({ error: "Project not found." });
+    return reply.code(202).send({ status: "queued" });
+  });
+
+  app.get("/internal/studio/sync/health", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const statuses = await query<{ status: string; count: string }>(
+      "SELECT status, count(*)::text AS count FROM studio_suno_projects GROUP BY status"
+    );
+    const outbox = await queryOne<{ due: string; total: string }>(
+      `SELECT count(*) FILTER (WHERE next_attempt_at <= now())::text AS due,
+              count(*)::text AS total
+       FROM studio_suno_outbox`
+    );
+    const accounts = await query<{ account_label: string; count: string }>(
+      "SELECT account_label, count(*)::text AS count FROM studio_suno_accounts GROUP BY account_label"
+    );
+    return reply.send({
+      projects: Object.fromEntries(statuses.map((row) => [row.status, Number(row.count)])),
+      outbox: { due: Number(outbox?.due ?? 0), total: Number(outbox?.total ?? 0) },
+      pinned_accounts: accounts.map((row) => ({
+        account_label: row.account_label,
+        users: Number(row.count),
+      })),
+    });
+  });
 
   // Service-to-service Studio operations. platform_api owns the Camxora user,
   // credits and project authorization; musicapi owns the Suno clip account and

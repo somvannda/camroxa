@@ -62,6 +62,49 @@ export interface SoundsParams {
   key?: string | null;
 }
 
+/** A Suno Studio project as returned by `GET /api/studio/project/{id}`. */
+export interface SunoStudioProject {
+  id: string;
+  title?: string;
+  /** The saved arrangement; older projects return it as a JSON string. */
+  state?: unknown;
+  latest_version_id?: string | null;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+/** The account cannot read or write this Studio project (expired/foreign). */
+export class StudioAccountError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StudioAccountError";
+  }
+}
+
+/** The pinned Suno project no longer exists (deleted on Suno's side). */
+export class StudioProjectMissingError extends Error {
+  constructor(public readonly projectId: string) {
+    super(`Studio project ${projectId} no longer exists.`);
+    this.name = "StudioProjectMissingError";
+  }
+}
+
+/** `save-project` answered 409: another writer advanced the project first. */
+export class StudioProjectConflictError extends Error {
+  constructor(public readonly latestVersionId: string | null) {
+    super("The Suno project has a newer version.");
+    this.name = "StudioProjectConflictError";
+  }
+}
+
+/** `save-project` answered 429. */
+export class StudioProjectRateLimitedError extends Error {
+  constructor() {
+    super("Suno is rate limiting Studio saves.");
+    this.name = "StudioProjectRateLimitedError";
+  }
+}
+
 export interface Clip {
   id: string;
   status: string;
@@ -518,6 +561,107 @@ export class SunoClient {
       continue_clip_id: clipId,
       ...cfg,
     });
+  }
+
+  /**
+   * Create a Studio project. Suno answers `{id, title}`; the new project starts
+   * with an empty document, so the caller reads it back before writing state.
+   */
+  async createStudioProject(
+    title: string,
+    opts: { majorVersion?: number } = {},
+  ): Promise<{ id: string; title: string }> {
+    const params = new URLSearchParams({ title });
+    if (opts.majorVersion !== undefined) {
+      params.set("major_version", String(opts.majorVersion));
+    }
+    const res = await this.request(`/api/studio/create-project?${params.toString()}`);
+    if (!res.ok) throw await sunoHttpError("studio/create-project", res);
+    const data = (await res.json()) as { id?: string; title?: string };
+    if (!data.id) throw new Error("Suno did not return a Studio project id.");
+    return { id: data.id, title: data.title ?? title };
+  }
+
+  /**
+   * Read one Studio project. `state` is the saved arrangement; Suno returns it
+   * either as an object or as a JSON string depending on the project's age, so
+   * callers normalise it (see `parseStudioState`).
+   */
+  async getStudioProject(projectId: string): Promise<SunoStudioProject> {
+    const res = await this.request(`/api/studio/project/${encodeURIComponent(projectId)}`);
+    if (res.status === 401 || res.status === 403) {
+      throw new StudioAccountError(`Suno refused access to Studio project ${projectId}.`);
+    }
+    if (res.status === 404) {
+      throw new StudioProjectMissingError(projectId);
+    }
+    if (!res.ok) throw await sunoHttpError("studio/project", res);
+    return (await res.json()) as SunoStudioProject;
+  }
+
+  /**
+   * Save a Studio project document.
+   *
+   * `baseVersionId` is Suno's optimistic-concurrency token: a stale value means
+   * somebody (or another tab) saved first, and Suno answers 409 with
+   * `latest_version_id`. That is surfaced as a typed conflict so the caller can
+   * reconcile instead of overwriting.
+   */
+  async saveStudioProject(input: {
+    projectId: string;
+    state: unknown;
+    title: string;
+    baseVersionId: string | null;
+  }): Promise<{ versionId: string }> {
+    const res = await this.request("/api/studio/save-project", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: input.projectId,
+        state: input.state,
+        title: input.title,
+        base_version_id: input.baseVersionId,
+      }),
+    });
+    if (res.status === 409) {
+      const body = (await res.json().catch(() => ({}))) as { latest_version_id?: string | null };
+      throw new StudioProjectConflictError(body.latest_version_id ?? null);
+    }
+    if (res.status === 429) throw new StudioProjectRateLimitedError();
+    if (!res.ok) throw await sunoHttpError("studio/save-project", res);
+    const data = (await res.json()) as { version_id?: string };
+    if (!data.version_id) throw new Error("Suno did not return a Studio version id.");
+    return { versionId: data.version_id };
+  }
+
+  /** Rename a Studio project (or set its notes / artwork). */
+  async updateStudioProjectMetadata(
+    projectId: string,
+    patch: { title?: string; notes?: string | null; imageS3Id?: string | null },
+  ): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (patch.title !== undefined) body.title = patch.title;
+    if (patch.notes !== undefined) body.notes = patch.notes;
+    if (patch.imageS3Id !== undefined) body.image_s3_id = patch.imageS3Id;
+    const res = await this.request(
+      `/api/studio/project/${encodeURIComponent(projectId)}/metadata`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!res.ok) throw await sunoHttpError("studio/project/metadata", res);
+  }
+
+  /** Archive or restore a Studio project on Suno. */
+  async setStudioProjectArchived(projectId: string, archived: boolean): Promise<void> {
+    const action = archived ? "archive" : "unarchive";
+    const res = await this.request(
+      `/api/studio/project/${encodeURIComponent(projectId)}/${action}`,
+      { method: "POST" },
+    );
+    if (!res.ok) throw await sunoHttpError(`studio/project/${action}`, res);
   }
 
   /**
