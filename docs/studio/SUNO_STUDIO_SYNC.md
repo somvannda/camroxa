@@ -370,7 +370,7 @@ re-auth flow for dead Suno sessions, metrics and alerts.
 | Audio clip without a Suno asset | not silently dropped: counted in `skipped_clips`, Suno-side audio preserved |
 | Edit in Suno | reopening the local project detects the newer version (`refresh` → `conflict`); applying it is Phase 3 |
 | Both sides changed | `409`; no silent overwrite (**409 contract verified live**) |
-| Suno offline | local edit saves; status `pending`; outbox retries; no data loss |
+| Suno offline | local edit saves; status `pending`; platform retries the enqueue and `refresh` re-arms it once musicapi returns (**verified end to end**) |
 | Expired account | status `error`; no other account is tried |
 | Other Camxora user | 404/403; no cross-account read or write |
 | Unsupported local field | removed from the editor and the document (D-034), never carried local-only |
@@ -397,6 +397,12 @@ The conflict loop was verified the same way:
 4. `POST …/load-suno` → local track renamed to the Suno name, **2 clips**: the
    Suno-added clip plus the local clip (`keptLocal: 1`), status back to `synced`.
 5. `DELETE` → 204, Suno copy archived.
+
+Offline/recovery was verified too: with musicapi stopped, a project still saved
+locally and reported `pending`; after musicapi returned, one `refresh` re-armed
+the missed enqueue and the project reached `synced` (Suno `e5b66107`). The
+platform retries the initial enqueue three times, and the periodic refresh is the
+durable fallback when every attempt fails.
 
 Local run recipe: seed one `suno_accounts` row with `COOKIE_ENCRYPTION_KEY` set,
 run `npm start` in `musicapi`, point the platform API at it with
