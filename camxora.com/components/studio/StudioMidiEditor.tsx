@@ -438,6 +438,48 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     }
   }
 
+  /**
+   * S14 velocity lane: ←/→ move the selected notes, ↑/↓ change their velocity.
+   * The lane takes focus on press so these never reach the arrangement.
+   */
+  function handleVelocityKeys(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const selected = notes.filter((note) => selectedIds.has(note.id));
+    if (!selected.length) return;
+    const ids = new Set(selected.map((note) => note.id));
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      const delta = (event.key === "ArrowUp" ? 1 : -1) * (event.shiftKey ? 10 : 1);
+      onChangeNotes(
+        notes.map((note) =>
+          ids.has(note.id)
+            ? { ...note, velocity: Math.max(1, Math.min(127, note.velocity + delta)) }
+            : note
+        )
+      );
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      event.stopPropagation();
+      const delta = (event.key === "ArrowRight" ? 1 : -1) * step;
+      onChangeNotes(
+        notes.map((note) =>
+          ids.has(note.id)
+            ? {
+                ...note,
+                start: Math.max(
+                  0,
+                  Math.min(Math.max(0, duration - note.length), note.start + delta)
+                ),
+              }
+            : note
+        )
+      );
+    }
+  }
+
   return (
     <>
     <section
@@ -541,8 +583,12 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
       <div
         className="se-midi-velocity"
         role="group"
+        tabIndex={0}
+        onKeyDown={handleVelocityKeys}
         aria-label={lane === "velocity" ? "Velocity lane" : `${lane === "bend" ? "Pitch bend" : "Modulation"} lane`}
         onPointerDown={(event) => {
+          // Keep the lane's own arrow keys (velocity / move) in the lane.
+          event.currentTarget.focus();
           if (lane === "velocity") {
             const rect = event.currentTarget.getBoundingClientRect();
             const seconds = ((event.clientX - rect.left - 44) / width) * duration;
@@ -551,6 +597,12 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
               return Math.abs(note.start - seconds) < Math.abs(best.start - seconds) ? note : best;
             }, null);
             if (!nearest) return;
+            const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+            setSelectedIds((current) => {
+              const next = new Set(additive ? current : []);
+              next.add(nearest.id);
+              return next;
+            });
             setVelocityDrag({ id: nearest.id, notes });
             const ratio = 1 - (event.clientY - rect.top) / rect.height;
             setVelocityPreview(Math.max(1, Math.min(127, Math.round(ratio * 127))));

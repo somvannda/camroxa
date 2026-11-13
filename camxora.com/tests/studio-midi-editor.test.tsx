@@ -125,6 +125,25 @@ describe("StudioMidiEditor", () => {
     const selectAll = (section: HTMLElement) =>
       fireEvent.keyDown(section, { key: "a", ctrlKey: true });
 
+    it("edits velocity and position from the velocity lane keys", () => {
+      const { section, container, onChangeNotes } = renderWithNotes();
+      const lane = container.querySelector(".se-midi-velocity") as HTMLElement;
+      selectAll(section);
+
+      fireEvent.keyDown(lane, { key: "ArrowUp" });
+      const louder = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(louder.map((note) => note.velocity)).toEqual([101, 101]);
+
+      fireEvent.keyDown(lane, { key: "ArrowDown", shiftKey: true });
+      const quieter = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(quieter.map((note) => note.velocity)).toEqual([90, 90]);
+
+      fireEvent.keyDown(lane, { key: "ArrowRight" });
+      const moved = onChangeNotes.mock.calls.at(-1)?.[0] as MidiNote[];
+      expect(moved[0].start).toBeCloseTo(0.35, 6);
+      expect(moved[0].velocity).toBe(100);
+    });
+
     it("zooms the grid with Ctrl = / Ctrl - and Z fits the selection", () => {
       const { section, container } = renderWithNotes();
       const gridWidth = () =>

@@ -30,9 +30,10 @@ quantizes the selection, `0` toggles notes disabled (they stay in the clip but p
 export skip them), arrows nudge and transpose, `DELETE` removes, `SHIFT ←/→` shortens or
 lengthens, `SHIFT ↑/↓` is an octave and `SHIFT 1/2` doubles or halves the grid. `CTRL =` and
 `CTRL -` zoom the roll in steps up to 12×, and `Z` fits the selected notes into the roll and
-scrolls them to the left edge (with nothing selected it returns to the whole clip). The panel
-takes focus when it opens, so those keys never fall through to the arrangement bindings. Still
-open: MIDI file import/export.
+scrolls them to the left edge (with nothing selected it returns to the whole clip). In the
+velocity lane, clicking selects the nearest note and `←/→` moves the selection while `↑/↓`
+changes its velocity (`SHIFT ↑/↓` by ten). The panel takes focus when it opens, so those keys
+never fall through to the arrangement bindings. Still open: MIDI file import/export.
 
 A disabled note has no verified counterpart in the Suno document yet, so the flag is local until
 the probe in `SUNO_STUDIO_SYNC.md` §7 runs.

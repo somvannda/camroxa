@@ -200,3 +200,31 @@ test("Ctrl = / Ctrl - zoom the roll and Z fits the selection", async ({ page }) 
   expect(noteBox.x).toBeGreaterThanOrEqual(roll.x);
   expect(noteBox.x).toBeLessThan(roll.x + roll.width);
 });
+
+test("the velocity lane's arrow keys set velocity and move notes", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, { title: "MIDI velocity keys" });
+
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  await page.getByRole("menuitem", { name: /MIDI/ }).click();
+  const panel = page.getByRole("region", { name: "MIDI editor" });
+  const grid = panel.locator(".se-midi-grid");
+  await grid.click({ position: { x: 60, y: 96 } });
+  const note = panel.locator(".se-midi-note").first();
+  await expect(note).toBeVisible();
+
+  // Clicking the lane selects the nearest note and focuses the lane.
+  await panel.locator(".se-midi-velocity").click({ position: { x: 70, y: 30 } });
+  await expect(note).toHaveClass(/is-selected/);
+  const before = Number(await note.getAttribute("data-velocity"));
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(async () => Number(await note.getAttribute("data-velocity"))).toBeGreaterThan(
+    before
+  );
+
+  // ←/→ move the same selection by one grid step.
+  const label = await note.getAttribute("aria-label");
+  await page.keyboard.press("ArrowRight");
+  await expect(note).not.toHaveAttribute("aria-label", label ?? "");
+});
