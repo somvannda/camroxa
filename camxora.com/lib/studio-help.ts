@@ -164,7 +164,7 @@ export function helpFor(id: string | null | undefined): HelpEntry | null {
 export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Space", action: "Play / pause" },
   { keys: "Alt + Space", action: "Play from the start of the time selection" },
-  { keys: "Home / End", action: "Playhead to the start / end" },
+  { keys: "Home / End", action: "Jump to the song start (press again for beat 1) / the end" },
   { keys: "A / Shift T", action: "Add an audio track" },
   { keys: "U", action: "Open the library on Uploads" },
   { keys: "Ctrl/⌘ + ↑ / ↓", action: "Move the focused track up / down" },

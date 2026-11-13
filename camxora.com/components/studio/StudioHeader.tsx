@@ -170,7 +170,14 @@ export function StudioHeader(props: StudioHeaderProps) {
 
       <div className="se-head-center">
         <span className="se-head-group se-transport">
-        <button type="button" className="se-icon" onClick={onBackToStart} aria-label="Back to start" data-help="back-to-start">
+        <button
+          type="button"
+          className="se-icon"
+          onClick={onBackToStart}
+          aria-label="Back to start"
+          title="Jump the playhead to the song start or beat 1 — press again for the other"
+          data-help="back-to-start"
+        >
           <Icon name="fa-backward-step" />
         </button>
         <div className="se-record-wrap">

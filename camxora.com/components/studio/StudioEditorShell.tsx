@@ -759,6 +759,8 @@ export function StudioEditorShell() {
   /** Master level (reference F-01/F-02), persisted in the document. */
   const [masterVolume, setMasterVolume] = useState(85);
   const [masterMuted, setMasterMuted] = useState(false);
+  /** Which anchor "Back to Start" jumps to next: the song start, then beat 1. */
+  const backToStartAnchorRef = useRef<"song" | "beat">("song");
   const masterStateRef = useRef({ volume: masterVolume, muted: masterMuted });
   masterStateRef.current = { volume: masterVolume, muted: masterMuted };
   /** Pixels per bar; 96 is the captured default (spec §44.3). */
@@ -1932,6 +1934,26 @@ export function StudioEditorShell() {
     setMasterMuted(next);
     applyMasterGain(masterVolume, next);
     commitMaster(masterVolume, next);
+  }
+
+  /** Where the song actually starts: the earliest clip position. */
+  function songStart() {
+    const starts = clipsRef.current.map((clip) => Math.max(0, clip.start ?? 0));
+    return starts.length ? Math.min(...starts) : 0;
+  }
+
+  /**
+   * S14 "Back to Start": alternates between the song start and beat 1 (the grid
+   * origin), as the captured hint says — press again for the other anchor.
+   */
+  function backToStart() {
+    setPlaying(false);
+    void stopAudio();
+    stopClicks();
+    const next = backToStartAnchorRef.current === "song" ? songStart() : 0;
+    backToStartAnchorRef.current = backToStartAnchorRef.current === "song" ? "beat" : "song";
+    scheduledThroughRef.current = next;
+    setPlayhead(next);
   }
 
   /** Arming the loop with no range selects the first four bars. */
@@ -3490,11 +3512,7 @@ export function StudioEditorShell() {
         }
         if (event.key === "Home") {
           event.preventDefault();
-          setPlaying(false);
-          void stopAudio();
-          stopClicks();
-          scheduledThroughRef.current = 0;
-          setPlayhead(0);
+          backToStart();
           return;
         }
         if (event.key === "End") {
@@ -5212,7 +5230,7 @@ export function StudioEditorShell() {
         onToggleNormalise={() => setExportNormalise((value) => !value)}
         libraryOpen={libraryOpen}
         onToggleLibrary={() => toggleLibrary()}
-        onBackToStart={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
+        onBackToStart={backToStart}
         onStop={() => {
           // Stop halts the transport where it is; Back to start is the rewind.
           if (recording) stopRecording();
