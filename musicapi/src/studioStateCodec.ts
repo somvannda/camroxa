@@ -314,18 +314,48 @@ function sunoClipFromLocal(
 
 function automationToBeats(
   points: unknown,
-  bps: number
-): Array<{ timeBeats: number; value: number }> {
+  bps: number,
+  divisor: number
+): Array<{ beats: number; value: number; curve: number }> {
   if (!Array.isArray(points)) return [];
   return points
     .map((point) => {
       const record = (point ?? {}) as Record<string, unknown>;
       return {
-        timeBeats: beatsFromSeconds(Number(record.time) || 0, bps),
-        value: round(Number(record.value) || 0),
+        beats: beatsFromSeconds(Number(record.time) || 0, bps),
+        // Suno stores fader/pan automation as 0–1 values.
+        value: round((Number(record.value) || 0) / divisor),
+        curve: 1,
       };
     })
-    .sort((a, b) => a.timeBeats - b.timeBeats);
+    .sort((a, b) => a.beats - b.beats);
+}
+
+/** `faderAutomation` is an object keyed by parameter (`gain`, `pan`). */
+function faderAutomationFromLocal(
+  track: LocalTrack,
+  bps: number
+): Record<string, unknown> {
+  const gain = automationToBeats(track.volumeAutomation, bps, 100);
+  const pan = automationToBeats(track.panAutomation, bps, 100);
+  return {
+    ...(gain.length > 0 ? { gain } : {}),
+    ...(pan.length > 0 ? { pan } : {}),
+  };
+}
+
+function automationFromSuno(
+  points: unknown,
+  bps: number
+): Array<{ time: number; value: number }> {
+  if (!Array.isArray(points)) return [];
+  return points.map((point) => {
+    const record = (point ?? {}) as Record<string, unknown>;
+    return {
+      time: secondsFromBeats(Number(record.beats) || 0, bps),
+      value: round((Number(record.value) || 0) * 100),
+    };
+  });
 }
 
 /** Sections are a registry keyed by id: {id, name, startBeats, endBeats, color}. */
@@ -830,7 +860,7 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
         balance: round(Math.max(-1, Math.min(1, (Number(track.pan ?? 0) || 0) / 100))),
         routingMode: "stereo",
         signalChain: chain,
-        faderAutomation: automationToBeats(track.volumeAutomation, bps),
+        faderAutomation: faderAutomationFromLocal(track, bps),
         clips,
         takeLanes,
         takeLanesExpanded: takeClips.length > 0,
@@ -987,6 +1017,9 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
         sunoAssetId: (clip.asset as { id?: string } | undefined)?.id,
       });
     });
+    const fader = (track.faderAutomation ?? {}) as Record<string, unknown>;
+    const volumeAutomation = automationFromSuno(fader.gain, bps);
+    const panAutomation = automationFromSuno(fader.pan, bps);
     tracks.push({
       id: trackId,
       sunoId: trackId,
@@ -999,6 +1032,8 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
       solo: Boolean(track.solo),
       hidden: Boolean(track.hidden),
       clipIds,
+      ...(volumeAutomation.length > 0 ? { volumeAutomation } : {}),
+      ...(panAutomation.length > 0 ? { panAutomation } : {}),
     });
     const effectEntries = sunoChain.filter(
       (entry) => entry.pluginVersionId !== SUNO_SYNTH_PLUGIN_ID

@@ -699,6 +699,55 @@ test("take lanes without a mirrorable take stay as Suno had them", () => {
   assert.deepEqual(track.takeLanes, baseline.tracks[0].takeLanes);
 });
 
+test("volume and pan automation map to faderAutomation gain and pan", () => {
+  const data = localDocument();
+  data.tracks = [
+    {
+      id: "track-auto",
+      name: "Auto",
+      index: 0,
+      clipIds: [],
+      volumeAutomation: [
+        { time: 0, value: 85 },
+        { time: 8, value: 0 },
+      ],
+      panAutomation: [
+        { time: 0, value: -50 },
+        { time: 4, value: 50 },
+      ],
+    },
+  ];
+  const { state } = projectDocumentToSunoState({
+    title: "Automation",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const track = (state.tracks as Array<Record<string, unknown>>)[0];
+  assert.deepEqual(track.faderAutomation, {
+    gain: [
+      { beats: 0, value: 0.85, curve: 1 },
+      { beats: 16, value: 0, curve: 1 },
+    ],
+    pan: [
+      { beats: 0, value: -0.5, curve: 1 },
+      { beats: 8, value: 0.5, curve: 1 },
+    ],
+  });
+
+  const projected = sunoStateToProjectData(state);
+  assert.deepEqual(projected.tracks[0].volumeAutomation, [
+    { time: 0, value: 85 },
+    { time: 8, value: 0 },
+  ]);
+  assert.deepEqual(projected.tracks[0].panAutomation, [
+    { time: 0, value: -50 },
+    { time: 4, value: 50 },
+  ]);
+});
+
 test("a fresh Suno project has the fields the client validates", () => {
   const state = emptySunoState("Untitled Project");
   assert.ok(state.timing);

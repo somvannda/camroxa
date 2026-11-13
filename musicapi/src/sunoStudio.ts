@@ -237,7 +237,8 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "lanes[] (MIDI clips)", suno: "tracks[].clips (type midi)", status: "mapped" },
   { key: "lanes[].start/duration", suno: "clips[].startBeats/endBeats", status: "mapped" },
   { key: "lanes[].midi.notes", suno: "clips[].midi.notes", status: "mapped" },
-  { key: "track volumeAutomation", suno: "tracks[].faderAutomation", status: "mapped" },
+  { key: "track volumeAutomation", suno: "tracks[].faderAutomation.gain", status: "mapped", note: "0-1 values, {beats,value,curve}" },
+  { key: "track panAutomation", suno: "tracks[].faderAutomation.pan", status: "mapped", note: "0-1 values, {beats,value,curve}" },
   { key: "markers", suno: "sections", status: "mapped" },
   { key: "audio clips (generation asset)", suno: "clips[].asset {id,type:\"clip\"}", status: "mapped" },
   { key: "local uploads", suno: "clips[].asset (imported once, cached)", status: "mapped" },
@@ -251,7 +252,6 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "chains (all built-ins)", suno: "tracks[].signalChain", status: "mapped", note: "custom plugins stay local" },
   { key: "masterChain (limiter/eq/compressor)", suno: "masterSignalChain", status: "mapped" },
   { key: "groups", suno: "—", status: "remove", note: "no group/bus field exists in the document (captured 11 projects)" },
-  { key: "panAutomation", suno: "tracks[].paramAutomation", status: "pending" },
   { key: "pluginPresets", suno: "signalChain[].params", status: "mapped", note: "a preset is a param snapshot; the params mirror" },
   { key: "wavetableId", suno: "—", status: "remove", note: "designer removed (D-034)" },
 ];
