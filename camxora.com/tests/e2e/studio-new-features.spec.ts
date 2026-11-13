@@ -150,12 +150,21 @@ test("Wavetable Designer saves a table and selects it on the MIDI clip", async (
   const selected = await picker.inputValue();
   expect(selected).not.toBe("");
 
-  const saved = await page.evaluate(async (id) => {
-    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
-    return response.json();
-  }, projectId);
-  const midiClip = saved.data.lanes.find((clip: { midi?: unknown }) => clip.midi);
-  expect(midiClip.wavetableId).toBe(selected);
+  // Saving the table and selecting it are two writes; the selection is queued
+  // behind the library write, so poll the stored document instead of racing it.
+  await expect
+    .poll(
+      async () => {
+        const saved = await page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          return response.json();
+        }, projectId);
+        const midiClip = saved.data.lanes.find((clip: { midi?: unknown }) => clip.midi);
+        return (midiClip as { wavetableId?: string | null } | undefined)?.wavetableId ?? null;
+      },
+      { timeout: 15_000 }
+    )
+    .toBe(selected);
 });
 
 test("Heal Edits restores the clip audio from before a transform", async ({ page }) => {
