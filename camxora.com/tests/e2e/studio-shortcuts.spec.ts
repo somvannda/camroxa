@@ -135,3 +135,21 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
   await page.keyboard.press("4");
   await expect(library).toHaveCount(0);
 });
+
+test("Ctrl S saves immediately through the write queue", async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = await createStudioProject(page, {
+    title: `Save now ${Math.random().toString(36).slice(2, 8)}`,
+  });
+
+  await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });
+  const patch = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" &&
+      request.url().includes(`/studio/projects/${projectId}`),
+    { timeout: 15_000 }
+  );
+  await page.keyboard.press("Control+s");
+  await patch;
+  await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });
+});

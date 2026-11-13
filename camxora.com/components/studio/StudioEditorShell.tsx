@@ -1781,6 +1781,16 @@ export function StudioEditorShell() {
     if (entry) applyHistoryEntry(entry, "undo");
   }
 
+  /** CTRL S: save now instead of waiting for the next edit; the studio also autosaves. */
+  function saveNow() {
+    if (!projectId) return;
+    const data = currentData() as Record<string, unknown>;
+    persist(
+      (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
+      "Could not save the project."
+    );
+  }
+
   function redo() {
     const entry = historyRef.current.redo.pop();
     if (entry) applyHistoryEntry(entry, "redo");
@@ -3786,6 +3796,12 @@ export function StudioEditorShell() {
 
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // CTRL S saves now; the capture's hint says the studio also autosaves.
+      if (key === "s") {
+        event.preventDefault();
+        saveNow();
+        return;
+      }
       // CTRL ↑ / ↓ move the focused track (spec §36).
       if (selectedTrack && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault();

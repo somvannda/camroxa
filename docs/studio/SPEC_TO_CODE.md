@@ -81,7 +81,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 |---|---|
 | `2` bottom panel | this build has no persistent bottom panel; Plugins and Clip editor open on demand |
 | `SHIFT L` arrangement panel | there is no collapsible arrangement panel to toggle |
-| `CTRL S` save | saving is automatic and already reports through the save-status chip |
+| `CTRL S` save | wired: `saveNow` re-saves the current document through the same coalescing queue, and the browser's own save dialog is suppressed |
 | `CTRL K` toggle keyboard | there is no musical typing keyboard to show; `SHIFT ?` already opens this list |
 | `CTRL SHIFT ,` Studio settings | settings are a stored preference object, not a dialog |
 | `ENTER` Ask Studio / promote take lane | `ENTER` already commits inline renames and prompt edits |
