@@ -398,13 +398,14 @@ test("project menu matches the captured popover", async ({ page }) => {
       rows,
     };
   });
-  // S07: 212 px card on #1c1c1e, 12 px radius, 34 px icon rows.
+  // S07: 212 px card on #1c1c1e, 12 px radius, 34 px icon rows. The capture has
+  // nine rows; we add the captured "Send to Suno Sync" action, so ten.
   expect(info.width).toBe(212);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
-  expect(info.rows).toHaveLength(9);
+  expect(info.rows).toHaveLength(10);
   expect(info.rows[0]?.text).toBe("New Project");
-  expect(info.rows[7]?.text).toBe("Studio Settings ctrl shift ,");
+  expect(info.rows[8]?.text).toBe("Studio Settings ctrl shift ,");
   expect(info.rows.every((row) => row.height === 34)).toBe(true);
 });
 

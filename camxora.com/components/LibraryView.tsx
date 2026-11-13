@@ -1100,7 +1100,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           className="s-cover"
           aria-label={
             ready
-              ? `Play ${title}${duration ? ` (${formatClipDuration(duration)})` : ""}`
+              ? // The visible duration must appear verbatim in the name, or axe's
+                // label-content-name rule fails on the parentheses.
+                `Play ${title}${duration ? ` ${formatClipDuration(duration)}` : ""}`
               : "Song not ready"
           }
           onClick={(event) => {
@@ -1117,7 +1119,13 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
               />
             </span>
           </span>
-          {duration ? <span className="s-dur">{formatClipDuration(duration)}</span> : null}
+          {duration ? (
+            // The label already says the length; repeating it as text would break
+            // the label-content-name match.
+            <span className="s-dur" aria-hidden="true">
+              {formatClipDuration(duration)}
+            </span>
+          ) : null}
         </button>
 
         <div className="s-row-body">

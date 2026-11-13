@@ -56,10 +56,23 @@ async function audit(page: Page, options: { disable?: string[] } = {}) {
  * Audit one element instead of the whole document. Radix marks the rest of the page
  * `aria-hidden` while a menu is open, so a document-wide scan sees "no main landmark"
  * and "no h1" that are only masked, not missing; scoping to the menu checks the menu.
+ *
+ * Animations settle first: a Radix menu fades in, and sampling colours mid-animation
+ * reports a composite that is not the menu's real palette.
  */
 async function auditWithin(page: Page, locator: ReturnType<Page["locator"]>) {
   const handle = await locator.elementHandle();
   if (!handle) throw new Error("audit target is missing");
+  await page.evaluate(async () => {
+    const finite = document.getAnimations().filter((animation) => {
+      const timing = animation.effect?.getComputedTiming?.();
+      return timing ? timing.iterations !== Infinity : true;
+    });
+    await Promise.race([
+      Promise.all(finite.map((animation) => animation.finished.catch(() => undefined))),
+      new Promise((resolve) => setTimeout(resolve, 800)),
+    ]);
+  });
   await page.addScriptTag({ path: AXE_PATH });
   return page.evaluate(async (element) => {
     const axe = (
