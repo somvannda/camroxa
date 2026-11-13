@@ -333,6 +333,10 @@ flagged by `check_deploy_hygiene.py`.
 
 - [ ] `curl -sf https://musicapi.<env>.camxora.com/health` returns `{"ok":true,...}` with the expected account count
 - [ ] `python scripts/deploy/verify_musicapi_captcha_guard.py --solve` -> solve gate live and 2Captcha accepts a token (spends ~$0.003 of 2Captcha balance, no user credits)
+- [ ] `python scripts/studio_release_checks.py` against the environment passes; add
+      `CAMXORA_EXPECT_STATE_SYNC=1` where the Suno Studio mirror must be live — the run
+      then blocks if `GET /studio/projects/{id}/sync` is missing or reports
+      `state_sync: false`. The check is read-only and never pushes to Suno.
 
 ### Billing (if enabled)
 

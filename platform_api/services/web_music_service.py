@@ -3131,6 +3131,7 @@ class WebMusicService:
         display_name: str,
         playhead_seconds: float | None = None,
         selected_lane_id: str | None = None,
+        client_id: str | None = None,
     ) -> dict[str, Any]:
         share = await self._pool.fetchrow(
             """
@@ -3148,36 +3149,39 @@ class WebMusicService:
             raise ForbiddenError("This share link is view-only.")
         project_id = UUID(str(share["project_id"]))
         name = str(display_name or "").strip()[:80] or "Collaborator"
+        # One row per editor session; without an explicit client id the share page keeps
+        # one row per user, which is what the previous (pre-client-id) contract implied.
+        client = str(client_id or "").strip()[:120] or f"share-{user_id}"
+        playhead = max(0.0, float(playhead_seconds)) if playhead_seconds is not None else 0.0
         await self._pool.execute(
             """
             INSERT INTO studio_editor_presence
-                (project_id, user_id, display_name, last_seen, playhead_seconds, selected_lane_id)
-            VALUES ($1, $2, $3, now(), $4, $5)
-            ON CONFLICT (project_id, user_id)
+                (project_id, client_id, user_id, display_name, cursor_time, playhead, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, now())
+            ON CONFLICT (project_id, client_id)
             DO UPDATE SET
                 display_name = EXCLUDED.display_name,
-                last_seen = now(),
-                playhead_seconds = EXCLUDED.playhead_seconds,
-                selected_lane_id = EXCLUDED.selected_lane_id
+                user_id = EXCLUDED.user_id,
+                playhead = EXCLUDED.playhead,
+                updated_at = now()
             """,
             project_id,
+            client,
             user_id,
             name,
-            max(0.0, float(playhead_seconds))
-            if playhead_seconds is not None
-            else None,
-            str(selected_lane_id)[:120] if selected_lane_id else None,
+            0.0,
+            playhead,
         )
         await self._pool.execute(
-            "DELETE FROM studio_editor_presence WHERE project_id = $1 AND last_seen < now() - interval '90 seconds'",
+            "DELETE FROM studio_editor_presence WHERE project_id = $1 AND updated_at < now() - interval '90 seconds'",
             project_id,
         )
         rows = await self._pool.fetch(
             """
-            SELECT user_id, display_name, last_seen, playhead_seconds, selected_lane_id
+            SELECT user_id, display_name, playhead, updated_at
             FROM studio_editor_presence
-            WHERE project_id = $1 AND last_seen >= now() - interval '90 seconds'
-            ORDER BY last_seen DESC
+            WHERE project_id = $1 AND updated_at >= now() - interval '90 seconds'
+            ORDER BY updated_at DESC
             """,
             project_id,
         )
@@ -3186,14 +3190,13 @@ class WebMusicService:
                 {
                     "user_id": str(row["user_id"]),
                     "display_name": str(row["display_name"]),
-                    "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
+                    "last_seen": row["updated_at"].isoformat() if row["updated_at"] else None,
                     "playhead_seconds": (
-                        float(row["playhead_seconds"])
-                        if row["playhead_seconds"] is not None
-                        else None
+                        float(row["playhead"]) if row["playhead"] is not None else None
                     ),
-                    "selected_lane_id": row["selected_lane_id"],
+                    "selected_lane_id": None,
                 }
+
                 for row in rows
             ]
         }

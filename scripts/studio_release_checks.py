@@ -9,7 +9,12 @@ Usage:
 The script logs in with Playwright, then exercises project, share, comment,
 presence, long-poll and cleanup routes through the browser session. It creates
 a temporary project and deletes it in a finally block. It never calls a Suno
-generation/edit route.
+generation/edit route, and the Studio mirror check is read-only (it reads the
+project's sync status instead of pushing).
+
+Set CAMXORA_EXPECT_STATE_SYNC=1 on an environment where the Suno mirror must be
+live; the check then blocks when `state_sync` comes back false. Set it to 0 for
+an environment that must stay mirror-off.
 """
 
 from __future__ import annotations
@@ -105,6 +110,28 @@ def main() -> int:
             )
             project_id = str((project or {}).get("id") or "")
             add("project create", status == 201 and bool(project_id), status)
+
+            if project_id:
+                # Read-only mirror check: never pushes, so a release run cannot create a
+                # Suno project. Set CAMXORA_EXPECT_STATE_SYNC=1 on a mirror-enabled
+                # environment to turn "sync is off" into a blocker.
+                status, sync = api(
+                    "GET", f"/api/v3/web-music/studio/projects/{project_id}/sync"
+                )
+                state_sync = bool((sync or {}).get("state_sync")) if isinstance(sync, dict) else False
+                # 404 means this API build has no sync route or the project has no link
+                # yet; both are fine when the mirror is meant to be off.
+                linked = status == 200 and isinstance(sync, dict)
+                add(
+                    "sync status",
+                    linked or status == 404,
+                    {"status": status, "state_sync": state_sync},
+                )
+                expected_sync = os.getenv("CAMXORA_EXPECT_STATE_SYNC", "").strip().lower()
+                if expected_sync in {"1", "true", "yes"} and not state_sync:
+                    blockers.append("state sync expected but the Suno mirror is off")
+                if expected_sync in {"0", "false", "no"} and state_sync:
+                    blockers.append("state sync expected off but the Suno mirror is on")
 
             if project_id:
                 status, updated = api(
