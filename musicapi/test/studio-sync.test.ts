@@ -210,9 +210,19 @@ test("no remote baseline still pushes a fresh project document", () => {
 test("the coverage registry counts every field and names the pending ones", () => {
   const summary = coverageSummary();
   assert.equal(summary.mapped + summary.pending + summary.remove, STUDIO_STATE_COVERAGE.length);
-  assert.ok(summary.mapped >= 20);
-  assert.ok(summary.pending_keys.includes("uploads (no Suno asset)"));
-  assert.ok(summary.pending_keys.includes("chains (distortion/chorus)"));
+  assert.ok(summary.mapped >= 25);
+  // The four parity items closed in this pass are mapped.
+  for (const key of [
+    "local uploads",
+    "lanes[].takes",
+    "chains (all built-ins)",
+    "masterChain (limiter/eq/compressor)",
+    "lanes[].instrument",
+    "lanes[].midi.bend",
+    "lanes[].midi.mod",
+  ]) {
+    assert.ok(!summary.pending_keys.includes(key), `${key} should be mapped`);
+  }
   // A removed feature must never quietly return as a "pending" mapping.
   const removed = STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "remove");
   assert.deepEqual(removed.map((entry) => entry.key), ["wavetableId"]);

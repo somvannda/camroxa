@@ -10,6 +10,7 @@ import {
   projectDocumentToSunoState,
   secondsFromBeats,
   stableSunoId,
+  SUNO_SYNTH_PLUGIN_ID,
   sunoStateToProjectData,
   timeSignatureFromState,
   timeSignatureParts,
@@ -272,22 +273,23 @@ test("effects map onto Suno plugin instances with translated params", () => {
   const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
     Record<string, unknown>
   >;
-  assert.equal(chain.length, 2);
-  assert.equal(chain[0].pluginVersionId, "a4838315-d631-4255-946c-c65531bc9cd4");
-  assert.equal(chain[0].presetId, "preset-1");
-  assert.equal(chain[0].bypassed, false);
-  assert.deepEqual(chain[0].paramAutomation, {});
-  assert.equal((chain[0].params as Record<string, number>).output, 3);
-  assert.equal((chain[0].params as Record<string, number>).threshold, -20);
-  assert.equal(chain[1].pluginVersionId, "dec400a6-9dac-4c8a-b553-dd7bd2eb5f29");
-  assert.equal((chain[1].params as Record<string, number>).highCut, 14000);
+  const effects = chain.filter((entry) => entry.pluginVersionId !== SUNO_SYNTH_PLUGIN_ID);
+  assert.equal(effects.length, 2);
+  assert.equal(effects[0].pluginVersionId, "a4838315-d631-4255-946c-c65531bc9cd4");
+  assert.equal(effects[0].presetId, "preset-1");
+  assert.equal(effects[0].bypassed, false);
+  assert.deepEqual(effects[0].paramAutomation, {});
+  assert.equal((effects[0].params as Record<string, number>).output, 3);
+  assert.equal((effects[0].params as Record<string, number>).threshold, -20);
+  assert.equal(effects[1].pluginVersionId, "dec400a6-9dac-4c8a-b553-dd7bd2eb5f29");
+  assert.equal((effects[1].params as Record<string, number>).highCut, 14000);
 });
 
 test("plugins without a verified translation are left out of the Suno chain", () => {
   const data = localDocument();
   data.chains = {
     "track-1": [
-      { entryId: "fx-1", pluginId: "distortion", params: { drive: 0.5 } },
+      { entryId: "fx-1", pluginId: "custom", params: { drive: 0.5 } },
       { entryId: "fx-2", pluginId: "gate", params: { threshold: -40, floor: -60, attack: 2, hold: 50 } },
     ],
   };
@@ -302,8 +304,9 @@ test("plugins without a verified translation are left out of the Suno chain", ()
   const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
     Record<string, unknown>
   >;
-  assert.equal(chain.length, 1);
-  assert.equal(chain[0].pluginVersionId, "14fb47e6-c951-4a35-bfa6-f14d2396b4d0");
+  const effects = chain.filter((entry) => entry.pluginVersionId !== SUNO_SYNTH_PLUGIN_ID);
+  assert.equal(effects.length, 1);
+  assert.equal(effects[0].pluginVersionId, "14fb47e6-c951-4a35-bfa6-f14d2396b4d0");
 });
 
 test("the EQ maps four bands and disables the fifth and sixth", () => {
@@ -335,7 +338,9 @@ test("the EQ maps four bands and disables the fifth and sixth", () => {
   const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
     Record<string, unknown>
   >;
-  const params = chain[0].params as Record<string, unknown>;
+  const eq = chain.find((entry) => entry.pluginVersionId === "b1a718a1-839f-48d8-9482-ef6f64d490f0");
+  assert.ok(eq);
+  const params = eq?.params as Record<string, unknown>;
   assert.equal(params.freq1, 80);
   assert.equal(params.gain1, -3);
   assert.equal(params.enabled1, true);
@@ -344,11 +349,12 @@ test("the EQ maps four bands and disables the fifth and sixth", () => {
   assert.equal(params.enabled6, false);
 });
 
-test("the master limiter maps and other master effects stay local", () => {
+test("the master limiter and EQ map; other master effects stay local", () => {
   const data = localDocument();
   data.masterChain = [
     { type: "limiter", enabled: true, params: { lookahead: 5, preGain: -2, attack: 2, release: 80 } },
-    { type: "eq", enabled: true, amount: 0.5 },
+    { type: "eq", enabled: true, amount: 0.75 },
+    { type: "compressor", enabled: true, amount: 0.5 },
   ];
   const { state } = projectDocumentToSunoState({
     title: "Master",
@@ -359,9 +365,18 @@ test("the master limiter maps and other master effects stay local", () => {
     baseline: null,
   });
   const master = state.masterSignalChain as Array<Record<string, unknown>>;
-  assert.equal(master.length, 1);
+  assert.equal(master.length, 3);
   assert.equal(master[0].pluginVersionId, "bf422c67-c85e-4b6d-9db9-1769c5912941");
   assert.deepEqual(master[0].params, { lookahead: 5, preGain: -2, attack: 2, release: 80 });
+  assert.equal(master[1].pluginVersionId, "b1a718a1-839f-48d8-9482-ef6f64d490f0");
+  const eqParams = master[1].params as Record<string, unknown>;
+  assert.equal(eqParams.gain3, 6);
+  assert.equal(eqParams.enabled3, true);
+  assert.equal(eqParams.enabled1, false);
+  assert.equal(master[2].pluginVersionId, "a4838315-d631-4255-946c-c65531bc9cd4");
+  const compParams = master[2].params as Record<string, number>;
+  assert.equal(compParams.threshold, -18);
+  assert.equal(compParams.ratio, 5);
 });
 
 test("chains and the master limiter project back from a Suno document", () => {
@@ -418,7 +433,11 @@ test("delay maps its mode, beats and 0–1 wet controls", () => {
   const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
     Record<string, unknown>
   >;
-  const params = chain[0].params as Record<string, unknown>;
+  const delay = chain.find(
+    (entry) => entry.pluginVersionId === "e2b9270b-5099-4e2b-8ddc-c3a2b2cbe31e"
+  );
+  assert.ok(delay);
+  const params = delay?.params as Record<string, unknown>;
   assert.equal(params.milliseconds, 500);
   assert.equal(params.beats, 1);
   assert.equal(params.mode, "tempo");
@@ -535,6 +554,144 @@ test("a clip deleted locally is removed from the mirrored arrangement", () => {
     ((withHistory.state.tracks as Array<Record<string, unknown>>)[0].clips as unknown[]).length,
     0
   );
+});
+
+test("MidI tracks get a synth instance with our waveform", () => {
+  const data = localDocument();
+  data.lanes = [
+    {
+      id: "clip-midi",
+      title: "Lead",
+      start: 0,
+      duration: 4,
+      instrument: "triangle",
+      midi: { notes: [{ id: "n1", pitch: 60, start: 0, length: 1, velocity: 100 }] },
+    },
+  ];
+  data.tracks = [{ id: "track-midi", name: "Lead", index: 0, clipIds: ["clip-midi"] }];
+  const { state } = projectDocumentToSunoState({
+    title: "Synth",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const track = (state.tracks as Array<Record<string, unknown>>)[0];
+  const chain = track.signalChain as Array<Record<string, unknown>>;
+  assert.equal(chain[0].pluginVersionId, SUNO_SYNTH_PLUGIN_ID);
+  assert.equal((chain[0].params as Record<string, unknown>).waveform1, "triangle");
+
+  const projected = sunoStateToProjectData(state);
+  assert.equal(projected.lanes[0].midi?.instrument, "triangle");
+});
+
+test("distortion and chorus translate their enum and division params", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "fx-dist",
+        pluginId: "distortion",
+        mode: "fold",
+        params: { drive: 50, tilt: -20, freq: 2000 },
+        presetName: "Custom",
+      },
+      {
+        entryId: "fx-chorus",
+        pluginId: "chorus",
+        params: { rate: 1, depth: 40, mix: 30 },
+        presetName: "Custom",
+      },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "Drive",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
+    Record<string, unknown>
+  >;
+  const dist = chain.find(
+    (entry) => entry.pluginVersionId === "20c5b585-bdd5-45ad-9640-5b1fd68955f6"
+  );
+  const distParams = dist?.params as Record<string, unknown>;
+  assert.equal(distParams.Shape, "Fold");
+  assert.equal(distParams["Input Gain"], 12);
+  assert.equal(distParams["Pre Tilt"], -20);
+  assert.equal(distParams["Post Cutoff"], 2000);
+
+  const chorus = chain.find(
+    (entry) => entry.pluginVersionId === "537ba288-f700-4c96-b103-c84e2b62fab6"
+  );
+  const chorusParams = chorus?.params as Record<string, unknown>;
+  // 1 Hz at 120 BPM = 2 cycles/beat → 1/2 note.
+  assert.equal(chorusParams["rate (1/16, 1/8, 1/4)"], "1/2");
+  assert.equal(chorusParams.depth, 0.4);
+  assert.equal(chorusParams.mix, 0.3);
+});
+
+test("alternate takes become take-lane clips when they have a Suno asset", () => {
+  const data = localDocument();
+  data.tracks = [{ id: "track-takes", name: "Takes", index: 0, clipIds: ["clip-take"] }];
+  data.lanes = [
+    {
+      id: "clip-take",
+      title: "Main",
+      start: 0,
+      duration: 4,
+      sunoAssetId: "asset-main",
+      takes: [
+        { id: "take-1", title: "Main", active: true, sunoAssetId: "asset-main" },
+        { id: "take-2", title: "Cover", active: false, sunoAssetId: "asset-cover" },
+        { id: "take-3", title: "Local only", active: false },
+      ],
+    },
+  ];
+  const { state } = projectDocumentToSunoState({
+    title: "Takes",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const track = (state.tracks as Array<Record<string, unknown>>)[0];
+  const lanes = track.takeLanes as Array<Record<string, unknown>>;
+  assert.equal(lanes.length, 1);
+  assert.equal(lanes[0].dismissed, false);
+  const clips = lanes[0].clips as Array<Record<string, unknown>>;
+  assert.equal(clips.length, 1);
+  assert.deepEqual(clips[0].asset, { id: "asset-cover", type: "clip" });
+  assert.equal(track.takeLanesExpanded, true);
+});
+
+test("take lanes without a mirrorable take stay as Suno had them", () => {
+  const baseline = {
+    tracks: [
+      {
+        id: stableSunoId("track-1"),
+        name: "Track",
+        type: "audio",
+        clips: [],
+        takeLanes: [{ id: "suno-lane", name: "Suno take", clips: [] }],
+      },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "Keep",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data: localDocument(),
+    baseline,
+  });
+  const track = (state.tracks as Array<Record<string, unknown>>)[0];
+  assert.deepEqual(track.takeLanes, baseline.tracks[0].takeLanes);
 });
 
 test("a fresh Suno project has the fields the client validates", () => {

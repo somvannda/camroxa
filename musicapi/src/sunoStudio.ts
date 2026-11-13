@@ -240,20 +240,19 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "track volumeAutomation", suno: "tracks[].faderAutomation", status: "mapped" },
   { key: "markers", suno: "sections", status: "mapped" },
   { key: "audio clips (generation asset)", suno: "clips[].asset {id,type:\"clip\"}", status: "mapped" },
-  { key: "uploads (no Suno asset)", suno: "clips[].asset", status: "pending", note: "needs an upload to the pinned account" },
+  { key: "local uploads", suno: "clips[].asset (imported once, cached)", status: "mapped" },
+  { key: "lanes[].takes", suno: "tracks[].takeLanes[].clips", status: "mapped", note: "takes without a Suno asset stay local" },
   { key: "lanes[].offset", suno: "clips[].readStartBeats", status: "mapped" },
   { key: "lanes[].fadeIn", suno: "clips[].fadeInBeats", status: "mapped" },
   { key: "lanes[].fadeOut", suno: "clips[].fadeOutBeats", status: "pending", note: "no local fade-out field yet" },
   { key: "lanes[].midi.bend", suno: "clips[].midi.pitchBend[{beats,value}]", status: "mapped" },
   { key: "lanes[].midi.mod", suno: "clips[].midi.controlChanges (CC1)", status: "mapped" },
-  { key: "lanes[].instrument", suno: "tracks[].signalChain synth", status: "pending" },
-  { key: "chains (compressor/convolution/delay/gate/limiter/reverb/eq)", suno: "tracks[].signalChain", status: "mapped" },
-  { key: "chains (distortion/chorus)", suno: "tracks[].signalChain", status: "pending", note: "different parameter sets" },
-  { key: "masterChain (limiter)", suno: "masterSignalChain", status: "mapped" },
-  { key: "masterChain (eq/compressor)", suno: "masterSignalChain", status: "pending", note: "amount has no captured param equivalent" },
+  { key: "lanes[].instrument", suno: "tracks[].signalChain synth waveform", status: "mapped" },
+  { key: "chains (all built-ins)", suno: "tracks[].signalChain", status: "mapped", note: "custom plugins stay local" },
+  { key: "masterChain (limiter/eq/compressor)", suno: "masterSignalChain", status: "mapped" },
   { key: "groups", suno: "routing / group tracks", status: "pending" },
   { key: "panAutomation", suno: "tracks[].paramAutomation", status: "pending" },
-  { key: "pluginPresets", suno: "signalChain[].params", status: "pending" },
+  { key: "pluginPresets", suno: "signalChain[].params", status: "mapped", note: "a preset is a param snapshot; the params mirror" },
   { key: "wavetableId", suno: "—", status: "remove", note: "designer removed (D-034)" },
 ];
 
@@ -431,6 +430,11 @@ export class StudioProjectSync {
       );
     }
     return client;
+  }
+
+  /** The pinned account for a user, pinning one on first use. */
+  async accountForUser(userId: string): Promise<string> {
+    return this.pinAccount(userId);
   }
 
   async link(localProjectId: string): Promise<StudioSyncLink | null> {
