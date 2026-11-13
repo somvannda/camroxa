@@ -63,6 +63,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Coarse pointers get 44 px targets | gap G20 | `app/touch-targets.css` |
 | Clips culled outside the visible window | gap G19 | `view` state in `StudioEditorShell` |
 | Automation points select on click and nudge with `←/→` / `↑/↓` (`SHIFT` coarse) | §36 / gap G44 | keydown handler in `components/studio/StudioAutomationPanel.tsx` |
+| Audio clip editor steps the warp quantize grid with `SHIFT 1` / `SHIFT 2` | §36 / gap G44 | keydown handler in `components/studio/StudioAudioEditor.tsx` |
 
 ## Not copied — by rule, not by accident
 

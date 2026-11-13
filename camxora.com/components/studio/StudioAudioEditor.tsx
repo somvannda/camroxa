@@ -200,6 +200,21 @@ export function StudioAudioEditor(props: StudioAudioEditorProps) {
           markers: [...untouched, ...snapped].sort((a, b) => a.time - b.time),
         });
         setSelected([]);
+        return;
+      }
+      // SHIFT 1 / SHIFT 2 step the quantize grid finer / coarser (spec §36).
+      const denser = event.shiftKey && (event.key === "1" || event.key === "!");
+      const sparser = event.shiftKey && (event.key === "2" || event.key === "@");
+      if (denser || sparser) {
+        event.preventDefault();
+        setQuantizeGrid((current) => {
+          const index = QUANTIZE_GRIDS.findIndex((grid) => grid.value === current);
+          const next = Math.max(
+            0,
+            Math.min(QUANTIZE_GRIDS.length - 1, index + (denser ? 1 : -1))
+          );
+          return QUANTIZE_GRIDS[next].value;
+        });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -392,7 +407,7 @@ export function StudioAudioEditor(props: StudioAudioEditorProps) {
 
           <p className="se-audio-hint">
             {warp.on
-              ? `${warp.markers.length} markers · drag a head, Shift Q quantizes, Ctrl A selects all`
+              ? `${warp.markers.length} markers · drag a head, Shift Q quantizes, Ctrl A selects all, Shift 1/2 sets the grid`
               : "Stretch is off — choose a mode to place markers"}
           </p>
         </div>

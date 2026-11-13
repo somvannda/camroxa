@@ -204,4 +204,27 @@ describe("StudioAudioEditor", () => {
     // 2 s bars in 4/4: a 1/4 grid is 0.5 s.
     expect(next.markers.map((marker) => marker.time)).toEqual([0, 0.5, 1.5]);
   });
+
+  it("steps the quantize grid finer and coarser with Shift 1 / Shift 2", () => {
+    const warp: WarpState = {
+      on: true,
+      mode: "beat",
+      formant: 0,
+      markers: [{ id: "a", time: 0, source: 0 }],
+    };
+    render(<StudioAudioEditor {...baseProps} clip={clip({ warp })} onWarp={() => {}} />);
+    const pressed = () =>
+      document.querySelector(".se-audio-grid button[aria-pressed='true']")?.textContent;
+
+    expect(pressed()).toBe("1/8");
+    fireEvent.keyDown(window, { key: "!", shiftKey: true });
+    expect(pressed()).toBe("1/16");
+    fireEvent.keyDown(window, { key: "!", shiftKey: true });
+    expect(pressed()).toBe("1/32");
+    // The grid stops at the coarsest / finest captured chip.
+    fireEvent.keyDown(window, { key: "!", shiftKey: true });
+    expect(pressed()).toBe("1/32");
+    fireEvent.keyDown(window, { key: "@", shiftKey: true });
+    expect(pressed()).toBe("1/16");
+  });
 });
