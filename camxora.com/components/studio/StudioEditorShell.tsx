@@ -1926,6 +1926,14 @@ export function StudioEditorShell() {
     );
   }
 
+  /** S14 "toggle arrangement mute" (`0`): the master output of the whole arrangement. */
+  function toggleMasterMute() {
+    const next = !masterMuted;
+    setMasterMuted(next);
+    applyMasterGain(masterVolume, next);
+    commitMaster(masterVolume, next);
+  }
+
   /** Arming the loop with no range selects the first four bars. */
   function toggleLoop() {
     if (!loop && (!loopEnd || loopEnd <= loopStart)) {
@@ -3553,6 +3561,12 @@ export function StudioEditorShell() {
           return;
         }
 
+        // S14 "toggle arrangement mute": the master output, not the tracks.
+        if (event.key === "0" && !midiClipId) {
+          event.preventDefault();
+          toggleMasterMute();
+          return;
+        }
         if (letter === "a") {
           event.preventDefault();
           addTrack();
@@ -5239,12 +5253,7 @@ export function StudioEditorShell() {
             applyMasterGain(value, masterMuted);
           }}
           onMasterCommit={() => commitMaster()}
-          onToggleMasterMute={() => {
-            const next = !masterMuted;
-            setMasterMuted(next);
-            applyMasterGain(masterVolume, next);
-            commitMaster(masterVolume, next);
-          }}
+          onToggleMasterMute={toggleMasterMute}
         />
 
         {presence.length ? (

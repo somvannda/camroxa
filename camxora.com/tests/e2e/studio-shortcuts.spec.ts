@@ -81,6 +81,13 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
   await page.keyboard.press("Shift+S");
   await expect(solo).toHaveAttribute("aria-pressed", wasSoloed ? "true" : "false");
 
+  // 0 mutes the arrangement output, not the tracks.
+  const mainMute = page.getByRole("button", { name: "Mute main" });
+  await page.keyboard.press("0");
+  await expect(mainMute).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("0");
+  await expect(mainMute).toHaveAttribute("aria-pressed", "false");
+
   // 4 toggles the library drawer.
   await page.keyboard.press("4");
   await expect(library).toBeVisible();
