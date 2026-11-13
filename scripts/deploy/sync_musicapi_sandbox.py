@@ -32,6 +32,7 @@ Production twin: scripts/deploy/deploy_musicapi_production.py
 from __future__ import annotations
 
 import argparse
+import io
 import stat
 import sys
 import tarfile
@@ -43,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deploy import (  # noqa: E402
     REPO_ROOT,
+    TEXT_SUFFIXES,
     ensure_deploy_key,
     ensure_paramiko,
     load_production_secrets,
@@ -100,6 +102,30 @@ def _force_utf8_stdio() -> None:
             pass
 
 
+def normalize_tarball_text(archive: Path) -> None:
+    """Rewrite text members of ``archive`` with LF line endings, in place.
+
+    The musicapi tarball is packed from the working tree on purpose (gitignored
+    build output is skipped by suffix, not by git), so on Windows every text
+    file is read as CRLF. Extracting it over the shared checkout after a
+    verified platform deploy rewrites ``scripts/deploy/*`` with CRLF and makes
+    that deploy look drifted. Normalize the members instead, matching
+    ``release_source.build_archive_from_commit``.
+    """
+    normalized = archive.with_name(archive.name + ".normalized")
+    with tarfile.open(archive, "r:gz") as src, tarfile.open(normalized, "w:gz") as dst:
+        for member in src:
+            data: bytes | None = None
+            if member.isfile():
+                handle = src.extractfile(member)
+                data = handle.read() if handle is not None else b""
+                if Path(member.name).suffix.lower() in TEXT_SUFFIXES and b"\r\n" in data:
+                    data = data.replace(b"\r\n", b"\n")
+                    member.size = len(data)
+            dst.addfile(member, io.BytesIO(data) if data is not None else None)
+    normalized.replace(archive)
+
+
 def build_musicapi_tarball() -> Path:
     """Package musicapi/ + scripts/deploy/ (arcnames preserved) for upload."""
     tmp = Path(tempfile.mkdtemp(prefix="musicapi-deploy-"))
@@ -111,6 +137,7 @@ def build_musicapi_tarball() -> Path:
             if not src.is_dir():
                 raise FileNotFoundError(f"Missing deploy directory: {src}")
             tar.add(src, arcname=name, filter=musicapi_tar_filter, recursive=True)
+    normalize_tarball_text(archive)
     print(f"Source archive ready ({archive.stat().st_size / (1024 * 1024):.1f} MB)")
     return archive
 
