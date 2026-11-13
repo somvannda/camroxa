@@ -229,8 +229,11 @@ Mapping summary:
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | audio clips with a Suno asset | `clips[].asset` | both | asset id comes from the local Suno clip id |
 | audio clips without an asset | — | — | not mirrored; reported in `skipped_clip_ids` |
-| `chains` (effects) | `tracks[].signalChain` | both | compressor, convolution, delay, gate, limiter, reverb, EQ (verified live) |
-| `masterChain` | `masterSignalChain` | both | limiter (verified live); EQ/compressor pending |
+| `lanes[].instrument` | synth `waveform1` | both | sine/triangle/saw (verified live) |
+| `lanes[].takes` | `tracks[].takeLanes[].clips` | both | alternates need a Suno asset |
+| local upload audio | `clips[].asset` | both | imported once into the pinned account, clip id cached |
+| `chains` (all built-ins) | `tracks[].signalChain` | both | compressor, convolution, delay, distortion, chorus, gate, limiter, reverb, EQ; custom plugins stay local |
+| `masterChain` | `masterSignalChain` | both | limiter, EQ and compressor (verified live) |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | `groups` | routing / group tracks | both | pending |
 | custom wavetable ids | `wavetables` asset | removed | Suno has wavetables as assets, not an editor |

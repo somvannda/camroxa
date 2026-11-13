@@ -223,20 +223,19 @@ Notes for the mapping:
 
 ### Implemented mapping (2026-11-13)
 
-The codec writes chains for **compressor, convolution, delay, gate, limiter,
-reverb and EQ** (four bands; the fifth and sixth are disabled), plus the **master
-limiter**. Parameter translation is explicit (`gain` → `output`, dotted EQ keys →
-`freqN`/`gainN`/`qN`/`enabledN`, delay percentages → 0–1 with `mode`/`beats`).
+The codec writes chains for every built-in plugin: **compressor, convolution,
+delay, distortion, chorus, gate, limiter, reverb and EQ** (four bands; the fifth
+and sixth are disabled), plus the **master limiter, EQ and compressor** and the
+**synth instance** every MIDI track needs (`waveform1` from our instrument).
 
-Live probe: a project saved with a compressor, a reverb, a tempo-synced delay and
-a master limiter read back with all parameters intact:
+Parameter translation is explicit (`gain` → `output`, dotted EQ keys → `freqN`/
+`gainN`/`qN`/`enabledN`, delay percentages → 0–1 with `mode`/`beats`, chorus Hz →
+a `1/n` division, distortion mode → `Shape`).
 
-- compressor `{attack:10, knee:6, output:3, ratio:4, release:120, threshold:-20}`
-- reverb `{damping:40, highCut:14000, lowCut:120, mix:30, predelay:20, time:3, width:100}`
-- delay `{mode:"tempo", beats:1, milliseconds:500, feedback:0.4, mix:0.25, lowCut:120, highCut:12000}`
-- master limiter `{attack:2, lookahead:5, preGain:-2, release:80}`
+Live probe (throwaway project, archived): a MIDI track with a triangle synth, a
+fold distortion and a chorus read back as
+`[{synth, waveform1:"triangle"}, {distortion, Shape:"Fold", Input Gain:12}, {chorus, rate:"1/2"}]`,
+and the master chain as
+`[limiter, eq(gain3:6), compressor(threshold:-18, ratio:5)]`.
 
-Still pending: distortion and chorus (different parameter sets, and chorus `rate`
-is a division string), and the master EQ/compressor whose `amount` has no captured
-param equivalent. Those effects stay local and are reported by the coverage
-registry.
+Custom plugins stay local: they have no Suno `pluginVersionId`.
