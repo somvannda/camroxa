@@ -135,6 +135,49 @@ export async function keepStudioLocalVersion(id: string): Promise<StudioProjectS
   });
 }
 
+export type StudioPluginAuthoringJob = {
+  job_id: string;
+  status: "pending" | "saving" | "ready" | "error";
+  phase: string | null;
+  progress: Array<{ message?: string; stage?: string }>;
+  plugin_id: string | null;
+  plugin_version_id: string | null;
+  display_name: string | null;
+  descriptor: import("@/lib/studio-designer").AuthoredPluginDescriptor | null;
+  last_error: string | null;
+};
+
+/**
+ * Ask Suno's agent to author a plugin (S45). This starts an asynchronous,
+ * credit-spending job; poll `getStudioPluginAuthoringJob` until it is `ready`.
+ */
+export async function authorStudioPlugin(
+  id: string,
+  input: { instruction: string; required_controls?: string[] }
+): Promise<StudioPluginAuthoringJob> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/plugins/author`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: input.instruction,
+        required_controls: input.required_controls ?? [],
+      }),
+    }
+  );
+}
+
+/** Read one plugin-authoring job; `ready` carries the descriptor and ids. */
+export async function getStudioPluginAuthoringJob(
+  id: string,
+  jobId: string
+): Promise<StudioPluginAuthoringJob> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/plugins/author/${encodeURIComponent(jobId)}`
+  );
+}
+
 export async function createStudioProject(input: {
   title: string;
   major_version?: number;

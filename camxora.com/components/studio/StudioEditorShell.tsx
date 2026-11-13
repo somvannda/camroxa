@@ -31,6 +31,9 @@ import {
   keepStudioLocalVersion,
   loadStudioSunoVersion,
   forkStudioProject,
+  authorStudioPlugin,
+  getStudioPluginAuthoringJob,
+  type StudioPluginAuthoringJob,
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
@@ -116,8 +119,8 @@ import {
 import {
   DESIGN_CARD_SUBTITLE,
   DESIGN_PROMPT,
-  designPlugin,
-  type DesignResult,
+  pluginFromAuthoring,
+  restateDesign,
 } from "@/lib/studio-designer";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
@@ -642,9 +645,18 @@ export function StudioEditorShell() {
   const [designMode, setDesignMode] = useState(false);
   const [designContext, setDesignContext] = useState<string | null>(null);
   /** Restate message awaiting "Build it" / "Change something…". */
-  const [designRequest, setDesignRequest] = useState<DesignResult | null>(null);
+  const [designRequest, setDesignRequest] = useState<
+    { instruction: string; restate: string } | null
+  >(null);
   /** Built plugin shown as a draggable card; saved to the library, never inserted. */
-  const [designBuilt, setDesignBuilt] = useState<DesignResult | null>(null);
+  const [designBuilt, setDesignBuilt] = useState<CustomPlugin | null>(null);
+  /** Suno's authoring agent runs in the background; this is the progress state. */
+  const [designJob, setDesignJob] = useState<
+    { status: StudioPluginAuthoringJob["status"]; message: string } | null
+  >(null);
+  const [designError, setDesignError] = useState<string | null>(null);
+  /** Bumped on exit so a poll that lands later cannot write into a closed designer. */
+  const designRunRef = useRef(0);
   const [pendingSong, setPendingSong] = useState<WebMusicGeneration | null>(null);
   /** Refusal state for the assistant (own addition; S60/S61 have no capture). */
   const [promptNotice, setPromptNotice] = useState<
@@ -5049,43 +5061,118 @@ export function StudioEditorShell() {
   }
 
   function exitPluginDesigner() {
+    designRunRef.current += 1;
     setDesignMode(false);
     setDesignContext(null);
     setDesignRequest(null);
     setDesignBuilt(null);
+    setDesignJob(null);
+    setDesignError(null);
     setPromptValue("");
   }
 
-  /** Design mode's send: restate the request and ask before building anything. */
+  /** Design mode's send: restate the request and ask before spending credits. */
   function startPluginDesign(prompt: string) {
-    const result = designPlugin(prompt, customPlugins.map((plugin) => plugin.name));
+    const restate = restateDesign(prompt);
     setAssistantOpen(true);
     setPendingSong(null);
     setDesignBuilt(null);
-    setDesignRequest(result);
+    setDesignError(null);
+    setDesignJob(null);
+    setDesignRequest({ instruction: prompt, restate });
     setAssistantMessages([
       { id: `u-${Date.now()}`, role: "user", text: prompt },
-      { id: `d-${Date.now()}`, role: "design", text: result.restate },
+      { id: `d-${Date.now()}`, role: "design", text: restate },
     ]);
     setPromptValue("");
   }
 
-  /** Save the designed plugin to MY PLUGINS; it is never auto-inserted. */
-  function buildDesignedPlugin() {
-    if (!designRequest) return;
-    const result = designRequest;
-    const data = currentData() as Record<string, unknown>;
-    const existing = Array.isArray(data.customPlugins) ? data.customPlugins : [];
-    writeProjectData(
-      { ...data, customPlugins: [...existing, result.plugin] },
-      "a designed plugin"
-    );
-    setDesignRequest(null);
-    setDesignBuilt(result);
+  /**
+   * "Build it" hands the prompt to Suno's authoring agent. The job is
+   * asynchronous (usually a few minutes) and spends credits; the editor polls
+   * and then saves the finished plugin to MY PLUGINS — never auto-inserted.
+   */
+  async function buildDesignedPlugin() {
+    if (!designRequest || designJob) return;
+    const request = designRequest;
+    const projectId = project?.id;
+    if (!projectId) {
+      setDesignError("Open a saved project before building a plugin.");
+      return;
+    }
+    const run = designRunRef.current + 1;
+    designRunRef.current = run;
+    setDesignError(null);
+    setDesignJob({ status: "pending", message: "Starting the plugin authoring agent…" });
     setAssistantMessages((current) => [
       ...current,
-      { id: `r-${Date.now()}`, role: "result", text: result.completion },
+      {
+        id: `b-${Date.now()}`,
+        role: "status",
+        text: "Authoring the plugin - this usually takes a few minutes.",
+      },
     ]);
+    try {
+      let job = await authorStudioPlugin(projectId, {
+        instruction: request.instruction,
+      });
+      const deadline = Date.now() + 5 * 60_000;
+      while (job.status !== "ready" && job.status !== "error") {
+        if (designRunRef.current !== run) return;
+        if (Date.now() > deadline) {
+          throw new Error("The plugin agent is still working; try again in a moment.");
+        }
+        setDesignJob({
+          status: job.status,
+          message:
+            job.progress?.find((item) => item.message)?.message ??
+            "Authoring the plugin - this usually takes a few minutes.",
+        });
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        if (designRunRef.current !== run) return;
+        job = await getStudioPluginAuthoringJob(projectId, job.job_id);
+      }
+      if (job.status === "error") {
+        throw new Error(job.last_error ?? "The plugin agent could not finish.");
+      }
+      const plugin =
+        job.plugin_id && job.plugin_version_id && job.descriptor
+          ? pluginFromAuthoring(job.descriptor, {
+              instruction: request.instruction,
+              pluginId: job.plugin_id,
+              pluginVersionId: job.plugin_version_id,
+              existingNames: customPlugins.map((item) => item.name),
+            })
+          : null;
+      if (!plugin) throw new Error("The plugin agent did not return a usable plugin.");
+      const data = currentData() as Record<string, unknown>;
+      const existing = Array.isArray(data.customPlugins) ? data.customPlugins : [];
+      writeProjectData(
+        { ...data, customPlugins: [...existing, plugin] },
+        "a designed plugin"
+      );
+      if (designRunRef.current !== run) return;
+      setDesignRequest(null);
+      setDesignBuilt(plugin);
+      setDesignJob(null);
+      setAssistantMessages((current) => [
+        ...current,
+        {
+          id: `r-${Date.now()}`,
+          role: "result",
+          text: `${plugin.name} is ready with ${plugin.params.length} controls. Add it to a track to use it.`,
+        },
+      ]);
+    } catch (cause) {
+      if (designRunRef.current !== run) return;
+      const message = cause instanceof Error ? cause.message : "The plugin agent failed.";
+      setDesignError(message);
+      setDesignJob(null);
+      setAssistantMessages((current) => [
+        ...current,
+        { id: `e-${Date.now()}`, role: "status", text: message },
+      ]);
+    }
   }
 
   /** Return to the prompt with the original wording so the user can edit it. */
@@ -5819,7 +5906,7 @@ export function StudioEditorShell() {
               type="submit"
               className={`se-prompt-send${designMode && promptValue.trim() ? " is-active" : ""}`}
               aria-label={designMode ? "Design this plugin" : "Generate this part"}
-              title={designMode ? "Builds a plugin, no credits spent" : "Generates with your account credits"}
+              title={designMode ? "Asks the plugin agent to build it (uses credits)" : "Generates with your account credits"}
               disabled={!promptValue.trim() || promptBusy}
             >
               <Icon name="fa-arrow-up" />
@@ -5882,13 +5969,28 @@ export function StudioEditorShell() {
             ))}
             {designRequest ? (
               <div className="se-design-actions">
-                <button type="button" className="se-pill on" onClick={buildDesignedPlugin}>
+                <button
+                  type="button"
+                  className="se-pill on"
+                  onClick={() => void buildDesignedPlugin()}
+                  disabled={designJob !== null}
+                >
                   Build it
                 </button>
-                <button type="button" className="se-pill" onClick={revisePluginDesign}>
+                <button type="button" className="se-pill" onClick={revisePluginDesign} disabled={designJob !== null}>
                   Change something…
                 </button>
               </div>
+            ) : null}
+            {designJob ? (
+              <p className="se-assistant-msg design" role="status">
+                {designJob.message}
+              </p>
+            ) : null}
+            {designError ? (
+              <p className="se-assistant-msg error" role="alert">
+                {designError}
+              </p>
             ) : null}
             {designBuilt ? (
               <div
@@ -5897,23 +5999,23 @@ export function StudioEditorShell() {
                 onDragStart={(event) => {
                   event.dataTransfer.setData(
                     "application/x-camxora-plugin",
-                    JSON.stringify(designBuilt.plugin)
+                    JSON.stringify(designBuilt)
                   );
                   event.dataTransfer.effectAllowed = "copy";
                 }}
-                aria-label={`${designBuilt.plugin.name}, designed plugin`}
+                aria-label={`${designBuilt.name}, designed plugin`}
               >
                 <span className="se-design-grip" aria-hidden="true">
                   <Icon name="fa-grip-vertical" />
                 </span>
                 <span className="se-design-body">
-                  <strong>{designBuilt.plugin.name}</strong>
+                  <strong>{designBuilt.name}</strong>
                   <span className="se-design-sub">{DESIGN_CARD_SUBTITLE}</span>
                 </span>
                 <button
                   type="button"
                   className="se-pill on"
-                  onClick={() => addDesignedToTrack(designBuilt.plugin)}
+                  onClick={() => addDesignedToTrack(designBuilt)}
                   disabled={tracks.length === 0}
                 >
                   Add to track

@@ -44,6 +44,9 @@ export type CustomPlugin = {
   defaults: Record<string, number>;
   /** The prompt it was designed from, for the library card. */
   prompt?: string;
+  /** Suno library ids once the authoring agent has built it (S45/D-034). */
+  sunoPluginId?: string;
+  sunoPluginVersionId?: string;
 };
 
 /** Primary knobs render large; secondary (filters, trims) render small. */
@@ -477,6 +480,12 @@ export function sanitizeCustomPlugin(input: unknown): CustomPlugin | null {
     defaults: {},
     prompt: typeof raw.prompt === "string" ? raw.prompt.slice(0, 400) : undefined,
   };
+  if (typeof raw.sunoPluginId === "string" && raw.sunoPluginId) {
+    custom.sunoPluginId = raw.sunoPluginId;
+  }
+  if (typeof raw.sunoPluginVersionId === "string" && raw.sunoPluginVersionId) {
+    custom.sunoPluginVersionId = raw.sunoPluginVersionId;
+  }
   custom.defaults = customParamMap(custom, raw.defaults as Record<string, unknown> | undefined);
   return custom;
 }
