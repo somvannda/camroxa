@@ -394,6 +394,46 @@ test("chains and the master limiter project back from a Suno document", () => {
   assert.equal(projected.masterChain[0].type, "limiter");
 });
 
+test("delay maps its mode, beats and 0–1 wet controls", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "fx-delay",
+        pluginId: "delay",
+        mode: "tempo",
+        presetName: "Custom",
+        params: { time: 500, feedback: 40, mix: 25, lowCut: 120, highCut: 12000 },
+      },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "Delay",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
+    Record<string, unknown>
+  >;
+  const params = chain[0].params as Record<string, unknown>;
+  assert.equal(params.milliseconds, 500);
+  assert.equal(params.beats, 1);
+  assert.equal(params.mode, "tempo");
+  assert.equal(params.feedback, 0.4);
+  assert.equal(params.mix, 0.25);
+
+  const projected = sunoStateToProjectData(state);
+  const trackId = projected.tracks[0].id;
+  const entry = projected.chains[trackId]?.[0];
+  assert.equal(entry?.mode, "tempo");
+  assert.equal((entry?.params as Record<string, number>).time, 500);
+  assert.equal((entry?.params as Record<string, number>).feedback, 40);
+  assert.equal((entry?.params as Record<string, number>).mix, 25);
+});
+
 test("a fresh Suno project has the fields the client validates", () => {
   const state = emptySunoState("Untitled Project");
   assert.ok(state.timing);

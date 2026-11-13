@@ -313,6 +313,8 @@ export interface SunoPluginMapping {
   pluginVersionId: string;
   /** Local numeric param key → Suno numeric param key. */
   params: Record<string, string>;
+  /** Per-param multiplier when the two sides use different scales (e.g. 0–100 → 0–1). */
+  scales?: Record<string, number>;
   /** Local 0/1 param key → Suno boolean param key. */
   booleans?: Record<string, string>;
   /** Local chain string field → Suno param key (e.g. `mode`). */
@@ -339,6 +341,18 @@ export const SUNO_PLUGIN_CATALOG: Record<string, SunoPluginMapping> = {
   convolution: {
     pluginVersionId: "ddcfbfdc-ec10-4a92-8a8b-56245cf48293",
     params: { mix: "mix", gain: "gain", pre: "predelay", width: "width" },
+  },
+  delay: {
+    pluginVersionId: "e2b9270b-5099-4e2b-8ddc-c3a2b2cbe31e",
+    params: {
+      time: "milliseconds",
+      feedback: "feedback",
+      mix: "mix",
+      lowCut: "lowCut",
+      highCut: "highCut",
+    },
+    // Suno stores delay wet/dry and feedback as 0–1, we store percentages.
+    scales: { feedback: 0.01, mix: 0.01 },
   },
   gate: {
     pluginVersionId: "14fb47e6-c951-4a35-bfa6-f14d2396b4d0",
@@ -390,7 +404,8 @@ const SUNO_PLUGIN_BY_VERSION = new Map(
  */
 export function chainEntryToSuno(
   entry: Record<string, unknown>,
-  fallbackIndex: number
+  fallbackIndex: number,
+  bpm = 120
 ): Record<string, unknown> | null {
   const pluginId = typeof entry.pluginId === "string" ? entry.pluginId : "";
   const def = SUNO_PLUGIN_CATALOG[pluginId];
@@ -398,14 +413,23 @@ export function chainEntryToSuno(
   const localParams = (entry.params ?? {}) as Record<string, unknown>;
   const params: Record<string, unknown> = {};
   for (const [local, suno] of Object.entries(def.params)) {
-    const value = Number(localParams[local]);
-    if (Number.isFinite(value)) params[suno] = value;
+    const raw = Number(localParams[local]);
+    if (!Number.isFinite(raw)) continue;
+    params[suno] = round(raw * (def.scales?.[local] ?? 1));
   }
   for (const [local, suno] of Object.entries(def.booleans ?? {})) {
     if (localParams[local] !== undefined) params[suno] = Number(localParams[local]) > 0.5;
   }
   for (const [local, suno] of Object.entries(def.strings ?? {})) {
     if (typeof entry[local] === "string") params[suno] = entry[local];
+  }
+  if (pluginId === "delay") {
+    const mode = entry.mode === "tempo" ? "tempo" : "time";
+    const milliseconds = Number(localParams.time) || 0;
+    params.mode = mode;
+    params.milliseconds = milliseconds;
+    // Suno keeps both fields; the mode decides which one it plays.
+    params.beats = round((milliseconds * bpm) / 60_000);
   }
   if (pluginId === "eq") {
     params.enabled5 = false;
@@ -440,7 +464,10 @@ export function chainEntryFromSuno(
   const params: Record<string, number> = {};
   for (const [local, suno] of Object.entries(def.params)) {
     const value = Number(sunoParams[suno]);
-    if (Number.isFinite(value)) params[local] = value;
+    if (Number.isFinite(value)) {
+      const scale = def.scales?.[local] ?? 1;
+      params[local] = round(value / scale);
+    }
   }
   for (const [local, suno] of Object.entries(def.booleans ?? {})) {
     if (sunoParams[suno] !== undefined) params[local] = sunoParams[suno] ? 1 : 0;
@@ -450,6 +477,12 @@ export function chainEntryFromSuno(
     pluginId,
     presetId: typeof entry.presetId === "string" ? entry.presetId : null,
     presetName: "Custom",
+    mode:
+      pluginId === "delay" && typeof sunoParams.mode === "string"
+        ? sunoParams.mode === "tempo"
+          ? "tempo"
+          : "time"
+        : undefined,
     params,
     sunoId: typeof entry.id === "string" ? entry.id : undefined,
   };
@@ -457,10 +490,11 @@ export function chainEntryFromSuno(
 
 function buildChain(
   entries: Array<Record<string, unknown>> | undefined,
+  bpm = 120,
   fallbackIndexBase = 0
 ): Record<string, unknown>[] {
   return (Array.isArray(entries) ? entries : [])
-    .map((entry, index) => chainEntryToSuno(entry, fallbackIndexBase + index))
+    .map((entry, index) => chainEntryToSuno(entry, fallbackIndexBase + index, bpm))
     .filter((entry): entry is Record<string, unknown> => entry !== null);
 }
 
@@ -550,7 +584,8 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
         balance: round(Math.max(-1, Math.min(1, (Number(track.pan ?? 0) || 0) / 100))),
         routingMode: "stereo",
         signalChain: buildChain(
-          (data.chains ?? {})[track.id] as Array<Record<string, unknown>> | undefined
+          (data.chains ?? {})[track.id] as Array<Record<string, unknown>> | undefined,
+          bpm
         ),
         faderAutomation: automationToBeats(track.volumeAutomation, bps),
         clips,
