@@ -327,13 +327,19 @@ Clips whose audio has no Suno asset are **not** represented; they are counted in
 the link's `skipped_clip_ids` and surfaced in the sync chip, and existing Suno
 audio clips are preserved untouched rather than dropped.
 
-**Phase 3 — pull/reconcile.**
-Change detection is live: `refresh` marks `conflict` when Suno advanced, and
-`/internal/studio/sync/health` reports the per-field coverage registry
-(`STUDIO_STATE_COVERAGE`, `mapped`/`pending`/`remove`). `sunoStateToProjectData`
-already reads a Suno document back into local fields (used by tests and the live
-probe). Remaining: apply it on open and the conflict UI (`Load Suno`,
-`Keep mine`, `Duplicate`).
+**Phase 3 — pull/reconcile. DONE.**
+- `refresh` detects a newer Suno version (throttled) and marks the link `conflict`.
+- The editor shows a conflict dialog with three honest choices:
+  - **Load Suno version** — `POST /studio/projects/{id}/load-suno`. The server
+    re-reads Suno, projects it with `sunoStateToProjectData`, and merges it into
+    the local document (`mergeSunoProjectIntoLocal`): matched tracks/clips update,
+    Suno-only ones are added, and local-only clips are **kept** and reported.
+    The applied version is recorded so the next autosave is a no-op.
+  - **Keep mine** — `POST /studio/projects/{id}/keep-mine` rebases onto Suno's
+    observed version and pushes the local document.
+  - **Duplicate locally** — forks the project; the copy mirrors as its own Suno
+    project.
+- `/internal/studio/sync/health` still reports the per-field coverage registry.
 
 **Phase 4 — coverage matrix = removal list (D-034).**
 Per-feature tests: tracks, clips, MIDI, effects, automation, markers, metadata,

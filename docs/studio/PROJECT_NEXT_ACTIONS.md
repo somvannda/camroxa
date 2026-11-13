@@ -59,17 +59,15 @@ archived. Details in `SUNO_STUDIO_STATE_SCHEMA.md`.
 
 Next, in order:
 
-1. **Audio asset mapping.** Local upload clips have no Suno asset yet, so they are
-   counted in `skipped_clips` and left out of the mirrored project. The platform
-   generation record already knows the Suno clip id; carry it onto the studio clip
-   as `sunoAssetId` so audio clips mirror too.
-2. **Pull/reconcile.** `sunoStateToProjectData` reads a Suno document into local
-   fields; apply it on open and add the conflict UI (`Load Suno`, `Keep mine`,
-   `Duplicate`).
-3. **Effects and master chain.** `tracks[].signalChain` and `masterSignalChain`
+1. **Local uploads.** A clip that did not come from a Suno generation has no
+   asset on the pinned account. Upload it through Suno's upload pipeline (or copy
+   it between accounts) so it can join the mirror instead of being skipped.
+2. **Effects and master chain.** `tracks[].signalChain` and `masterSignalChain`
    are captured; our plugin ids still need mapping to Suno `pluginVersionId`s.
-4. **Section markers.** `state.sections` was empty in every captured project; one
+3. **Section markers.** `state.sections` was empty in every captured project; one
    project with a section is needed to finish the shape.
+4. **Clip offset/fades and MIDI bend/mod lanes** (`readStartBeats`, fades,
+   `pitchBend`/`controlChanges`).
 5. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
 
 Known test lesson (fixed 2026-11-13): the automation and section-marker specs used
