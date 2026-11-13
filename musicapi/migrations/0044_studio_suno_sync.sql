@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS studio_suno_projects (
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'linked', 'synced', 'conflict', 'error')),
   last_error TEXT,
+  last_checked_at TIMESTAMPTZ,
   synced_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

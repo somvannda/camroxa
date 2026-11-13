@@ -537,6 +537,15 @@ async def sync_studio_project(
     return await service.sync_studio_project(UUID(ctx.user_id), project_id)
 
 
+@router.post("/studio/projects/{project_id}/refresh")
+async def refresh_studio_project(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.refresh_studio_project(UUID(ctx.user_id), project_id)
+
+
 @router.patch("/studio/projects/{project_id}")
 async def update_studio_project(
     project_id: UUID,

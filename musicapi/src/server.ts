@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy, daysUntilRenewal, forecastRenewals } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { StudioProjectSync, isRetryableStudioSyncError, stateSyncEnabled, type StudioProjectDocument } from "./sunoStudio.js";
+import { StudioProjectSync, coverageSummary, isRetryableStudioSyncError, stateSyncEnabled, type StudioProjectDocument } from "./sunoStudio.js";
 import { isCapacityExhaustionError, isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
@@ -8933,6 +8933,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.send(status);
   });
 
+  app.post("/internal/studio/projects/:id/refresh", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const body = (req.body ?? {}) as { user_id?: string };
+    const userId = typeof body.user_id === "string" ? body.user_id : "";
+    if (!STUDIO_UUID_RE.test(userId)) {
+      return reply.code(400).send({ error: "user_id is required." });
+    }
+    const view = await studioSync.refresh(id, userId);
+    if (!view) return reply.code(404).send({ error: "Project not found." });
+    return reply.send(view);
+  });
+
   app.post("/internal/studio/projects/:id/archive", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { id } = req.params as { id: string };
@@ -8967,6 +8981,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         account_label: row.account_label,
         users: Number(row.count),
       })),
+      coverage: coverageSummary(),
+      state_sync: stateSyncEnabled(),
     });
   });
 

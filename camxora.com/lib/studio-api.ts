@@ -100,6 +100,16 @@ export async function syncStudioProject(id: string): Promise<StudioProjectSync> 
   });
 }
 
+/**
+ * Ask Suno whether the project moved ahead. Read-only for the local document:
+ * a newer remote version only flips the chip to `conflict`.
+ */
+export async function refreshStudioProject(id: string): Promise<StudioProjectSync> {
+  return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/refresh`, {
+    method: "POST",
+  });
+}
+
 export async function createStudioProject(input: {
   title: string;
   major_version?: number;

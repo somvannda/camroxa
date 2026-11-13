@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  coverageSummary,
+  decideStateSync,
   isRetryableStudioSyncError,
   mergeLocalDocumentIntoSunoState,
   parseStudioState,
@@ -9,6 +11,7 @@ import {
   studioDocumentHash,
   studioProjectMetadata,
   studioSyncBackoffMs,
+  STUDIO_STATE_COVERAGE,
   type StudioProjectDocument,
 } from "../src/sunoStudio.js";
 import { StudioAccountError, StudioProjectConflictError } from "../src/client.js";
@@ -103,4 +106,95 @@ test("merge leaves a non-object timing value alone", () => {
   const merged = mergeLocalDocumentIntoSunoState({ timing: "manual" }, doc());
   assert.ok(merged);
   assert.equal(merged.timing, "manual");
+});
+
+test("state sync is skipped while arrangement writes are disabled", () => {
+  const decision = decideStateSync({
+    enabled: false,
+    linkVersionId: "v1",
+    stateHash: null,
+    remoteVersionId: "v2",
+    remoteState: { timing: { bps: 2 } },
+    doc: doc(),
+  });
+  assert.deepEqual(decision, { kind: "skip" });
+});
+
+test("a remote version ahead of the last push is a conflict, never an overwrite", () => {
+  const decision = decideStateSync({
+    enabled: true,
+    linkVersionId: "v1",
+    stateHash: null,
+    remoteVersionId: "v2",
+    remoteState: { timing: { bps: 2 } },
+    doc: doc(),
+  });
+  assert.deepEqual(decision, { kind: "conflict" });
+});
+
+test("an unchanged document skips the round trip", () => {
+  const current = doc({ data: { tracks: [], lanes: [] } });
+  const decision = decideStateSync({
+    enabled: true,
+    linkVersionId: "v1",
+    stateHash: studioDocumentHash(current.data),
+    remoteVersionId: "v1",
+    remoteState: { timing: { bps: 2 } },
+    doc: current,
+  });
+  assert.deepEqual(decision, { kind: "skip" });
+});
+
+test("a document that changed is merged into the remote baseline and pushed", () => {
+  const current = doc({ bpm: 90, data: { tracks: [{ id: "t1" }] } });
+  const decision = decideStateSync({
+    enabled: true,
+    linkVersionId: "v1",
+    stateHash: null,
+    remoteVersionId: "v1",
+    remoteState: { timing: { bps: 2, bpsAutomation: [] }, unknownKey: 1 },
+    doc: current,
+  });
+  assert.equal(decision.kind, "push");
+  if (decision.kind !== "push") return;
+  assert.equal(decision.baseVersionId, "v1");
+  assert.equal((decision.state.timing as { bps: number }).bps, 1.5);
+  assert.equal(decision.state.unknownKey, 1);
+});
+
+test("the first push after a create uses the remote version as its base", () => {
+  const decision = decideStateSync({
+    enabled: true,
+    linkVersionId: null,
+    stateHash: null,
+    remoteVersionId: "v7",
+    remoteState: { timing: { bps: 2 } },
+    doc: doc(),
+  });
+  assert.equal(decision.kind, "push");
+  if (decision.kind !== "push") return;
+  assert.equal(decision.baseVersionId, "v7");
+});
+
+test("no remote baseline means no push instead of an invented document", () => {
+  const decision = decideStateSync({
+    enabled: true,
+    linkVersionId: null,
+    stateHash: "stale",
+    remoteVersionId: null,
+    remoteState: null,
+    doc: doc(),
+  });
+  assert.deepEqual(decision, { kind: "no-baseline" });
+});
+
+test("the coverage registry counts every field and names the pending ones", () => {
+  const summary = coverageSummary();
+  assert.equal(summary.mapped + summary.pending + summary.remove, STUDIO_STATE_COVERAGE.length);
+  assert.equal(summary.mapped, 3);
+  assert.ok(summary.pending_keys.includes("tracks"));
+  assert.ok(summary.pending_keys.includes("lanes[] (clips)"));
+  // A removed feature must never quietly return as a "pending" mapping.
+  const removed = STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "remove");
+  assert.deepEqual(removed.map((entry) => entry.key), ["wavetableId"]);
 });

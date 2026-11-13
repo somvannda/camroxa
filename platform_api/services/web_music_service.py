@@ -1999,7 +1999,7 @@ class WebMusicService:
         base, token = endpoint
         # A status read backs the editor chip and must fail fast; a push may wait
         # for a slow provider save.
-        timeout = 10 if action == "status" else 90
+        timeout = 10 if action in ("status", "refresh") else 90
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if action == "status":
@@ -2040,6 +2040,25 @@ class WebMusicService:
         if project is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         view = await self._studio_sync_request(str(user_id), str(project_id), "status")
+        return view or {
+            "status": "pending",
+            "suno_project_id": None,
+            "suno_version_id": None,
+            "last_error": None,
+            "synced_at": None,
+            "state_sync": False,
+        }
+
+    async def refresh_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        """Ask Suno whether it moved ahead; never touches the local document."""
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        view = await self._studio_sync_request(str(user_id), str(project_id), "refresh")
         return view or {
             "status": "pending",
             "suno_project_id": None,

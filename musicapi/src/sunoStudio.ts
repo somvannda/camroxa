@@ -56,6 +56,7 @@ export interface StudioSyncLink {
   archived: boolean;
   status: StudioSyncStatus;
   last_error: string | null;
+  last_checked_at: string | Date | null;
   synced_at: string | Date | null;
   updated_at: string | Date;
 }
@@ -188,6 +189,109 @@ export function mergeLocalDocumentIntoSunoState(
     }
   }
   return next;
+}
+
+/**
+ * Per-field parity registry (D-034). `mapped` is verified against Suno's
+ * contract; `pending` is a reference feature whose Suno path still needs the
+ * live document sample; `remove` has no Suno counterpart and must not exist in
+ * the editor. The health route reports it so gaps cannot hide.
+ */
+export type CoverageStatus = "mapped" | "pending" | "remove";
+
+export interface CoverageEntry {
+  /** Key in our `studio_projects.data` document. */
+  key: string;
+  /** Suno `state` path (or the field it mirrors). */
+  suno: string;
+  status: CoverageStatus;
+  note?: string;
+}
+
+export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
+  { key: "title", suno: "title", status: "mapped" },
+  { key: "majorVersion", suno: "majorVersion", status: "mapped" },
+  { key: "bpm", suno: "timing.bps", status: "mapped" },
+  { key: "timeSignature", suno: "timeSignatureChanges / timing", status: "pending" },
+  { key: "tracks", suno: "tracks", status: "pending" },
+  { key: "tracks[].volume", suno: "tracks[].volume", status: "pending" },
+  { key: "tracks[].pan", suno: "tracks[].pan", status: "pending" },
+  { key: "tracks[].muted", suno: "tracks[].mute", status: "pending" },
+  { key: "tracks[].solo", suno: "tracks[].solo", status: "pending" },
+  { key: "tracks[].color", suno: "tracks[].color", status: "pending" },
+  { key: "tracks[].groupId", suno: "group tracks", status: "pending" },
+  { key: "lanes[] (clips)", suno: "clips", status: "pending" },
+  { key: "lanes[].start/duration", suno: "clips[].startBeats/endBeats", status: "pending" },
+  { key: "lanes[].offset", suno: "clips[].readStartBeats", status: "pending" },
+  { key: "lanes[].fades", suno: "clips[].fadeInBeats/fadeOutBeats", status: "pending" },
+  { key: "lanes[].midi.notes", suno: "notes (pitch/start/velocity)", status: "pending" },
+  { key: "lanes[].midi.bend", suno: "automation lane", status: "pending" },
+  { key: "lanes[].midi.mod", suno: "automation lane", status: "pending" },
+  { key: "lanes[].instrument", suno: "clip instrument voice", status: "pending" },
+  { key: "chains", suno: "plugins", status: "pending" },
+  { key: "masterChain", suno: "masterSignalChain", status: "pending" },
+  { key: "markers", suno: "sections", status: "pending" },
+  { key: "groups", suno: "group tracks", status: "pending" },
+  { key: "volumeAutomation", suno: "automation", status: "pending" },
+  { key: "panAutomation", suno: "automation", status: "pending" },
+  { key: "masterVolume/masterMuted", suno: "routing / amplitude", status: "pending" },
+  { key: "pluginPresets", suno: "plugins[].params", status: "pending" },
+  { key: "wavetableId", suno: "—", status: "remove", note: "designer removed (D-034)" },
+];
+
+export function coverageSummary(): {
+  mapped: number;
+  pending: number;
+  remove: number;
+  pending_keys: string[];
+} {
+  const pending = STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "pending");
+  return {
+    mapped: STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "mapped").length,
+    pending: pending.length,
+    remove: STUDIO_STATE_COVERAGE.filter((entry) => entry.status === "remove").length,
+    pending_keys: pending.map((entry) => entry.key),
+  };
+}
+
+/**
+ * Decide what the state half of a sync should do. Pure so every branch (skip,
+ * conflict, no baseline, push) is unit-tested without a database or a provider.
+ *
+ * - Writes disabled: nothing to do beyond the metadata mirror already applied.
+ * - Suno advanced since our last push: never overwrite; surface a conflict.
+ * - Local document unchanged since the last push: skip the round trip.
+ * - No Suno document to merge into: refuse to invent one (Suno's defaults would
+ *   be lost), which leaves the link `linked` and the error visible.
+ */
+export type StateSyncDecision =
+  | { kind: "skip" }
+  | { kind: "conflict" }
+  | { kind: "no-baseline" }
+  | { kind: "push"; state: Record<string, unknown>; baseVersionId: string | null };
+
+export function decideStateSync(args: {
+  enabled: boolean;
+  linkVersionId: string | null;
+  stateHash: string | null;
+  remoteVersionId: string | null;
+  remoteState: Record<string, unknown> | null;
+  doc: StudioProjectDocument;
+}): StateSyncDecision {
+  if (!args.enabled) return { kind: "skip" };
+  if (
+    args.linkVersionId &&
+    args.remoteVersionId &&
+    args.linkVersionId !== args.remoteVersionId
+  ) {
+    return { kind: "conflict" };
+  }
+  if (args.stateHash && args.stateHash === studioDocumentHash(args.doc.data)) {
+    return { kind: "skip" };
+  }
+  const merged = mergeLocalDocumentIntoSunoState(args.remoteState, args.doc);
+  if (!merged) return { kind: "no-baseline" };
+  return { kind: "push", state: merged, baseVersionId: args.remoteVersionId };
 }
 
 /**
@@ -335,27 +439,30 @@ export class StudioProjectSync {
       let status: StudioSyncStatus = "linked";
       let version = remoteVersion;
       let nextState = remoteState;
-      if (stateSyncEnabled()) {
-        if (link.suno_version_id && remoteVersion && link.suno_version_id !== remoteVersion) {
-          // Somebody saved on Suno since our last push: keep the remote state
-          // for the reconciliation UI instead of overwriting it.
-          status = "conflict";
-        } else if (link.state_hash !== hash) {
-          const merged = mergeLocalDocumentIntoSunoState(remoteState, doc);
-          if (merged) {
-            const saved = await client.saveStudioProject({
-              projectId: link.suno_project_id,
-              state: merged,
-              title: metadata.title,
-              baseVersionId: remoteVersion,
-            });
-            version = saved.versionId;
-            nextState = merged;
-            status = "synced";
-          }
-        } else {
-          status = "synced";
-        }
+      const decision = decideStateSync({
+        enabled: stateSyncEnabled(),
+        linkVersionId: link.suno_version_id,
+        stateHash: link.state_hash,
+        remoteVersionId: remoteVersion,
+        remoteState,
+        doc,
+      });
+      if (decision.kind === "conflict") {
+        // Somebody saved on Suno since our last push: keep the remote state for
+        // the reconciliation UI instead of overwriting it.
+        status = "conflict";
+      } else if (decision.kind === "push") {
+        const saved = await client.saveStudioProject({
+          projectId: link.suno_project_id,
+          state: decision.state,
+          title: metadata.title,
+          baseVersionId: decision.baseVersionId,
+        });
+        version = saved.versionId;
+        nextState = decision.state;
+        status = "synced";
+      } else if (decision.kind === "skip" && stateSyncEnabled()) {
+        status = "synced";
       }
 
       const updated = await queryOne<StudioSyncLink>(
@@ -450,6 +557,60 @@ export class StudioProjectSync {
       }
     }
     return done;
+  }
+
+  /**
+   * Poll Suno for a newer document without touching the local project.
+   *
+   * The editor calls this while a project is open. Remote reads are throttled per
+   * project (`SUNO_SYNC_CHECK_MS`, 30 s) so a room full of editors on one pinned
+   * account cannot hammer the provider. A newer remote version marks the link
+   * `conflict`; the local document is never overwritten here.
+   */
+  async refresh(
+    localProjectId: string,
+    userId: string,
+    minIntervalMs = Number(process.env.SUNO_SYNC_CHECK_MS ?? 30_000)
+  ): Promise<StudioSyncStatusView | null> {
+    const link = await this.link(localProjectId);
+    if (!link || link.user_id !== userId) return null;
+    const checked = link.last_checked_at ? Date.parse(String(link.last_checked_at)) : 0;
+    if (Number.isFinite(checked) && Date.now() - checked < minIntervalMs) {
+      return statusView(link);
+    }
+    try {
+      const client = this.clientFor(link.account_label);
+      const remote = await client.getStudioProject(link.suno_project_id);
+      const remoteVersion = remote.latest_version_id ?? null;
+      const remoteState = parseStudioState(remote.state);
+      const advanced = Boolean(
+        remoteVersion && link.suno_version_id && remoteVersion !== link.suno_version_id
+      );
+      const updated = await queryOne<StudioSyncLink>(
+        `UPDATE studio_suno_projects SET
+           suno_state = COALESCE($2::jsonb, suno_state),
+           status = $3,
+           last_error = NULL,
+           last_checked_at = now(),
+           updated_at = now()
+         WHERE local_project_id = $1
+         RETURNING *`,
+        [
+          localProjectId,
+          remoteState ? JSON.stringify(remoteState) : null,
+          advanced ? "conflict" : link.status,
+        ]
+      );
+      return statusView(updated ?? link);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await query(
+        `UPDATE studio_suno_projects SET last_checked_at = now(), last_error = $2, updated_at = now()
+         WHERE local_project_id = $1`,
+        [localProjectId, message.slice(0, 500)]
+      ).catch(() => undefined);
+      return statusView(link);
+    }
   }
 
   async status(localProjectId: string, userId: string): Promise<StudioSyncStatusView | null> {
