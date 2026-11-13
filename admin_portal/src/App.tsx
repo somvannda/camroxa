@@ -56,6 +56,7 @@ const BlogPostsPage = React.lazy(() => import('@/pages/blog-posts/index'));
 const CreditsPage = React.lazy(() => import('@/pages/credits/index'));
 const PromptsPage = React.lazy(() => import('@/pages/prompts/index'));
 const RateLimitsPage = React.lazy(() => import('@/pages/rate-limits/index'));
+const StudioSyncPage = React.lazy(() => import('@/pages/studio-sync/index'));
 const AuditLogPage = React.lazy(() => import('@/pages/audit-log/index'));
 const UsagePage = React.lazy(() => import('@/pages/usage/index'));
 const UserSpentPage = React.lazy(() => import('@/pages/user-spent/index'));
@@ -119,6 +120,7 @@ function App() {
                     <Route path="/credits" element={<CreditsPage />} />
                     <Route path="/prompts" element={<PromptsPage />} />
                     <Route path="/rate-limits" element={<RateLimitsPage />} />
+          <Route path="/studio-sync" element={<StudioSyncPage />} />
                     <Route path="/audit-log" element={<AuditLogPage />} />
                     <Route path="/usage" element={<UsagePage />} />
                     <Route path="/user-spent" element={<UserSpentPage />} />

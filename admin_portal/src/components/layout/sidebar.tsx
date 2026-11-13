@@ -34,6 +34,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Mail } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -101,6 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Streaming Jobs', path: '/streaming/upload-jobs', icon: UploadCloud },
       { label: 'Playback Audit', path: '/streaming/playback-audit', icon: Shield },
       { label: 'Rate Limits', path: '/rate-limits', icon: Gauge },
+      { label: 'Studio Sync', path: '/studio-sync', icon: RefreshCw },
       { label: 'Key Pool', path: '/key-pool', icon: KeySquare },
       { label: 'Job Queue', path: '/job-queue', icon: ListOrdered },
       { label: 'Pipeline Ops', path: '/pipeline', icon: Activity },
