@@ -53,6 +53,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Stop halts in place; Back to start rewinds | H-05 / H-08 / gap G42 | `onStop` / `onBackToStart` in `StudioHeader` + shell |
 | Editable meter drives bar maths and the click accent | H-13 / gap G43 | `lib/studio-signature.ts` + header select |
 | Captured shortcut map (loop, metronome, select all, cut, mute/solo, hide, rename, panels) | §36 / C-07 / gap G44 | keydown handler in `StudioEditorShell`; overlay list in `lib/studio-help.ts` |
+| Shortcut map additions: ALT Space plays from the selection start, CTRL ↑/↓ reorder the focused track, SHIFT A toggles automation, 1/3/4 toggle assistant / take lanes / library | §36 / gap G44 | same keydown handler; rows in `lib/studio-help.ts` |
 | Trim grips at each end; left trim moves the content offset | S25 / gap G45 | `se-trim` grips + `offset` on clips in `startAudio` / `renderMix` |
 | Fade handle + Shift F; fade applied to playback and export | S25 / gap G46 | `se-fade-handle` + `fadeIn` envelope in `startAudio` / `renderMix` |
 | Clip menu from clip state; split carries the offset | §47 / S26 / gap G47 | `se-clip-menu` in `StudioEditorShell` + `splitClips`; ruler click seeks |
@@ -65,6 +66,18 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Automation points select on click and nudge with `←/→` / `↑/↓` (`SHIFT` coarse) | §36 / gap G44 | keydown handler in `components/studio/StudioAutomationPanel.tsx` |
 | Audio clip editor steps the warp quantize grid with `SHIFT 1` / `SHIFT 2` | §36 / gap G44 | keydown handler in `components/studio/StudioAudioEditor.tsx` |
 | `0` toggles the arrangement (master) mute | §36 / gap G44 | `toggleMasterMute` + `Mute main` in the track panel |
+
+### S14 shortcut coverage still open
+
+| Binding | Why it is not wired yet |
+|---|---|
+| `2` bottom panel | this build has no persistent bottom panel; Plugins and Clip editor open on demand |
+| `SHIFT L` arrangement panel | there is no collapsible arrangement panel to toggle |
+| `CTRL S` save | saving is automatic and already reports through the save-status chip |
+| `CTRL K` toggle keyboard | there is no musical typing keyboard to show; `SHIFT ?` already opens this list |
+| `CTRL SHIFT ,` Studio settings | settings are a stored preference object, not a dialog |
+| `ENTER` Ask Studio / promote take lane | `ENTER` already commits inline renames and prompt edits |
+| Playable keyboard and library audition keys | musical typing and row audition need their own focus model; listed so the gap stays visible |
 
 ## Not copied — by rule, not by accident
 

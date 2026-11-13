@@ -2788,6 +2788,18 @@ export function StudioEditorShell() {
     writeProjectData({ ...base, tracks: next }, "the track list", next);
   }
 
+  /** Reorder the focused track (spec §36: CTRL ↑ / CTRL ↓). */
+  function moveTrack(trackId: string, delta: -1 | 1) {
+    const index = tracks.findIndex((track) => track.id === trackId);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= tracks.length) return;
+    const next = [...tracks];
+    const [moved] = next.splice(index, 1);
+    if (!moved) return;
+    next.splice(target, 0, moved);
+    commitTracks(next.map((track, position) => ({ ...track, index: position })));
+  }
+
   function addTrack() {
     const next: StudioTrack = {
       id: `track-${Date.now().toString(36)}`,
@@ -3460,6 +3472,19 @@ export function StudioEditorShell() {
         if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
         if (event.code === "Space") {
           event.preventDefault();
+          if (event.altKey) {
+            // ALT SPACE plays from the selection start (spec §36).
+            const from = Math.min(duration, timeSelection ? timeSelection.start : playhead);
+            setPlayhead(from);
+            scheduledThroughRef.current = from;
+            if (playing) {
+              restartAudioGuarded(from);
+            } else {
+              void startAudio(from);
+              setPlaying(true);
+            }
+            return;
+          }
           togglePlayback();
           return;
         }
@@ -3539,6 +3564,13 @@ export function StudioEditorShell() {
             hideTrack(selectedTrack);
             return;
           }
+          // SHIFT A toggles the automation band (spec §36).
+          if (letter === "a") {
+            if (!selectedTrack) return;
+            event.preventDefault();
+            setAutomationOpen((open) => !open);
+            return;
+          }
           if (letter === "f") {
             const id = selectedClip ?? selectedIds[0];
             const clip = id ? clipsRef.current.find((item) => item.id === id) : undefined;
@@ -3577,6 +3609,19 @@ export function StudioEditorShell() {
           openUploadLibrary();
           return;
         }
+        // Panel toggles (spec §36): 1 chat, 3 take lanes, 4 library. The captured
+        // "2 bottom panel" has no persistent state in this build yet.
+        if (event.key === "1") {
+          event.preventDefault();
+          setAssistantOpen((open) => !open);
+          return;
+        }
+        if (event.key === "3") {
+          event.preventDefault();
+          setTakeLanesOpen((open) => !open);
+          setAutomationOpen(false);
+          return;
+        }
         if (event.key === "4") {
           event.preventDefault();
           toggleLibrary();
@@ -3598,6 +3643,12 @@ export function StudioEditorShell() {
 
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // CTRL ↑ / ↓ move the focused track (spec §36).
+      if (selectedTrack && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        moveTrack(selectedTrack, event.key === "ArrowUp" ? -1 : 1);
+        return;
+      }
       // N-01: destructive time edits act on the selected range.
       if (event.key === "Backspace") {
         event.preventDefault();

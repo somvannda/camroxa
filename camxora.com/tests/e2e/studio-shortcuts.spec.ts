@@ -88,6 +88,33 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
   await page.keyboard.press("0");
   await expect(mainMute).toHaveAttribute("aria-pressed", "false");
 
+  // ALT SPACE rolls the transport from the selection start (or the playhead).
+  await page.keyboard.press("Alt+Space");
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+  // SHIFT A toggles the automation band for the focused track.
+  await page.keyboard.press("Shift+A");
+  await expect(page.getByRole("region", { name: "Track automation" })).toBeVisible();
+  await page.keyboard.press("Shift+A");
+  await expect(page.getByRole("region", { name: "Track automation" })).toHaveCount(0);
+
+  // CTRL ↑ / ↓ reorders the focused track.
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.keyboard.press("Control+ArrowDown");
+  await expect(page.locator(".se-track-name")).toHaveText(["Lead", "Track 1"]);
+
+  // 1 and 3 toggle the assistant and take-lanes panels.
+  await page.keyboard.press("1");
+  await expect(page.getByRole("complementary", { name: "Studio assistant" })).toBeVisible();
+  await page.keyboard.press("1");
+  await expect(page.getByRole("complementary", { name: "Studio assistant" })).toHaveCount(0);
+  await page.keyboard.press("3");
+  await expect(page.getByRole("region", { name: "Take lanes" })).toBeVisible();
+  await page.keyboard.press("3");
+  await expect(page.getByRole("region", { name: "Take lanes" })).toHaveCount(0);
+
   // 4 toggles the library drawer.
   await page.keyboard.press("4");
   await expect(library).toBeVisible();

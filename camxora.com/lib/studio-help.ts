@@ -163,11 +163,14 @@ export function helpFor(id: string | null | undefined): HelpEntry | null {
 /** Our real bindings, shown by Learn ▸ Keyboard Shortcuts. */
 export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Space", action: "Play / pause" },
+  { keys: "Alt + Space", action: "Play from the start of the time selection" },
   { keys: "Home / End", action: "Playhead to the start / end" },
   { keys: "A / Shift T", action: "Add an audio track" },
   { keys: "U", action: "Open the library on Uploads" },
+  { keys: "Ctrl/⌘ + ↑ / ↓", action: "Move the focused track up / down" },
   { keys: "Ctrl/⌘ + L", action: "Toggle loop" },
   { keys: "Shift C", action: "Toggle the metronome" },
+  { keys: "Shift A", action: "Toggle the automation band" },
   { keys: "Ctrl/⌘ + A", action: "Select all clips" },
   { keys: "Ctrl/⌘ + C", action: "Copy the selected clips" },
   { keys: "Ctrl/⌘ + X", action: "Cut the selection" },
@@ -201,7 +204,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "MIDI editor · Delete", action: "Remove the selected notes" },
   { keys: "Shift Alt H", action: "Show all hidden tracks" },
   { keys: "F2", action: "Rename the focused track" },
-  { keys: "4", action: "Toggle the library drawer" },
+  { keys: "1 / 3 / 4", action: "Toggle the assistant, take lanes, library" },
   { keys: "Ctrl/⌘ + Z", action: "Undo" },
   { keys: "Ctrl/⌘ + Shift + Z", action: "Redo (Ctrl/⌘ + Y also works)" },
   { keys: "Ctrl/⌘ + + / −", action: "Zoom in / out" },
