@@ -84,10 +84,13 @@ CREATE TABLE studio_suno_projects (
   user_id UUID NOT NULL,
   account_label TEXT NOT NULL,
   suno_project_id TEXT NOT NULL,
-  suno_version_id TEXT,
+  suno_version_id TEXT,               -- version we last wrote
+  suno_remote_version_id TEXT,        -- version Suno reported on the last check
   suno_title TEXT,
   suno_state JSONB,                   -- last Suno document: the merge baseline
   state_hash TEXT,                    -- sha256 of the local document last pushed
+  skipped_clip_ids JSONB,             -- local clips with no Suno asset yet
+  local_clip_ids JSONB,               -- Suno clip ids we wrote: a delete propagates
   archived BOOLEAN NOT NULL DEFAULT false,
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending','linked','synced','conflict','error')),
@@ -172,6 +175,9 @@ blocks on Suno.
 - The editor's existing `PATCH` remains the local save. On success the platform
   queues the newest snapshot (the task is fire-and-forget).
 - The outbox coalesces: a burst of debounced saves leaves exactly one row.
+- Deletes propagate: the link stores the Suno ids it last wrote
+  (`local_clip_ids`), so a clip removed locally is dropped from Suno on the next
+  push, while clips we never mirrored (or that Suno added) are preserved.
 - The worker converts the local document to Suno `state` (§7), calls
   `save-project` with `base_version_id = link.suno_version_id`, and adopts the
   returned version.
