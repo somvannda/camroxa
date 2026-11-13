@@ -86,6 +86,8 @@ export type StudioProjectSync = {
   suno_version_id: string | null;
   last_error: string | null;
   synced_at: string | null;
+  /** Local clips with no Suno asset yet; they are not in the mirrored project. */
+  skipped_clips: string[];
   state_sync: boolean;
 };
 

@@ -20,6 +20,7 @@ export type SaveStatus = "saved" | "saving" | "error" | "offline";
 export type SaveSyncState = {
   status: "pending" | "linked" | "synced" | "conflict" | "error";
   last_error: string | null;
+  skipped_clips?: string[];
   state_sync: boolean;
 };
 
@@ -56,9 +57,11 @@ export function StudioSaveStatus({
       title={
         sync.last_error
           ? `${SYNC_TITLE[sync.status]}: ${sync.last_error}`
-          : sync.status === "linked" && !sync.state_sync
-            ? `${SYNC_TITLE[sync.status]}: arrangement writes start once the Suno document schema is verified.`
-            : SYNC_TITLE[sync.status]
+          : sync.skipped_clips?.length
+            ? `${SYNC_TITLE[sync.status]}: ${sync.skipped_clips.length} clip(s) have no Suno copy yet.`
+            : sync.status === "linked" && !sync.state_sync
+              ? `${SYNC_TITLE[sync.status]}: arrangement writes are paused.`
+              : SYNC_TITLE[sync.status]
       }
     />
   ) : null;
