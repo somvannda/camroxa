@@ -27,6 +27,9 @@ session can resume without re-discovering anything.
 | 11 | [SUNO_STUDIO_WORKFLOW_DOCUMENTATION.md](SUNO_STUDIO_WORKFLOW_DOCUMENTATION.md) | End-to-end user journeys. |
 | 12 | [SUNO_STUDIO_TECHNICAL_ARCHITECTURE.md](SUNO_STUDIO_TECHNICAL_ARCHITECTURE.md) | How our system is built. |
 | 13 | [SUNO_STUDIO_API_INTEGRATION_MAP.md](SUNO_STUDIO_API_INTEGRATION_MAP.md) | Frontend → API → provider call map. |
+| 13b | [SUNO_STUDIO_SYNC.md](SUNO_STUDIO_SYNC.md) | The project mirror: requirement, data model, flows, acceptance and live verification. |
+| 13c | [SUNO_STUDIO_STATE_SCHEMA.md](SUNO_STUDIO_STATE_SCHEMA.md) | The real Suno Studio document schema, plugin catalog and probe results. |
+| 13d | [PARITY_REMOVAL_LIST.md](PARITY_REMOVAL_LIST.md) | Strict-parity audit (D-034): what was removed and why. |
 | 14 | [SUNO_STUDIO_GAP_ANALYSIS.md](SUNO_STUDIO_GAP_ANALYSIS.md) | Reference vs. ours, honestly scored. |
 | 14b | [BACKEND_SPEC.md](BACKEND_SPEC.md) | Five backend work items: unified ops, clip edit chain, analysis endpoints, clip social layer, render artifacts. |
 | 15 | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) | Ordered work with dependencies. |
