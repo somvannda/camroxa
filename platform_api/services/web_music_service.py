@@ -1901,6 +1901,7 @@ class WebMusicService:
             str(time_signature or "4/4"),
             json.dumps(payload),
         )
+        self.queue_studio_mirror(row)
         return self._studio_project_payload(row)
 
     async def get_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
@@ -1912,6 +1913,144 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         return self._studio_project_payload(row)
+
+    # --- Suno Studio mirror -------------------------------------------------
+    # The mirror itself lives in musicapi (it owns the Suno accounts and the
+    # pinned project mapping). platform_api only forwards the authoritative
+    # document; it never stores a Suno id, cookie or JWT in the platform DB.
+
+    @staticmethod
+    def _studio_sync_document(row: Any) -> dict[str, Any] | None:
+        """Serialise one platform project row for the mirror service."""
+        if row is None:
+            return None
+        data = row["data"]
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (TypeError, ValueError):
+                data = None
+        if not isinstance(data, dict):
+            data = {}
+        try:
+            major_version = int(row["major_version"] or 2)
+        except (TypeError, ValueError):
+            major_version = 2
+        try:
+            bpm = int(row["bpm"] or 120)
+        except (TypeError, ValueError):
+            bpm = 120
+        return {
+            "user_id": str(row["user_id"]),
+            "title": str(row["title"] or "Untitled Project"),
+            "major_version": major_version,
+            "bpm": bpm,
+            "time_signature": str(row["time_signature"] or "4/4"),
+            "data": data,
+        }
+
+    def _studio_sync_endpoint(self) -> tuple[str, str] | None:
+        from platform_api.config import get_settings
+
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        if not token or not base:
+            return None
+        return base, token
+
+    def queue_studio_mirror(self, row: Any) -> None:
+        """Queue a mirror push without making the user's save wait for Suno."""
+        document = self._studio_sync_document(row)
+        if document is None or self._studio_sync_endpoint() is None:
+            return
+        project_id = str(row["id"])
+        asyncio.create_task(self._studio_sync_request(str(row["user_id"]), project_id, "enqueue", document))
+
+    async def _studio_sync_request(
+        self,
+        user_id: str,
+        project_id: str,
+        action: str,
+        document: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        endpoint = self._studio_sync_endpoint()
+        if endpoint is None:
+            return None
+        base, token = endpoint
+        try:
+            async with httpx.AsyncClient(timeout=90) as client:
+                if action == "status":
+                    response = await client.get(
+                        f"{base}/internal/studio/projects/{project_id}/status",
+                        headers={"x-internal-token": token},
+                        params={"user_id": user_id},
+                    )
+                else:
+                    response = await client.post(
+                        f"{base}/internal/studio/projects/{project_id}/{action}",
+                        headers={"x-internal-token": token},
+                        json=document or {"user_id": user_id},
+                    )
+        except Exception as exc:  # provider outage must not break the editor
+            logger.info("studio mirror %s failed for %s: %s", action, project_id, exc)
+            return None
+        if response.status_code >= 400:
+            logger.info(
+                "studio mirror %s rejected for %s: %s",
+                action,
+                project_id,
+                response.status_code,
+            )
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    async def studio_sync_status(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        view = await self._studio_sync_request(str(user_id), str(project_id), "status")
+        return view or {
+            "status": "pending",
+            "suno_project_id": None,
+            "suno_version_id": None,
+            "last_error": None,
+            "synced_at": None,
+            "state_sync": False,
+        }
+
+    async def sync_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        document = self._studio_sync_document(row)
+        if document is None:
+            raise ValidationError("This project cannot be mirrored.")
+        if self._studio_sync_endpoint() is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror is not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        result = await self._studio_sync_request(str(user_id), str(project_id), "sync", document)
+        if result is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror did not accept this project.",
+                is_retryable=True,
+            )
+        return result
 
     async def touch_studio_presence(
         self,
@@ -2072,16 +2211,26 @@ class WebMusicService:
         )
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        self.queue_studio_mirror(row)
         return self._studio_project_payload(row)
 
     async def delete_studio_project(self, user_id: UUID, project_id: UUID) -> None:
         row = await self._pool.fetchrow(
-            "DELETE FROM studio_projects WHERE id = $1 AND user_id = $2 RETURNING id",
+            "DELETE FROM studio_projects WHERE id = $1 AND user_id = $2 RETURNING id, user_id",
             project_id,
             user_id,
         )
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        # Never delete the Suno copy: archive it so the user's reference account
+        # keeps the project instead of silently losing it.
+        if self._studio_sync_endpoint() is not None:
+            await self._studio_sync_request(
+                str(row["user_id"]),
+                str(row["id"]),
+                "archive",
+                {"user_id": str(row["user_id"]), "archived": True},
+            )
 
     async def fork_studio_project(
         self,
@@ -2104,6 +2253,7 @@ class WebMusicService:
         )
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        self.queue_studio_mirror(row)
         return self._studio_project_payload(row)
 
     @staticmethod
@@ -2272,6 +2422,7 @@ class WebMusicService:
                 "Studio project not found.",
                 details={"project_id": str(project_id)},
             )
+        self.queue_studio_mirror(row)
         return self._studio_project_payload(row)
 
     async def create_studio_project_share(
