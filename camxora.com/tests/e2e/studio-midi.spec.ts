@@ -168,3 +168,35 @@ test("Ctrl A plus 0 mutes the selected notes and the mute persists", async ({ pa
   await page.keyboard.press("0");
   await expect(reopened.locator(".se-midi-note.is-disabled")).toHaveCount(0);
 });
+
+test("Ctrl = / Ctrl - zoom the roll and Z fits the selection", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, { title: "MIDI zoom" });
+
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  await page.getByRole("menuitem", { name: /MIDI/ }).click();
+  const panel = page.getByRole("region", { name: "MIDI editor" });
+  const grid = panel.locator(".se-midi-grid");
+  await grid.click({ position: { x: 60, y: 96 } });
+  await grid.click({ position: { x: 260, y: 60 } });
+
+  const width = () =>
+    grid.evaluate((element) => Number.parseFloat((element as HTMLElement).style.width));
+  const fit = await width();
+
+  await page.keyboard.press("Control+=");
+  await expect.poll(width).toBeGreaterThan(fit);
+  await page.keyboard.press("Control+-");
+  await expect.poll(width).toBe(fit);
+
+  // Z zooms the selection in and scrolls it into view.
+  await page.keyboard.press("Control+a");
+  await page.keyboard.press("z");
+  await expect.poll(width).toBeGreaterThan(fit);
+  const roll = await panel.locator(".se-midi-roll").boundingBox();
+  const noteBox = await panel.locator(".se-midi-note.is-selected").first().boundingBox();
+  if (!roll || !noteBox) throw new Error("no roll or note box");
+  expect(noteBox.x).toBeGreaterThanOrEqual(roll.x);
+  expect(noteBox.x).toBeLessThan(roll.x + roll.width);
+});

@@ -125,6 +125,27 @@ describe("StudioMidiEditor", () => {
     const selectAll = (section: HTMLElement) =>
       fireEvent.keyDown(section, { key: "a", ctrlKey: true });
 
+    it("zooms the grid with Ctrl = / Ctrl - and Z fits the selection", () => {
+      const { section, container } = renderWithNotes();
+      const gridWidth = () =>
+        Number.parseFloat((container.querySelector(".se-midi-grid") as HTMLElement).style.width);
+      const fit = gridWidth();
+
+      fireEvent.keyDown(section, { key: "=", ctrlKey: true });
+      expect(gridWidth()).toBeGreaterThan(fit);
+      fireEvent.keyDown(section, { key: "-", ctrlKey: true });
+      expect(gridWidth()).toBeCloseTo(fit, 5);
+
+      selectAll(section);
+      fireEvent.keyDown(section, { key: "z" });
+      expect(gridWidth()).toBeGreaterThan(fit);
+
+      // Nothing selected: Z goes back to the whole clip.
+      fireEvent.keyDown(section, { key: "Escape" });
+      fireEvent.keyDown(section, { key: "z" });
+      expect(gridWidth()).toBeCloseTo(fit, 5);
+    });
+
     it("selects every note with Ctrl A and transposes the selection", () => {
       const { section, onChangeNotes, container } = renderWithNotes();
       selectAll(section);

@@ -55,6 +55,10 @@ export type StudioMidiEditorProps = {
 };
 
 const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+/** MIDI grid zoom: 1 is the whole clip fitted to the panel, 12 is the closest. */
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 12;
+const ZOOM_STEP = 1.5;
 const SCALES: Record<string, number[]> = {
   major: [0, 2, 4, 5, 7, 9, 11],
   minor: [0, 2, 3, 5, 7, 8, 10],
@@ -105,8 +109,11 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   } = props;
   const notes = clip.midi?.notes ?? [];
   const duration = Math.max(0.5, clip.duration ?? secondsPerBar * 4);
-  const width = Math.max(96, (duration / secondsPerBar) * barWidth);
+  /** Width of one clip at the fit zoom; the panel's zoom multiplies it. */
+  const fitWidth = Math.max(96, (duration / secondsPerBar) * barWidth);
   const rollHeight = MIDI_PITCHES * MIDI_ROW;
+  const [zoom, setZoom] = useState(1);
+  const width = Math.max(96, Math.round(fitWidth * zoom));
   const [quantize, setQuantize] = useState<"4" | "8" | "16">("8");
   const [chordMode, setChordMode] = useState<MidiChordMode>("off");
   const [arpMode, setArpMode] = useState<MidiArpMode>("off");
@@ -140,6 +147,7 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   // A different clip starts with nothing selected.
   useEffect(() => {
     setSelectedIds(new Set());
+    setZoom(1);
   }, [clip.id]);
 
   const step = secondsPerBar / Number(quantize);
@@ -292,16 +300,68 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         )
       : notes;
 
+  /** Zoom the grid around the fit width (S14: CTRL = / CTRL -). */
+  function zoomBy(factor: number) {
+    setZoom((current) =>
+      Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number((current * factor).toFixed(2))))
+    );
+  }
+
+  /**
+   * S14 "zoom to selection": fit the selected notes into the roll, then scroll so
+   * they start on the left. With nothing selected it goes back to the whole clip.
+   */
+  function zoomToSelection() {
+    const selected = notes.filter((note) => selectedIds.has(note.id));
+    if (!selected.length) {
+      setZoom(ZOOM_MIN);
+      requestAnimationFrame(() => {
+        if (rollRef.current) rollRef.current.scrollLeft = 0;
+      });
+      return;
+    }
+    const start = Math.min(...selected.map((note) => note.start));
+    const end = Math.max(...selected.map((note) => note.start + note.length));
+    const span = Math.max(0.05, end - start);
+    const viewport = Math.max(96, (rollRef.current?.clientWidth ?? 460) - 44);
+    const pixelsPerSecond = fitWidth / duration;
+    const target = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (viewport * 0.9) / (span * pixelsPerSecond)));
+    setZoom(Number(target.toFixed(2)));
+    requestAnimationFrame(() => {
+      const roll = rollRef.current;
+      if (!roll) return;
+      roll.scrollLeft = Math.max(0, (start / duration) * fitWidth * target - 24);
+    });
+  }
+
   /**
    * Reference shortcut map (S14, CLIP EDITOR – MIDI): Ctrl A selects every note,
    * Shift Q quantizes, 0 toggles the disabled state, arrows nudge/transpose,
-   * Delete removes and Shift 1 / Shift 2 double or halve the grid.
+   * Delete removes, Shift 1 / Shift 2 set the grid and Ctrl =/- / Z zoom.
    */
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement | null;
     if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
 
     const mod = event.metaKey || event.ctrlKey;
+    if (mod && (event.key === "=" || event.key === "+")) {
+      event.preventDefault();
+      event.stopPropagation();
+      zoomBy(ZOOM_STEP);
+      return;
+    }
+    if (mod && (event.key === "-" || event.key === "_")) {
+      event.preventDefault();
+      event.stopPropagation();
+      zoomBy(1 / ZOOM_STEP);
+      return;
+    }
+    if (!mod && !event.altKey && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      event.stopPropagation();
+      zoomToSelection();
+      return;
+    }
     if (mod && event.key.toLowerCase() === "a") {
       event.preventDefault();
       event.stopPropagation();

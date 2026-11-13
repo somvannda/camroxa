@@ -28,9 +28,11 @@ at its start and modulation applies a tremolo).
 The captured S14 clip-editor map is built as well: `CTRL A` selects every note, `SHIFT Q`
 quantizes the selection, `0` toggles notes disabled (they stay in the clip but playback and
 export skip them), arrows nudge and transpose, `DELETE` removes, `SHIFT ←/→` shortens or
-lengthens, `SHIFT ↑/↓` is an octave and `SHIFT 1/2` doubles or halves the grid. The panel takes
-focus when it opens, so those keys never fall through to the arrangement bindings. Still open:
-MIDI file import/export, `CTRL =/-` zoom and `Z` zoom to selection.
+lengthens, `SHIFT ↑/↓` is an octave and `SHIFT 1/2` doubles or halves the grid. `CTRL =` and
+`CTRL -` zoom the roll in steps up to 12×, and `Z` fits the selected notes into the roll and
+scrolls them to the left edge (with nothing selected it returns to the whole clip). The panel
+takes focus when it opens, so those keys never fall through to the arrangement bindings. Still
+open: MIDI file import/export.
 
 A disabled note has no verified counterpart in the Suno document yet, so the flag is local until
 the probe in `SUNO_STUDIO_SYNC.md` §7 runs.

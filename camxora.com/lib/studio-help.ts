@@ -193,6 +193,8 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "MIDI editor · ↑ / ↓", action: "Transpose the selected notes a semitone" },
   { keys: "MIDI editor · Shift + ← / →", action: "Shorten / lengthen the selected notes" },
   { keys: "MIDI editor · Shift + ↑ / ↓", action: "Transpose the selected notes an octave" },
+  { keys: "MIDI editor · Ctrl/⌘ + = / −", action: "Zoom the roll in / out" },
+  { keys: "MIDI editor · Z", action: "Zoom to the selected notes" },
   { keys: "MIDI editor · Shift 1 / Shift 2", action: "Double / halve the grid density" },
   { keys: "MIDI editor · Delete", action: "Remove the selected notes" },
   { keys: "Shift Alt H", action: "Show all hidden tracks" },
