@@ -268,3 +268,24 @@ test("Split on Transients cuts the clip at the onsets in its audio", async ({ pa
     .toBe(5);
   await expect(page.getByText("Split into 5 clips at 4 transients.")).toBeVisible();
 });
+
+test("Make Beat 1 parks a clip on the bar line", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, {
+    title: `Beat one ${Math.random().toString(36).slice(2, 8)}`,
+    clips: [{ id: "late", title: "Late", start: 0.6, duration: 2 }],
+  });
+
+  const clip = page.locator(".se-clip").first();
+  const left = async () =>
+    Number.parseFloat((await clip.evaluate((element) => (element as HTMLElement).style.left)) || "0");
+  // 0.6 s at 120 BPM / 4/4 is 28.8 px into the bar, so it is visibly off the line.
+  expect(await left()).toBeGreaterThan(20);
+
+  await clip.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Make Beat 1" }).click();
+
+  await expect(page.getByText("Clip moved to the bar line at 0.00s.")).toBeVisible();
+  await expect.poll(left).toBe(0);
+});

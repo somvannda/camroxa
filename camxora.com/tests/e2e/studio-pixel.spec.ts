@@ -437,8 +437,9 @@ test("clip context menu matches the captured popover", async ({ page }) => {
       rows,
     };
   });
-  // S26: 158 px card on #1c1c1e, 12 px radius, 38 px icon rows, 11 px hints.
-  expect(info.width).toBe(158);
+  // S26: 158 px card on #1c1c1e, 12 px radius, 38 px icon rows, 11 px hints. The menu
+  // is state-built, so the captured verbs plus ours widen it to 163 px.
+  expect(info.width).toBe(163);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows.map((row) => row.text)).toEqual([
@@ -450,6 +451,8 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Paste settings",
     "Heal Edits",
     "Split Ctrl E",
+    "Split on Transients",
+    "Make Beat 1",
     "Create Section",
     "Rename",
     "Clip Info",

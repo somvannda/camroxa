@@ -3328,6 +3328,29 @@ export function StudioEditorShell() {
     );
   }
 
+  /** Clip menu ▸ Make Beat 1: park the clip's start on the bar line it belongs to. */
+  function makeClipBeatOne(clip: ClipLike) {
+    const start = clip.start ?? 0;
+    const snapped = Math.round(start / secondsPerBar) * secondsPerBar;
+    setClipMenu(null);
+    if (Math.abs(snapped - start) < 0.001) {
+      setExportToast("This clip already starts on a bar line.");
+      return;
+    }
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      {
+        ...data,
+        lanes: lanes.map((lane) =>
+          lane.id === clip.id ? { ...lane, start: Number(snapped.toFixed(6)) } : lane
+        ),
+      },
+      "moving the clip to beat 1"
+    );
+    setExportToast(`Clip moved to the bar line at ${snapped.toFixed(2)}s.`);
+  }
+
   function commitClipRename() {
     if (!clipRename) return;
     const title = clipRename.value.trim();
@@ -6036,6 +6059,14 @@ export function StudioEditorShell() {
                   onClick={() => void splitOnTransients(clip)}
                 >
                   <Icon name="fa-wave-square" /> Split on Transients
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => makeClipBeatOne(clip)}
+                  title="Move this clip onto the bar line its start belongs to"
+                >
+                  <Icon name="fa-arrows-left-right-to-line" /> Make Beat 1
                 </button>
                 <button
                   type="button"
