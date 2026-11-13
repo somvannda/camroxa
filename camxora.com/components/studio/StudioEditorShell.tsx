@@ -1358,13 +1358,8 @@ export function StudioEditorShell() {
     if (recording) stopRecording();
     else void startRecording();
   }
-  function toggleSongPreview(song: WebMusicGeneration) {
-    if (playingSongId === song.id) {
-      previewRef.current?.pause();
-      previewRef.current = null;
-      setPlayingSongId(null);
-      return;
-    }
+  /** Start a library audition, replacing whatever was previewing. */
+  function startSongPreview(song: WebMusicGeneration) {
     const clip = song.clips?.find((candidate) => candidate.audio_url);
     if (!clip?.audio_url) return;
     previewRef.current?.pause();
@@ -1378,6 +1373,32 @@ export function StudioEditorShell() {
     void audio.play().catch(() => {
       setPlayingSongId((current) => (current === song.id ? null : current));
     });
+  }
+
+  function toggleSongPreview(song: WebMusicGeneration) {
+    if (playingSongId === song.id) {
+      previewRef.current?.pause();
+      previewRef.current = null;
+      setPlayingSongId(null);
+      return;
+    }
+    startSongPreview(song);
+  }
+
+  /**
+   * S14 library keys: ↓/↑ audition the next/previous row and → replays the current
+   * one, so audition always starts at the top rather than toggling off.
+   */
+  function auditionSong(song: WebMusicGeneration) {
+    if (playingSongId === song.id) {
+      const audio = previewRef.current;
+      if (audio) {
+        audio.currentTime = 0;
+        void audio.play().catch(() => setPlayingSongId(null));
+        return;
+      }
+    }
+    startSongPreview(song);
   }
 
   /** Audition an imported upload; shares the single preview element with songs. */
@@ -5502,6 +5523,7 @@ export function StudioEditorShell() {
               onUploadAudio={uploadLibraryAudio}
               onAddSong={addSongToTimeline}
               onTogglePlay={toggleSongPreview}
+              onAudition={auditionSong}
               onToggleLike={(song, nextLiked) => void toggleSongLike(song, nextLiked)}
               onToggleUploadPlay={toggleUploadPreview}
               onAddUpload={addUploadToTimeline}

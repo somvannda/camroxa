@@ -296,6 +296,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     onUploadAudio: async () => {},
     onAddSong: noop,
     onTogglePlay: noop,
+    onAudition: noop,
     onToggleLike: noop,
     onToggleUploadPlay: noop,
     onAddUpload: noop,
@@ -1165,6 +1166,65 @@ describe("StudioMasterDock", () => {
     });
     expect(next.find((entry) => entry.type === "eq")?.amount).toBe(0.6);
     expect(next.find((entry) => entry.type === "compressor")?.amount).toBe(0.25);
+  });
+});
+
+describe("StudioLibrary audition keys", () => {
+  const first = song({
+    id: "s1",
+    title: "First",
+    clips: [{ variant: "ok", audio_url: "https://example.test/s1.mp3" }],
+  });
+  const second = song({
+    id: "s2",
+    title: "Second",
+    clips: [{ variant: "ok", audio_url: "https://example.test/s2.mp3" }],
+  });
+
+  it("auditions the next and previous row and replays the current one", () => {
+    const onAudition = vi.fn();
+    const { container } = render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [first, second],
+          onAudition,
+        })}
+      />
+    );
+    const list = container.querySelector(".se-lib-list") as HTMLElement;
+
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(onAudition).toHaveBeenLastCalledWith(first);
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(onAudition).toHaveBeenLastCalledWith(second);
+    // The cursor stops at the last row instead of wrapping past it.
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(onAudition).toHaveBeenLastCalledWith(second);
+    fireEvent.keyDown(list, { key: "ArrowUp" });
+    expect(onAudition).toHaveBeenLastCalledWith(first);
+    fireEvent.keyDown(list, { key: "ArrowRight" });
+    expect(onAudition).toHaveBeenLastCalledWith(first);
+    expect(onAudition).toHaveBeenCalledTimes(5);
+  });
+
+  it("ignores the keys outside the song list and inside inputs", () => {
+    const onAudition = vi.fn();
+    const { container } = render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [first],
+          onAudition,
+        })}
+      />
+    );
+    const list = container.querySelector(".se-lib-list") as HTMLElement;
+    const search = container.querySelector("input") as HTMLInputElement;
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(onAudition).not.toHaveBeenCalled();
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(onAudition).not.toHaveBeenCalled();
   });
 });
 

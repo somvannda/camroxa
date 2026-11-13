@@ -69,6 +69,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Back to Start alternates the song start and beat 1 | S14 hint / gap G44 | `backToStart` + `backToStartAnchorRef` in `StudioEditorShell` |
 | `SHIFT 1` / `SHIFT 2` double or halve the arrangement grid | S14 overlay / gap G44 | `scaleGrid` in `lib/studio-snap.ts` + `gridDivisions` in the shell |
 | Project menu sends the project to Suno on demand | S14 overlay "Send to Suno Sync" | `syncStudioProject` in `lib/studio-api.ts` + the menu's sync dialog |
+| Library `↓`/`↑` audition the next/previous song and `→` replays the current one | S14 library panel / gap G44 | `onAudition` + `handleAuditionKeys` in `StudioLibrary` (cursor follows visible, expanded rows) |
 
 ### S14 shortcut coverage still open
 
@@ -80,7 +81,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | `CTRL K` toggle keyboard | there is no musical typing keyboard to show; `SHIFT ?` already opens this list |
 | `CTRL SHIFT ,` Studio settings | settings are a stored preference object, not a dialog |
 | `ENTER` Ask Studio / promote take lane | `ENTER` already commits inline renames and prompt edits |
-| Playable keyboard and library audition keys | musical typing and row audition need their own focus model; listed so the gap stays visible |
+| Playable keyboard | musical typing needs a captured surface; its `Z`/`X`/`C`/`V` collide with the zoom and clipboard keys |
 
 ## Not copied — by rule, not by accident
 

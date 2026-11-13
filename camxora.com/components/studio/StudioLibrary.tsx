@@ -72,6 +72,11 @@ export type StudioLibraryProps = {
   onAddSong: (song: WebMusicGeneration) => void;
   /** Audition button (reference rows have Play/Pause). */
   onTogglePlay: (song: WebMusicGeneration) => void;
+  /**
+   * S14 library keys: `↓`/`↑` audition the next/previous row and `→` replays the
+   * current one. Unlike the toggle it always starts from the top of the song.
+   */
+  onAudition: (song: WebMusicGeneration) => void;
   /** Like button (reference rows have Like); nextLiked is the requested state. */
   onToggleLike: (song: WebMusicGeneration, nextLiked: boolean) => void;
   /** Audition an upload (reference uploads rows have Play). */
@@ -160,6 +165,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       onUploadAudio,
       onAddSong,
       onTogglePlay,
+      onAudition,
       onToggleLike,
       onToggleUploadPlay,
       onAddUpload,
@@ -172,6 +178,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
     const [allProjects, setAllProjects] = useState(false);
     /** Date headings collapse their group, like the reference's heading buttons. */
     const [collapsedDays, setCollapsedDays] = useState<string[]>([]);
+    /** Row the library's ↓/↑ audition cursor sits on (S14 library keys). */
+    const [auditionId, setAuditionId] = useState<string | null>(null);
     const [filterOpen, setFilterOpen] = useState(false);
     const filterRef = useRef<HTMLSpanElement | null>(null);
 
@@ -226,6 +234,49 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
     const visibleWorkspaces = (workspaces ?? []).filter((workspace) =>
       q ? workspace.name.toLowerCase().includes(q) : true
     );
+
+    /**
+     * S14 library audition keys. The cursor follows the visible, expanded rows so
+     * ↓/↑ never land on a collapsed group, and → restarts the current row.
+     */
+    function handleAuditionKeys(event: React.KeyboardEvent<HTMLUListElement>) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+      if (!step && event.key !== "ArrowRight") return;
+
+      const queue = groupByDay(visibleSongs)
+        .filter((group) => !collapsedDays.includes(group.label))
+        .flatMap((group) => group.items);
+      if (queue.length === 0) return;
+
+      event.preventDefault();
+      const currentId = auditionId ?? playingSongId ?? null;
+      const index = queue.findIndex((song) => song.id === currentId);
+      if (event.key === "ArrowRight") {
+        const song = queue[index >= 0 ? index : 0];
+        setAuditionId(song.id);
+        onAudition(song);
+        return;
+      }
+      const nextIndex =
+        index < 0
+          ? step > 0
+            ? 0
+            : queue.length - 1
+          : Math.max(0, Math.min(queue.length - 1, index + step));
+      const song = queue[nextIndex];
+      setAuditionId(song.id);
+      onAudition(song);
+    }
 
     async function importFile(file: File | undefined | null) {
       if (!file) return;
@@ -625,7 +676,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                 </p>
               )
             ) : (
-              <ul className="se-lib-list">
+              <ul className="se-lib-list" onKeyDown={handleAuditionKeys}>
                 {groupByDay(visibleSongs).map((group) => (
                   <li key={group.label} className="se-lib-day" aria-label={group.label}>
                     <button
