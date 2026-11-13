@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS studio_suno_projects (
   account_label TEXT NOT NULL,
   suno_project_id TEXT NOT NULL,
   suno_version_id TEXT,
+  suno_remote_version_id TEXT,
   suno_title TEXT,
   suno_state JSONB,
   state_hash TEXT,

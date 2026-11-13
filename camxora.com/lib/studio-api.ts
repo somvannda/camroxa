@@ -112,6 +112,23 @@ export async function refreshStudioProject(id: string): Promise<StudioProjectSyn
   });
 }
 
+/**
+ * Replace the local document with Suno's version. The server merges, so a local
+ * clip Suno does not know about is kept rather than deleted.
+ */
+export async function loadStudioSunoVersion(id: string): Promise<StudioProject> {
+  return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/load-suno`, {
+    method: "POST",
+  });
+}
+
+/** Resolve a conflict in favour of the local document and push it. */
+export async function keepStudioLocalVersion(id: string): Promise<StudioProjectSync> {
+  return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/keep-mine`, {
+    method: "POST",
+  });
+}
+
 export async function createStudioProject(input: {
   title: string;
   major_version?: number;

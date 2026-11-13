@@ -5,6 +5,7 @@ import {
   beatsFromSeconds,
   bpmFromState,
   emptySunoState,
+  mergeSunoProjectIntoLocal,
   noteId,
   projectDocumentToSunoState,
   secondsFromBeats,
@@ -187,4 +188,152 @@ test("a fresh Suno project has the fields the client validates", () => {
   assert.ok(state.timing);
   assert.ok(Array.isArray(state.tracks));
   assert.equal(state.majorVersion, 2);
+});
+
+test("loading a Suno document updates matched tracks and clips", () => {
+  const local: LocalDocument = {
+    tracks: [
+      {
+        id: "track-1",
+        name: "Old name",
+        volume: 10,
+        pan: 0,
+        index: 0,
+        clipIds: ["clip-1"],
+      },
+    ],
+    lanes: [{ id: "clip-1", sunoId: "suno-clip", title: "Old", start: 0, duration: 1 }],
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 90,
+    timeSignature: "3/4",
+    tracks: [
+      {
+        id: "suno-track",
+        sunoId: "suno-track",
+        name: "New name",
+        volume: 55,
+        pan: -20,
+        muted: true,
+        solo: false,
+        hidden: false,
+        index: 0,
+        clipIds: ["suno-clip"],
+      },
+    ],
+    lanes: [
+      {
+        id: "suno-clip",
+        sunoId: "suno-clip",
+        title: "New",
+        start: 4,
+        duration: 8,
+        midi: { notes: [] },
+      },
+    ],
+  });
+  const track = merged.data.tracks?.[0];
+  assert.equal(track?.id, "track-1");
+  assert.equal(track?.name, "New name");
+  assert.equal(track?.volume, 55);
+  assert.equal(track?.muted, true);
+  assert.equal(track?.sunoId, "suno-track");
+  const clip = merged.data.lanes?.find((entry) => entry.id === "clip-1");
+  assert.equal(clip?.start, 4);
+  assert.equal(clip?.duration, 8);
+  assert.deepEqual(clip?.midi, { notes: [] });
+  assert.deepEqual(merged.keptLocalClips, []);
+});
+
+test("loading never deletes a local-only clip or its track", () => {
+  const local: LocalDocument = {
+    tracks: [
+      { id: "track-1", name: "Mine", index: 0, clipIds: ["clip-upload"] },
+    ],
+    lanes: [{ id: "clip-upload", title: "Upload", start: 0, duration: 4 }],
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [],
+    lanes: [],
+  });
+  assert.deepEqual(merged.keptLocalClips, ["clip-upload"]);
+  assert.equal(merged.data.tracks?.length, 1);
+  assert.deepEqual(merged.data.tracks?.[0].clipIds, ["clip-upload"]);
+  assert.deepEqual(merged.droppedTracks, []);
+});
+
+test("loading adds Suno tracks and clips that the local project lacks", () => {
+  const local: LocalDocument = { tracks: [{ id: "track-1", index: 0, clipIds: [] }], lanes: [] };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [
+      {
+        id: "suno-track-2",
+        sunoId: "suno-track-2",
+        name: "From Suno",
+        volume: 80,
+        pan: 0,
+        muted: false,
+        solo: false,
+        hidden: false,
+        index: 1,
+        clipIds: ["suno-clip-2"],
+      },
+    ],
+    lanes: [
+      {
+        id: "suno-clip-2",
+        sunoId: "suno-clip-2",
+        title: "Suno audio",
+        start: 2,
+        duration: 4,
+        sunoAssetId: "asset-1",
+      },
+    ],
+  });
+  const added = merged.data.tracks?.find((track) => track.sunoId === "suno-track-2");
+  assert.ok(added);
+  assert.equal(added?.name, "From Suno");
+  const clip = merged.data.lanes?.find((entry) => entry.sunoId === "suno-clip-2");
+  assert.ok(clip);
+  assert.equal(clip?.sunoAssetId, "asset-1");
+  assert.deepEqual(added?.clipIds, [clip?.id]);
+});
+
+test("an empty local-only track is dropped when Suno no longer has it", () => {
+  const local: LocalDocument = {
+    tracks: [
+      { id: "track-1", index: 0, clipIds: [] },
+      { id: "track-2", index: 1, clipIds: [] },
+    ],
+    lanes: [],
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [
+      {
+        id: "suno-track",
+        name: "Kept",
+        volume: 80,
+        pan: 0,
+        muted: false,
+        solo: false,
+        hidden: false,
+        index: 0,
+        clipIds: [],
+      },
+    ],
+    lanes: [],
+  });
+  // The first local track matches by position (it was never pulled, so it has
+  // no sunoId); the extra empty local track is dropped.
+  assert.deepEqual(
+    merged.data.tracks?.map((track) => track.id),
+    ["track-1"]
+  );
+  assert.deepEqual(merged.droppedTracks, ["track-2"]);
 });

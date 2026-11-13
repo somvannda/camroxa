@@ -19,6 +19,7 @@ PENDING = {
     "status": "pending",
     "suno_project_id": None,
     "suno_version_id": None,
+    "suno_remote_version_id": None,
     "last_error": None,
     "synced_at": None,
     "skipped_clips": [],
@@ -124,3 +125,75 @@ async def test_asset_enrichment_skips_non_uuid_song_ids() -> None:
 
     service._pool.fetch.assert_not_called()
     assert "sunoAssetId" not in enriched["data"]["lanes"][0]
+
+
+def _project_row() -> dict:
+    return {
+        "id": uuid4(),
+        "user_id": uuid4(),
+        "title": "Tracked",
+        "major_version": 2,
+        "bpm": 120,
+        "time_signature": "4/4",
+        "data": {"tracks": [], "lanes": []},
+        "created_at": None,
+        "updated_at": None,
+        "pinned": False,
+        "archived": False,
+        "tags": [],
+        "comment_count": 0,
+        "last_comment_at": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_load_suno_version_applies_the_merged_document_and_records_it() -> None:
+    service = _service()
+    row = _project_row()
+    merged = {
+        "bpm": 90,
+        "time_signature": "3/4",
+        "data": {"tracks": [{"id": "t1", "clipIds": []}], "lanes": []},
+        "kept_local_clips": [],
+        "dropped_tracks": [],
+        "suno_version_id": "v2",
+    }
+    service._pool.fetchrow = AsyncMock(side_effect=[row, {**row, "bpm": 90, "time_signature": "3/4"}])
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    service._studio_sync_request = AsyncMock(
+        side_effect=[merged, {"status": "synced"}]
+    )
+
+    result = await service.load_studio_suno_version(row["user_id"], row["id"])
+
+    assert result["bpm"] == 90
+    assert result["time_signature"] == "3/4"
+    assert service._studio_sync_request.await_args_list[0].args[2] == "merge"
+    resolve_call = service._studio_sync_request.await_args_list[1]
+    assert resolve_call.args[2] == "resolve"
+    assert resolve_call.args[3]["resolution"] == "theirs"
+
+
+@pytest.mark.asyncio
+async def test_keep_mine_rebases_then_pushes() -> None:
+    service = _service()
+    row = _project_row()
+    service._pool.fetchrow = AsyncMock(return_value=row)
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    mirrored = {**PENDING, "status": "synced", "suno_remote_version_id": "v2"}
+    service._studio_sync_request = AsyncMock(
+        side_effect=[
+            {**PENDING, "suno_remote_version_id": "v2"},
+            {**PENDING, "status": "linked"},
+            mirrored,
+        ]
+    )
+
+    result = await service.keep_studio_local_version(row["user_id"], row["id"])
+
+    assert result["status"] == "synced"
+    actions = [call.args[2] for call in service._studio_sync_request.await_args_list]
+    assert actions == ["refresh", "resolve", "sync"]
+    resolve_call = service._studio_sync_request.await_args_list[1]
+    assert resolve_call.args[3]["resolution"] == "mine"
+    assert resolve_call.args[3]["version"] == "v2"

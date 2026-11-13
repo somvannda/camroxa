@@ -457,8 +457,127 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
   return { bpm, timeSignature: signature, tracks, lanes };
 }
 
-/** Minimal document for a brand-new Suno project (title/metadata only). */
-export function emptySunoState(title: string, majorVersion = 2): Record<string, unknown> {
+/** Short, readable suffix for ids created from a Suno id. */
+function shortId(value: string): string {
+  return value.replace(/-/g, "").slice(0, 10);
+}
+
+/**
+ * Apply a Suno document to a local project ("Load Suno version").
+ *
+ * This is a merge, not a replace: tracks and clips are matched by the Suno id
+ * they were pulled from (or the deterministic id their local id maps to), and
+ * anything Suno does not know about — a local upload, a clip that has not been
+ * uploaded yet — is kept rather than silently deleted. The caller is told what
+ * was kept so the UI can explain the result.
+ */
+export function mergeSunoProjectIntoLocal(
+  local: LocalDocument,
+  suno: { bpm: number; timeSignature: string; tracks: LocalTrack[]; lanes: LocalClip[] }
+): { data: LocalDocument; keptLocalClips: string[]; droppedTracks: string[] } {
+  const localTracks = Array.isArray(local.tracks) ? local.tracks : [];
+  const localLanes = Array.isArray(local.lanes) ? local.lanes : [];
+  const localTrackBySunoId = new Map<string, LocalTrack>();
+  for (const track of localTracks) {
+    localTrackBySunoId.set(track.sunoId ?? stableSunoId(track.id), track);
+  }
+  const localClipBySunoId = new Map<string, LocalClip>();
+  for (const clip of localLanes) {
+    localClipBySunoId.set(clip.sunoId ?? stableSunoId(clip.id), clip);
+  }
+
+  const usedTrackIds = new Set<string>();
+  const usedClipIds = new Set<string>();
+  const keptLocalClips: string[] = [];
+
+  const tracks: LocalTrack[] = suno.tracks.map((track, index) => {
+    const match =
+      localTrackBySunoId.get(track.id) ??
+      localTracks.find((candidate) => candidate.index === index && !candidate.sunoId);
+    const id = match?.id ?? `track-${shortId(track.id)}`;
+    usedTrackIds.add(match?.id ?? id);
+    const clipIds: string[] = [];
+    for (const sunoClip of suno.lanes.filter((clip) => clipIdsOf(track).includes(clip.id))) {
+      const clipMatch = localClipBySunoId.get(sunoClip.id);
+      const clipId = clipMatch?.id ?? `clip-${shortId(sunoClip.id)}`;
+      usedClipIds.add(clipMatch?.id ?? clipId);
+      clipIds.push(clipId);
+      if (clipMatch) {
+        clipMatch.title = sunoClip.title ?? clipMatch.title;
+        clipMatch.color = sunoClip.color ?? clipMatch.color;
+        clipMatch.start = sunoClip.start;
+        clipMatch.duration = sunoClip.duration;
+        clipMatch.midi = sunoClip.midi;
+        clipMatch.sunoAssetId = sunoClip.sunoAssetId ?? clipMatch.sunoAssetId;
+        clipMatch.sunoId = sunoClip.id;
+      } else {
+        localLanes.push({ ...sunoClip, id: clipId, sunoId: sunoClip.id });
+      }
+    }
+    return {
+      ...(match ?? {
+        id,
+        name: track.name ?? `Track ${index + 1}`,
+        color: track.color,
+        chain: [],
+        index,
+      }),
+      sunoId: track.id,
+      name: track.name ?? match?.name ?? `Track ${index + 1}`,
+      color: track.color ?? match?.color,
+      volume: track.volume,
+      pan: track.pan,
+      muted: track.muted,
+      solo: track.solo,
+      hidden: track.hidden,
+      index,
+      clipIds,
+    };
+  });
+
+  // Local-only clips keep their place; drop a track only when it would be empty.
+  const droppedTracks: string[] = [];
+  const clipTrack = new Map<string, string>();
+  for (const track of localTracks) {
+    for (const clipId of track.clipIds ?? []) clipTrack.set(clipId, track.id);
+  }
+  for (const clip of localLanes) {
+    if (usedClipIds.has(clip.id)) continue;
+    keptLocalClips.push(clip.id);
+    const ownerId = clipTrack.get(clip.id);
+    const owner = tracks.find((track) => track.id === ownerId);
+    if (owner) {
+      owner.clipIds = [...new Set([...(owner.clipIds ?? []), clip.id])];
+      continue;
+    }
+    const localOwner = localTracks.find((track) => (track.clipIds ?? []).includes(clip.id));
+    if (localOwner && !usedTrackIds.has(localOwner.id)) {
+      tracks.push({ ...localOwner, clipIds: [...new Set(localOwner.clipIds ?? [])] });
+      usedTrackIds.add(localOwner.id);
+    }
+  }
+  for (const track of localTracks) {
+    if (!usedTrackIds.has(track.id) && (track.clipIds ?? []).length === 0) {
+      droppedTracks.push(track.id);
+    }
+  }
+
+  return {
+    data: {
+      ...local,
+      tracks,
+      lanes: localLanes,
+    },
+    keptLocalClips,
+    droppedTracks,
+  };
+}
+
+function clipIdsOf(track: LocalTrack): string[] {
+  return (track.clipIds ?? []).filter((id): id is string => typeof id === "string");
+}
+
+/** Minimal document for a brand-new Suno project (title/metadata only). */export function emptySunoState(title: string, majorVersion = 2): Record<string, unknown> {
   const id = randomUUID();
   return {
     title,

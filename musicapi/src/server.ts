@@ -8928,7 +8928,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!status) {
       // No link yet is a valid state for a project created before the mirror.
       return reply.send({ status: "pending", suno_project_id: null, suno_version_id: null,
-        last_error: null, synced_at: null, skipped_clips: [], state_sync: stateSyncEnabled() });
+        suno_remote_version_id: null, last_error: null, synced_at: null, skipped_clips: [],
+        state_sync: stateSyncEnabled() });
     }
     return reply.send(status);
   });
@@ -8943,6 +8944,38 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return reply.code(400).send({ error: "user_id is required." });
     }
     const view = await studioSync.refresh(id, userId);
+    if (!view) return reply.code(404).send({ error: "Project not found." });
+    return reply.send(view);
+  });
+
+  app.post("/internal/studio/projects/:id/merge", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    const doc = studioDocumentFrom(id, (req.body ?? {}) as Record<string, unknown>);
+    if (!doc) return reply.code(400).send({ error: "A valid user_id and data are required." });
+    const merged = await studioSync.mergeFromSuno(doc);
+    if (!merged) {
+      return reply.code(404).send({ error: "No Suno document is available for this project." });
+    }
+    return reply.send({
+      bpm: merged.bpm,
+      time_signature: merged.timeSignature,
+      data: merged.data,
+      kept_local_clips: merged.keptLocalClips,
+      dropped_tracks: merged.droppedTracks,
+      suno_version_id: merged.versionId,
+    });
+  });
+
+  app.post("/internal/studio/projects/:id/resolve", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const resolution = body.resolution === "theirs" ? "theirs" : "mine";
+    const doc = studioDocumentFrom(id, body);
+    if (!doc) return reply.code(400).send({ error: "A valid user_id and data are required." });
+    const version = typeof body.version === "string" ? body.version : null;
+    const view = await studioSync.resolveConflict(doc, resolution, version);
     if (!view) return reply.code(404).send({ error: "Project not found." });
     return reply.send(view);
   });

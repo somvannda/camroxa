@@ -546,6 +546,24 @@ async def refresh_studio_project(
     return await service.refresh_studio_project(UUID(ctx.user_id), project_id)
 
 
+@router.post("/studio/projects/{project_id}/load-suno")
+async def load_studio_suno_version(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.load_studio_suno_version(UUID(ctx.user_id), project_id)
+
+
+@router.post("/studio/projects/{project_id}/keep-mine")
+async def keep_studio_local_version(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.keep_studio_local_version(UUID(ctx.user_id), project_id)
+
+
 @router.patch("/studio/projects/{project_id}")
 async def update_studio_project(
     project_id: UUID,

@@ -28,6 +28,9 @@ import {
   type StudioProjectSync,
   getStudioProjectSync,
   refreshStudioProject,
+  keepStudioLocalVersion,
+  loadStudioSunoVersion,
+  forkStudioProject,
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
@@ -253,6 +256,10 @@ export function StudioEditorShell() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   /** Suno Studio mirror state for this project; null until the first read. */
   const [sunoSync, setSunoSync] = useState<StudioProjectSync | null>(null);
+  /** True while a conflict resolution is in flight. */
+  const [sunoBusy, setSunoBusy] = useState(false);
+  /** The user chose "decide later"; the chip still shows the conflict. */
+  const [sunoPromptDismissed, setSunoPromptDismissed] = useState(false);
   const retryRef = useRef<(() => void) | null>(null);
   /** Retry that ignores the version check — used by "overwrite" (W2.2). */
   const forceRetryRef = useRef<(() => void) | null>(null);
@@ -833,6 +840,70 @@ export function StudioEditorShell() {
     }, 2_000);
     return () => window.clearTimeout(timer);
   }, [projectId, user, saveStatus]);
+
+  // A conflict prompt is per project; a different project starts fresh.
+  useEffect(() => {
+    setSunoPromptDismissed(false);
+  }, [projectId]);
+
+  /** Apply Suno's document to the local project (merged server-side). */
+  async function loadSunoVersion() {
+    if (!projectId || sunoBusy) return;
+    setSunoBusy(true);
+    try {
+      const next = await loadStudioSunoVersion(projectId);
+      setProject(next);
+      setBpm(next.bpm || 120);
+      setTimeSignature(next.time_signature || "4/4");
+      setProjectData((next.data || {}) as Record<string, unknown>);
+      setLocalTracks(null);
+      setMarkers(
+        sanitizeSectionMarkers((next.data as { markers?: unknown } | undefined)?.markers)
+      );
+      setGroups(sanitizeGroups((next.data as { groups?: unknown } | undefined)?.groups));
+      projectVersionRef.current = next.updated_at ?? projectVersionRef.current;
+      setSunoSync((current) =>
+        current ? { ...current, status: "synced", last_error: null } : current
+      );
+      setSunoPromptDismissed(true);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load the Suno version.");
+    } finally {
+      setSunoBusy(false);
+    }
+  }
+
+  /** Keep the local document and push it over Suno's newer version. */
+  async function keepLocalVersion() {
+    if (!projectId || sunoBusy) return;
+    setSunoBusy(true);
+    try {
+      const view = await keepStudioLocalVersion(projectId);
+      setSunoSync(view);
+      setSunoPromptDismissed(true);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not keep the local version.");
+    } finally {
+      setSunoBusy(false);
+    }
+  }
+
+  /** Keep both: copy the local project; the copy mirrors as its own Suno project. */
+  async function duplicateLocalVersion() {
+    if (!projectId || sunoBusy) return;
+    setSunoBusy(true);
+    try {
+      const copy = await forkStudioProject(projectId, `${project?.title ?? "Untitled"} copy`);
+      setExportToast(`Copied to “${copy.title}”.`);
+      setSunoPromptDismissed(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not duplicate the project.");
+    } finally {
+      setSunoBusy(false);
+    }
+  }
 
   // Polled presence: one durable row per collaborator, refreshed while the editor is
   // open. The reference uses a realtime transport; this keeps the same visible surface
@@ -6120,6 +6191,57 @@ export function StudioEditorShell() {
           })()
         : null}
       </div>
+
+      {sunoSync?.status === "conflict" && !sunoPromptDismissed ? (
+        <div
+          className="se-dialog-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Suno version conflict"
+        >
+          <div className="se-dialog">
+            <h2>Suno has newer changes</h2>
+            <p className="se-dialog-note">
+              This project changed in Suno Studio. Loading Suno’s version keeps any local clip
+              that Suno does not have yet.
+            </p>
+            <div className="se-dialog-foot">
+              <button
+                type="button"
+                className="se-pill"
+                onClick={() => setSunoPromptDismissed(true)}
+                disabled={sunoBusy}
+              >
+                Decide later
+              </button>
+              <button
+                type="button"
+                className="se-pill"
+                onClick={() => void duplicateLocalVersion()}
+                disabled={sunoBusy}
+              >
+                Duplicate locally
+              </button>
+              <button
+                type="button"
+                className="se-pill"
+                onClick={() => void keepLocalVersion()}
+                disabled={sunoBusy}
+              >
+                Keep mine
+              </button>
+              <button
+                type="button"
+                className="se-pill on"
+                onClick={() => void loadSunoVersion()}
+                disabled={sunoBusy}
+              >
+                Load Suno version
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {clipRename ? (        <div className="se-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Rename clip">
           <div className="se-dialog">

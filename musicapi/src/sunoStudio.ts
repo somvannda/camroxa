@@ -11,7 +11,9 @@ import {
 import { withTransaction, query, queryOne } from "./db.js";
 import type { AccountPool } from "./pool.js";
 import {
+  mergeSunoProjectIntoLocal,
   projectDocumentToSunoState,
+  sunoStateToProjectData,
   type LocalClip,
   type LocalDocument,
 } from "./studioStateCodec.js";
@@ -55,6 +57,7 @@ export interface StudioSyncLink {
   account_label: string;
   suno_project_id: string;
   suno_version_id: string | null;
+  suno_remote_version_id: string | null;
   suno_title: string | null;
   suno_state: unknown;
   state_hash: string | null;
@@ -71,6 +74,8 @@ export interface StudioSyncStatusView {
   status: StudioSyncStatus;
   suno_project_id: string | null;
   suno_version_id: string | null;
+  /** Version Suno reported on the last check; the base for a conflict resolve. */
+  suno_remote_version_id: string | null;
   last_error: string | null;
   synced_at: string | null;
   /** Local clips with no Suno asset yet; they are not in the mirrored project. */
@@ -543,6 +548,7 @@ export class StudioProjectSync {
       const updated = await queryOne<StudioSyncLink>(
         `UPDATE studio_suno_projects SET
            suno_version_id = $2,
+           suno_remote_version_id = $2,
            suno_title = $3,
            suno_state = COALESCE($4::jsonb, suno_state),
            state_hash = $5,
@@ -595,6 +601,77 @@ export class StudioProjectSync {
          updated_at = now()`,
       [doc.localProjectId, doc.userId, JSON.stringify(doc)]
     );
+  }
+
+  /**
+   * Project the current Suno document into local fields and merge it into the
+   * document the platform sent. Always re-reads the remote first, so "Load Suno"
+   * acts on what is on Suno right now, not a cached copy.
+   */
+  async mergeFromSuno(doc: StudioProjectDocument): Promise<{
+    bpm: number;
+    timeSignature: string;
+    data: unknown;
+    keptLocalClips: string[];
+    droppedTracks: string[];
+    versionId: string | null;
+  } | null> {
+    const link = await this.link(doc.localProjectId);
+    if (!link || link.user_id !== doc.userId) return null;
+    await this.refresh(doc.localProjectId, doc.userId, 0);
+    const fresh = await this.link(doc.localProjectId);
+    const state = parseStudioState(fresh?.suno_state);
+    if (!state) return null;
+    const projection = sunoStateToProjectData(state);
+    const merged = mergeSunoProjectIntoLocal(
+      (doc.data ?? {}) as LocalDocument,
+      projection
+    );
+    return {
+      bpm: projection.bpm,
+      timeSignature: projection.timeSignature,
+      data: merged.data,
+      keptLocalClips: merged.keptLocalClips,
+      droppedTracks: merged.droppedTracks,
+      versionId: fresh?.suno_version_id ?? null,
+    };
+  }
+
+  /**
+   * Rebase the link after a conflict.
+   *
+   * `mine`: accept Suno's version as the base, then the caller pushes the local
+   * document (resolving in favour of local edits).
+   * `theirs`: the caller already applied the merged document locally; record its
+   * hash so the next save is a no-op, and mark the link synced.
+   */
+  async resolveConflict(
+    doc: StudioProjectDocument,
+    resolution: "mine" | "theirs",
+    version: string | null
+  ): Promise<StudioSyncStatusView | null> {
+    const link = await this.link(doc.localProjectId);
+    if (!link || link.user_id !== doc.userId) return null;
+    const remoteVersion = version ?? link.suno_remote_version_id;
+    const updated = await queryOne<StudioSyncLink>(
+      `UPDATE studio_suno_projects SET
+         suno_version_id = COALESCE($2, suno_version_id),
+         suno_remote_version_id = COALESCE($2, suno_remote_version_id),
+         status = $3,
+         state_hash = CASE WHEN $3 = 'synced' THEN $4 ELSE state_hash END,
+         last_error = NULL,
+         synced_at = now(),
+         updated_at = now()
+       WHERE local_project_id = $1
+       RETURNING *`,
+      [
+        doc.localProjectId,
+        remoteVersion,
+        resolution === "theirs" ? "synced" : "linked",
+        resolution === "theirs" ? studioDocumentHash(doc.data) : null,
+      ]
+    );
+    return statusView(updated ?? link);
   }
 
   /** Process due outbox rows. Safe to call from a timer; never throws. */
@@ -666,7 +743,8 @@ export class StudioProjectSync {
       const updated = await queryOne<StudioSyncLink>(
         `UPDATE studio_suno_projects SET
            suno_state = COALESCE($2::jsonb, suno_state),
-           status = $3,
+           suno_remote_version_id = COALESCE($3, suno_remote_version_id),
+           status = $4,
            last_error = NULL,
            last_checked_at = now(),
            updated_at = now()
@@ -675,6 +753,7 @@ export class StudioProjectSync {
         [
           localProjectId,
           remoteState ? JSON.stringify(remoteState) : null,
+          remoteVersion,
           advanced ? "conflict" : link.status,
         ]
       );
@@ -748,6 +827,7 @@ function statusView(link: StudioSyncLink | null): StudioSyncStatusView {
     status: link?.status ?? "pending",
     suno_project_id: link?.suno_project_id ?? null,
     suno_version_id: link?.suno_version_id ?? null,
+    suno_remote_version_id: link?.suno_remote_version_id ?? null,
     last_error: link?.last_error ?? null,
     synced_at: link?.synced_at ? new Date(link.synced_at).toISOString() : null,
     skipped_clips: Array.isArray(link?.skipped_clip_ids)

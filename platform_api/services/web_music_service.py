@@ -2089,6 +2089,97 @@ class WebMusicService:
             return None
         return payload if isinstance(payload, dict) else None
 
+    async def load_studio_suno_version(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        """Replace the local document with Suno's, keeping local-only clips."""
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        document = self._studio_sync_document(row)
+        if document is None:
+            raise ValidationError("This project cannot be mirrored.")
+        if self._studio_sync_endpoint() is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror is not configured.", is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        merged = await self._studio_sync_request(str(user_id), str(project_id), "merge", document)
+        if not merged or not isinstance(merged.get("data"), dict):
+            raise ExternalServiceError("Suno has no document to load for this project.", is_retryable=True)
+        updated = await self._pool.fetchrow(
+            """
+            UPDATE studio_projects SET
+                bpm = $3,
+                time_signature = $4,
+                data = $5::jsonb,
+                updated_at = now()
+            WHERE id = $1 AND user_id = $2
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+            max(20, min(int(merged.get("bpm") or 120), 300)),
+            str(merged.get("time_signature") or "4/4"),
+            json.dumps(merged["data"]),
+        )
+        if updated is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        # Record the applied version so the next autosave does not re-push it.
+        await self._studio_sync_request(
+            str(user_id),
+            str(project_id),
+            "resolve",
+            {
+                **document,
+                "resolution": "theirs",
+                "version": merged.get("suno_version_id"),
+                "data": merged["data"],
+            },
+        )
+        return self._studio_project_payload(updated, include_data=True)
+
+    async def keep_studio_local_version(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        """Rebase the conflict onto Suno's version and push the local document."""
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        document = self._studio_sync_document(row)
+        if document is None:
+            raise ValidationError("This project cannot be mirrored.")
+        if self._studio_sync_endpoint() is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror is not configured.", is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        view = await self._studio_sync_request(
+            str(user_id), str(project_id), "refresh", {"user_id": str(user_id)}
+        )
+        version = (view or {}).get("suno_remote_version_id")
+        resolved = await self._studio_sync_request(
+            str(user_id),
+            str(project_id),
+            "resolve",
+            {**document, "resolution": "mine", "version": version},
+        )
+        pushed = await self._studio_sync_request(str(user_id), str(project_id), "sync", document)
+        return pushed or resolved or {
+            "status": "pending",
+            "suno_project_id": None,
+            "suno_version_id": None,
+            "suno_remote_version_id": None,
+            "last_error": None,
+            "synced_at": None,
+            "skipped_clips": [],
+            "state_sync": True,
+        }
+
     async def studio_sync_status(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -2102,6 +2193,7 @@ class WebMusicService:
             "status": "pending",
             "suno_project_id": None,
             "suno_version_id": None,
+            "suno_remote_version_id": None,
             "last_error": None,
             "synced_at": None,
             "skipped_clips": [],
@@ -2122,6 +2214,7 @@ class WebMusicService:
             "status": "pending",
             "suno_project_id": None,
             "suno_version_id": None,
+            "suno_remote_version_id": None,
             "last_error": None,
             "synced_at": None,
             "skipped_clips": [],
