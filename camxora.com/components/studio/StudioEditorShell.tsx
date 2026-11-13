@@ -148,7 +148,6 @@ import {
   sanitizeGroups,
   type StudioGroup,
 } from "@/lib/studio-groups";
-import { findWavetable, wavetableCoefficients } from "@/lib/studio-wavetable";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -205,8 +204,6 @@ type ClipLike = {
   midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
   /** MIDI synth voice (S31); triangle when absent. */
   instrument?: MidiInstrument;
-  /** Custom wavetable id; overrides the oscillator type when present. */
-  wavetableId?: string | null;
   /** Pre-transform audio/duration, so Heal Edits can restore the original. */
   sourceAudioUrl?: string | null;
   sourceDuration?: number;
@@ -2891,21 +2888,6 @@ export function StudioEditorShell() {
     writeProjectData({ ...base, masterChain: next }, "the master chain");
   }
 
-  /** Persist a MIDI clip's custom wavetable selection. */
-  function setMidiWavetable(clipId: string, wavetableId: string | null) {
-    const data = currentData() as Record<string, unknown>;
-    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
-    writeProjectData(
-      {
-        ...data,
-        lanes: lanes.map((clip) =>
-          clip.id === clipId ? { ...clip, wavetableId } : clip
-        ),
-      },
-      "the MIDI wavetable"
-    );
-  }
-
   /** Persist one track's plugin chain into the project document. */
   function commitChain(trackId: string, next: PluginChainEntry[]) {
     const merged = { ...chains, [trackId]: next };
@@ -4077,8 +4059,6 @@ export function StudioEditorShell() {
       const audible = !mix.muted;
       const volume = audible ? mix.volume : 0;
       const destination = trackInput(track?.id ?? clip.id, volume, track?.pan ?? 0);
-      const table = findWavetable((clip as ClipLike).wavetableId);
-      const wave = table ? wavetableCoefficients(table) : null;
       for (const note of notes) {
         const absolute = start + note.start;
         if (absolute + note.length <= from) continue;
@@ -4094,8 +4074,7 @@ export function StudioEditorShell() {
             when,
             playbackRate,
             { bend, mod },
-            normalizeMidiInstrument((clip as ClipLike).instrument),
-            wave
+            normalizeMidiInstrument((clip as ClipLike).instrument)
           )
         );
       }
@@ -4189,7 +4168,6 @@ export function StudioEditorShell() {
         audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
         instrument: (clip as ClipLike).instrument,
-        wavetableId: (clip as ClipLike).wavetableId,
       }));
       const exportTracks: ExportTrack[] = tracks.map((track) => ({
         id: track.id,
@@ -4289,7 +4267,6 @@ export function StudioEditorShell() {
         audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
         instrument: (clip as ClipLike).instrument,
-        wavetableId: (clip as ClipLike).wavetableId,
       }));
       const exportTracks: ExportTrack[] = tracks.map((candidate) => {
         const mix = mixFor(candidate);
@@ -6432,8 +6409,6 @@ export function StudioEditorShell() {
           }}
           instrument={normalizeMidiInstrument(midiClip.instrument)}
           onInstrumentChange={(instrument) => setMidiInstrument(midiClip.id, instrument)}
-          wavetableId={midiClip.wavetableId ?? null}
-          onWavetableChange={(id) => setMidiWavetable(midiClip.id, id)}
           onImportMidi={(file) => void importMidiFile(file)}
           onToggleLoop={() => setLoop((value) => !value)}
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}

@@ -33,7 +33,6 @@ import {
   type MidiInstrument,
   type MidiNote,
 } from "@/lib/studio-midi";
-import { findWavetable, wavetableCoefficients } from "@/lib/studio-wavetable";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
 export type ExportClip = {
@@ -54,8 +53,6 @@ export type ExportClip = {
   };
   /** MIDI synth voice (S31); triangle when absent. */
   instrument?: MidiInstrument;
-  /** Custom wavetable id; overrides the oscillator type when present. */
-  wavetableId?: string | null;
 };
 
 export type ExportTrack = {
@@ -304,8 +301,6 @@ export async function renderMix(
     );
     const bend = sanitizePoints(clip.midi?.bend, -1, 1);
     const mod = sanitizePoints(clip.midi?.mod, 0, 1);
-    const table = findWavetable(clip.wavetableId);
-    const wave = table ? wavetableCoefficients(table) : null;
     for (const note of notes) {
       const absolute = (clip.start ?? 0) + note.start;
       if (absolute < from - 0.001 || absolute >= to) continue;
@@ -320,7 +315,6 @@ export async function renderMix(
           mod: valueAt(mod, note.start, 0),
         },
         normalizeMidiInstrument(clip.instrument),
-      wave
       );
     }
   }

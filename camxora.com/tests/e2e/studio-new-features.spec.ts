@@ -43,11 +43,16 @@ test("track Automation draws a volume point that persists", async ({ page }) => 
   await createStudioProject(page, { title: "Track automation" });
 
   await page.locator(".se-clip").first().click();
+  // The automation panel targets the selected clip's track; wait for the click
+  // to actually select before opening it (a click during layout settling misses).
+  await expect(page.locator(".se-clip.selected").first()).toBeVisible();
   await page.locator(".se-foot").getByRole("button", { name: "Automation" }).click();
   const panel = page.getByRole("region", { name: "Track automation" });
   const volumeLane = panel.getByRole("group", { name: "Volume automation lane" });
   await expect(volumeLane).toBeVisible();
-  await volumeLane.click({ position: { x: 180, y: 30 } });
+  // Click the lane's own centre: a fixed offset can land outside a lane that is
+  // still settling its width when the panel just opened.
+  await volumeLane.click();
   await expect(panel.locator(".se-automation-point")).toHaveCount(1);
 
   await panel.getByRole("button", { name: "Pan" }).click();
@@ -58,6 +63,9 @@ test("track Automation draws a volume point that persists", async ({ page }) => 
   await page.reload();
   await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
   await page.locator(".se-clip").first().click();
+  // The automation panel targets the selected clip's track; wait for the click
+  // to actually select before opening it (a click during layout settling misses).
+  await expect(page.locator(".se-clip.selected").first()).toBeVisible();
   await page.locator(".se-foot").getByRole("button", { name: "Automation" }).click();
   const reloaded = page.getByRole("region", { name: "Track automation" });
   await expect(reloaded.locator(".se-automation-point")).toHaveCount(1);
@@ -130,43 +138,6 @@ test("track groups create, assign and mute", async ({ page }) => {
   expect(saved.data.tracks[0].groupId).toBe(saved.data.groups[0].id);
 });
 
-test("Wavetable Designer saves a table and selects it on the MIDI clip", async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.setViewportSize({ width: 1689, height: 1277 });
-  const projectId = await createStudioProject(page, { title: "Wavetable" });
-
-  await page.getByRole("button", { name: /Add new track/ }).click();
-  await page.getByRole("menuitem", { name: /MIDI/ }).click();
-  const panel = page.getByRole("region", { name: "MIDI editor" });
-  await expect(panel).toBeVisible();
-
-  await panel.getByRole("button", { name: "Design table" }).click();
-  const dialog = page.getByRole("dialog", { name: "Wavetable designer" });
-  await dialog.getByLabel("Name").fill("Studio Table");
-  await dialog.getByLabel("Harmonic 2").fill("0.5");
-  await dialog.getByRole("button", { name: /Save table/ }).click();
-
-  const picker = page.getByLabel("MIDI wavetable");
-  const selected = await picker.inputValue();
-  expect(selected).not.toBe("");
-
-  // Saving the table and selecting it are two writes; the selection is queued
-  // behind the library write, so poll the stored document instead of racing it.
-  await expect
-    .poll(
-      async () => {
-        const saved = await page.evaluate(async (id) => {
-          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
-          return response.json();
-        }, projectId);
-        const midiClip = saved.data.lanes.find((clip: { midi?: unknown }) => clip.midi);
-        return (midiClip as { wavetableId?: string | null } | undefined)?.wavetableId ?? null;
-      },
-      { timeout: 15_000 }
-    )
-    .toBe(selected);
-});
-
 test("Heal Edits restores the clip audio from before a transform", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1689, height: 1277 });
@@ -233,7 +204,9 @@ test("Create Section stamps a ruler marker that survives a reload", async ({ pag
   await page.getByRole("menuitem", { name: /Create Section/ }).click();
 
   const marker = page.locator(".se-section-marker");
-  await expect(marker).toHaveCount(1);
+  // The marker is drawn after the menu action commits; poll instead of reading
+  // the DOM in the same tick as the click.
+  await expect.poll(() => marker.count(), { timeout: 10_000 }).toBe(1);
   const label = await marker.first().getAttribute("aria-label");
   expect(label).toMatch(/Section .+ at /);
 

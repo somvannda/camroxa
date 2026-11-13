@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
-import { StudioWavetableDesigner } from "@/components/studio/StudioWavetableDesigner";
-import { customWavetables, type Wavetable } from "@/lib/studio-wavetable";
 import {
   buildMidiChordNotes,
   sanitizePoints,
@@ -49,8 +47,6 @@ export type StudioMidiEditorProps = {
   onScaleChange: (scale: string) => void;
   instrument: MidiInstrument;
   onInstrumentChange: (instrument: MidiInstrument) => void;
-  wavetableId?: string | null;
-  onWavetableChange?: (id: string | null) => void;
   onImportMidi: (file: File) => void;
   onToggleLoop: () => void;
   onChangeNotes: (notes: MidiNote[]) => void;
@@ -101,8 +97,6 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     onScaleChange,
     instrument,
     onInstrumentChange,
-    wavetableId = null,
-    onWavetableChange = () => {},
     onImportMidi,
     onToggleLoop,
     onChangeNotes,
@@ -116,8 +110,6 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const [quantize, setQuantize] = useState<"4" | "8" | "16">("8");
   const [chordMode, setChordMode] = useState<MidiChordMode>("off");
   const [arpMode, setArpMode] = useState<MidiArpMode>("off");
-  const [tables, setTables] = useState<Wavetable[]>(() => customWavetables());
-  const [designOpen, setDesignOpen] = useState(false);
   const [lane, setLane] = useState<"velocity" | "bend" | "mod">("velocity");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [preview, setPreview] = useState<MidiNote | null>(null);
@@ -532,24 +524,6 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
           </select>
         </label>
         <label className="se-midi-control">
-          Table
-          <select
-            aria-label="MIDI wavetable"
-            value={wavetableId ?? ""}
-            onChange={(event) => onWavetableChange(event.target.value || null)}
-          >
-            <option value="">None</option>
-            {tables.map((table) => (
-              <option key={table.id} value={table.id}>
-                {table.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="se-pill" onClick={() => setDesignOpen(true)}>
-          Design table
-        </button>
-        <label className="se-midi-control">
           Chord
           <select
             aria-label="Chord mode"
@@ -635,16 +609,6 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         <span className="se-midi-control">View All</span>
       </div>
     </section>
-    {designOpen ? (
-      <StudioWavetableDesigner
-        onSave={(table) => {
-          setTables(customWavetables());
-          onWavetableChange(table.id);
-          setDesignOpen(false);
-        }}
-        onClose={() => setDesignOpen(false)}
-      />
-    ) : null}
     </>
   );
 }
