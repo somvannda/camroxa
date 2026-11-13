@@ -2246,11 +2246,20 @@ class WebMusicService:
         # A status read backs the editor chip and must fail fast; a push may wait
         # for a slow provider save.
         timeout = 10 if action in ("status", "refresh") else 90
+        if action == "plugins/author/job":
+            timeout = 60
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if action == "status":
                     response = await client.get(
                         f"{base}/internal/studio/projects/{project_id}/status",
+                        headers={"x-internal-token": token},
+                        params={"user_id": user_id},
+                    )
+                elif action == "plugins/author/job":
+                    job_id = str((document or {}).get("job_id") or "")
+                    response = await client.get(
+                        f"{base}/internal/studio/projects/{project_id}/plugins/author/{job_id}",
                         headers={"x-internal-token": token},
                         params={"user_id": user_id},
                     )
@@ -2367,6 +2376,80 @@ class WebMusicService:
             "skipped_clips": [],
             "state_sync": True,
         }
+
+    async def author_studio_plugin(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        instruction: str,
+        required_controls: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Start a Suno agent plugin-authoring job for this project.
+
+        The plugin library and the authoring agent live behind the pinned Suno
+        account, so the work happens in musicapi; this method only forwards the
+        instruction and returns the job the editor polls.
+        """
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        document = self._studio_sync_document(row)
+        if document is None:
+            raise ValidationError("This project cannot be mirrored.")
+        if self._studio_sync_endpoint() is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror is not configured.", is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        result = await self._studio_sync_request(
+            str(user_id),
+            str(project_id),
+            "plugins/author",
+            {
+                **document,
+                "instruction": instruction.strip()[:2000],
+                "required_controls": [
+                    str(control).strip()[:80]
+                    for control in (required_controls or [])
+                    if str(control).strip()
+                ][:32],
+            },
+        )
+        if not result or not result.get("job_id"):
+            raise ExternalServiceError(
+                "The plugin authoring agent could not start.", is_retryable=True
+            )
+        return result
+
+    async def studio_plugin_authoring_job(
+        self, user_id: UUID, project_id: UUID, job_id: str
+    ) -> dict[str, Any]:
+        """Read one plugin-authoring job; the editor polls this until ready."""
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        if self._studio_sync_endpoint() is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror is not configured.", is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        result = await self._studio_sync_request(
+            str(user_id), str(project_id), "plugins/author/job", {"job_id": job_id}
+        )
+        if not result:
+            raise ExternalServiceError(
+                "The plugin authoring job is unavailable.", is_retryable=True
+            )
+        return result
 
     async def studio_sync_status(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
         project = await self._pool.fetchrow(

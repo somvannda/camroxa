@@ -351,3 +351,58 @@ async def test_keep_mine_rebases_then_pushes() -> None:
     resolve_call = service._studio_sync_request.await_args_list[1]
     assert resolve_call.args[3]["resolution"] == "mine"
     assert resolve_call.args[3]["version"] == "v2"
+
+
+@pytest.mark.asyncio
+async def test_author_studio_plugin_forwards_the_instruction_and_job() -> None:
+    service = _service()
+    row = _project_row()
+    service._pool.fetchrow = AsyncMock(return_value=row)
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    service._studio_sync_request = AsyncMock(
+        return_value={"job_id": "job-1", "status": "pending"}
+    )
+
+    result = await service.author_studio_plugin(
+        row["user_id"],
+        row["id"],
+        instruction="  warm tape saturation with a low cut  ",
+        required_controls=["Drive", "Low Cut"],
+    )
+
+    assert result["job_id"] == "job-1"
+    call = service._studio_sync_request.await_args
+    assert call.args[2] == "plugins/author"
+    assert call.args[3]["instruction"] == "warm tape saturation with a low cut"
+    assert call.args[3]["required_controls"] == ["Drive", "Low Cut"]
+
+
+@pytest.mark.asyncio
+async def test_author_studio_plugin_fails_when_the_agent_returns_no_job() -> None:
+    from platform_api.exceptions import ExternalServiceError
+
+    service = _service()
+    row = _project_row()
+    service._pool.fetchrow = AsyncMock(return_value=row)
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    service._studio_sync_request = AsyncMock(return_value=None)
+
+    with pytest.raises(ExternalServiceError):
+        await service.author_studio_plugin(row["user_id"], row["id"], instruction="build it")
+
+
+@pytest.mark.asyncio
+async def test_plugin_authoring_job_reads_the_mirror() -> None:
+    service = _service()
+    project_id = uuid4()
+    service._pool.fetchrow = AsyncMock(return_value={"id": project_id})
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    view = {"job_id": "job-1", "status": "ready", "plugin_id": "p1"}
+    service._studio_sync_request = AsyncMock(return_value=view)
+
+    result = await service.studio_plugin_authoring_job(uuid4(), project_id, "job-1")
+
+    assert result == view
+    call = service._studio_sync_request.await_args
+    assert call.args[2] == "plugins/author/job"
+    assert call.args[3]["job_id"] == "job-1"

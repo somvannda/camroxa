@@ -478,6 +478,11 @@ class StudioProjectForkRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
 
 
+class StudioPluginAuthorRequest(BaseModel):
+    instruction: str = Field(min_length=4, max_length=2000)
+    required_controls: list[str] = Field(default_factory=list, max_length=32)
+
+
 @router.get("/studio/projects")
 async def list_studio_projects(
     ctx: CurrentUserDep,
@@ -562,6 +567,31 @@ async def keep_studio_local_version(
     service: WebMusicServiceDep,
 ) -> dict:
     return await service.keep_studio_local_version(UUID(ctx.user_id), project_id)
+
+
+@router.post("/studio/projects/{project_id}/plugins/author")
+async def author_studio_plugin(
+    project_id: UUID,
+    body: StudioPluginAuthorRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.author_studio_plugin(
+        UUID(ctx.user_id),
+        project_id,
+        instruction=body.instruction,
+        required_controls=body.required_controls,
+    )
+
+
+@router.get("/studio/projects/{project_id}/plugins/author/{job_id}")
+async def get_studio_plugin_authoring_job(
+    project_id: UUID,
+    job_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.studio_plugin_authoring_job(UUID(ctx.user_id), project_id, job_id)
 
 
 @router.patch("/studio/projects/{project_id}")
