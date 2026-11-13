@@ -62,8 +62,9 @@ Next, in order:
 1. **Local uploads.** A clip that did not come from a Suno generation has no
    asset on the pinned account. Upload it through Suno's upload pipeline (or copy
    it between accounts) so it can join the mirror instead of being skipped.
-2. **Effects and master chain.** `tracks[].signalChain` and `masterSignalChain`
-   are captured; our plugin ids still need mapping to Suno `pluginVersionId`s.
+2. **Remaining effects.** Delay (mode/beats enum), distortion and chorus need a
+   parameter translation; the master EQ/compressor expose an `amount` with no
+   captured equivalent. Everything else in the chain already mirrors.
 3. **MIDI bend/mod lanes** (`pitchBend`/`controlChanges`): the arrays are empty in
    every captured MIDI clip, so their entry shape still needs a probe.
 4. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).

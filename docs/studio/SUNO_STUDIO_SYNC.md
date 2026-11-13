@@ -222,8 +222,8 @@ Mapping summary:
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | audio clips with a Suno asset | `clips[].asset` | both | asset id comes from the local Suno clip id |
 | audio clips without an asset | — | — | not mirrored; reported in `skipped_clip_ids` |
-| `chains` (effects) | `tracks[].signalChain` | both | plugin id mapping pending |
-| `masterChain` | `masterSignalChain` | both | id mapping pending |
+| `chains` (effects) | `tracks[].signalChain` | both | compressor, convolution, gate, limiter, reverb, EQ (verified live) |
+| `masterChain` | `masterSignalChain` | both | limiter (verified live); EQ/compressor pending |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | `groups` | routing / group tracks | both | pending |
 | custom wavetable ids | `wavetables` asset | removed | Suno has wavetables as assets, not an editor |
