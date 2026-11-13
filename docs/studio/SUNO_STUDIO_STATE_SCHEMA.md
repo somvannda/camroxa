@@ -107,7 +107,7 @@ Older tracks omit `signalChain`, `faderAutomation`, `routingMode` and
   loop: { enabled, startBeats, endBeats },
   asset?: { id, type },      // audio: the Suno song/upload asset
   midi?: {
-    notes: [{ id: number, startBeats, durationBeats, pitch, velocity }],
+    notes: [{ id: number, startBeats, durationBeats, pitch, velocity, isDisabled? }],
     pitchBend: [{ beats, value }],
     controlChanges: [{ controller: 1, channel: 0, points: [{ beats, value }] }],
     channelPressure: [], sysex: [],
@@ -168,6 +168,14 @@ Second probe (audio): a saved audio clip kept `asset {id, type:"clip"}`,
 archived afterwards.
 
 The project was archived after the probe.
+
+Third probe (note flag): four notes were saved carrying different candidate keys
+(`isDisabled`, `disabled`, `muted`, `enabled`). Suno echoed **all four verbatim**, so the
+document keeps unknown keys on notes and an echo alone cannot identify the flag. The key
+name comes from the harvested bundle (`isDisabled` appears in the reference code), and the
+codec now writes `notes[].isDisabled` for a disabled note; a save/read with that path
+returned `"isDisabled": true` unchanged. Whether Suno's editor *honours* the flag is the
+one part still unproven — closing that needs a UI capture with a disabled note.
 
 ## 8. Still unmapped
 

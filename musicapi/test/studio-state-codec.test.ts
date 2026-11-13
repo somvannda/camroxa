@@ -894,3 +894,56 @@ test("an empty local-only track is dropped when Suno no longer has it", () => {
   );
   assert.deepEqual(merged.droppedTracks, ["track-2"]);
 });
+
+test("a disabled note rides on isDisabled in both directions", () => {
+  const input = {
+    title: "Flags",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data: {
+      lanes: [
+        {
+          id: "clip-1",
+          title: "Flags",
+          start: 0,
+          duration: 4,
+          midi: {
+            notes: [
+              { id: "n1", pitch: 60, start: 0, length: 1, velocity: 100, disabled: true },
+              { id: "n2", pitch: 62, start: 1, length: 1, velocity: 100 },
+            ],
+          },
+        },
+      ],
+      tracks: [
+        {
+          id: "track-1",
+          name: "Synth",
+          color: "#7c5cf0",
+          index: 0,
+          volume: 80,
+          pan: 0,
+          muted: false,
+          solo: false,
+          hidden: false,
+          collapsed: false,
+          chain: [],
+          clipIds: ["clip-1"],
+        },
+      ],
+    },
+  };
+  const { state } = projectDocumentToSunoState(input as never);
+  const tracks = state.tracks as Array<Record<string, unknown>>;
+  const clips = tracks[0].clips as Array<Record<string, unknown>>;
+  const notes = (clips[0].midi as { notes: Array<Record<string, unknown>> }).notes;
+
+  assert.equal(notes[0].isDisabled, true);
+  assert.equal(notes[1].isDisabled, undefined);
+
+  const back = sunoStateToProjectData(state as never);
+  const lanes = back.lanes as Array<{ midi?: { notes: Array<Record<string, unknown>> } }>;
+  assert.equal(lanes[0].midi?.notes[0].disabled, true);
+  assert.equal(lanes[0].midi?.notes[1].disabled, undefined);
+});

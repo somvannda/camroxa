@@ -42,6 +42,8 @@ export interface LocalMidiNote {
   start: number;
   length: number;
   velocity: number;
+  /** Muted note; rides on `isDisabled` in the Suno document. */
+  disabled?: boolean;
 }
 
 export interface LocalClip {
@@ -207,6 +209,9 @@ function midiFromLocal(
       durationBeats: Math.max(0.01, beatsFromSeconds(note.length, bps)),
       pitch: Math.max(0, Math.min(127, Math.round(Number(note.pitch) || 0))),
       velocity: Math.max(1, Math.min(127, Math.round(Number(note.velocity) || 100))),
+      // The captured bundle uses `isDisabled` for the reference's "Toggle Notes
+      // Disabled"; a live save/read probe showed Suno keeps the key verbatim.
+      ...(note.disabled === true ? { isDisabled: true } : {}),
     })),
     // Controller entries group their points; pitch bend is a flat point list.
     controlChanges: mod.length
@@ -1007,6 +1012,7 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
                 start: secondsFromBeats(Number(note.startBeats) || 0, bps),
                 length: secondsFromBeats(Number(note.durationBeats) || 0, bps),
                 velocity: Number(note.velocity) || 100,
+                ...(note.isDisabled === true ? { disabled: true } : {}),
               })),
               ...(bend.length ? { bend } : {}),
               ...(mod.length ? { mod } : {}),
