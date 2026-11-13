@@ -64,8 +64,8 @@ Next, in order:
    it between accounts) so it can join the mirror instead of being skipped.
 2. **Effects and master chain.** `tracks[].signalChain` and `masterSignalChain`
    are captured; our plugin ids still need mapping to Suno `pluginVersionId`s.
-3. **Clip offset/fades and MIDI bend/mod lanes** (`readStartBeats`, fades,
-   `pitchBend`/`controlChanges`).
+3. **MIDI bend/mod lanes** (`pitchBend`/`controlChanges`): the arrays are empty in
+   every captured MIDI clip, so their entry shape still needs a probe.
 4. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
 
 Known test lesson (fixed 2026-11-13): the automation and section-marker specs used

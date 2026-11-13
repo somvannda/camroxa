@@ -217,6 +217,7 @@ Mapping summary:
 | `masterVolume`, loop | `amplitude`, `loop` | both | verified |
 | `tracks[]` | `tracks[]` | both | name, colour, hidden, mute/solo, volume→amplitude, pan→balance |
 | MIDI clips + notes | `tracks[].clips[].midi` | both | seconds→beats, numeric note ids (verified live) |
+| clip offset / fade-in | `readStartBeats` / `fadeInBeats` | both | seconds→beats |
 | `volumeAutomation` | `tracks[].faderAutomation` | both | written; read-back pending |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | audio clips with a Suno asset | `clips[].asset` | both | asset id comes from the local Suno clip id |
