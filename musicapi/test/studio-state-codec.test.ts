@@ -484,6 +484,59 @@ test("MIDI bend and mod lanes become Suno point lists", () => {
   assert.deepEqual(lane.midi?.mod, [{ at: 1, value: 0.8 }]);
 });
 
+test("a clip deleted locally is removed from the mirrored arrangement", () => {
+  const deletedLocalId = "clip-deleted";
+  const deletedSunoId = stableSunoId(deletedLocalId);
+  const baseline = {
+    tracks: [
+      {
+        id: stableSunoId("track-1"),
+        name: "Track",
+        type: "audio",
+        clips: [
+          {
+            id: deletedSunoId,
+            type: "audio",
+            asset: { id: "asset-1", type: "clip" },
+            startBeats: 0,
+            endBeats: 8,
+          },
+        ],
+      },
+    ],
+  };
+  const data: LocalDocument = {
+    tracks: [{ id: "track-1", name: "Track", index: 0, clipIds: [] }],
+    lanes: [],
+  };
+  const withoutHistory = projectDocumentToSunoState({
+    title: "Delete",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline,
+  });
+  assert.equal(
+    ((withoutHistory.state.tracks as Array<Record<string, unknown>>)[0].clips as unknown[]).length,
+    1
+  );
+
+  const withHistory = projectDocumentToSunoState({
+    title: "Delete",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline,
+    previousLocalClipIds: [deletedSunoId],
+  });
+  assert.equal(
+    ((withHistory.state.tracks as Array<Record<string, unknown>>)[0].clips as unknown[]).length,
+    0
+  );
+});
+
 test("a fresh Suno project has the fields the client validates", () => {
   const state = emptySunoState("Untitled Project");
   assert.ok(state.timing);

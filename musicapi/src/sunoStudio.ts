@@ -13,6 +13,7 @@ import type { AccountPool } from "./pool.js";
 import {
   mergeSunoProjectIntoLocal,
   projectDocumentToSunoState,
+  stableSunoId,
   sunoStateToProjectData,
   type LocalClip,
   type LocalDocument,
@@ -62,6 +63,7 @@ export interface StudioSyncLink {
   suno_state: unknown;
   state_hash: string | null;
   skipped_clip_ids: unknown;
+  local_clip_ids: unknown;
   archived: boolean;
   status: StudioSyncStatus;
   last_error: string | null;
@@ -297,6 +299,7 @@ export function decideStateSync(args: {
   remoteVersionId: string | null;
   remoteState: Record<string, unknown> | null;
   doc: StudioProjectDocument;
+  previousLocalClipIds?: string[];
 }): StateSyncDecision {
   if (!args.enabled) return { kind: "skip" };
   if (
@@ -316,6 +319,7 @@ export function decideStateSync(args: {
     timeSignature: args.doc.timeSignature,
     data: (args.doc.data ?? {}) as LocalDocument,
     baseline: args.remoteState,
+    previousLocalClipIds: args.previousLocalClipIds,
   });
   return {
     kind: "push",
@@ -529,6 +533,9 @@ export class StudioProjectSync {
         remoteVersionId: remoteVersion,
         remoteState,
         doc: prepared.doc,
+        previousLocalClipIds: Array.isArray(link.local_clip_ids)
+          ? (link.local_clip_ids as string[])
+          : [],
       });
       if (decision.kind === "conflict") {
         // Somebody saved on Suno since our last push: keep the remote state for
@@ -558,6 +565,7 @@ export class StudioProjectSync {
            state_hash = $5,
            status = $6,
            skipped_clip_ids = $7::jsonb,
+           local_clip_ids = $8::jsonb,
            last_error = NULL,
            synced_at = now(),
            updated_at = now()
@@ -571,6 +579,7 @@ export class StudioProjectSync {
           hash,
           status,
           JSON.stringify(skippedClipIds),
+          JSON.stringify(localClipIds(doc)),
         ]
       );
       await query("DELETE FROM studio_suno_outbox WHERE local_project_id = $1", [
@@ -839,6 +848,14 @@ function statusView(link: StudioSyncLink | null): StudioSyncStatusView {
       : [],
     state_sync: stateSyncEnabled(),
   };
+}
+
+/** Suno ids for every local clip, stored so a later delete can propagate. */
+function localClipIds(doc: StudioProjectDocument): string[] {
+  const data = (doc.data ?? {}) as LocalDocument;
+  return (Array.isArray(data.lanes) ? data.lanes : []).map(
+    (clip) => clip.sunoId ?? stableSunoId(clip.id)
+  );
 }
 
 /** Read a Suno project and return its normalised document and version. */

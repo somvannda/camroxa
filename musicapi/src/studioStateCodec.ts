@@ -104,6 +104,8 @@ export interface CodecInput {
   data: LocalDocument;
   /** Last document Suno returned; unknown keys are preserved. */
   baseline?: Record<string, unknown> | null;
+  /** Suno clip ids we wrote last time, so a local delete propagates. */
+  previousLocalClipIds?: string[];
 }
 
 export interface CodecResult {
@@ -554,6 +556,7 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
   const tracks = Array.isArray(data.tracks) ? data.tracks : [];
   const signature = timeSignatureParts(input.timeSignature);
   const skippedClipIds: string[] = [];
+  const previousClipIds = new Set(input.previousLocalClipIds ?? []);
 
   const sunoTracks = tracks
     .slice()
@@ -561,6 +564,9 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
     .map((track) => {
       const trackId = track.sunoId ?? stableSunoId(track.id);
       const localClips = localClipsForTrack(data, track);
+      const localClipSunoIds = new Set(
+        localClips.map((clip) => clip.sunoId ?? stableSunoId(clip.id))
+      );
       const built = localClips
         .map((clip) => sunoClipFromLocal(clip, track, bps))
         .filter((entry): entry is { clip: Record<string, unknown> } => {
@@ -581,9 +587,13 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
           )
         : undefined;
       const preserved = Array.isArray(baselineTrack?.clips)
-        ? (baselineTrack?.clips as Array<Record<string, unknown>>).filter(
-            (clip) => !builtIds.has(clip.id)
-          )
+        ? (baselineTrack?.clips as Array<Record<string, unknown>>).filter((clip) => {
+            const clipId = String(clip.id ?? "");
+            if (builtIds.has(clipId)) return false;
+            // We mirrored this clip before and it is gone locally: a delete.
+            if (previousClipIds.has(clipId) && !localClipSunoIds.has(clipId)) return false;
+            return true;
+          })
         : [];
       const clips = [...built, ...preserved];
       const hasMidi = clips.some((clip) => clip.type === "midi");
