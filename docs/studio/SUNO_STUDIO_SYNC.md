@@ -281,9 +281,12 @@ without seeing each other's projects in Suno Studio. Options:
 On the first mirrored project a user is assigned a Studio-capable paid account
 (preferring one whose plan advertises `studio`), stored in
 `studio_suno_accounts` and never changed afterwards. That keeps every project a
-user owns on one Suno account — the privacy property Suno actually enforces — and
-makes the mapping predictable. If the pool is empty or has no paid account, the
-mirror falls back to the normal picker so a sandbox still exercises the path.
+user owns on one Suno account - the privacy property Suno actually enforces - and
+makes the mapping predictable. Pinning also prefers an account **no other user
+holds**, then the least-used one, so a small pool is spread as thinly as possible;
+the admin health payload lists how many users sit on each account. If the pool is
+empty or has no paid account, the mirror falls back to the normal picker so a
+sandbox still exercises the path.
 
 **Still open:** whether provisioned users should each get a *dedicated* Suno
 account (option 2) rather than sharing pool accounts (users on the same pool
