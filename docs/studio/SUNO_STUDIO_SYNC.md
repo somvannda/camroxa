@@ -60,38 +60,50 @@ concurrency token and the basis for conflict handling.
   Suno's own live collaboration remains Suno-side; we mirror saved state.
 - We do not store Suno cookies or JWTs in the platform database; only the account
   mapping and project ids.
-- We do not mirror our own **extra** features that have no Suno field (see §7).
+- We do **not** keep Camxora-only document fields. Parity is strict (D-034): a
+  field with no Suno representation is removed from the editor, never preserved
+  as "local-only".
 - Syncing does not make our DOM identical to Suno's DOM. Pixels are §8.
 
-## 4. Data model (platform DB, new migration)
+## 4. Data model (musicapi migration `0044_studio_suno_sync.sql`) — implemented
+
+The link lives in the **musicapi** database, because musicapi owns the Suno
+accounts and is the only service that can call them. The platform database keeps
+the project document and passes a snapshot with every sync request, so the two
+services share no tables.
 
 ```sql
+CREATE TABLE studio_suno_accounts (
+  user_id UUID PRIMARY KEY,           -- pinned once, immutable
+  account_label TEXT NOT NULL,        -- suno_accounts.label in the same DB
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE studio_suno_projects (
-  local_project_id UUID PRIMARY KEY
-    REFERENCES studio_projects(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  -- Suno accounts live in the `sunoapi` database, so this is an identity string,
-  -- not a cross-database FK. It is the same value as `suno_accounts.label`.
-  suno_account_label TEXT NOT NULL,
-  suno_project_id UUID NOT NULL,
-  suno_version_id UUID,
-  status TEXT NOT NULL DEFAULT 'pending', -- pending | synced | error | local-only
-  last_synced_at TIMESTAMPTZ,
+  local_project_id UUID PRIMARY KEY,  -- platform studio_projects.id, no cross-DB FK
+  user_id UUID NOT NULL,
+  account_label TEXT NOT NULL,
+  suno_project_id TEXT NOT NULL,
+  suno_version_id TEXT,
+  suno_title TEXT,
+  suno_state JSONB,                   -- last Suno document: the merge baseline
+  state_hash TEXT,                    -- sha256 of the local document last pushed
+  archived BOOLEAN NOT NULL DEFAULT false,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','linked','synced','conflict','error')),
   last_error TEXT,
+  synced_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (suno_account_label, suno_project_id)
+  UNIQUE (account_label, suno_project_id)
 );
 
 CREATE TABLE studio_suno_outbox (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  local_project_id UUID NOT NULL
-    REFERENCES studio_suno_projects(local_project_id) ON DELETE CASCADE,
-  kind TEXT NOT NULL,                    -- create | save | metadata | archive | delete
-  payload JSONB NOT NULL,
-  attempts INT NOT NULL DEFAULT 0,
+  local_project_id UUID PRIMARY KEY,  -- one row per project: edits coalesce
+  user_id UUID NOT NULL,
+  document JSONB NOT NULL,            -- newest snapshot still to push
+  attempts INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  status TEXT NOT NULL DEFAULT 'queued', -- queued | running | done | dead
   last_error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -99,39 +111,41 @@ CREATE TABLE studio_suno_outbox (
 ```
 
 Account pinning is mandatory. A Suno project belongs to one Suno account; moving
-it to another account is not supported by Suno. `suno_account_label` is therefore
-immutable after create. This is the same rule already used by
-`platform_api.migrations` for `suno_tasks.suno_key_id`.
+it to another account is not supported by Suno. `account_label` is therefore
+immutable after create. Status meanings: `pending` never pushed, `linked` Suno
+project exists but only metadata is mirrored, `synced` arrangement mirrored,
+`conflict` Suno advanced first, `error` terminal until retried.
 
-## 5. musicapi internal API
+## 5. musicapi internal API — implemented
 
-All routes require `x-internal-token`, resolve a pinned account, mint a JWT from
-that account's durable cookie, and never return the JWT/cookie.
+All routes require `x-internal-token`, resolve the pinned account, mint a JWT from
+that account's durable cookie, and never return the JWT, cookie or document.
 
 ```
-POST /internal/studio/projects
-  { local_project_id, user_id, title, state, account_label? }
-  -> { suno_project_id, suno_version_id, account_label }
-  Idempotent on local_project_id: an existing link returns the same ids.
+POST /internal/studio/projects/{local_id}/link
+  { user_id, title, major_version, bpm, time_signature, data }
+  -> { status, suno_project_id, suno_version_id }
+  Idempotent: an advisory lock per project prevents a duplicate Suno project.
 
-POST /internal/studio/projects/{suno_project_id}/save
-  { state, title, base_version_id }
-  -> { suno_version_id }
+POST /internal/studio/projects/{local_id}/enqueue
+  { user_id, title, major_version, bpm, time_signature, data }
+  -> 202 { status: "queued" }        # coalesces onto one outbox row
 
-GET  /internal/studio/projects/{suno_project_id}
-  -> { state, title, suno_version_id, updated_at }
+POST /internal/studio/projects/{local_id}/sync
+  { user_id, title, major_version, bpm, time_signature, data }
+  -> { status, suno_project_id, suno_version_id, last_error, synced_at, state_sync }
 
-GET  /internal/studio/projects?account_label=&cursor=&limit=
+GET  /internal/studio/projects/{local_id}/status?user_id=
+  -> the same status view, or `pending` before the first link
 
-POST /internal/studio/projects/{id}/metadata
-POST /internal/studio/projects/{id}/archive
-POST /internal/studio/projects/{id}/unarchive
+POST /internal/studio/projects/{local_id}/archive   { user_id, archived }
+GET  /internal/studio/sync/health                   # counts, due outbox, pins
 ```
 
-Error mapping: 401/403 means the account session died → mark link `error` with
-`reauth_required` and do not try another account; 409 means `base_version_id` is
-stale → return the remote version for conflict resolution; 429 means back off with
-the same account.
+Error mapping: 401/403 from Suno means the account session died → link becomes
+`error` and no other account is tried; 409 from `save-project` means
+`base_version_id` is stale → the remote version is stored and status is
+`conflict`; 429 backs off with the same account.
 
 ## 6. Sync flow
 
@@ -139,24 +153,26 @@ the same account.
 
 ```
 editor POST /studio/projects
-  -> platform inserts studio_projects + studio_suno_projects(status=pending)
-  -> job_queue(suno_project_sync, kind=create)
-  -> worker calls musicapi /internal/studio/projects
-  -> link updated: suno_project_id/version, status=synced
+  -> platform inserts studio_projects
+  -> platform queues one mirror push (the response does not wait for Suno)
+  -> musicapi pins an account, POST /api/studio/create-project, stores the link
+  -> later pushes read project/{id}, merge, save
 ```
 
-If Suno is unavailable, the local project still exists and opens; the editor shows
-`Sync pending` and the worker retries. Never block project creation on Suno.
+If Suno is unavailable, the local project still exists and opens; the chip shows
+`pending` and musicapi's outbox retries with backoff. Project creation never
+blocks on Suno.
 
 ### 6.2 Save
 
-- The editor's existing debounced `PATCH` remains the local save. On success it
-  enqueues `suno_project_sync(kind=save)` with the project version it just wrote.
-- The outbox coalesces: only the newest pending state per project is retained.
-- The worker converts the local document to Suno `state` (§7), calls `save-project`
-  with `base_version_id = link.suno_version_id`, stores the returned version.
-- If `409`, do **not** overwrite. Fetch `GET project/{id}`, store the remote state
-  and mark `conflict`. The editor offers:
+- The editor's existing `PATCH` remains the local save. On success the platform
+  queues the newest snapshot (the task is fire-and-forget).
+- The outbox coalesces: a burst of debounced saves leaves exactly one row.
+- The worker converts the local document to Suno `state` (§7), calls
+  `save-project` with `base_version_id = link.suno_version_id`, and adopts the
+  returned version.
+- If `409`, do **not** overwrite. The remote state is stored and the link becomes
+  `conflict`. The editor offers:
   - **Load Suno version** (replace local `data` after confirmation)
   - **Keep mine** (rebase `base_version_id` and push again)
   - **Duplicate locally** (new local project; leave Suno unchanged)
@@ -190,28 +206,27 @@ Mapping table (to be completed after Phase 0):
 | Camxora | Suno `state` | Direction | Notes |
 |---|---|---|---|
 | `title` | project `title` | both | metadata route may also carry it |
-| `bpm`, `time_signature` | tempo/meter fields | both | exact field names TBD |
+| `bpm`, `time_signature` | tempo/meter fields | both | `timing.bps` is confirmed; meter key is TBD |
 | `tracks[]` | track list | both | id, name, colour, index, mute/solo/volume/pan |
 | `lanes[]` (clips) | clip list | both | start/duration/offset/fade, audio/song id, type |
 | `midi.notes`, bend, mod | MIDI clip fields | both | pitch/start/length/velocity |
 | `chains` (effects) | effect chain | both | plugin ids/params must map to Suno device ids |
 | `masterChain` | master chain | both | limiter/EQ/compressor amounts |
-| `markers` | section markers | both if present | exact field TBD |
-| `groups` | — | local-only? | no captured Suno group record |
-| `volumeAutomation`/`panAutomation` | automation lanes | both if present | point schema TBD |
-| custom wavetable/IR ids | — | local-only | Suno has no custom table asset in the state |
-| `pluginPresets`, `librarySongs` | — | local-only | our UI metadata |
+| `markers` | `sections` | both | section markers |
+| `groups` | track groups | both | reference has groups A–D |
+| `volumeAutomation`/`panAutomation` | automation lanes | both | point schema TBD |
+| custom wavetable ids | `wavetables` asset | remove | Suno treats wavetables as assets, not an editor |
 
-Rules:
+Rules (strict, D-034):
 
-1. Unknown local keys are **preserved locally** and omitted from Suno; they never
-   block a save.
-2. Unknown Suno keys are preserved in a `sunoExtras` bag so a Suno edit does not
-   erase fields we do not model.
-3. A round-trip test must prove `local -> Suno -> local` is stable for supported
-   fields (semantic hash equality, ignoring ids/order where Suno normalizes).
-4. Unsupported fields are listed in the sync status tooltip, so "1:1" is never
-   claimed for data Suno does not have.
+1. Every local key must map to a Suno key or be deleted from the document and
+   its editor control. Nothing is "kept locally" as an exception.
+2. Unknown **Suno** keys are preserved in a `sunoExtras` bag, so a Suno edit
+   never erases fields we do not model yet.
+3. A round-trip test must prove `local -> Suno -> local` is stable (semantic hash
+   equality, ignoring ids/order where Suno normalizes).
+4. The coverage matrix doubles as a removal list: an unmapped feature is either
+   wired to a Suno field or removed before the mirror is called complete.
 
 ## 8. Pixel parity vs state parity
 
@@ -259,32 +274,47 @@ policy before implementation; this is the main blocker.
 
 ## 11. Phased implementation
 
-**Phase 0 — schema capture (must be first).**
-Create one throwaway project on the reference account, then capture
-`create-project`, `save-project`, `project/{id}`, `list-projects` request/response
-pairs. Store a sanitized `state` sample and the exact version fields. Without this,
-the translation layer is guesswork.
+**Phase 0 — schema capture (partial).**
+The shipped client bundle was decoded from the captured authenticated session, so
+the transport contract and the top-level document keys are known without a live
+call:
 
-**Phase 1 — create/list/link.**
-Migration, link table, create route, worker job, mapping row. Creating a local
-project creates exactly one Suno project; retries are idempotent. No document
-translation yet; push a minimal valid `state`.
+| Fact | Evidence |
+|---|---|
+| `POST /api/studio/create-project?title=&major_version=` → `{id,title}` | chunk `3btgzx8fdnxv8.js` |
+| `POST /api/studio/save-project` body `{project_id,state,title,base_version_id}` → `{version_id}` | same chunk |
+| `409` carries `{latest_version_id}`; `429` is a rate limit | same chunk |
+| `GET /api/studio/project/{id}` → `{state, latest_version_id, title, ...}`; `state` may be a JSON string | chunk `2u-vnr3lk1phb.js` |
+| A loaded state must contain `timing` and `tracks` | same chunk |
+| `timing` holds `bps` and `bpsAutomation` (so `bpm → bps = bpm/60`) | transport planner |
+| Top-level keys: `title, majorVersion, metadata, styleSummary, sections, timing, timeSignatureChanges, tracks, takePreviews, tab, loop, metronome, recording, routing, masterRoutingMode, masterSignalChain, amplitude, songFadeInBeats, songFadeOutBeats, midiCcMappings, midiController, midiControllerSignalChain, midiNotePreviewEnabled, limiterLookaheadMs, layout, libraryPanelState, contextualWindowConfig, editClipId, editorPointerModes, lyricsCorrectionsByClipId, overrideLyrics, caption, actors` | audibility map + `rootKey()` literals |
 
-**Phase 2 — save translation.**
-Read-only round-trip: local project -> Suno state -> local. Compare semantic hash.
-Then enable saves, with `base_version_id` and conflict storage.
+Still missing: a real `state` sample proving the nested track/clip/notes/plugin
+field names and their defaults. That needs one live `GET project/{id}` from a
+pinned account, which is the remaining Phase 0 step.
+
+**Phase 1 — create/list/link. DONE.**
+Migration `0044`, link table, account pinning, coalescing outbox, create route,
+status route and the editor's sync dot. Creating a local project queues exactly
+one Suno project; an advisory lock makes retries idempotent.
+
+**Phase 2 — save translation (staged).**
+`mergeLocalDocumentIntoSunoState` merges only verified fields into the last Suno
+document and preserves every Suno key it does not model. It is gated by
+`STUDIO_SUNO_STATE_SYNC=1` until the nested schema is captured, so no guessed
+document can reach a real project.
 
 **Phase 3 — pull/reconcile.**
 Open/refresh pull, semantic hash comparison, conflict UI (`Load Suno`, `Keep mine`,
 `Duplicate`).
 
-**Phase 4 — coverage matrix.**
+**Phase 4 — coverage matrix = removal list (D-034).**
 Per-feature tests: tracks, clips, MIDI, effects, automation, markers, metadata,
-archive. Mark unsupported fields as local-only in the UI.
+archive. An unmapped local field is removed from the editor, not kept local-only.
 
 **Phase 5 — operations.**
-Sync status chip, admin diagnostics, re-auth flow for dead Suno sessions, metrics
-and alerts.
+Sync status chip (done), admin diagnostics (`/internal/studio/sync/health`),
+re-auth flow for dead Suno sessions, metrics and alerts.
 
 ## 12. Acceptance tests
 
@@ -297,7 +327,7 @@ and alerts.
 | Suno offline | local edit saves; status `pending`; outbox retries; no data loss |
 | Expired account | status `error/reauth_required`; no other account is tried |
 | Other Camxora user | 404/403; no cross-account read or write |
-| Unsupported local field | preserved locally, omitted from Suno, documented in the status |
+| Unsupported local field | removed from the editor and the document (D-034), never carried local-only |
 
 ## 13. Open decisions before implementation
 
@@ -307,7 +337,9 @@ and alerts.
    with local cache?
 3. **Pixel goal:** semantic/geometry parity (current D-025) or literal Suno
    palette/UI?
-4. **Unsupported fields:** keep local-only, or drop them when syncing?
+4. ~~**Unsupported fields:** keep local-only, or drop them when syncing?~~
+   **Decided (D-034): drop them.** The Suno document is the truth; a feature with
+   no Suno representation is removed from the editor.
 5. **Suno ToS/private API approval:** do we have permission to write projects to
    the reference Studio for users?
 6. **Sync cadence:** debounce interval and pull interval (suggested 1.5 s save /

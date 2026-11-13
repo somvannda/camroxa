@@ -817,3 +817,46 @@ alive). Replace Section rewrites the N-01 range with new lyrics and lands as a t
 refused charge raises the "Not enough credits" card with a plans link instead of a toast
 that disappears. The transform dialog reads the credit price from `GET /studio/pricing`
 (never a hard-coded constant) before spending anything.
+
+## D-034 - Parity is strict: nothing Camxora-only survives in Studio
+
+**Date:** 2026-11-13 **Status:** accepted - **owner direction**
+
+**Decision (owner's words):** "if any features, we have more than suno, we should
+consider drop it, we need to be 1:1 cloned with suno so everything will be possible."
+
+Strict parity now governs three things that were previously separate:
+
+1. **Feature set.** A Studio capability that the reference does not have is a bug,
+   not a differentiator. It is removed rather than kept beside the clone.
+2. **Document model.** The Suno project document is the truth. Our project `data`
+   is a projection of it, not a superset: fields with no Suno representation are
+   dropped, not carried as "local-only".
+3. **Sync.** The mirror is bidirectional and strict. Anything we cannot round-trip
+   through `state` is either implemented properly or removed from the editor; it
+   is never silently preserved on our side.
+
+**Why.** The product goal is that a user can move between the two studios and see
+the same thing. A local-only field breaks that promise quietly: the arrangement
+looks right in Camxora and is missing in Suno. Keeping extras also hides parity
+gaps, because the extra UI makes the editor look more capable than the clone.
+
+**Consequences.**
+
+- `SUNO_STUDIO_SYNC.md` no longer preserves unsupported local fields; the merge
+  keeps *Suno's* unknown keys, and drops ours that have no mapping.
+- Every Studio control must point at a captured reference feature (the `Ref`
+  column in `SUNO_STUDIO_FEATURE_INVENTORY.md`) or be listed for removal.
+- The sync coverage matrix is also a removal list: an unmapped local feature is
+  either wired to a Suno field or deleted.
+- This does **not** re-litigate branding: the CAMXORA wordmark and palette stay
+  (D-025). "1:1" here means behaviour, layout and data, not copying Suno's
+  trademarked assets. Literal-pixel parity would need its own decision.
+
+**First audit (2026-11-13).** Every recent addition maps to a captured reference
+label except the **Wavetable Designer** (`Design table`, harmonic partials, saved
+custom tables), which has no captured counterpart (`Wavetable` exists as an asset
+type, not an editor). It is the first removal candidate; MIDI chord/arpeggiator,
+Heal Edits, Get MIDI, Remove FX, clip settings copy/paste, track groups, markers,
+automation, personas, presence and the four-tool footer all trace to captured
+strings (`docs/studio/reference/ui-strings.json`).
