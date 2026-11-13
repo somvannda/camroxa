@@ -25,6 +25,8 @@ import {
   type StudioOperation,
   type StudioPersona,
   type ProjectPresence,
+  type StudioProjectSync,
+  getStudioProjectSync,
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
@@ -251,6 +253,8 @@ export function StudioEditorShell() {
   const [project, setProject] = useState<StudioProject | null>(null);
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+  /** Suno Studio mirror state for this project; null until the first read. */
+  const [sunoSync, setSunoSync] = useState<StudioProjectSync | null>(null);
   const retryRef = useRef<(() => void) | null>(null);
   /** Retry that ignores the version check — used by "overwrite" (W2.2). */
   const forceRetryRef = useRef<(() => void) | null>(null);
@@ -789,6 +793,43 @@ export function StudioEditorShell() {
       active = false;
     };
   }, [authLoading, user, projectId]);
+
+  // Suno Studio mirror status: read once, then refresh on a slow poll and after
+  // each successful local save. This is a status read only — the push itself is
+  // queued by the platform API and retried by musicapi's outbox.
+  useEffect(() => {
+    if (!projectId || !user) {
+      setSunoSync(null);
+      return;
+    }
+    let active = true;
+    const read = () => {
+      getStudioProjectSync(projectId)
+        .then((next) => {
+          if (active) setSunoSync(next);
+        })
+        .catch(() => {
+          /* the chip keeps its last known state */
+        });
+    };
+    read();
+    const timer = window.setInterval(read, 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [projectId, user]);
+
+  useEffect(() => {
+    if (!projectId || !user || saveStatus !== "saved") return;
+    // Give the provider a moment after the local write, then read the mirror.
+    const timer = window.setTimeout(() => {
+      void getStudioProjectSync(projectId)
+        .then(setSunoSync)
+        .catch(() => undefined);
+    }, 2_000);
+    return () => window.clearTimeout(timer);
+  }, [projectId, user, saveStatus]);
 
   // Polled presence: one durable row per collaborator, refreshed while the editor is
   // open. The reference uses a realtime transport; this keeps the same visible surface
@@ -5031,6 +5072,7 @@ export function StudioEditorShell() {
         canUndo={historyState.canUndo}
         canRedo={historyState.canRedo}
         saveStatus={saveStatus}
+        sync={sunoSync}
         onRetrySave={() => retryRef.current?.()}
         meter={meter}
         playbackRate={playbackRate}

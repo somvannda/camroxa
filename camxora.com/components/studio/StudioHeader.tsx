@@ -4,7 +4,7 @@ import { Icon } from "@/components/Icon";
 import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
 import { STUDIO_SIGNATURES } from "@/lib/studio-signature";
 import type { StudioSettings } from "@/lib/studio-settings";
-import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
+import { StudioSaveStatus, type SaveStatus, type SaveSyncState } from "@/components/studio/StudioSaveStatus";
 import { formatMeter, type MeterReading } from "@/lib/studio-meter";
 
 /**
@@ -39,6 +39,8 @@ export type StudioHeaderProps = {
   canRedo: boolean;
 
   saveStatus: SaveStatus;
+  /** Suno Studio mirror state for the same project. */
+  sync?: SaveSyncState | null;
   onRetrySave: () => void;
   meter: MeterReading | null;
   playbackRate: number;
@@ -102,6 +104,7 @@ export function StudioHeader(props: StudioHeaderProps) {
     canUndo,
     canRedo,
     saveStatus,
+    sync,
     onRetrySave,
     meter,
     playbackRate,
@@ -313,7 +316,7 @@ export function StudioHeader(props: StudioHeaderProps) {
             ))}
           </select>
         </span>
-        <StudioSaveStatus status={saveStatus} onRetry={onRetrySave} />
+        <StudioSaveStatus status={saveStatus} onRetry={onRetrySave} sync={sync} />
         <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output" data-help="meter">
           {formatMeter(meter)}
         </span>

@@ -75,6 +75,31 @@ export async function getStudioProject(id: string): Promise<StudioProject> {
   return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}`);
 }
 
+/**
+ * Mirror state for one project: whether a Suno Studio copy exists, and whether
+ * the arrangement has been pushed (metadata-only until the Suno document schema
+ * is verified). The browser never sees the Suno project id's owner or credentials.
+ */
+export type StudioProjectSync = {
+  status: "pending" | "linked" | "synced" | "conflict" | "error";
+  suno_project_id: string | null;
+  suno_version_id: string | null;
+  last_error: string | null;
+  synced_at: string | null;
+  state_sync: boolean;
+};
+
+export async function getStudioProjectSync(id: string): Promise<StudioProjectSync> {
+  return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/sync`);
+}
+
+/** Push this project to Suno now instead of waiting for the background outbox. */
+export async function syncStudioProject(id: string): Promise<StudioProjectSync> {
+  return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/sync`, {
+    method: "POST",
+  });
+}
+
 export async function createStudioProject(input: {
   title: string;
   major_version?: number;

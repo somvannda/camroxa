@@ -16,6 +16,13 @@
 
 export type SaveStatus = "saved" | "saving" | "error" | "offline";
 
+/** Mirror state shown next to the save chip; never includes Suno credentials. */
+export type SaveSyncState = {
+  status: "pending" | "linked" | "synced" | "conflict" | "error";
+  last_error: string | null;
+  state_sync: boolean;
+};
+
 const LABEL: Record<SaveStatus, string> = {
   saved: "Saved",
   saving: "Saving…",
@@ -23,17 +30,44 @@ const LABEL: Record<SaveStatus, string> = {
   offline: "Offline · changes not saved",
 };
 
+const SYNC_TITLE: Record<SaveSyncState["status"], string> = {
+  pending: "Suno Studio: waiting for the first copy",
+  linked: "Suno Studio: project exists — arrangement mirroring is staged",
+  synced: "Suno Studio: mirrored",
+  conflict: "Suno Studio has newer changes",
+  error: "Suno Studio sync failed",
+};
+
 export function StudioSaveStatus({
   status,
   onRetry,
+  sync,
 }: {
   status: SaveStatus;
   onRetry?: () => void;
+  sync?: SaveSyncState | null;
 }) {
+  const dot = sync ? (
+    <span
+      className="se-sync-dot"
+      data-state={sync.status}
+      role="img"
+      aria-label={SYNC_TITLE[sync.status]}
+      title={
+        sync.last_error
+          ? `${SYNC_TITLE[sync.status]}: ${sync.last_error}`
+          : sync.status === "linked" && !sync.state_sync
+            ? `${SYNC_TITLE[sync.status]}: arrangement writes start once the Suno document schema is verified.`
+            : SYNC_TITLE[sync.status]
+      }
+    />
+  ) : null;
+
   if (status === "saved") {
     return (
       <span className="se-pill se-save" aria-live="polite" title="All changes saved">
         {LABEL.saved}
+        {dot}
       </span>
     );
   }
@@ -48,6 +82,7 @@ export function StudioSaveStatus({
         title="The last change could not be saved. Click to retry."
       >
         {LABEL.error}
+        {dot}
       </button>
     );
   }
@@ -55,6 +90,7 @@ export function StudioSaveStatus({
   return (
     <span className="se-pill se-save on" aria-live="polite">
       {LABEL[status]}
+      {dot}
     </span>
   );
 }

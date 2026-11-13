@@ -4970,6 +4970,13 @@ html{color-scheme:dark}
 .se-save{opacity:.65}
 .se-save.on{opacity:1}
 
+/* Suno Studio mirror state, rendered inside the save chip. */
+.se-sync-dot{display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:#8a8fa3;vertical-align:middle}
+.se-sync-dot[data-state="linked"]{background:#7c5cff}
+.se-sync-dot[data-state="synced"]{background:#22c55e}
+.se-sync-dot[data-state="conflict"]{background:#eab308}
+.se-sync-dot[data-state="error"]{background:#ef4444}
+
 .se-clip.dragging{opacity:.85;cursor:grabbing;z-index:3}
 .se-trim{position:absolute;top:8px;bottom:8px;width:6px;border-radius:2px;background:rgba(255,255,255,.85);cursor:ew-resize;z-index:2;opacity:0;transition:opacity .12s}
 .se-clip:hover .se-trim,.se-clip:focus-visible .se-trim{opacity:1}
