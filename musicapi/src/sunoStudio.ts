@@ -376,6 +376,25 @@ export async function filterForeignAssets(
   };
 }
 
+/** Pick the least-shared candidate: an unused account first, then fewest users. */
+export function chooseStudioAccount(
+  candidates: string[],
+  usage: Record<string, number>
+): string | null {
+  if (candidates.length === 0) return null;
+  let best = candidates[0];
+  let bestCount = usage[best] ?? 0;
+  for (const candidate of candidates) {
+    const count = usage[candidate] ?? 0;
+    if (count === 0) return candidate;
+    if (count < bestCount) {
+      best = candidate;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 /**
  * Owns the mapping table, account pinning and the retry loop. One instance per
  * process; `buildServer` creates one for the routes and `serve` starts a second
@@ -402,20 +421,62 @@ export class StudioProjectSync {
    * none (sandbox, fresh host) it falls back to the normal picker so local
    * development still exercises the path.
    */
+  /**
+   * Prefer an account no other user is pinned to, then the least-used one.
+   *
+   * Suno projects are account-scoped, so two Camxora users on the same account
+   * can see each other's projects inside Suno. The pool cannot mint accounts, so
+   * this keeps the blast radius to the smallest possible set while still making
+   * the sharing visible in the admin health payload.
+   */
   private async pinAccount(userId: string): Promise<string> {
     const existing = await this.pinnedAccount(userId);
     if (existing) return existing;
-    let client: SunoClient;
-    try {
-      client = await this.pool.pickFeature("studio", undefined, "paid_only");
-    } catch {
-      client = await this.pool.pick(undefined, "any");
+
+    const usageRows = await query<{ account_label: string; users: string }>(
+      "SELECT account_label, count(*)::text AS users FROM studio_suno_accounts GROUP BY account_label"
+    );
+    const usage: Record<string, number> = {};
+    for (const row of usageRows) usage[row.account_label] = Number(row.users);
+
+    // Probe the pool in order without committing a pin, so the choice can skip
+    // accounts other users already hold.
+    const candidates: string[] = [];
+    let fallback: SunoClient | null = null;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      try {
+        const client = await this.pool.pickFeatureExcept(
+          "studio",
+          candidates,
+          undefined,
+          "paid_only"
+        );
+        fallback = client;
+        if (!candidates.includes(client.account.id)) candidates.push(client.account.id);
+      } catch {
+        break;
+      }
     }
+    if (candidates.length === 0) {
+      try {
+        const client = await this.pool.pickFeature("studio", undefined, "paid_only");
+        candidates.push(client.account.id);
+        fallback = client;
+      } catch {
+        const client = await this.pool.pick(undefined, "any");
+        candidates.push(client.account.id);
+        fallback = client;
+      }
+    }
+
+    const chosen = chooseStudioAccount(candidates, usage) ?? fallback?.account.id;
+    if (!chosen) throw new Error("No Suno account is available to pin.");
+
     await query(
       `INSERT INTO studio_suno_accounts (user_id, account_label)
        VALUES ($1, $2)
        ON CONFLICT (user_id) DO NOTHING`,
-      [userId, client.account.id]
+      [userId, chosen]
     );
     const stored = await this.pinnedAccount(userId);
     if (!stored) throw new Error("Could not pin a Suno account for this user.");

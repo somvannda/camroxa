@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  chooseStudioAccount,
   coverageSummary,
   decideStateSync,
   isRetryableStudioSyncError,
@@ -205,6 +206,22 @@ test("no remote baseline still pushes a fresh project document", () => {
   assert.equal(decision.baseVersionId, null);
   assert.ok(Array.isArray(decision.state.tracks));
   assert.deepEqual(decision.skippedClipIds, []);
+});
+
+test("account pinning prefers an unused account, then the least shared", () => {
+  assert.equal(chooseStudioAccount([], {}), null);
+  assert.equal(
+    chooseStudioAccount(["acct-a", "acct-b"], { "acct-a": 2 }),
+    "acct-b"
+  );
+  assert.equal(
+    chooseStudioAccount(["acct-a", "acct-b"], { "acct-a": 3, "acct-b": 1 }),
+    "acct-b"
+  );
+  assert.equal(
+    chooseStudioAccount(["acct-a", "acct-b"], { "acct-a": 1, "acct-b": 1 }),
+    "acct-a"
+  );
 });
 
 test("the coverage registry counts every field and names the pending ones", () => {
