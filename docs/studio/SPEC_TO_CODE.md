@@ -62,6 +62,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Empty project asks how to start | §10 / gap G18 | `components/studio/StudioOnboarding.tsx` |
 | Coarse pointers get 44 px targets | gap G20 | `app/touch-targets.css` |
 | Clips culled outside the visible window | gap G19 | `view` state in `StudioEditorShell` |
+| Automation points select on click and nudge with `←/→` / `↑/↓` (`SHIFT` coarse) | §36 / gap G44 | keydown handler in `components/studio/StudioAutomationPanel.tsx` |
 
 ## Not copied — by rule, not by accident
 

@@ -4844,6 +4844,7 @@ html{color-scheme:dark}
 .se-automation-line{fill:none;stroke:hsl(var(--accent));stroke-width:1.5;vector-effect:non-scaling-stroke}
 .se-automation-point{position:absolute;width:10px;height:10px;margin-left:-5px;margin-bottom:-5px;border-radius:50%;border:1px solid #fff;background:hsl(var(--accent));padding:0;cursor:pointer}
 .se-automation-point:focus-visible{outline:2px solid hsl(var(--accent));outline-offset:2px}
+.se-automation-point.is-selected{box-shadow:0 0 0 2px #f7f4ef,0 0 0 3px rgba(0,0,0,.55)}
 .se-automation-playhead{position:absolute;top:0;bottom:0;width:1px;background:#3dafff;pointer-events:none}
 .se-automation-caption{position:absolute;left:8px;bottom:4px;font-size:11px;color:#8b90a6;pointer-events:none}
 .se-midi{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.06);background:#101012;flex:none;max-height:360px}

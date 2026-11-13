@@ -75,6 +75,17 @@ test("track Automation draws a volume point that persists", async ({ page }) => 
   await expect(reloaded.locator(".se-automation-point")).toHaveCount(1);
   await reloaded.getByRole("button", { name: "Pan" }).click();
   await expect(reloaded.locator(".se-automation-point")).toHaveCount(1);
+
+  // S14 automation lane: a selected point nudges value and time with the arrows.
+  const point = reloaded.locator(".se-automation-point").first();
+  await point.click();
+  await expect(point).toHaveAttribute("aria-pressed", "true");
+  const beforeValue = await point.getAttribute("aria-label");
+  await page.keyboard.press("ArrowUp");
+  await expect(point).not.toHaveAttribute("aria-label", beforeValue ?? "");
+  const afterValue = await point.getAttribute("aria-label");
+  await page.keyboard.press("ArrowRight");
+  await expect(point).not.toHaveAttribute("aria-label", afterValue ?? "");
 });
 
 test("clip settings copy and paste through the clip menu", async ({ page }) => {
