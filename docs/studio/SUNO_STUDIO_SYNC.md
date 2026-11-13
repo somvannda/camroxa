@@ -360,7 +360,8 @@ archive. An unmapped local field is removed from the editor, not kept local-only
 **Phase 5 — operations.**
 Sync status chip in the editor (done), mirror status on the Studio home cards
 (done; one batch status call per list), admin diagnostics
-(`/internal/studio/sync/health`), re-auth flow for dead Suno sessions, metrics and
+(`/admin/studio-sync` in the admin console, forwarding
+`/internal/studio/sync/health`), re-auth flow for dead Suno sessions, metrics and
 alerts.
 
 ## 12. Acceptance tests
