@@ -375,6 +375,25 @@ re-auth flow for dead Suno sessions, metrics and alerts.
 | Other Camxora user | 404/403; no cross-account read or write |
 | Unsupported local field | removed from the editor and the document (D-034), never carried local-only |
 
+### Verified end to end (2026-11-13)
+
+The whole chain ran locally against a real Suno project: platform API on `:8101`
+(sandbox DB, migration `199`), musicapi on `:4003` with one pinned account, and
+the real Studio API.
+
+- login → `201` create project → mirror status **`synced`**, Suno project id
+  `e0f2f374`, version `0cd21a6d`, zero skipped clips.
+- The pushed document contained: bps `1.6` (96 BPM), 3/4 meter, track
+  amplitude `0.72` / balance `-0.3`, a compressor and a triangle synth in
+  `signalChain`, `faderAutomation` `{gain, pan}`, a MIDI clip at beats 3.2–9.6
+  with 2 notes plus bend and mod points, 1 section, 1 master limiter.
+- `DELETE` on the local project archived the Suno copy (`archived: true`).
+
+Local run recipe: seed one `suno_accounts` row with `COOKIE_ENCRYPTION_KEY` set,
+run `npm start` in `musicapi`, point the platform API at it with
+`PLATFORM_SUNO_API_BASE_URL` and a matching `PLATFORM_STUDIO_INTERNAL_TOKEN`, and
+apply `platform_api` migrations first. No secrets belong in the repo.
+
 ## 13. Open decisions before implementation
 
 1. **Account policy:** one Suno account per Camxora user, a dedicated mirror
