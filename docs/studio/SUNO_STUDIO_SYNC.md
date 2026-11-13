@@ -215,7 +215,7 @@ Mapping table (to be completed after Phase 0):
 | `markers` | `sections` | both | section markers |
 | `groups` | track groups | both | reference has groups A–D |
 | `volumeAutomation`/`panAutomation` | automation lanes | both | point schema TBD |
-| custom wavetable ids | `wavetables` asset | remove | Suno treats wavetables as assets, not an editor |
+| custom wavetable ids | `wavetables` asset | removed | Suno treats wavetables as assets, not an editor |
 
 Rules (strict, D-034):
 
@@ -255,8 +255,19 @@ without seeing each other's projects in Suno Studio. Options:
 3. **A single shared mirror account** (only acceptable if the product is a demo and
    users are told their projects share that Suno account).
 
-The current pool has a small number of accounts. The requirement must name the
-policy before implementation; this is the main blocker.
+**Implemented default (2026-11-13): option 1, one pool account pinned per user.**
+On the first mirrored project a user is assigned a Studio-capable paid account
+(preferring one whose plan advertises `studio`), stored in
+`studio_suno_accounts` and never changed afterwards. That keeps every project a
+user owns on one Suno account — the privacy property Suno actually enforces — and
+makes the mapping predictable. If the pool is empty or has no paid account, the
+mirror falls back to the normal picker so a sandbox still exercises the path.
+
+**Still open:** whether provisioned users should each get a *dedicated* Suno
+account (option 2) rather than sharing pool accounts (users on the same pool
+account can see each other's projects in Suno's own UI). That is a procurement
+and disclosure decision, not a code path: the link table already stores the pin,
+so re-provisioning is a data migration, not a redesign.
 
 ## 10. Security / compliance
 

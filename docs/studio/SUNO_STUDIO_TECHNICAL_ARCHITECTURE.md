@@ -107,6 +107,35 @@ The Studio's contract is `/internal/studio/*` and never a provider endpoint. Thi
 means a provider can be swapped or augmented (see `PROVIDER_SWITCHING.md`) without a
 Studio release.
 
+### 4.1 Suno Studio project mirror
+
+Every project is also mirrored into a real Suno Studio project (D-034, full design
+in `SUNO_STUDIO_SYNC.md`):
+
+```
+editor -> platform_api (own the document) -> musicapi /internal/studio/projects/:id/*
+                                                -> pinned Suno account -> /api/studio/*
+```
+
+- **Ownership.** The platform database holds `studio_projects`. The mirror tables
+  (`studio_suno_accounts`, `studio_suno_projects`, `studio_suno_outbox`) live in
+  musicapi's database, keyed by the platform project id, with no cross-database FKs.
+  The document travels in the request body; nothing reads another service's tables.
+- **Pinning.** A user is pinned to one Suno account on their first mirrored project
+  and every later project uses it. Suno projects are account-scoped, so the pin is
+  immutable.
+- **Writes never block.** Create/save/fork/restore queue a coalescing outbox row and
+  return immediately. `serve.ts` runs the retry loop; failures back off from 2 s to
+  an hourly ceiling and are visible on the link row.
+- **Concurrency.** `save-project` uses `base_version_id`; a 409 stores the newer
+  remote version and marks the link `conflict` instead of overwriting. Project
+  creation takes a per-project advisory lock so a retry cannot create a second Suno
+  project.
+- **Schema gating.** Only verified `state` fields are written (`title`,
+  `majorVersion`, `timing.bps`), merged into the last document Suno returned. The
+  arrangement push stays behind `STUDIO_SUNO_STATE_SYNC=1` until the nested schema
+  is captured.
+
 ## 5. Known structural weaknesses
 
 | # | Weakness | Impact | Plan |

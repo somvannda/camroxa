@@ -40,7 +40,7 @@ kept beside the clone. This is the audit that decides which ones those are.
 | Clip-settings copy / paste | ARR-014 (clip copy/paste) `H`; no captured "Copy settings" label | VERIFY |
 | Remix | No `Remix` string in the harvested set, but it is a core song action on the reference | VERIFY |
 | Footer Plugins / Automation / Clip editor / Take lanes | all four labels in strings | KEEP |
-| **Wavetable Designer** (harmonic partials, save custom table, select on clip) | No counterpart: `Wavetable` exists only as an asset category (`3 × Wavetables`, `used on`), never as an editor | **REMOVE** |
+| **Wavetable Designer** (harmonic partials, save custom table, select on clip) | No counterpart: `Wavetable` exists only as an asset category (`3 × Wavetables`, `used on`), never as an editor | **REMOVED** 2026-11-13 |
 
 ## What removal means for the document
 
@@ -54,10 +54,10 @@ with the UI:
 The rest of the MIDI synth (instrument voice, notes, bend/mod lanes) stays: those
 map onto the reference's MIDI clip.
 
-## Not settled by this audit
+## Settled (owner, 2026-11-13)
 
-- **Literal pixels.** D-025 keeps the CAMXORA palette and wordmark. If "1:1"
-  includes Suno's colours and typeface, that reverses D-025 and is a separate
-  decision (licensing, brand).
-- **Rhythm/CC lane extras** that we could not verify either way; mark VERIFY on
-  the next capture pass rather than guessing.
+- **Literal pixels are not the goal.** D-025 stays: we match captured geometry,
+  spacing and type sizes, and keep the CAMXORA palette and wordmark. Copying
+  Suno's trademarked look is out of scope.
+- **Unverified features stay** until a capture proves Suno does not have them.
+  `Remix` and clip-settings copy/paste are VERIFY, not removal candidates.

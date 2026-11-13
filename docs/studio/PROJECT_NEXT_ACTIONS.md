@@ -49,3 +49,27 @@ gain match — see D-010.
 2. If a task turns out to need a spec section that does not exist, capture it first —
    one screenshot, one section, one commit.
 3. Keep this file as the *order*; never let it drift into a second plan.
+
+## Phase 5 - Suno Studio project mirror (2026-11-13)
+
+Phase 1 is implemented: `musicapi/migrations/0044_studio_suno_sync.sql`, the
+pinned-account link, the coalescing outbox and the editor's sync dot. Full details
+in `SUNO_STUDIO_SYNC.md`.
+
+Next, in order:
+
+1. **Capture one live `GET /api/studio/project/{id}`.** The transport contract and
+   every top-level `state` key are decoded from the shipped bundle, but the nested
+   track/clip/note/plugin field names still need a real sample. This is the only
+   thing blocking `STUDIO_SUNO_STATE_SYNC=1`.
+2. **Prove the link end to end.** With a live account, create a project and confirm
+   exactly one Suno project appears (and a retry does not create a second).
+3. **Enable the arrangement merge** and run the round-trip test in
+   `SUNO_STUDIO_SYNC.md` section 12.
+4. **Pull/reconcile + conflict UI** (`Load Suno`, `Keep mine`, `Duplicate`).
+5. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
+
+Known test flake: `studio-new-features.spec.ts` "track Automation draws a volume
+point that persists" passes alone and with `--workers=1`, but can fail under
+`--workers=2` because the selected clip has not settled when the automation panel
+opens. Use one worker when the whole Studio suite runs on a laptop.

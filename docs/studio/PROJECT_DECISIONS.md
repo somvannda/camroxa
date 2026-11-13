@@ -850,13 +850,18 @@ gaps, because the extra UI makes the editor look more capable than the clone.
 - The sync coverage matrix is also a removal list: an unmapped local feature is
   either wired to a Suno field or deleted.
 - This does **not** re-litigate branding: the CAMXORA wordmark and palette stay
-  (D-025). "1:1" here means behaviour, layout and data, not copying Suno's
-  trademarked assets. Literal-pixel parity would need its own decision.
+  (D-025). Confirmed by the owner on 2026-11-13: "1:1" means behaviour, layout and
+  data, not copying Suno's trademarked pixels. Literal-pixel parity would need its
+  own decision and a licensing call.
 
 **First audit (2026-11-13).** Every recent addition maps to a captured reference
 label except the **Wavetable Designer** (`Design table`, harmonic partials, saved
 custom tables), which has no captured counterpart (`Wavetable` exists as an asset
-type, not an editor). It is the first removal candidate; MIDI chord/arpeggiator,
-Heal Edits, Get MIDI, Remove FX, clip settings copy/paste, track groups, markers,
-automation, personas, presence and the four-tool footer all trace to captured
-strings (`docs/studio/reference/ui-strings.json`).
+type, not an editor). It was removed in the same change: the designer, its
+custom-table library, the per-clip `wavetableId` field and the engine's periodic-
+wave path are gone. MIDI chord/arpeggiator, Heal Edits, Get MIDI, Remove FX, clip
+settings copy/paste, track groups, markers, automation, personas, presence and the
+four-tool footer all trace to captured strings
+(`docs/studio/reference/ui-strings.json`). Remix and clip-settings copy/paste have
+no captured label yet, so they stay marked VERIFY until the next capture pass
+rather than being deleted on missing evidence.
