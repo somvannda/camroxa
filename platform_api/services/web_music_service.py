@@ -1965,7 +1965,26 @@ class WebMusicService:
         if document is None or self._studio_sync_endpoint() is None:
             return
         project_id = str(row["id"])
-        asyncio.create_task(self._studio_sync_request(str(row["user_id"]), project_id, "enqueue", document))
+        self._schedule_studio_request(
+            str(row["user_id"]), project_id, "enqueue", document
+        )
+
+    def _schedule_studio_request(
+        self,
+        user_id: str,
+        project_id: str,
+        action: str,
+        document: dict[str, Any] | None = None,
+    ) -> None:
+        """Run a mirror call in the background; never block the user's request."""
+        try:
+            asyncio.create_task(
+                self._studio_sync_request(user_id, project_id, action, document)
+            )
+        except RuntimeError:
+            # No running loop (a sync caller or a unit test): skip the mirror
+            # rather than failing the write that triggered it.
+            logger.debug("no event loop for studio mirror %s", action)
 
     async def _studio_sync_request(
         self,
@@ -1978,8 +1997,11 @@ class WebMusicService:
         if endpoint is None:
             return None
         base, token = endpoint
+        # A status read backs the editor chip and must fail fast; a push may wait
+        # for a slow provider save.
+        timeout = 10 if action == "status" else 90
         try:
-            async with httpx.AsyncClient(timeout=90) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 if action == "status":
                     response = await client.get(
                         f"{base}/internal/studio/projects/{project_id}/status",
@@ -2223,9 +2245,10 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         # Never delete the Suno copy: archive it so the user's reference account
-        # keeps the project instead of silently losing it.
+        # keeps the project instead of silently losing it. Fire-and-forget: a
+        # slow provider must not hold the delete request open.
         if self._studio_sync_endpoint() is not None:
-            await self._studio_sync_request(
+            self._schedule_studio_request(
                 str(row["user_id"]),
                 str(row["id"]),
                 "archive",
