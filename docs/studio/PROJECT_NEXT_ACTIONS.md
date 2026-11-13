@@ -65,9 +65,7 @@ Next, in order:
 2. **Remaining effects.** Distortion and chorus need a parameter translation
    (chorus `rate` is a division string on Suno); the master EQ/compressor expose an
    `amount` with no captured equivalent.
-3. **MIDI bend/mod lanes** (`pitchBend`/`controlChanges`): the arrays are empty in
-   every captured MIDI clip, so their entry shape still needs a probe.
-4. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
+3. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
 
 Known test lesson (fixed 2026-11-13): the automation and section-marker specs used
 to reload while a serialized document write was still queued, so the reload won

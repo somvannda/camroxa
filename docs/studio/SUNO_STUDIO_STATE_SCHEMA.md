@@ -108,13 +108,17 @@ Older tracks omit `signalChain`, `faderAutomation`, `routingMode` and
   asset?: { id, type },      // audio: the Suno song/upload asset
   midi?: {
     notes: [{ id: number, startBeats, durationBeats, pitch, velocity }],
-    controlChanges: [], pitchBend: [], channelPressure: [], sysex: [],
+    pitchBend: [{ beats, value }],
+    controlChanges: [{ controller: 1, channel: 0, points: [{ beats, value }] }],
+    channelPressure: [], sysex: [],
   },
 }
 ```
 
 Notes use **beats and numeric ids**; the codec derives a stable int32 from the
-local note id.
+local note id. Pitch bend is a flat `{beats, value}` list; a mod-wheel lane is
+CC 1 inside `controlChanges`, whose entries group their points under `points`.
+Both shapes were verified by saving synthetic lanes and reading them back.
 
 ## 6. Mapping used by the codec
 
