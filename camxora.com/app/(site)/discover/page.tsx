@@ -151,7 +151,7 @@ export default function DiscoverPage() {
       <div className="creator-grid">
         {artists.map((artist) => (
           <div className="creator-card" key={artist.name}>
-            <img src={artist.image} alt="" />
+            <img src={artist.image || "/hero.png"} alt="" />
             <div>
               <strong>{artist.name}</strong>
               <span>{artist.meta}</span>
