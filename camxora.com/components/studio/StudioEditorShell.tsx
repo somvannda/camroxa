@@ -201,6 +201,7 @@ type ClipLike = {
   songId?: string;
   offset?: number;
   fadeIn?: number;
+  fadeOut?: number;
   /** Warp markers + stretch mode (S30); parsed by `sanitizeWarp`. */
   warp?: unknown;
   /** Clip Settings audio state (S30/§81); parsed by `sanitizeClipAudio`. */
@@ -390,7 +391,11 @@ export function StudioEditorShell() {
     offset: number;
   } | null>(null);
   /** Live fade-in length while its handle is dragged (S25). */
-  const [fadePreview, setFadePreview] = useState<{ id: string; fadeIn: number } | null>(null);
+  const [fadePreview, setFadePreview] = useState<{
+    id: string;
+    fadeIn: number;
+    fadeOut?: number;
+  } | null>(null);
   /** Clip context menu (S26/§47): anchored at the click point, built from clip state. */
   const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);  const [clipColorOpen, setClipColorOpen] = useState(false);
   /** Clip rename dialog (clip menu ▸ Rename). */
@@ -399,12 +404,18 @@ export function StudioEditorShell() {
   const [clipSettingsClipboard, setClipSettingsClipboard] = useState<{
     audio?: unknown;
     fadeIn?: number;
+    fadeOut?: number;
   } | null>(null);
   const fadePreviewRef = useRef<typeof fadePreview>(null);
   fadePreviewRef.current = fadePreview;
-  const fadeRef = useRef<{ id: string; startX: number; fadeIn: number; duration: number } | null>(
-    null
-  );
+  const fadeRef = useRef<{
+    id: string;
+    edge: "in" | "out";
+    startX: number;
+    fadeIn: number;
+    fadeOut: number;
+    duration: number;
+  } | null>(null);
   const fadeStartRef = useRef<{ x: number; fadeIn: number; duration: number } | null>(null);
   /** Freshest pointer handlers, called by one stable pair of window listeners. */
   const pointerHandlersRef = useRef<{
@@ -502,23 +513,34 @@ export function StudioEditorShell() {
     setTrimPreview({ id: clip.id, start, duration, offset });
   }
 
-  /** Grab the fade handle (S25): a diagonal stub at the clip's top-left corner. */
-  function handleFadePointerDown(event: React.PointerEvent<HTMLElement>, clip: ClipLike) {
+  /** Grab a fade handle (S25): diagonal stubs at the clip's top corners. */
+  function handleFadePointerDown(
+    event: React.PointerEvent<HTMLElement>,
+    clip: ClipLike,
+    edge: "in" | "out" = "in"
+  ) {
     event.stopPropagation();
     event.preventDefault();
     const duration = clip.duration ?? 4;
     const fadeIn = Math.min((clip as { fadeIn?: number }).fadeIn ?? 0, duration);
+    const fadeOut = Math.min((clip as { fadeOut?: number }).fadeOut ?? 0, duration);
     setSelectedClip(clip.id);
     setSelectedIds([clip.id]);
-    fadeRef.current = { id: clip.id, startX: event.clientX, fadeIn, duration };
-    setFadePreview({ id: clip.id, fadeIn });
+    fadeRef.current = { id: clip.id, edge, startX: event.clientX, fadeIn, fadeOut, duration };
+    setFadePreview({ id: clip.id, fadeIn, fadeOut });
   }
 
-  function commitClipFade(id: string, fadeIn: number) {
+  function commitClipFade(id: string, fadeIn: number, fadeOut: number) {
     const data = (projectRef.current?.data || {}) as Record<string, unknown>;
     const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
     const updated = lanes.map((clip) =>
-      clip.id === id ? { ...clip, fadeIn: fadeIn > 0.0001 ? fadeIn : undefined } : clip
+      clip.id === id
+        ? {
+            ...clip,
+            fadeIn: fadeIn > 0.0001 ? fadeIn : undefined,
+            fadeOut: fadeOut > 0.0001 ? fadeOut : undefined,
+          }
+        : clip
     );
     writeProjectData({ ...data, lanes: updated }, "the clip fade");
   }
@@ -3085,7 +3107,7 @@ export function StudioEditorShell() {
     const id = selectedClip ?? selectedIds[0];
     const clip = clipsRef.current.find((candidate) => candidate.id === id);
     if (!clip) return;
-    setClipSettingsClipboard({ audio: clip.audio, fadeIn: clip.fadeIn });
+    setClipSettingsClipboard({ audio: clip.audio, fadeIn: clip.fadeIn, fadeOut: clip.fadeOut });
     setExportToast("Clip settings copied.");
   }
 
@@ -3101,7 +3123,7 @@ export function StudioEditorShell() {
         ...data,
         lanes: lanes.map((clip) =>
           ids.includes(clip.id)
-            ? { ...clip, audio: buffer.audio, fadeIn: buffer.fadeIn }
+            ? { ...clip, audio: buffer.audio, fadeIn: buffer.fadeIn, fadeOut: buffer.fadeOut }
             : clip
         ),
       },
@@ -3573,7 +3595,8 @@ export function StudioEditorShell() {
               const current = (clip as { fadeIn?: number }).fadeIn ?? 0;
               commitClipFade(
                 clip.id,
-                current > 0 ? 0 : Math.min(0.5, (clip.duration ?? 4) / 4)
+                current > 0 ? 0 : Math.min(0.5, (clip.duration ?? 4) / 4),
+                (clip as { fadeOut?: number }).fadeOut ?? 0
               );
             }
             return;
@@ -4105,12 +4128,22 @@ export function StudioEditorShell() {
         (clip as { fadeIn?: number }).fadeIn ?? 0,
         duration
       );
-      if (fadeIn > 0) {
+      const fadeOut = Math.min(
+        (clip as { fadeOut?: number }).fadeOut ?? 0,
+        duration
+      );
+      const remaining = Math.max(0, duration - intoClip) / playbackRate;
+      if (fadeIn > 0 || fadeOut > 0) {
         const clipGain = context.createGain();
-        const initial = intoClip >= fadeIn ? 1 : intoClip / fadeIn;
+        const initial = fadeIn > 0 ? (intoClip >= fadeIn ? 1 : intoClip / fadeIn) : 1;
         clipGain.gain.setValueAtTime(initial, when);
-        if (intoClip < fadeIn) {
+        if (fadeIn > 0 && intoClip < fadeIn) {
           clipGain.gain.linearRampToValueAtTime(1, when + (fadeIn - intoClip) / playbackRate);
+        }
+        if (fadeOut > 0) {
+          const fadeStart = Math.max(0, remaining - fadeOut / playbackRate);
+          clipGain.gain.setValueAtTime(1, when + fadeStart);
+          clipGain.gain.linearRampToValueAtTime(0, when + remaining);
         }
         clipGain.connect(nodeInput);
         source.connect(clipGain);
@@ -4247,6 +4280,7 @@ export function StudioEditorShell() {
         duration: clip.duration,
         offset: (clip as { offset?: number }).offset,
         fadeIn: (clip as { fadeIn?: number }).fadeIn,
+        fadeOut: (clip as { fadeOut?: number }).fadeOut,
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
         audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
@@ -4346,6 +4380,7 @@ export function StudioEditorShell() {
         duration: clip.duration,
         offset: (clip as { offset?: number }).offset,
         fadeIn: (clip as { fadeIn?: number }).fadeIn,
+        fadeOut: (clip as { fadeOut?: number }).fadeOut,
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
         audio: clip.audio as Partial<ClipAudioSettings> | undefined,
         midi: (clip as ClipLike).midi,
@@ -4526,19 +4561,32 @@ export function StudioEditorShell() {
 
   /** Pointer handling for clip dragging (G7/G8) and marquee selection (G6). */
   useEffect(() => {
-    const computeFade = (session: { id: string; startX: number; fadeIn: number; duration: number }, clientX: number) => {
-      const raw =
-        session.fadeIn + ((clientX - session.startX) / barWidthRef.current) * secondsPerBarRef.current;
-      return {
-        id: session.id,
-        fadeIn: Math.max(
-          0,
-          Math.min(
-            session.duration,
-            snapToGrid(raw, secondsPerBarRef.current, beatsPerBarRef.current)
-          )
-        ),
-      };
+    const computeFade = (session: {
+      id: string;
+      edge: "in" | "out";
+      startX: number;
+      fadeIn: number;
+      fadeOut: number;
+      duration: number;
+    }, clientX: number) => {
+      const delta =
+        ((clientX - session.startX) / barWidthRef.current) * secondsPerBarRef.current;
+      const raw = session.edge === "in" ? session.fadeIn + delta : session.fadeOut - delta;
+      // The two fades cannot overlap inside the clip.
+      const ceiling =
+        session.edge === "in"
+          ? Math.max(0, session.duration - session.fadeOut)
+          : Math.max(0, session.duration - session.fadeIn);
+      const value = Math.max(
+        0,
+        Math.min(
+          ceiling,
+          snapToGrid(raw, secondsPerBarRef.current, beatsPerBarRef.current)
+        )
+      );
+      return session.edge === "in"
+        ? { id: session.id, fadeIn: value, fadeOut: session.fadeOut }
+        : { id: session.id, fadeIn: session.fadeIn, fadeOut: value };
     };
 
     const computeTrim = (
@@ -4643,8 +4691,11 @@ export function StudioEditorShell() {
         // Use the release position: Chrome coalesces pointermove events, so the last
         // move can be missing and the pointerup carries the true end point.
         const preview = computeFade(fadeSession, event.clientX);
-        if (Math.abs(preview.fadeIn - fadeSession.fadeIn) > 0.0001) {
-          commitClipFade(preview.id, preview.fadeIn);
+        if (
+          Math.abs(preview.fadeIn - fadeSession.fadeIn) > 0.0001 ||
+          Math.abs((preview.fadeOut ?? 0) - fadeSession.fadeOut) > 0.0001
+        ) {
+          commitClipFade(preview.id, preview.fadeIn, preview.fadeOut ?? 0);
         }
         return;
       }

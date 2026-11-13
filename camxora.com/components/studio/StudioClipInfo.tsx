@@ -26,6 +26,7 @@ export type StudioClipInfoProps = {
     duration?: number;
     offset?: number;
     fadeIn?: number;
+    fadeOut?: number;
     color?: string;
     audioUrl?: string | null;
     songId?: string;
@@ -183,6 +184,10 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
                 <div>
                   <dt>Fade in</dt>
                   <dd>{clip.fadeIn ? mmss(clip.fadeIn) : "None"}</dd>
+                </div>
+                <div>
+                  <dt>Fade out</dt>
+                  <dd>{clip.fadeOut ? mmss(clip.fadeOut) : "None"}</dd>
                 </div>
                 <div>
                   <dt>Trim offset</dt>

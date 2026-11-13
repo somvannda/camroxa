@@ -142,6 +142,40 @@ test("track groups create, assign and mute", async ({ page }) => {
   expect(saved.data.tracks[0].groupId).toBe(saved.data.groups[0].id);
 });
 
+test("dragging the fade-out handle stores a fade on the clip", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  const projectId = await createStudioProject(page, { title: "Fade out" });
+
+  const clip = page.locator(".se-clip").first();
+  await clip.click();
+  await clip.hover();
+  const handle = page.locator(".se-fade-handle.is-out").first();
+  const box = await handle.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 40, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  await expect(page.locator(".se-clip .se-fade.is-out")).toHaveCount(1);
+  // The fade is a document write; poll the stored project like the other specs.
+  await expect
+    .poll(
+      async () => {
+        const saved = await page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          return response.json();
+        }, projectId);
+        return (saved.data.lanes[0] as { fadeOut?: number }).fadeOut ?? 0;
+      },
+      { timeout: 15_000 }
+    )
+    .toBeGreaterThan(0);
+});
+
 test("Heal Edits restores the clip audio from before a transform", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1689, height: 1277 });

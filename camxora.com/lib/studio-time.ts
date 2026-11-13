@@ -22,6 +22,7 @@ export type TimeClip = {
   duration?: number;
   offset?: number;
   fadeIn?: number;
+  fadeOut?: number;
   midi?: { notes?: MidiNote[]; [key: string]: unknown };
   [key: string]: unknown;
 };
@@ -84,6 +85,9 @@ function part(
   };
   if (typeof clip.fadeIn === "number") {
     next.fadeIn = round(Math.min(clip.fadeIn, duration));
+  }
+  if (typeof clip.fadeOut === "number") {
+    next.fadeOut = round(Math.min(clip.fadeOut, duration));
   }
   if (clip.midi) {
     next.midi = sliceMidi(clip.midi, from - span.start, duration);

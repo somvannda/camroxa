@@ -43,6 +43,8 @@ export type ExportClip = {
   offset?: number;
   /** Fade-in length in seconds (S25). */
   fadeIn?: number;
+  /** Fade-out length in seconds (S25). */
+  fadeOut?: number;
   /** Clip Settings: volume, loop, reverse, pitch, speed (S30/§81). */
   audio?: Partial<ClipAudioSettings>;
   audioUrl?: string | null;
@@ -255,6 +257,7 @@ export async function renderMix(
       track?.pan ?? 0
     );
     const fadeIn = Math.min(clip.fadeIn ?? 0, duration);
+    const fadeOut = Math.min(clip.fadeOut ?? 0, duration);
     // Volume is a separate node so the fade automation stays a clean 0→1 ramp.
     let nodeInput: AudioNode = trackInputNode;
     if (settings.gainDb !== 0) {
@@ -263,13 +266,18 @@ export async function renderMix(
       volume.connect(trackInputNode);
       nodeInput = volume;
     }
-    if (fadeIn > 0) {
+    if (fadeIn > 0 || fadeOut > 0) {
       const clipGain = context.createGain();
       const intoClip = Math.max(0, from - start);
-      const initial = intoClip >= fadeIn ? 1 : intoClip / fadeIn;
+      const initial = fadeIn > 0 ? (intoClip >= fadeIn ? 1 : intoClip / fadeIn) : 1;
       clipGain.gain.setValueAtTime(initial, when);
-      if (intoClip < fadeIn) {
+      if (fadeIn > 0 && intoClip < fadeIn) {
         clipGain.gain.linearRampToValueAtTime(1, when + (fadeIn - intoClip));
+      }
+      if (fadeOut > 0 && playable > 0) {
+        const fadeStart = Math.max(0, playable - fadeOut);
+        clipGain.gain.setValueAtTime(1, when + fadeStart);
+        clipGain.gain.linearRampToValueAtTime(0, when + playable);
       }
       clipGain.connect(nodeInput);
       source.connect(clipGain);

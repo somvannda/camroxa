@@ -63,6 +63,7 @@ function localDocument(): LocalDocument {
         duration: 4,
         offset: 1,
         fadeIn: 0.5,
+        fadeOut: 1.5,
         sunoAssetId: "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
       },
     ],
@@ -135,6 +136,7 @@ test("an audio clip without a Suno asset is skipped and reported", () => {
   assert.equal(audioClips[0].startBeats, 16);
   assert.equal(audioClips[0].readStartBeats, 2);
   assert.equal(audioClips[0].fadeInBeats, 1);
+  assert.equal(audioClips[0].fadeOutBeats, 3);
   assert.deepEqual(audioClips[0].loop, { enabled: false, startBeats: 2, endBeats: 24 });
 });
 
@@ -177,6 +179,9 @@ test("the reverse projection reads bpm, meter, tracks and notes back", () => {
   assert.ok(chords?.midi?.notes?.length === 1);
   assert.equal(chords?.midi?.notes?.[0].start, 0.5);
   assert.equal(chords?.midi?.notes?.[0].length, 1);
+  const song = project.lanes.find((clip) => clip.title === "Song");
+  assert.equal(song?.fadeIn, 0.5);
+  assert.equal(song?.fadeOut, 1.5);
 });
 
 test("ids are stable per local id and valid UUIDs", () => {

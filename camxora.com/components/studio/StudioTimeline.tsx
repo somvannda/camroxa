@@ -23,6 +23,7 @@ export type TimelineClip = {
   duration?: number;
   offset?: number;
   fadeIn?: number;
+  fadeOut?: number;
   /** Per-clip colour override (clip menu ▸ Clip Color); falls back to the track colour. */
   color?: string;
   audioUrl?: string | null;
@@ -102,8 +103,8 @@ export type StudioTimelineProps = {
   viewLeft: number;
   /** Live geometry while a trim grip is dragged. */
   trimPreview?: { id: string; start: number; duration: number } | null;
-  /** Live fade-in length while the fade handle is dragged. */
-  fadePreview?: { id: string; fadeIn: number } | null;
+  /** Live fade lengths while a fade handle is dragged. */
+  fadePreview?: { id: string; fadeIn: number; fadeOut?: number } | null;
 
   /** Receives the scroll container so the shell can measure the visible window. */
   timelineRef?: RefObject<HTMLDivElement | null>;
@@ -128,7 +129,12 @@ export type StudioTimelineProps = {
     clip: TimelineClip,
     edge: "start" | "end"
   ) => void;
-  onFadePointerDown: (event: ReactPointerEvent<HTMLElement>, clip: TimelineClip) => void;  onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onFadePointerDown: (
+    event: ReactPointerEvent<HTMLElement>,
+    clip: TimelineClip,
+    edge: "in" | "out"
+  ) => void;
+  onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
 
 export function StudioTimeline(props: StudioTimelineProps) {
@@ -370,7 +376,15 @@ export function StudioTimeline(props: StudioTimelineProps) {
                             aria-hidden="true"
                             onPointerDown={(event) => {
                               event.stopPropagation();
-                              onFadePointerDown(event, clip);
+                              onFadePointerDown(event, clip, "in");
+                            }}
+                          />
+                          <span
+                            className="se-fade-handle is-out"
+                            aria-hidden="true"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              onFadePointerDown(event, clip, "out");
                             }}
                           />
                         </>
@@ -380,13 +394,28 @@ export function StudioTimeline(props: StudioTimelineProps) {
                           fadePreview?.id === clip.id
                             ? fadePreview.fadeIn
                             : clip.fadeIn ?? 0;
-                        if (fadeIn <= 0 || clipDuration <= 0) return null;
+                        const fadeOut =
+                          fadePreview?.id === clip.id
+                            ? fadePreview.fadeOut ?? clip.fadeOut ?? 0
+                            : clip.fadeOut ?? 0;
+                        if (clipDuration <= 0) return null;
                         return (
-                          <span
-                            className="se-fade"
-                            aria-hidden="true"
-                            style={{ width: `${Math.min(100, (fadeIn / clipDuration) * 100)}%` }}
-                          />
+                          <>
+                            {fadeIn > 0 ? (
+                              <span
+                                className="se-fade"
+                                aria-hidden="true"
+                                style={{ width: `${Math.min(100, (fadeIn / clipDuration) * 100)}%` }}
+                              />
+                            ) : null}
+                            {fadeOut > 0 ? (
+                              <span
+                                className="se-fade is-out"
+                                aria-hidden="true"
+                                style={{ width: `${Math.min(100, (fadeOut / clipDuration) * 100)}%` }}
+                              />
+                            ) : null}
+                          </>
                         );
                       })()}
                     </button>

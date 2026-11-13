@@ -275,6 +275,7 @@ function sunoClipFromLocal(
   const endBeats = beatsFromSeconds(start + duration, bps);
   const readStartBeats = beatsFromSeconds(Number(clip.offset) || 0, bps);
   const fadeInBeats = Math.max(0, beatsFromSeconds(Number(clip.fadeIn) || 0, bps));
+  const fadeOutBeats = Math.max(0, beatsFromSeconds(Number(clip.fadeOut) || 0, bps));
   const midi = midiFromLocal(clip, bps);
   const assetId =
     typeof clip.sunoAssetId === "string" && clip.sunoAssetId ? clip.sunoAssetId : null;
@@ -289,7 +290,7 @@ function sunoClipFromLocal(
     endBeats,
     readStartBeats,
     fadeInBeats,
-    fadeOutBeats: 0,
+    fadeOutBeats,
     fadeInCurve: 1,
     fadeOutCurve: 1,
     mute: false,
@@ -967,6 +968,7 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
         ),
         offset: secondsFromBeats(Number(clip.readStartBeats) || 0, bps),
         fadeIn: secondsFromBeats(Number(clip.fadeInBeats) || 0, bps),
+        fadeOut: secondsFromBeats(Number(clip.fadeOutBeats) || 0, bps),
         midi: midi
           ? {
               notes: (midi.notes ?? []).map((note) => ({

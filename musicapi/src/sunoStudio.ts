@@ -244,7 +244,7 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "lanes[].takes", suno: "tracks[].takeLanes[].clips", status: "mapped", note: "takes without a Suno asset stay local" },
   { key: "lanes[].offset", suno: "clips[].readStartBeats", status: "mapped" },
   { key: "lanes[].fadeIn", suno: "clips[].fadeInBeats", status: "mapped" },
-  { key: "lanes[].fadeOut", suno: "clips[].fadeOutBeats", status: "pending", note: "no local fade-out field yet" },
+  { key: "lanes[].fadeOut", suno: "clips[].fadeOutBeats", status: "mapped" },
   { key: "lanes[].midi.bend", suno: "clips[].midi.pitchBend[{beats,value}]", status: "mapped" },
   { key: "lanes[].midi.mod", suno: "clips[].midi.controlChanges (CC1)", status: "mapped" },
   { key: "lanes[].instrument", suno: "tracks[].signalChain synth waveform", status: "mapped" },
