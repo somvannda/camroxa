@@ -114,6 +114,77 @@ async def test_asset_enrichment_attaches_the_suno_clip_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upload_assets_reuse_a_cached_suno_clip_id() -> None:
+    service = _service()
+    upload_id = uuid4()
+    service._pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": upload_id,
+                "filename": "loop.wav",
+                "storage_key": "studio/loop.wav",
+                "suno_clip_id": "suno-asset-1",
+            }
+        ]
+    )
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    lanes = [{"id": "clip-1", "uploadId": str(upload_id)}]
+
+    await service._attach_upload_assets(str(uuid4()), lanes)
+
+    assert lanes[0]["sunoAssetId"] == "suno-asset-1"
+    # A cached id means no storage read and no import call.
+    service._pool.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_assets_import_once_and_cache_the_result() -> None:
+    from unittest.mock import MagicMock, patch
+
+    service = _service()
+    upload_id = uuid4()
+    service._pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": upload_id,
+                "filename": "loop.wav",
+                "storage_key": "studio/loop.wav",
+                "suno_clip_id": None,
+            }
+        ]
+    )
+    service._studio_sync_endpoint = lambda: ("http://mirror", "token")
+    lanes = [{"id": "clip-1", "uploadId": str(upload_id)}]
+
+    storage = MagicMock()
+    storage.get_signed_get_url = AsyncMock(return_value="https://storage/loop.wav")
+    response = MagicMock(status_code=201)
+    response.json = MagicMock(return_value={"clip_id": "suno-asset-2"})
+    client = MagicMock()
+    client.post = AsyncMock(return_value=response)
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=client)
+    context.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(
+            "platform_api.services.streaming_config_service.resolve_streaming_storage_config",
+            AsyncMock(return_value=MagicMock(configured=True)),
+        ),
+        patch(
+            "platform_api.services.storage_service.StorageService.from_config",
+            return_value=storage,
+        ),
+        patch("httpx.AsyncClient", return_value=context),
+    ):
+        await service._attach_upload_assets(str(uuid4()), lanes)
+
+    assert lanes[0]["sunoAssetId"] == "suno-asset-2"
+    service._pool.execute.assert_awaited_once()
+    assert "UPDATE studio_uploads" in service._pool.execute.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_asset_enrichment_skips_non_uuid_song_ids() -> None:
     service = _service()
     service._pool.fetch = AsyncMock()

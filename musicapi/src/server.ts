@@ -8980,6 +8980,37 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.send(view);
   });
 
+  /**
+   * Import a local upload into the pinned Suno account and return the asset clip
+   * id. The platform passes a short-lived signed URL; this downloads it and hands
+   * the bytes to Suno's own upload pipeline, so the asset belongs to the account
+   * that owns the mirrored project.
+   */
+  app.post("/internal/studio/assets/import", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const userId = typeof body.user_id === "string" ? body.user_id : "";
+    const url = typeof body.url === "string" ? body.url : "";
+    if (!STUDIO_UUID_RE.test(userId)) {
+      return reply.code(400).send({ error: "user_id is required." });
+    }
+    if (!/^(https?:|data:)/i.test(url)) {
+      return reply.code(400).send({ error: "url must be http(s) or a data URL." });
+    }
+    try {
+      const label = await studioSync.accountForUser(userId);
+      const client = pool.get(label);
+      if (!client) {
+        return reply.code(409).send({ error: "The pinned Suno account is not active." });
+      }
+      const clipId = await client.uploadAudioFromUrl(url);
+      return reply.code(201).send({ clip_id: clipId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Suno upload failed.";
+      return reply.code(502).send({ error: message.slice(0, 300) });
+    }
+  });
+
   app.post("/internal/studio/projects/:id/archive", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { id } = req.params as { id: string };

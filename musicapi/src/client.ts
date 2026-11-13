@@ -820,9 +820,17 @@ export class SunoClient {
    * into `cover_clip_id`/`continue_clip_id` fails — so the bytes must be pushed
    * through its upload handshake first.
    */
-  private async registerAudioFromUrl(audioUrl: string): Promise<string> {
+  /**
+   * Upload audio fetched from a URL (a signed storage URL) and return a Suno
+   * clip id. Used to bring our own uploads onto the account that owns a mirrored
+   * project.
+   */
+  async uploadAudioFromUrl(audioUrl: string): Promise<string> {
     const res = await fetch(audioUrl, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`audio download failed (${res.status}).`);
+    const maxBytes = 25 * 1024 * 1024;
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > maxBytes) throw new Error("audio is larger than 25 MB.");
     let ext = "mp3";
     try {
       const m = new URL(audioUrl).pathname.toLowerCase().match(/\.(wav|mp3|flac|m4a|ogg|webm|aac)$/);
@@ -831,6 +839,7 @@ export class SunoClient {
       /* keep default */
     }
     const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length > maxBytes) throw new Error("audio is larger than 25 MB.");
     return this.uploadAudio(bytes, ext, "file_upload");
   }
 
@@ -844,7 +853,7 @@ export class SunoClient {
   }): Promise<Clip[]> {
     const continueClipId =
       params.uploadedClipId ??
-      (params.audioUrl ? await this.registerAudioFromUrl(params.audioUrl) : "");
+      (params.audioUrl ? await this.uploadAudioFromUrl(params.audioUrl) : "");
     if (!continueClipId) throw new Error("uploadedClipId or audioUrl is required for upload_extend.");
     // Flat top-level fields: a `params` wrapper is rejected (422 on
     // body.params.prompt) even though earlier probes suggested otherwise.
@@ -879,7 +888,7 @@ export class SunoClient {
   }): Promise<Clip[]> {
     const coverClipId =
       params.uploadedClipId ??
-      (params.audioUrl ? await this.registerAudioFromUrl(params.audioUrl) : "");
+      (params.audioUrl ? await this.uploadAudioFromUrl(params.audioUrl) : "");
     if (!coverClipId) throw new Error("uploadedClipId or audioUrl is required for upload_cover.");
     // Captured from Suno's own Create page: the task is `cover` (not
     // `cover_infill`), only `cover_clip_id` is set, `continue_clip_id` is null,

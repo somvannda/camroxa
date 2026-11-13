@@ -2014,33 +2014,131 @@ class WebMusicService:
             except ValueError:
                 continue
             pending.append(song_id)
-        if not pending:
-            return document
-        try:
-            rows = await self._pool.fetch(
-                """
-                SELECT id, audio_id_ok, audio_id_alt
-                FROM suno_tasks
-                WHERE user_id = $1 AND id = ANY($2::uuid[])
-                """,
-                UUID(user_id),
-                [UUID(value) for value in dict.fromkeys(pending)],
-            )
-        except Exception as exc:  # noqa: BLE001 - enrichment is best-effort
-            logger.info("studio asset enrichment failed: %s", exc)
-            return document
-        assets: dict[str, str] = {}
-        for row in rows:
-            assets[str(row["id"]) + ":ok"] = str(row["audio_id_ok"] or "")
-            assets[str(row["id"]) + ":alt"] = str(row["audio_id_alt"] or "")
+        if pending:
+            try:
+                rows = await self._pool.fetch(
+                    """
+                    SELECT id, audio_id_ok, audio_id_alt
+                    FROM suno_tasks
+                    WHERE user_id = $1 AND id = ANY($2::uuid[])
+                    """,
+                    UUID(user_id),
+                    [UUID(value) for value in dict.fromkeys(pending)],
+                )
+            except Exception as exc:  # noqa: BLE001 - enrichment is best-effort
+                logger.info("studio asset enrichment failed: %s", exc)
+                rows = []
+            assets: dict[str, str] = {}
+            for row in rows:
+                assets[str(row["id"]) + ":ok"] = str(row["audio_id_ok"] or "")
+                assets[str(row["id"]) + ":alt"] = str(row["audio_id_alt"] or "")
+            for clip in lanes:
+                if not isinstance(clip, dict) or clip.get("sunoAssetId"):
+                    continue
+                key = f"{clip.get('songId')}:{clip.get('songVariant')}"
+                asset = assets.get(key)
+                if asset:
+                    clip["sunoAssetId"] = asset
+        await self._attach_upload_assets(user_id, lanes)
+        return document
+
+    async def _attach_upload_assets(
+        self, user_id: str, lanes: list[Any]
+    ) -> None:
+        """Give studio uploads a Suno asset on the pinned account.
+
+        Uploads live in our storage, which Suno cannot reference. The first sync
+        imports each upload into Suno (recording the resulting clip id); later
+        saves reuse the cached id. A failed import leaves the clip local, which
+        the mirror reports as skipped.
+        """
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        upload_ids = []
         for clip in lanes:
             if not isinstance(clip, dict) or clip.get("sunoAssetId"):
                 continue
-            key = f"{clip.get('songId')}:{clip.get('songVariant')}"
-            asset = assets.get(key)
-            if asset:
-                clip["sunoAssetId"] = asset
-        return document
+            value = str(clip.get("uploadId") or "").strip()
+            if value:
+                upload_ids.append(value)
+        if not upload_ids:
+            return
+        try:
+            rows = await self._pool.fetch(
+                """
+                SELECT id, filename, storage_key, suno_clip_id
+                FROM studio_uploads
+                WHERE user_id = $1 AND id = ANY($2::uuid[])
+                """,
+                UUID(user_id),
+                [UUID(value) for value in dict.fromkeys(upload_ids)],
+            )
+        except Exception as exc:  # noqa: BLE001 - enrichment is best-effort
+            logger.info("studio upload lookup failed: %s", exc)
+            return
+        if not rows:
+            return
+        endpoint = self._studio_sync_endpoint()
+        if endpoint is None:
+            return
+        base, token = endpoint
+        needs_import = any(
+            not str(row["suno_clip_id"] or "").strip() for row in rows
+        )
+        storage = None
+        if needs_import:
+            try:
+                storage_config = await resolve_streaming_storage_config(self._pool)
+            except Exception as exc:  # noqa: BLE001
+                logger.info("studio upload storage lookup failed: %s", exc)
+                return
+            if not storage_config.configured:
+                return
+            storage = StorageService.from_config(storage_config)
+
+        for row in rows:
+            clip_id = str(row["suno_clip_id"] or "").strip()
+            if not clip_id and storage is not None:
+                try:
+                    url = await storage.get_signed_get_url(str(row["storage_key"]))
+                    async with httpx.AsyncClient(timeout=120) as client:
+                        response = await client.post(
+                            f"{base}/internal/studio/assets/import",
+                            headers={"x-internal-token": token},
+                            json={
+                                "user_id": user_id,
+                                "url": url,
+                                "filename": str(row["filename"] or "upload.mp3"),
+                            },
+                        )
+                    if response.status_code >= 400:
+                        logger.info(
+                            "studio upload import rejected for %s: %s",
+                            row["id"],
+                            response.status_code,
+                        )
+                        continue
+                    clip_id = str((response.json() or {}).get("clip_id") or "")
+                except Exception as exc:  # noqa: BLE001
+                    logger.info("studio upload import failed for %s: %s", row["id"], exc)
+                    continue
+                if clip_id:
+                    await self._pool.execute(
+                        "UPDATE studio_uploads SET suno_clip_id = $2 WHERE id = $1",
+                        row["id"],
+                        clip_id,
+                    )
+            if not clip_id:
+                continue
+            for clip in lanes:
+                if (
+                    isinstance(clip, dict)
+                    and str(clip.get("uploadId") or "") == str(row["id"])
+                ):
+                    clip["sunoAssetId"] = clip_id
 
     async def _studio_sync_request(
         self,
