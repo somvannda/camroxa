@@ -138,8 +138,12 @@ POST /internal/studio/projects/{local_id}/sync
 GET  /internal/studio/projects/{local_id}/status?user_id=
   -> the same status view, or `pending` before the first link
 
+POST /internal/studio/projects/{local_id}/refresh   { user_id }
+  -> the status view after asking Suno whether it moved ahead
+     (throttled per project; never touches the local document)
+
 POST /internal/studio/projects/{local_id}/archive   { user_id, archived }
-GET  /internal/studio/sync/health                   # counts, due outbox, pins
+GET  /internal/studio/sync/health                   # counts, due outbox, pins, coverage
 ```
 
 Error mapping: 401/403 from Suno means the account session died → link becomes
@@ -179,13 +183,15 @@ blocks on Suno.
 
 ### 6.3 Pull
 
-- On project open, if `link.status != synced` or `suno_version_id` differs from
-  the last read, fetch the Suno project and compare a semantic hash.
-- If only Suno changed, apply its state to local `data` (same transaction as a
-  version snapshot).
-- If both changed, use the conflict path above.
-- A low-frequency poll (e.g. every 30 s while the editor is open) can refresh; the
-  existing presence poll is a separate channel and must not be conflated.
+- While a project is open the editor asks `refresh` every 15 s. The server
+  throttles provider reads per project (30 s, `SUNO_SYNC_CHECK_MS`), so several
+  editors on one pinned account share one check.
+- `refresh` compares `latest_version_id` with the version we last wrote. A newer
+  remote version marks the link `conflict` and stores the remote document as the
+  next merge baseline. The local document is never overwritten by a poll.
+- A full pull (apply the Suno document to local `data`) needs the reverse field
+  mapping and lands with the same schema capture that enables pushes.
+- The existing presence poll is a separate channel and is not conflated with this.
 
 ### 6.4 Archive / delete
 
@@ -316,8 +322,11 @@ document and preserves every Suno key it does not model. It is gated by
 document can reach a real project.
 
 **Phase 3 — pull/reconcile.**
-Open/refresh pull, semantic hash comparison, conflict UI (`Load Suno`, `Keep mine`,
-`Duplicate`).
+Change detection is live: `refresh` marks `conflict` when Suno advanced, and
+`/internal/studio/sync/health` reports the per-field coverage registry
+(`STUDIO_STATE_COVERAGE`, `mapped`/`pending`/`remove`). Remaining: applying the
+Suno document to local `data` and the conflict UI (`Load Suno`, `Keep mine`,
+`Duplicate`), both of which need the reverse mapping.
 
 **Phase 4 — coverage matrix = removal list (D-034).**
 Per-feature tests: tracks, clips, MIDI, effects, automation, markers, metadata,

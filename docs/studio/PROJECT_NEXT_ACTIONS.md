@@ -69,7 +69,8 @@ Next, in order:
 4. **Pull/reconcile + conflict UI** (`Load Suno`, `Keep mine`, `Duplicate`).
 5. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
 
-Known test flake: `studio-new-features.spec.ts` "track Automation draws a volume
-point that persists" passes alone and with `--workers=1`, but can fail under
-`--workers=2` because the selected clip has not settled when the automation panel
-opens. Use one worker when the whole Studio suite runs on a laptop.
+Known test lesson (fixed 2026-11-13): the automation and section-marker specs used
+to reload while a serialized document write was still queued, so the reload won
+the race. The editor now mirrors a queued write into the local draft (no data
+loss for real users) and the specs wait for the `Saved` chip before reloading.
+The suite is green at `--workers=4`.
