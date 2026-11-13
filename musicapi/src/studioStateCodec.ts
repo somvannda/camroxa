@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 /**
  * Suno Studio document codec.
@@ -1237,53 +1237,3 @@ function clipIdsOf(track: LocalTrack): string[] {
   return (track.clipIds ?? []).filter((id): id is string => typeof id === "string");
 }
 
-/** Minimal document for a brand-new Suno project (title/metadata only). */export function emptySunoState(title: string, majorVersion = 2): Record<string, unknown> {
-  const id = randomUUID();
-  return {
-    title,
-    majorVersion,
-    timing: { type: "manual", bps: 2, bpsAutomation: [], lockBPS: false },
-    timeSignatureChanges: [
-      { startBeats: 0, subdivisionsPerBar: 4, beatsPerSubdivision: 1 },
-    ],
-    amplitude: 1,
-    songFadeInBeats: 0,
-    songFadeOutBeats: 0,
-    loop: { enabled: false, startBeats: 0, endBeats: 0 },
-    metronome: { enabled: false, amplitude: 1 },
-    editorPointerModes: { midi: "select", audio: "select" },
-    tracks: [
-      {
-        id,
-        name: "Track 1",
-        color: "#7c5cff",
-        type: "audio",
-        height: 88,
-        mute: false,
-        solo: false,
-        arm: false,
-        hidden: false,
-        amplitude: 0.8,
-        balance: 0,
-        routingMode: "stereo",
-        signalChain: [],
-        faderAutomation: [],
-        clips: [],
-        takeLanes: [],
-        takeLanesExpanded: false,
-        clipCreationIntents: [],
-      },
-    ],
-    selection: {
-      trackIds: [id],
-      focusedTrackId: id,
-      noteIds: [],
-      anchorBeats: 0,
-      focusBeats: 0,
-      contextBeforeBeats: 32,
-      contextAfterBeats: 32,
-      focusedArea: "timeline",
-      warpMarkerSeconds: {},
-    },
-  };
-}

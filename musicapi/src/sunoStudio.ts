@@ -6,7 +6,6 @@ import {
   StudioProjectMissingError,
   StudioProjectRateLimitedError,
   SunoClient,
-  type SunoStudioProject,
 } from "./client.js";
 import { withTransaction, query, queryOne } from "./db.js";
 import type { AccountPool } from "./pool.js";
@@ -923,19 +922,3 @@ function localClipIds(doc: StudioProjectDocument): string[] {
   );
 }
 
-/** Read a Suno project and return its normalised document and version. */
-export async function readStudioProject(
-  client: SunoClient,
-  projectId: string
-): Promise<{
-  state: Record<string, unknown> | null;
-  versionId: string | null;
-  project: SunoStudioProject;
-}> {
-  const project = await client.getStudioProject(projectId);
-  return {
-    state: parseStudioState(project.state),
-    versionId: project.latest_version_id ?? null,
-    project,
-  };
-}

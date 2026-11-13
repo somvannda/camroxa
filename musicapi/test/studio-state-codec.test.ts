@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   beatsFromSeconds,
   bpmFromState,
-  emptySunoState,
   mergeSunoProjectIntoLocal,
   noteId,
   projectDocumentToSunoState,
@@ -746,13 +745,6 @@ test("volume and pan automation map to faderAutomation gain and pan", () => {
     { time: 0, value: -50 },
     { time: 4, value: 50 },
   ]);
-});
-
-test("a fresh Suno project has the fields the client validates", () => {
-  const state = emptySunoState("Untitled Project");
-  assert.ok(state.timing);
-  assert.ok(Array.isArray(state.tracks));
-  assert.equal(state.majorVersion, 2);
 });
 
 test("loading a Suno document updates matched tracks and clips", () => {
