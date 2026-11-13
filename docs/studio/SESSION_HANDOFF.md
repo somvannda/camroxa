@@ -19,8 +19,11 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   filesystem failures) · vitest 334 · Playwright **156 passed / 2 skipped** · `check:ui`
   clean · internal authoring route exercised live (401/400 guards, ready path, idempotent
   second poll) without spending credits.
-- **Before shipping:** apply musicapi migration `0045`, then deploy the web and platform API
-  together. Local audio still approximates authored DSP by family.
+- **Deployed 2026-11-13** (`origin/main` = `985ccf00`): web + platform first, then the
+  musicapi stack; migrations `0043`–`0045` applied and the shared
+  `STUDIO_INTERNAL_TOKEN` / `PLATFORM_STUDIO_INTERNAL_TOKEN` written to both service
+  envs (internal health 401 without it, 200 with it). Local audio still approximates
+  authored DSP by family.
 
 ## Update 2026-11-13 — Suno Studio project mirror
 

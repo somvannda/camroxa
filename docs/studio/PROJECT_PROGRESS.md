@@ -24,6 +24,10 @@ internal authoring route was exercised live against the already-ready probe job:
 401/400 guards, ready path in ~1.8 s, idempotent second poll in <1 ms; the created
 library plugin was archived.
 
+Deployed to production the same day (`985ccf00`), platform + musicapi; migrations
+`0043`–`0045` applied and the shared Studio internal token written to both envs.
+`DEPLOY_VERIFY_OK 988 files`; site/API/musicapi health 200.
+
 ## Session 2026-11-12 — Product chrome on every page
 
 `/studio` and the shared-project viewer rendered bare (no left nav, no top bar, no footer)

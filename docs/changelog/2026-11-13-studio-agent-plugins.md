@@ -3,7 +3,7 @@
 **Date:** 2026-11-13
 **Branch:** `feat/studio-agent-plugins` (stacked on `fix/studio-pull-chain-merge`)
 **Surfaces:** camxora.com (Studio editor), platform_api, musicapi, docs
-**Status:** merged to `main` (`8b3f116f`), gates green, not deployed
+**Status:** merged and deployed (`origin/main` = `985ccf00`; web/platform + musicapi live)
 
 ## Summary
 
@@ -65,10 +65,22 @@ The designer e2e mocks the two proxied authoring calls, so the full UI flow runs
 without spending credits; musicapi tests cover the codec, merge and coverage
 registry.
 
+## Deploy notes
+
+- Shipped as one commit of `origin/main` (`985ccf00`) with the verified-source
+  pipeline: web + platform first, then the musicapi stack.
+- Migrations applied on the server: platform head, musicapi `0043`, `0044`,
+  `0045`.
+- `PLATFORM_STUDIO_INTERNAL_TOKEN` / `STUDIO_INTERNAL_TOKEN` is now part of the
+  deploy secrets and is written to both service envs; the internal health route
+  answers 401 without it and 200 with it.
+- Two deploy-tooling fixes rode along: musicapi tarballs normalize text to LF so
+  they cannot fake platform drift, and the shared Studio token is wired through
+  both remote scripts.
+
 ## Follow-ups
 
 - The local audio engine approximates the authored DSP by family; executing
   Suno's plugin code is out of scope.
 - Authoring spends Suno credits and has no local pricing row yet, so the sync
   chip does not show a cost.
-- Deployment remains a ship decision (not done here); musicapi migration `0045` ships with it.
