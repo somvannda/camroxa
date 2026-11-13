@@ -2,6 +2,26 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-13 (later) — Designed plugins on Suno's authoring agent
+
+- **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`, branch stack
+  `fix/studio-pull-chain-merge` → `feat/studio-agent-plugins` (clean, **not pushed or merged**).
+- **The last open parity item is closed.** "Build it" now asks Suno's authoring agent
+  (`POST /api/agent/author-plugin`), polls, saves the descriptor into the pinned account's
+  plugin library and mirrors the chain entry as `catalogPluginId` + `pluginVersionId`.
+  Contract, payloads and probe evidence: `SUNO_STUDIO_AGENT_PLUGINS.md`.
+- **Pull is safe now:** chains merge per entry against the local track id (they used to be
+  stored under Suno's id and replaced wholesale), representable effects follow Suno, and
+  entries Suno cannot carry are kept and reported (`kept_local_effects`).
+- **Ledger:** musicapi migration `0045_studio_plugin_authoring.sql` (applied locally) makes
+  polling idempotent and retries reuse the created library plugin.
+- **Verified:** musicapi 198 · platform pytest 3386 (2 pre-existing `test_media_router`
+  filesystem failures) · vitest 334 · Playwright **156 passed / 2 skipped** · `check:ui`
+  clean · internal authoring route exercised live (401/400 guards, ready path, idempotent
+  second poll) without spending credits.
+- **Before shipping:** merge the stack, apply musicapi migration `0045`, then deploy the web
+  and platform API together. Local audio still approximates authored DSP by family.
+
 ## Update 2026-11-13 — Suno Studio project mirror
 
 - **Worktree:** `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-midi-modes`, branch `feat/studio-midi-modes` (clean, **not merged**).
@@ -9,7 +29,7 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   projects: create → edit → Suno-side change → conflict → load → delete. Details
   in `SUNO_STUDIO_SYNC.md` and `SUNO_STUDIO_STATE_SCHEMA.md`.
 - **Every document field** is mapped or deliberately removed (`groups`,
-  `wavetableId`); the coverage registry has 31 mapped, 0 pending, 2 removed.
+  `wavetableId`); the coverage registry has 32 mapped, 0 pending, 2 removed.
 - **Strict parity (D-034):** track groups and the wavetable designer were removed
   because no Suno document field represents them.
 - **Local run:** musicapi `:4003` with a seeded `suno_accounts` row and a matching

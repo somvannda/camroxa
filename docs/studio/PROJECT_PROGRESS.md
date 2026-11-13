@@ -2,6 +2,28 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-13 — Designed plugins on the Suno agent; pull chains fixed
+
+The last open parity item (designed plugins) is implemented on Suno's authoring
+agent, and a pull no longer corrupts or drops plugin chains.
+
+| Area | What landed |
+|---|---|
+| **Agent authoring** | `POST /api/agent/author-plugin` → poll → save descriptor to `/api/plugins/` + `/save` → chain entry with `catalogPluginId`/`pluginVersionId`; job ledger in musicapi migration `0045` |
+| **Web designer** | "Build it" starts the job, shows progress, saves a `CustomPlugin` carrying the Suno ids; percent controls stay 0–1 and read as 0–100 % |
+| **Pull merge** | chains re-keyed to local track ids; representable effects follow Suno (deletes propagate), unrepresentable entries kept as `kept_local_effects`, orphan chains pruned |
+| **Hydration** | a pulled designed plugin fetches its descriptor from the library so it renders on any device |
+| **Docs** | `SUNO_STUDIO_AGENT_PLUGINS.md` records the live contract, probe ids and implementation map; parity decision marked resolved |
+
+### Verified
+
+musicapi **198**, platform pytest **3386** (2 pre-existing `test_media_router`
+filesystem failures), vitest **334**, Playwright **156 passed / 2 skipped**,
+`check:ui` clean, both typechecks clean, migration `0045` applied locally. The
+internal authoring route was exercised live against the already-ready probe job:
+401/400 guards, ready path in ~1.8 s, idempotent second poll in <1 ms; the created
+library plugin was archived.
+
 ## Session 2026-11-12 — Product chrome on every page
 
 `/studio` and the shared-project viewer rendered bare (no left nav, no top bar, no footer)
