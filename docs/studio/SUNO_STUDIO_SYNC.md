@@ -225,7 +225,7 @@ Mapping summary:
 | MIDI clips + notes | `tracks[].clips[].midi` | both | seconds→beats, numeric note ids (verified live) |
 | MIDI bend / mod | `midi.pitchBend`, `midi.controlChanges` (CC1) | both | point lists in beats (verified live) |
 | clip offset / fades | `readStartBeats` / `fadeInBeats` / `fadeOutBeats` | both | seconds→beats |
-| `volumeAutomation` | `tracks[].faderAutomation` | both | written; read-back pending |
+| `volumeAutomation` / `panAutomation` | `tracks[].faderAutomation.gain/.pan` | both | 0–1 values, `{beats,value,curve}` (verified live) |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | audio clips with a Suno asset | `clips[].asset` | both | asset id comes from the local Suno clip id |
 | audio clips without an asset | — | — | not mirrored; reported in `skipped_clip_ids` |

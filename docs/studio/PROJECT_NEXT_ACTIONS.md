@@ -57,12 +57,8 @@ done and live-verified: a throwaway project was created, saved twice, read back
 with the expected bpm/meter/tracks/MIDI notes, hit with a stale save (409), then
 archived. Details in `SUNO_STUDIO_STATE_SCHEMA.md`.
 
-Next, in order:
-
-1. **Pan automation.** Volume automation mirrors via `faderAutomation`; pan
-   automation has no captured target (`paramAutomation` was empty in every
-   capture, and the mixer/fader plugins are implicit).
-2. **Coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`).
+Next: **coverage matrix = removal list** (D-034, `PARITY_REMOVAL_LIST.md`). Every
+document field is mapped or removed; the registry is the check.
 
 Known test lesson (fixed 2026-11-13): the automation and section-marker specs used
 to reload while a serialized document write was still queued, so the reload won

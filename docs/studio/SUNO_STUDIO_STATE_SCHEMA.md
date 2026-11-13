@@ -83,7 +83,7 @@ tracks, 16 for older ones.
   balance,        // -1..1
   eq: { enabled, band1..band6: { type, frequency, gain, q, enabled } },
   routingMode, signalChain: [{ id, pluginVersionId, presetId?, bypassed, params, paramAutomation }],
-  faderAutomation: [{ timeBeats, value }],
+  faderAutomation: { gain: [{ beats, value, curve }], pan: [{ beats, value, curve }] },
   clips: [...],
   takeLanes: [{ id, name, type, height, dismissed, clips, clipCreationIntents }],
   takeLanesExpanded, clipCreationIntents: [],
@@ -132,7 +132,8 @@ Both shapes were verified by saving synthetic lanes and reading them back.
 | `tracks[].pan` | `tracks[].balance = pan/100` | verified |
 | `tracks[].muted/solo/hidden` | `mute/solo/hidden` | verified |
 | `tracks[].color/name` | `color/name` | verified |
-| `tracks[].volumeAutomation` | `faderAutomation[{timeBeats,value}]` | written, pending read-back |
+| `tracks[].volumeAutomation` | `faderAutomation.gain[{beats,value,curve}]` | verified live |
+| `tracks[].panAutomation` | `faderAutomation.pan[{beats,value,curve}]` | verified live |
 | `lanes[].start/duration` | `startBeats/endBeats` | MIDI verified live |
 | `lanes[].offset/fadeIn/fadeOut` | `readStartBeats/fadeInBeats/fadeOutBeats` | seconds→beats |
 | `lanes[].midi.notes` | `clips[].midi.notes` | verified live |
