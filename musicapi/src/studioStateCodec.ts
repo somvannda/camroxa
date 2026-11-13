@@ -80,6 +80,9 @@ export interface LocalDocument {
   lanes?: LocalClip[];
   /** Ruler section markers: seconds + label, as the editor stores them. */
   markers?: Array<{ id: string; time: number; label?: string; color?: string }>;
+  /** Plugin chains keyed by local track id. */
+  chains?: Record<string, Array<Record<string, unknown>>>;
+  masterChain?: Array<Record<string, unknown>>;
   masterVolume?: number;
   masterMuted?: boolean;
   loopStart?: number;
@@ -305,6 +308,186 @@ function markersFromState(
     .sort((a, b) => a.time - b.time);
 }
 
+/** Suno plugin catalog entries captured on 2026-11-13 (schema doc §10). */
+export interface SunoPluginMapping {
+  pluginVersionId: string;
+  /** Local numeric param key → Suno numeric param key. */
+  params: Record<string, string>;
+  /** Local 0/1 param key → Suno boolean param key. */
+  booleans?: Record<string, string>;
+  /** Local chain string field → Suno param key (e.g. `mode`). */
+  strings?: Record<string, string>;
+}
+
+/**
+ * Only plugins whose parameters map one-to-one are listed. Distortion and chorus
+ * use different parameter sets (and chorus `rate` is a division string on Suno),
+ * so they stay local until captured values prove a translation.
+ */
+export const SUNO_PLUGIN_CATALOG: Record<string, SunoPluginMapping> = {
+  compressor: {
+    pluginVersionId: "a4838315-d631-4255-946c-c65531bc9cd4",
+    params: {
+      threshold: "threshold",
+      ratio: "ratio",
+      knee: "knee",
+      attack: "attack",
+      release: "release",
+      gain: "output",
+    },
+  },
+  convolution: {
+    pluginVersionId: "ddcfbfdc-ec10-4a92-8a8b-56245cf48293",
+    params: { mix: "mix", gain: "gain", pre: "predelay", width: "width" },
+  },
+  gate: {
+    pluginVersionId: "14fb47e6-c951-4a35-bfa6-f14d2396b4d0",
+    params: { threshold: "threshold", floor: "floor", attack: "attack", hold: "hold" },
+  },
+  limiter: {
+    pluginVersionId: "bf422c67-c85e-4b6d-9db9-1769c5912941",
+    params: {
+      lookahead: "lookahead",
+      preGain: "preGain",
+      attack: "attack",
+      release: "release",
+    },
+  },
+  reverb: {
+    pluginVersionId: "dec400a6-9dac-4c8a-b553-dd7bd2eb5f29",
+    params: {
+      time: "time",
+      mix: "mix",
+      width: "width",
+      damping: "damping",
+      predelay: "predelay",
+      lowCut: "lowCut",
+      highCut: "highCut",
+    },
+  },
+  eq: {
+    pluginVersionId: "b1a718a1-839f-48d8-9482-ef6f64d490f0",
+    params: Object.fromEntries(
+      [1, 2, 3, 4].flatMap((band) => [
+        [`band${band}.freq`, `freq${band}`],
+        [`band${band}.q`, `q${band}`],
+        [`band${band}.gain`, `gain${band}`],
+      ])
+    ),
+    booleans: Object.fromEntries(
+      [1, 2, 3, 4].map((band) => [`band${band}.on`, `enabled${band}`])
+    ),
+  },
+};
+
+const SUNO_PLUGIN_BY_VERSION = new Map(
+  Object.entries(SUNO_PLUGIN_CATALOG).map(([pluginId, def]) => [def.pluginVersionId, pluginId])
+);
+
+/**
+ * Map one local chain entry to a Suno plugin instance. Returns null when the
+ * plugin has no verified translation (custom plugins, distortion, chorus).
+ */
+export function chainEntryToSuno(
+  entry: Record<string, unknown>,
+  fallbackIndex: number
+): Record<string, unknown> | null {
+  const pluginId = typeof entry.pluginId === "string" ? entry.pluginId : "";
+  const def = SUNO_PLUGIN_CATALOG[pluginId];
+  if (!def) return null;
+  const localParams = (entry.params ?? {}) as Record<string, unknown>;
+  const params: Record<string, unknown> = {};
+  for (const [local, suno] of Object.entries(def.params)) {
+    const value = Number(localParams[local]);
+    if (Number.isFinite(value)) params[suno] = value;
+  }
+  for (const [local, suno] of Object.entries(def.booleans ?? {})) {
+    if (localParams[local] !== undefined) params[suno] = Number(localParams[local]) > 0.5;
+  }
+  for (const [local, suno] of Object.entries(def.strings ?? {})) {
+    if (typeof entry[local] === "string") params[suno] = entry[local];
+  }
+  if (pluginId === "eq") {
+    params.enabled5 = false;
+    params.enabled6 = false;
+  }
+  const entryId =
+    typeof entry.entryId === "string" && entry.entryId
+      ? entry.entryId
+      : `plugin-${pluginId}-${fallbackIndex}`;
+  return {
+    id: stableSunoId(entryId),
+    pluginVersionId: def.pluginVersionId,
+    ...(typeof entry.presetId === "string" && entry.presetId
+      ? { presetId: entry.presetId }
+      : {}),
+    bypassed: Boolean(entry.bypassed),
+    params,
+    paramAutomation: {},
+  };
+}
+
+/** Map a Suno plugin instance back to a local chain entry (verified plugins only). */
+export function chainEntryFromSuno(
+  entry: Record<string, unknown>,
+  fallbackIndex: number
+): Record<string, unknown> | null {
+  const versionId = typeof entry.pluginVersionId === "string" ? entry.pluginVersionId : "";
+  const pluginId = SUNO_PLUGIN_BY_VERSION.get(versionId);
+  if (!pluginId) return null;
+  const def = SUNO_PLUGIN_CATALOG[pluginId];
+  const sunoParams = (entry.params ?? {}) as Record<string, unknown>;
+  const params: Record<string, number> = {};
+  for (const [local, suno] of Object.entries(def.params)) {
+    const value = Number(sunoParams[suno]);
+    if (Number.isFinite(value)) params[local] = value;
+  }
+  for (const [local, suno] of Object.entries(def.booleans ?? {})) {
+    if (sunoParams[suno] !== undefined) params[local] = sunoParams[suno] ? 1 : 0;
+  }
+  return {
+    entryId: typeof entry.id === "string" ? `entry-${entry.id.slice(0, 8)}` : `entry-${fallbackIndex}`,
+    pluginId,
+    presetId: typeof entry.presetId === "string" ? entry.presetId : null,
+    presetName: "Custom",
+    params,
+    sunoId: typeof entry.id === "string" ? entry.id : undefined,
+  };
+}
+
+function buildChain(
+  entries: Array<Record<string, unknown>> | undefined,
+  fallbackIndexBase = 0
+): Record<string, unknown>[] {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry, index) => chainEntryToSuno(entry, fallbackIndexBase + index))
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+}
+
+function buildMasterChain(
+  entries: Array<Record<string, unknown>> | undefined
+): Record<string, unknown>[] {
+  const chain: Record<string, unknown>[] = [];
+  for (const [index, entry] of (Array.isArray(entries) ? entries : []).entries()) {
+    const type = String(entry.type ?? "").toLowerCase();
+    if (!type.includes("limit")) continue;
+    const params = (entry.params ?? {}) as Record<string, unknown>;
+    chain.push({
+      id: stableSunoId(`master-${type}-${index}`),
+      pluginVersionId: SUNO_PLUGIN_CATALOG.limiter.pluginVersionId,
+      bypassed: entry.enabled === false,
+      params: {
+        lookahead: Number(params.lookahead ?? 3),
+        preGain: Number(params.preGain ?? 0),
+        attack: Number(params.attack ?? 1),
+        release: Number(params.release ?? 60),
+      },
+      paramAutomation: {},
+    });
+  }
+  return chain;
+}
+
 /**
  * Build the Suno document for one Camxora project.
  *
@@ -366,7 +549,9 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
         amplitude: round(Math.max(0, Math.min(1.2, (Number(track.volume ?? 80) || 0) / 100))),
         balance: round(Math.max(-1, Math.min(1, (Number(track.pan ?? 0) || 0) / 100))),
         routingMode: "stereo",
-        signalChain: [],
+        signalChain: buildChain(
+          (data.chains ?? {})[track.id] as Array<Record<string, unknown>> | undefined
+        ),
         faderAutomation: automationToBeats(track.volumeAutomation, bps),
         clips,
         takeLanes: [
@@ -427,6 +612,7 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
     metronome: { enabled: false, amplitude: 1 },
     editorPointerModes: { midi: "select", audio: "select" },
     sections: sectionsFromMarkers(data.markers, bps, contentEndBeats),
+    masterSignalChain: buildMasterChain(data.masterChain),
     tracks: nextTracks,
     selection: {
       trackIds: nextTracks.map((track) => (track as { id?: string }).id ?? ""),
@@ -454,12 +640,15 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
   tracks: LocalTrack[];
   lanes: LocalClip[];
   markers: Array<{ id: string; time: number; label: string; color?: string }>;
+  chains: Record<string, Array<Record<string, unknown>>>;
+  masterChain: Array<Record<string, unknown>>;
 } {
   const bpm = bpmFromState(state.timing);
   const bps = round(bpm / 60);
   const signature = timeSignatureFromState(state.timeSignatureChanges);
   const tracks: LocalTrack[] = [];
   const lanes: LocalClip[] = [];
+  const chains: Record<string, Array<Record<string, unknown>>> = {};
 
   const sunoTracks = Array.isArray(state.tracks) ? state.tracks : [];
   sunoTracks.forEach((entry, index) => {
@@ -512,9 +701,47 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
       hidden: Boolean(track.hidden),
       clipIds,
     });
+    const sunoChain = Array.isArray(track.signalChain) ? track.signalChain : [];
+    const mappedChain = sunoChain
+      .map((entry, chainIndex) =>
+        chainEntryFromSuno((entry ?? {}) as Record<string, unknown>, chainIndex)
+      )
+      .filter((entry): entry is Record<string, unknown> => entry !== null);
+    if (mappedChain.length > 0 && mappedChain.length === sunoChain.length) {
+      chains[trackId] = mappedChain;
+    }
   });
 
-  return { bpm, timeSignature: signature, tracks, lanes, markers: markersFromState(state.sections, bps) };
+  const masterChain: Array<Record<string, unknown>> = [];
+  for (const entry of Array.isArray(state.masterSignalChain) ? state.masterSignalChain : []) {
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const params = (record.params ?? {}) as Record<string, unknown>;
+    const isLimiter =
+      record.pluginVersionId === SUNO_PLUGIN_CATALOG.limiter.pluginVersionId ||
+      (typeof record.pluginVersionId !== "string" && record.id);
+    if (!isLimiter) continue;
+    masterChain.push({
+      id: "master-limiter",
+      type: "limiter",
+      enabled: record.bypassed !== true,
+      params: {
+        lookahead: Number(params.lookahead) || 3,
+        preGain: Number(params.preGain) || 0,
+        attack: Number(params.attack) || 1,
+        release: Number(params.release) || 60,
+      },
+    });
+  }
+
+  return {
+    bpm,
+    timeSignature: signature,
+    tracks,
+    lanes,
+    markers: markersFromState(state.sections, bps),
+    chains,
+    masterChain,
+  };
 }
 
 /** Short, readable suffix for ids created from a Suno id. */
@@ -539,6 +766,8 @@ export function mergeSunoProjectIntoLocal(
     tracks: LocalTrack[];
     lanes: LocalClip[];
     markers?: Array<{ id: string; time: number; label: string; color?: string }>;
+    chains?: Record<string, Array<Record<string, unknown>>>;
+    masterChain?: Array<Record<string, unknown>>;
   }
 ): { data: LocalDocument; keptLocalClips: string[]; droppedTracks: string[] } {
   const localTracks = Array.isArray(local.tracks) ? local.tracks : [];
@@ -634,6 +863,13 @@ export function mergeSunoProjectIntoLocal(
       tracks,
       lanes: localLanes,
       markers: suno.markers ?? local.markers,
+      // Per-track merge: a Suno chain we could not fully map leaves the local
+      // chain in place rather than dropping effects silently.
+      chains: { ...(local.chains ?? {}), ...(suno.chains ?? {}) },
+      masterChain:
+        suno.masterChain && suno.masterChain.length > 0
+          ? suno.masterChain
+          : local.masterChain,
     },
     keptLocalClips,
     droppedTracks,

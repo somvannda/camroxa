@@ -242,6 +242,158 @@ test("loading a Suno document replaces the local markers with Suno's sections", 
   assert.deepEqual(merged.data.markers, [{ id: "new", time: 8, label: "New" }]);
 });
 
+test("effects map onto Suno plugin instances with translated params", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "fx-1",
+        pluginId: "compressor",
+        presetName: "Custom",
+        presetId: "preset-1",
+        params: { threshold: -20, ratio: 4, knee: 6, attack: 10, release: 120, gain: 3 },
+      },
+      {
+        entryId: "fx-2",
+        pluginId: "reverb",
+        presetName: "Custom",
+        params: { time: 3, mix: 30, width: 100, damping: 40, predelay: 20, lowCut: 120, highCut: 14000 },
+      },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "FX",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
+    Record<string, unknown>
+  >;
+  assert.equal(chain.length, 2);
+  assert.equal(chain[0].pluginVersionId, "a4838315-d631-4255-946c-c65531bc9cd4");
+  assert.equal(chain[0].presetId, "preset-1");
+  assert.equal(chain[0].bypassed, false);
+  assert.deepEqual(chain[0].paramAutomation, {});
+  assert.equal((chain[0].params as Record<string, number>).output, 3);
+  assert.equal((chain[0].params as Record<string, number>).threshold, -20);
+  assert.equal(chain[1].pluginVersionId, "dec400a6-9dac-4c8a-b553-dd7bd2eb5f29");
+  assert.equal((chain[1].params as Record<string, number>).highCut, 14000);
+});
+
+test("plugins without a verified translation are left out of the Suno chain", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      { entryId: "fx-1", pluginId: "distortion", params: { drive: 0.5 } },
+      { entryId: "fx-2", pluginId: "gate", params: { threshold: -40, floor: -60, attack: 2, hold: 50 } },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "FX partial",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
+    Record<string, unknown>
+  >;
+  assert.equal(chain.length, 1);
+  assert.equal(chain[0].pluginVersionId, "14fb47e6-c951-4a35-bfa6-f14d2396b4d0");
+});
+
+test("the EQ maps four bands and disables the fifth and sixth", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "eq-1",
+        pluginId: "eq",
+        presetName: "Custom",
+        params: {
+          "band1.freq": 80,
+          "band1.q": 0.7,
+          "band1.gain": -3,
+          "band1.on": 1,
+          "band4.on": 0,
+        },
+      },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "EQ",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
+    Record<string, unknown>
+  >;
+  const params = chain[0].params as Record<string, unknown>;
+  assert.equal(params.freq1, 80);
+  assert.equal(params.gain1, -3);
+  assert.equal(params.enabled1, true);
+  assert.equal(params.enabled4, false);
+  assert.equal(params.enabled5, false);
+  assert.equal(params.enabled6, false);
+});
+
+test("the master limiter maps and other master effects stay local", () => {
+  const data = localDocument();
+  data.masterChain = [
+    { type: "limiter", enabled: true, params: { lookahead: 5, preGain: -2, attack: 2, release: 80 } },
+    { type: "eq", enabled: true, amount: 0.5 },
+  ];
+  const { state } = projectDocumentToSunoState({
+    title: "Master",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const master = state.masterSignalChain as Array<Record<string, unknown>>;
+  assert.equal(master.length, 1);
+  assert.equal(master[0].pluginVersionId, "bf422c67-c85e-4b6d-9db9-1769c5912941");
+  assert.deepEqual(master[0].params, { lookahead: 5, preGain: -2, attack: 2, release: 80 });
+});
+
+test("chains and the master limiter project back from a Suno document", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "fx-1",
+        pluginId: "reverb",
+        presetName: "Custom",
+        params: { time: 3, mix: 30, width: 100, damping: 40, predelay: 20, lowCut: 120, highCut: 14000 },
+      },
+    ],
+  };
+  data.masterChain = [{ type: "limiter", enabled: true, params: { lookahead: 5, preGain: 0, attack: 1, release: 60 } }];
+  const { state } = projectDocumentToSunoState({
+    title: "Round trip",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const projected = sunoStateToProjectData(state);
+  const trackId = projected.tracks[0].id;
+  assert.equal(projected.chains[trackId]?.length, 1);
+  assert.equal(projected.chains[trackId]?.[0].pluginId, "reverb");
+  assert.equal((projected.chains[trackId]?.[0].params as Record<string, number>).mix, 30);
+  assert.equal(projected.masterChain.length, 1);
+  assert.equal(projected.masterChain[0].type, "limiter");
+});
+
 test("a fresh Suno project has the fields the client validates", () => {
   const state = emptySunoState("Untitled Project");
   assert.ok(state.timing);
