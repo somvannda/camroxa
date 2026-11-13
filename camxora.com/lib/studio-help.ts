@@ -173,6 +173,8 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Shift A", action: "Toggle the automation band" },
   { keys: "Shift Tab", action: "Swap the take lanes and automation bands" },
   { keys: "Ctrl/⌘ + S", action: "Save now (the studio also saves automatically)" },
+  { keys: "MIDI editor · Ctrl/⌘ + K", action: "Toggle musical typing" },
+  { keys: "MIDI editor · A–;", action: "Play notes while musical typing is on (Z/X octave, C/V velocity)" },
   { keys: "Ctrl/⌘ + A", action: "Select all clips" },
   { keys: "Ctrl/⌘ + C", action: "Copy the selected clips" },
   { keys: "Ctrl/⌘ + X", action: "Cut the selection" },

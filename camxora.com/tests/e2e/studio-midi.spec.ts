@@ -228,3 +228,39 @@ test("the velocity lane's arrow keys set velocity and move notes", async ({ page
   await page.keyboard.press("ArrowRight");
   await expect(note).not.toHaveAttribute("aria-label", label ?? "");
 });
+test("Ctrl K turns on musical typing so Z stops zooming the roll", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, { title: "MIDI keys mode" });
+
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  await page.getByRole("menuitem", { name: /MIDI/ }).click();
+  const panel = page.getByRole("region", { name: "MIDI editor" });
+  const grid = panel.locator(".se-midi-grid");
+  await grid.click({ position: { x: 60, y: 96 } });
+  await grid.click({ position: { x: 200, y: 60 } });
+
+  const width = () =>
+    grid.evaluate((element) => Number.parseFloat((element as HTMLElement).style.width));
+
+  await page.keyboard.press("Control+a");
+  const fit = await width();
+  await page.keyboard.press("z");
+  await expect.poll(width).toBeGreaterThan(fit);
+  const zoomed = await width();
+
+  const keys = panel.getByRole("button", { name: /^Keys (On|Off)$/ });
+  await expect(keys).toHaveAttribute("aria-pressed", "false");
+  await page.keyboard.press("Control+k");
+  await expect(keys).toHaveAttribute("aria-pressed", "true");
+
+  // Z and X move the playable octave now, so the roll does not zoom.
+  await page.keyboard.press("z");
+  await page.keyboard.press("x");
+  expect(await width()).toBe(zoomed);
+
+  // A playable key auditions rather than editing the clip.
+  await page.keyboard.press("a");
+  await expect(panel.locator(".se-midi-note")).toHaveCount(2);
+});
+

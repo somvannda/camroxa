@@ -144,6 +144,34 @@ describe("StudioMidiEditor", () => {
       expect(moved[0].velocity).toBe(100);
     });
 
+    it("toggles musical typing with Ctrl K so Z stops zooming", () => {
+      const { section, container } = renderWithNotes();
+      const gridWidth = () =>
+        Number.parseFloat((container.querySelector(".se-midi-grid") as HTMLElement).style.width);
+      const keys = () => screen.getByRole("button", { name: /^Keys (On|Off)$/ });
+
+      expect(keys().getAttribute("aria-pressed")).toBe("false");
+      selectAll(section);
+
+      // Keys off: Z zooms the roll to the selection.
+      const fit = gridWidth();
+      fireEvent.keyDown(section, { key: "z" });
+      const zoomed = gridWidth();
+      expect(zoomed).toBeGreaterThan(fit);
+
+      // Keys on: Z moves the playable octave instead of zooming.
+      fireEvent.keyDown(section, { key: "k", ctrlKey: true });
+      expect(keys().getAttribute("aria-pressed")).toBe("true");
+      fireEvent.keyDown(section, { key: "z" });
+      expect(gridWidth()).toBe(zoomed);
+      fireEvent.keyDown(section, { key: "x" });
+      expect(gridWidth()).toBe(zoomed);
+
+      // The control bar toggles the same mode.
+      fireEvent.click(keys());
+      expect(keys().getAttribute("aria-pressed")).toBe("false");
+    });
+
     it("zooms the grid with Ctrl = / Ctrl - and Z fits the selection", () => {
       const { section, container } = renderWithNotes();
       const gridWidth = () =>

@@ -76,17 +76,14 @@ implements it, and how it was verified. Only rows that exist are listed.
 | `SHIFT TAB` swaps the take-lanes and automation bands | S14 overlay | shell keydown; the two bands are the bottom panels this build has |
 | `2` toggles the bottom plugin/master panel | S14 overlay | `bottomPanelOpen`; clip editors still open on their own |
 | `ENTER` promotes the focused take | S14 overlay "Promote Take Lane Selection" | take rows are buttons, so native activation promotes; asserted in the takes e2e |
+| `CTRL K` turns on musical typing | S14 overlay | MIDI panel only: `A`–`;` audition, `Z`/`X` octave, `C`/`V` velocity; the control bar's **Keys** pill does the same when a browser swallows the accelerator |
 
 ### S14 shortcut coverage still open
 
 | Binding | Why it is not wired yet |
 |---|---|
 | `SHIFT L` arrangement panel | there is no collapsible arrangement panel to toggle |
-| `CTRL S` save | wired: `saveNow` re-saves the current document through the same coalescing queue, and the browser's own save dialog is suppressed |
-| `CTRL K` toggle keyboard | there is no musical typing keyboard to show; `SHIFT ?` already opens this list |
 | `CTRL SHIFT ,` Studio settings | settings are a stored preference object, not a dialog |
-| `ENTER` Ask Studio / promote take lane | `ENTER` commits inline renames and prompt edits; promoting a take is the take row's native button activation (covered by the takes e2e) |
-| Playable keyboard | musical typing needs a captured surface; its `Z`/`X`/`C`/`V` collide with the zoom and clipboard keys |
 
 ## Not copied — by rule, not by accident
 
