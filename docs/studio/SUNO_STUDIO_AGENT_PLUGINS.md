@@ -146,6 +146,13 @@ plugin; entries whose plugin was deleted keep their ids and params.
 - Chain round-trip project `fc799784-9c13-439c-b358-939df9ab2d50` — archived.
 - Probe library plugin `10c35bed-09ff-4bfe-86a8-f386bc281934` — archived.
 
+The internal route was then verified live on 2026-11-13 against musicapi `:4003`
+using the already-ready job (no new credits): no token → 401, empty instruction →
+400, first poll → `ready` with a created library plugin in ~1.8 s, second poll →
+the same ids in <1 ms (ledger idempotency). The created plugin
+`a0af0a7b-04f4-479e-a15d-4102d08d220e` was archived and the test ledger row
+removed.
+
 ## 7. Still open
 
 - Credit accounting: the agent spends Suno credits; there is no local pricing
