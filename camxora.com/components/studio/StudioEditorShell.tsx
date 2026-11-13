@@ -6458,6 +6458,22 @@ export function StudioEditorShell() {
           setAudioClipId(null);
           setTakeLanesOpen(false);
         }}
+        onShowPlugins={() => {
+          setMidiClipId(null);
+          setAudioClipId(null);
+          setTakeLanesOpen(false);
+          setAutomationOpen(false);
+          setMasterSelected(false);
+          if (!selectedTrack) setSelectedTrack(tracks[0]?.id ?? null);
+        }}
+        onShowClipEditor={() => {
+          if (!selectedClip) {
+            setExportToast("Select a clip to edit.");
+            return;
+          }
+          const clip = clips.find((candidate) => candidate.id === selectedClip);
+          if (clip) handleClipDoubleClick(clip);
+        }}
         onWhatsThis={(next) => {
           const updated = { ...settingsRef.current, whatsThis: next };
           setSettings(updated);

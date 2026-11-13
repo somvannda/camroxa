@@ -29,6 +29,9 @@ export type StudioFooterProps = {
   /** Track automation band is open. */
   automationOpen?: boolean;
   onToggleAutomation?: () => void;
+  /** Reference footer tools: Plugins and Clip editor share the bottom panel. */
+  onShowPlugins?: () => void;
+  onShowClipEditor?: () => void;
 };
 
 export function StudioFooter(props: StudioFooterProps) {
@@ -48,26 +51,24 @@ export function StudioFooter(props: StudioFooterProps) {
     onToggleTakeLanes,
     automationOpen = false,
     onToggleAutomation,
+    onShowPlugins,
+    onShowClipEditor,
   } = props;
 
   return (
     <footer className="se-foot">
       <div className="se-foot-tools">
         <span className="se-foot-group">
-          <button type="button" className="se-icon" disabled aria-label="Tools (not wired)"><Icon name="fa-sliders" /></button>
-          <button type="button" className="se-icon" disabled aria-label="Draw (not wired)"><Icon name="fa-pen" /></button>
-        </span>
-        <span className="se-foot-group">
           <button
             type="button"
-            className={`se-icon${takeLanesOpen ? " on" : ""}`}
-            aria-label="Take lanes"
-            aria-pressed={takeLanesOpen}
-            onClick={() => onToggleTakeLanes?.()}
+            className="se-icon"
+            aria-label="Plugins"
+            title="Show the selected track's plugins"
+            disabled={!hasTrack}
+            onClick={() => onShowPlugins?.()}
           >
-            <Icon name="fa-bars" />
+            <Icon name="fa-sliders" />
           </button>
-          <button type="button" className="se-icon" disabled aria-label="Microphone input (use Record in the transport)" title="Recording lives in the transport: arm a track, then Record"><Icon name="fa-microphone" /></button>
           <button
             type="button"
             className={`se-icon${automationOpen ? " on" : ""}`}
@@ -77,6 +78,24 @@ export function StudioFooter(props: StudioFooterProps) {
             onClick={() => onToggleAutomation?.()}
           >
             <Icon name="fa-bezier-curve" />
+          </button>
+          <button
+            type="button"
+            className="se-icon"
+            aria-label="Clip editor"
+            title="Edit the selected clip"
+            onClick={() => onShowClipEditor?.()}
+          >
+            <Icon name="fa-wave-square" />
+          </button>
+          <button
+            type="button"
+            className={`se-icon${takeLanesOpen ? " on" : ""}`}
+            aria-label="Take lanes"
+            aria-pressed={takeLanesOpen}
+            onClick={() => onToggleTakeLanes?.()}
+          >
+            <Icon name="fa-bars" />
           </button>
         </span>
       </div>
