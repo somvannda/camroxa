@@ -78,8 +78,6 @@ export type PluginDef = {
   modes?: PluginMode[];
   /** Reference card showed an impulse-response slot instead of knobs. */
   assetSlot?: { key: string; label: string; emptyLabel: string };
-  /** True when the reference parameters are not fully captured. */
-  unverified?: boolean;
 };
 
 const EQ_BAND_DEFAULT = { freq: 1000, q: 1, gain: 0 };

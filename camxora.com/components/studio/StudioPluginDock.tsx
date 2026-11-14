@@ -1196,9 +1196,6 @@ export function StudioPluginDock({
                   <PluginPreview id={plugin.id} />
                   <span className="sp-card-name">
                     {plugin.name}
-                    {plugin.unverified ? (
-                      <em title="Not yet confirmed against the reference">unverified</em>
-                    ) : null}
                     <span
                       className="sp-card-learn"
                       data-help={`plugin-${plugin.id.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`}
