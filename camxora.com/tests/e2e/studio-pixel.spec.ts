@@ -295,9 +295,11 @@ test("Learn menu matches the captured popover", async ({ page }) => {
   expect(info.width).toBe(206);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
+  // S13 has four rows; YouTube Tutorials is dropped by product decision (no channel,
+  // and tutorials are not part of this product), so the popover keeps the captured
+  // geometry with three rows.
   expect(info.rows.map((row) => row.text)).toEqual([
     "Keyboard Shortcuts shift ?",
-    "YouTube Tutorials",
     "Learning Center",
     "What's This? On",
   ]);

@@ -250,13 +250,20 @@ test("Mashup combines the two selected clips on a new track", async ({ page }) =
     ],
   });
 
-  // Marquee both clips (the lane starts empty past the second clip).
+  // Marquee both clips. Both ends are derived from the clips themselves: starting on
+  // empty lane is required, or the gesture becomes a clip drag instead of a selection.
   const lane = page.locator(".se-lanes");
   const box = await lane.boundingBox();
-  if (!box) throw new Error("lanes have no box");
-  await page.mouse.move(box.x + 300, box.y + 40);
+  const clips = page.locator(".se-clip");
+  const firstBox = await clips.nth(0).boundingBox();
+  const secondBox = await clips.nth(1).boundingBox();
+  if (!box || !firstBox || !secondBox) throw new Error("timeline has no box");
+  const clipLeft = Math.min(firstBox.x, secondBox.x);
+  const clipRight = Math.max(firstBox.x + firstBox.width, secondBox.x + secondBox.width);
+  const y = firstBox.y + firstBox.height / 2;
+  await page.mouse.move(Math.min(box.x + box.width - 4, clipRight + 24), y);
   await page.mouse.down();
-  await page.mouse.move(box.x + 8, box.y + 40, { steps: 10 });
+  await page.mouse.move(Math.max(box.x + 4, clipLeft - 24), y, { steps: 10 });
   await page.mouse.up();
   await expect(page.locator(".se-clip.selected")).toHaveCount(2);
 
@@ -273,21 +280,36 @@ test("Mashup combines the two selected clips on a new track", async ({ page }) =
 
   await expect(page.getByRole("status")).toContainText("Mashup added as a new track");
 
-  const document = await page.evaluate(async (id) => {
-    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
-    return (await response.json()) as {
-      data: {
-        tracks: Array<{ name: string; clipIds: string[] }>;
-        lanes: Array<{ id: string; title?: string; start?: number; audioUrl?: string | null }>;
+  // The save is fire-and-forget, so every poll reads the server again: a snapshot taken
+  // once can predate the write and then never change.
+  const savedProject = () =>
+    page.evaluate(async (id) => {
+      const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+      return (await response.json()) as {
+        data: {
+          tracks: Array<{ name: string; clipIds: string[] }>;
+          lanes: Array<{ id: string; title?: string; start?: number; audioUrl?: string | null }>;
+        };
       };
-    };
-  }, projectId);
+    }, projectId);
 
   await expect
-    .poll(async () => document.data.tracks.length, { timeout: 15_000, intervals: [250] })
-    .toBeGreaterThanOrEqual(2);
-  const mashupTrack = document.data.tracks.find((track) => track.name === "Mashup");
-  expect(mashupTrack).toBeTruthy();
+    .poll(
+      async () =>
+        (await savedProject()).data.tracks.some((track) => track.name === "Mashup"),
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toBe(true);
+
+  const { data } = await savedProject();
+  const mashupTrack = data.tracks.find((track) => track.name === "Mashup");
+  expect(mashupTrack?.clipIds).toHaveLength(1);
+  const mashupLane = data.lanes.find((candidate) => candidate.id === mashupTrack?.clipIds[0]);
+  expect(mashupLane).toMatchObject({
+    title: "Mashup",
+    start: 0,
+    audioUrl: "/seed/demo-loop.wav",
+  });
 });
 
 test("Add vocals shows the credit price and lands as a take", async ({ page }) => {

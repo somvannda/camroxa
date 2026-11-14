@@ -296,8 +296,10 @@ counts. The panel is a browser preference, so it does not follow the user across
 
 **Date:** 2026-11-05 · **Status:** accepted (G25)
 
-**Decision.** The footer's **Learn** pill opens the four captured rows in order
-(Keyboard Shortcuts · YouTube Tutorials · Learning Center · What's This?). What's This?
+**Decision.** The footer's **Learn** pill opens the captured rows in order
+(Keyboard Shortcuts · Learning Center · What's This?). The captured YouTube Tutorials
+row is intentionally dropped — there is no channel and tutorials are not part of this
+product (D-034: no disabled rows). What's This?
 is a global toggle, default **on** like the capture, persisted in Studio settings, and it
 drives lightweight cards on any control marked `data-help`.
 

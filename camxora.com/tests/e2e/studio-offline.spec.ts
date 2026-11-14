@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { draftKey } from "@/lib/studio-draft";
+
 import { createStudioProject } from "./studio-fixture";
 
 /**
@@ -20,6 +22,19 @@ test("an offline edit is replayed when the connection returns", async ({ page, c
   await expect(page.getByText("Offline · changes not saved")).toBeVisible({ timeout: 10_000 });
   // The edit is present locally, so the user keeps working.
   await expect(page.locator(".se-track")).toHaveCount(2);
+  // The chip can appear from the browser's own `offline` event, before the write has
+  // failed. Wait for the captured draft: only then is the replay guaranteed to have
+  // something to send when the connection returns.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          (key) => Boolean(window.localStorage.getItem(key)),
+          draftKey(projectId)
+        ),
+      { timeout: 10_000, intervals: [100] }
+    )
+    .toBe(true);
 
   await context.setOffline(false);
   // Only after the replay does the chip tell the truth.
