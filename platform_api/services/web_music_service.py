@@ -1975,7 +1975,7 @@ class WebMusicService:
         rows = await self._pool.fetch(
             """
             SELECT p.id, p.title, p.major_version, p.bpm, p.time_signature,
-                   p.pinned, p.tags, p.archived, p.created_at, p.updated_at,
+                   p.pinned, p.tags, p.archived, p.created_at, p.updated_at, p.data,
                    COALESCE(c.comment_count, 0) AS comment_count,
                    c.last_comment_at
             FROM studio_projects p
@@ -2111,7 +2111,47 @@ class WebMusicService:
         }
         if include_data:
             payload["data"] = data if isinstance(data, dict) else {}
+        else:
+            payload["thumb"] = self._studio_thumb(data if isinstance(data, dict) else {})
         return payload
+
+    @staticmethod
+    def _studio_thumb(data: dict[str, Any]) -> dict[str, Any]:
+        """Compact arrangement preview for the project cards (S04).
+
+        Only what a thumbnail needs: per-track colour and clip spans, capped so a large
+        project cannot bloat the list response. The card scales bars to `end`.
+        """
+        lanes_raw = data.get("lanes")
+        tracks_raw = data.get("tracks")
+        lanes = lanes_raw if isinstance(lanes_raw, list) else []
+        tracks = tracks_raw if isinstance(tracks_raw, list) else []
+        by_id = {
+            str(clip.get("id")): clip
+            for clip in lanes
+            if isinstance(clip, dict) and clip.get("id") is not None
+        }
+        rows: list[dict[str, Any]] = []
+        end = 0.0
+        for track in tracks[:12]:
+            if not isinstance(track, dict):
+                continue
+            spans: list[dict[str, float]] = []
+            for clip_id in (track.get("clipIds") or [])[:24]:
+                clip = by_id.get(str(clip_id))
+                if not isinstance(clip, dict):
+                    continue
+                try:
+                    start = max(0.0, float(clip.get("start") or 0))
+                    duration = max(0.0, float(clip.get("duration") or 0))
+                except (TypeError, ValueError):
+                    continue
+                if duration <= 0:
+                    continue
+                spans.append({"s": round(start, 3), "d": round(duration, 3)})
+                end = max(end, start + duration)
+            rows.append({"c": str(track.get("color") or "#6b7280"), "clips": spans})
+        return {"tracks": rows, "end": round(end, 3)}
 
     async def create_studio_project(
         self,

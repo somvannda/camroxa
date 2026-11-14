@@ -26,6 +26,7 @@ vi.mock("@/lib/studio-api", async (importOriginal) => {
 });
 
 import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
+import { DEFAULT_STUDIO_SETTINGS } from "@/lib/studio-settings";
 
 afterEach(() => {
   cleanup();
@@ -40,7 +41,7 @@ function renderMenu(overrides: Partial<Parameters<typeof StudioProjectMenu>[0]> 
     <StudioProjectMenu
       projectId="p1"
       title="Demo"
-      settings={{ ghostDrag: true, whatsThis: true, inputDeviceId: null, countIn: false }}
+      settings={{ ...DEFAULT_STUDIO_SETTINGS }}
       onSettingsChange={onSettingsChange}
       onRenamed={onRenamed}
       onShowQuickStart={onShowQuickStart}
@@ -127,14 +128,37 @@ describe("StudioProjectMenu", () => {
     const dialog = await screen.findByRole("dialog", { name: "Studio settings" });
     expect(dialog).toBeTruthy();
     expect(screen.getByText("Performance")).toBeTruthy();
-    // Uncaptured, empty sections are removed instead of shipped as stubs.
-    expect(screen.queryByText("Window management")).toBeNull();
-    expect(screen.queryByText("Not captured yet.")).toBeNull();
+    // S09-S11: all three captured panes exist and are reachable.
+    for (const pane of ["Performance", "Window management", "Content"]) {
+      expect(screen.getByRole("button", { name: pane })).toBeTruthy();
+    }
 
     const ghost = screen.getByRole("checkbox", { name: "Ghost drag for arrangement moves" }) as HTMLInputElement;
     expect(ghost.checked).toBe(true);
     await user.click(ghost);
-    expect(onSettingsChange).toHaveBeenCalledWith({ ghostDrag: false, whatsThis: true, inputDeviceId: null, countIn: false });
+    expect(onSettingsChange).toHaveBeenCalledWith({ ...DEFAULT_STUDIO_SETTINGS, ghostDrag: false });
+  });
+
+  it("wires the captured Window management and Content panes", async () => {
+    const user = userEvent.setup();
+    const { onSettingsChange } = renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Studio Settings/ }));
+
+    await user.click(screen.getByRole("button", { name: "Window management" }));
+    expect(screen.getByText("Keyboard & plugin windows")).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: "Windows" }));
+    expect(onSettingsChange).toHaveBeenCalledWith({ ...DEFAULT_STUDIO_SETTINGS, windowMode: "windows" });
+
+    await user.click(screen.getByRole("button", { name: "Content" }));
+    expect(screen.getByText("Auto-stretch added audio")).toBeTruthy();
+    expect(screen.getByText("Advanced content features")).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "Advanced content features" }));
+    expect(onSettingsChange).toHaveBeenCalledWith({
+      ...DEFAULT_STUDIO_SETTINGS,
+      advancedContent: true,
+    });
   });
 
   it("opens settings with ctrl shift ,", async () => {

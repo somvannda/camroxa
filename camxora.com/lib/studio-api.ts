@@ -27,6 +27,14 @@ export type StudioProject = {
   updated_at?: string | null;
   /** Mirror state for list surfaces; absent when the mirror is unreachable. */
   sync?: { status: "pending" | "linked" | "synced" | "conflict" | "error" } | null;
+  /** S04: compact arrangement preview computed by the list endpoint. */
+  thumb?: StudioProjectThumb | null;
+};
+
+/** One row of a project-card mini-timeline. */
+export type StudioProjectThumb = {
+  tracks: Array<{ c: string; clips: Array<{ s: number; d: number }> }>;
+  end: number;
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {

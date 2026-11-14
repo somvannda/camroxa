@@ -302,6 +302,73 @@ export function createPluginAudio(
     };
   }
 
+  if (id === "stereoUtility") {
+    // Mid/side image (S21): Level → width on the side path (with a mono-bass low cut) → pan.
+    const level = ctx.createGain();
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const leftMid = ctx.createGain();
+    const rightMid = ctx.createGain();
+    const leftSide = ctx.createGain();
+    const rightSide = ctx.createGain();
+    const mid = ctx.createGain();
+    const side = ctx.createGain();
+    const sideCut = ctx.createBiquadFilter();
+    const sidePositive = ctx.createGain();
+    const sideNegative = ctx.createGain();
+    const panner = ctx.createStereoPanner();
+
+    leftMid.gain.value = 0.5;
+    rightMid.gain.value = 0.5;
+    leftSide.gain.value = 0.5;
+    rightSide.gain.value = -0.5;
+    sideCut.type = "highpass";
+
+    level.connect(splitter);
+    splitter.connect(leftMid, 0);
+    splitter.connect(rightMid, 1);
+    splitter.connect(leftSide, 0);
+    splitter.connect(rightSide, 1);
+    leftMid.connect(mid);
+    rightMid.connect(mid);
+    leftSide.connect(side);
+    rightSide.connect(side);
+    side.connect(sideCut);
+    sideCut.connect(sidePositive);
+    sideCut.connect(sideNegative);
+    mid.connect(merger, 0, 0);
+    mid.connect(merger, 0, 1);
+    sidePositive.connect(merger, 0, 0);
+    sideNegative.connect(merger, 0, 1);
+    merger.connect(panner);
+
+    const apply = (p: Record<string, number>) => {
+      level.gain.value = Math.pow(10, clamp(p.level ?? 0, -24, 24) / 20);
+      const width = clamp((p.width ?? 150) / 100, 0, 2);
+      sidePositive.gain.value = width;
+      sideNegative.gain.value = -width;
+      sideCut.frequency.value = clamp(p.bassMono ?? 120, 20, 300);
+      panner.pan.value = clamp((p.pan ?? 0) / 100, -1, 1);
+    };
+    apply(params);
+    return {
+      input: level,
+      output: panner,
+      update: apply,
+      dispose: () => {
+        level.disconnect();
+        splitter.disconnect();
+        mid.disconnect();
+        side.disconnect();
+        sideCut.disconnect();
+        sidePositive.disconnect();
+        sideNegative.disconnect();
+        merger.disconnect();
+        panner.disconnect();
+      },
+    };
+  }
+
   if (id === "distortion") {
     const shaper = ctx.createWaveShaper();
     const tone = ctx.createBiquadFilter();

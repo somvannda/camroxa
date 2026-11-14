@@ -25,9 +25,12 @@ export const MIDI_PITCHES = MIDI_MAX_PITCH - MIDI_MIN_PITCH + 1;
 
 export type MidiChordMode = "off" | "major" | "minor";
 export type MidiArpMode = "off" | "up" | "down";
-export type MidiInstrument = "triangle" | "sine" | "sawtooth";
+export type MidiInstrument = "triangle" | "sine" | "sawtooth" | `wavetable:${string}`;
 
 export function normalizeMidiInstrument(value: unknown): MidiInstrument {
+  if (typeof value === "string" && value.startsWith("wavetable:") && value.length > 10) {
+    return value as MidiInstrument;
+  }
   return value === "sine" || value === "sawtooth" ? value : "triangle";
 }
 
@@ -199,11 +202,19 @@ export function scheduleMidiNote(
   when: number,
   rate = 1,
   automation?: { bend?: number; mod?: number },
-  instrument: MidiInstrument = "triangle"
+  instrument: MidiInstrument = "triangle",
+  /** N-14: a designed wavetable replaces the built-in oscillator shape. */
+  wave?: PeriodicWave | null
 ): AudioScheduledSourceNode[] {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
-  oscillator.type = instrument;
+  if (wave) {
+    oscillator.setPeriodicWave(wave);
+  } else if (!instrument.startsWith("wavetable:")) {
+    oscillator.type = instrument as OscillatorType;
+  } else {
+    oscillator.type = "sine";
+  }
   oscillator.frequency.value = midiToFreq(note.pitch);
   // Pitch bend is applied as detune at the note's start (captured lane, simplified).
   oscillator.detune.value = (automation?.bend ?? 0) * 200;

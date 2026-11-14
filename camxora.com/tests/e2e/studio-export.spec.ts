@@ -15,11 +15,11 @@ test("full mix downloads a RIFF file and JSON exports the document", async ({ pa
   const title = `Export ${tag}`;
   await createStudioProject(page, { title });
 
-  // Full mix (WAV): the fixture has one 4-second clip with no audio URL, so the mix is
+  // Full Song: the fixture has one 4-second clip with no audio URL, so the mix is
   // silence — but it must still be a valid, correctly sized RIFF file.
   await page.getByLabel("Export menu").click();
   const wavDownload = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+  await page.getByRole("menuitem", { name: "Full Song" }).click();
   const wav = await wavDownload;
   expect(wav.suggestedFilename()).toBe(`${title}.wav`);
 
@@ -33,10 +33,10 @@ test("full mix downloads a RIFF file and JSON exports the document", async ({ pa
   const expected = 44 + 4 * 44100 * 2 * 2;
   expect(Math.abs(bytes.length - expected)).toBeLessThan(2000);
 
-  // One file per track: a single track means exactly one download.
+  // Multitrack: a single track means exactly one download.
   await page.getByLabel("Export menu").click();
   const trackDownload = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: "One file per track" }).click();
+  await page.getByRole("menuitem", { name: "Multitrack" }).click();
   const track = await trackDownload;
   expect(track.suggestedFilename()).toContain("Track 1");
 
@@ -56,7 +56,7 @@ test("full mix downloads a RIFF file and JSON exports the document", async ({ pa
   expect(document.data?.tracks).toHaveLength(1);
 });
 
-test("selected time range exports the loop range only", async ({ page }) => {
+test("Selected Time Range exports the loop range only", async ({ page }) => {
   test.setTimeout(120_000);
 
   const tag = Math.random().toString(36).slice(2, 8);
@@ -66,7 +66,7 @@ test("selected time range exports the loop range only", async ({ page }) => {
   await page.locator(".se-head").getByRole("button", { name: "Loop", exact: true }).click();
 
   await page.getByLabel("Export menu").click();
-  const range = page.getByRole("menuitem", { name: "Selected time range (WAV)" });
+  const range = page.getByRole("menuitem", { name: "Selected Time Range" });
   await expect(range).toBeEnabled();
   const download = page.waitForEvent("download");
   await range.click();

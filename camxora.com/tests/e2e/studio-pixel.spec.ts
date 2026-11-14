@@ -470,6 +470,7 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Download WAV",
     "Download MIDI",
     "Get MIDI",
+    "Add FX…",
     "Remove FX",
   ]);
   expect(info.rows[0]?.hintSize).toBe("11px");
@@ -860,7 +861,9 @@ test("the convolution card loads an impulse response from the library", async ({
 
   await slot.getByRole("button", { name: "Impulse response" }).click();
   const menu = page.getByRole("menu", { name: "Impulse responses" });
-  await expect(menu.getByRole("menuitem")).toHaveCount(7);
+  // Six IR groups; the designer row is hidden until Content → Advanced content is on.
+  await expect(menu.getByRole("menuitem")).toHaveCount(6);
+  await expect(menu.getByRole("menuitem", { name: "Design response." })).toHaveCount(0);
   await menu.getByRole("menuitem", { name: "Halls" }).click();
   await menu.getByRole("menuitem", { name: "New England Hall" }).click();
   await expect(menu).toHaveCount(0);

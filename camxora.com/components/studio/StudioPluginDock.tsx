@@ -48,6 +48,7 @@ import {
   type ImpulseResponse,
 } from "@/lib/studio-ir";
 import { StudioIRDesigner } from "@/components/studio/StudioIRDesigner";
+import type { StudioWindowMode } from "@/lib/studio-settings";
 
 type Props = {
   chain: PluginChainEntry[];
@@ -68,6 +69,10 @@ type Props = {
     params: Record<string, number>,
     mode?: string
   ) => void;
+  /** S10: whether cards open docked, floating, or with a per-card toggle. */
+  windowMode?: StudioWindowMode;
+  /** S11: sound-design tools are hidden when this is off. */
+  advancedContent?: boolean;
 };
 
 /**
@@ -180,6 +185,7 @@ function ConvolutionCard({
   disabled,
   onAsset,
   onChange,
+  advancedContent,
 }: {
   assetId: string | null;
   params: ParamDef[];
@@ -187,6 +193,7 @@ function ConvolutionCard({
   disabled: boolean;
   onAsset: (id: string | null) => void;
   onChange: (key: string, value: number) => void;
+  advancedContent: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
@@ -337,16 +344,18 @@ function ConvolutionCard({
                     : null}
                 </div>
               ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  setDesignOpen(true);
-                }}
-              >
-                <Icon name="fa-plus" /> Design response.
-              </button>
+              {advancedContent ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    setDesignOpen(true);
+                  }}
+                >
+                  <Icon name="fa-plus" /> Design response.
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -633,6 +642,8 @@ export function StudioPluginDock({
   tracks = [],
   userPresets = [],
   onSavePreset,
+  windowMode = "toggle",
+  advancedContent = false,
 }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -675,6 +686,14 @@ export function StudioPluginDock({
     );
   }, [customPlugins, query]);
 
+  /**
+   * S10 Window management: "Panels" docks every card, "Windows" floats them all, and
+   * "Show toggle" leaves the decision to each card's Pop out control (remembered in the
+   * chain, so it survives a reload).
+   */
+  const isPopped = (entry: PluginChainEntry): boolean =>
+    windowMode === "windows" ? true : windowMode === "panels" ? false : Boolean(entry.poppedOut);
+
   return (
     <section className="sp-dock" aria-label={trackName ? `Plugins for ${trackName}` : "Plugin chain"}>
       <div className="sp-rail">
@@ -698,7 +717,7 @@ export function StudioPluginDock({
               key={entry.entryId}
               className={`sp-slot${entry.bypassed ? " is-bypassed" : ""}${
                 plugin.id === "eq" ? " sp-slot-eq" : ""
-              }${entry.poppedOut ? " is-popped" : ""}`}
+              }${isPopped(entry) ? " is-popped" : ""}`}
               aria-label={`${plugin.name} slot ${index + 1}`}
             >
               <header className="sp-slot-head">
@@ -895,14 +914,16 @@ export function StudioPluginDock({
                   >
                     <Icon name="fa-chevron-right" />
                   </button>
-                  <button
-                    type="button"
-                    aria-label={`${entry.poppedOut ? "Dock" : "Pop out"} ${plugin.name}`}
-                    aria-pressed={entry.poppedOut}
-                    onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
-                  >
-                    <Icon name="fa-up-right-from-square" />
-                  </button>
+                  {windowMode === "toggle" ? (
+                    <button
+                      type="button"
+                      aria-label={`${isPopped(entry) ? "Dock" : "Pop out"} ${plugin.name}`}
+                      aria-pressed={isPopped(entry)}
+                      onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
+                    >
+                      <Icon name="fa-up-right-from-square" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     aria-label={`Remove ${plugin.name}`}
@@ -942,6 +963,7 @@ export function StudioPluginDock({
                   params={plugin.params}
                   values={entry.params}
                   disabled={Boolean(entry.bypassed)}
+                  advancedContent={advancedContent}
                   onAsset={(id) => onChange(setAsset(chain, entry.entryId, id))}
                   onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
                 />

@@ -92,6 +92,7 @@ import {
 } from "@/lib/studio-time";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { computePeaks, detectOnsets } from "@/lib/studio-peaks";
+import { autoStretchSpeed } from "@/lib/studio-tempo";
 import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
 import { EXPORT_TARGET_PEAK_DB } from "@/lib/studio-normalise";
 import {
@@ -109,11 +110,12 @@ import {
   secondsPerBar as secondsPerBarFor,
 } from "@/lib/studio-signature";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
-import { addCustomPlugin } from "@/lib/studio-plugin-chain";
+import { addCustomPlugin, addPlugin, sanitizeChain } from "@/lib/studio-plugin-chain";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import {
   makeUserPreset,
   sanitizeCustomPlugin,
+  STUDIO_PLUGINS,
   type CustomPlugin,
   type PluginChainEntry,
   type UserPreset,
@@ -125,6 +127,7 @@ import {
   restateDesign,
 } from "@/lib/studio-designer";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
+import { StudioWavetableDesigner } from "@/components/studio/StudioWavetableDesigner";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
 import { StudioTakeLanes } from "@/components/studio/StudioTakeLanes";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
@@ -144,6 +147,13 @@ import {
   type MidiInstrument,
   type MidiNote,
 } from "@/lib/studio-midi";
+import {
+  sanitizeWavetables,
+  wavetableIdFromInstrument,
+  wavetableInstrumentId,
+  wavetablePeriodicWave,
+  type CustomWavetable,
+} from "@/lib/studio-wavetable";
 import { buildMidiFile } from "@/lib/studio-midi-file";
 import { parseMidiFile } from "@/lib/studio-midi-import";
 import { classifyStudioError } from "@/lib/studio-errors";
@@ -207,6 +217,8 @@ type ClipLike = {
   warp?: unknown;
   /** Clip Settings audio state (S30/§81); parsed by `sanitizeClipAudio`. */
   audio?: unknown;
+  /** Clip-level insert chain (§34 "Remove FX"); parsed by `sanitizeChain`. */
+  fx?: unknown;
   midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
   /** MIDI synth voice (S31); triangle when absent. */
   instrument?: MidiInstrument;
@@ -399,6 +411,11 @@ export function StudioEditorShell() {
   } | null>(null);
   /** Clip context menu (S26/§47): anchored at the click point, built from clip state. */
   const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);  const [clipColorOpen, setClipColorOpen] = useState(false);
+  /** §34: clip whose own insert chain is being edited (null = picker closed). */
+  const [clipFxTarget, setClipFxTarget] = useState<string | null>(null);
+  /** N-14: Wavetable Designer, and the MIDI clip that will use the saved table. */
+  const [wavetableOpen, setWavetableOpen] = useState(false);
+  const [wavetableClipId, setWavetableClipId] = useState<string | null>(null);
   /** Clip rename dialog (clip menu ▸ Rename). */
   const [clipRename, setClipRename] = useState<{ id: string; value: string } | null>(null);
   /** Copy/paste buffer for Clip Settings (gain, loop, reverse, pitch, speed, fade). */
@@ -625,6 +642,16 @@ export function StudioEditorShell() {
     writeProjectData(
       { ...data, lanes: lanes.map((clip) => (clip.id === clipId ? { ...clip, audio } : clip)) },
       "the clip settings"
+    );
+  }
+
+  /** §34: replace a clip's own insert chain (empty array removes it). */
+  function setClipFx(clipId: string, fx: unknown) {
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      { ...data, lanes: lanes.map((clip) => (clip.id === clipId ? { ...clip, fx } : clip)) },
+      "the clip effects"
     );
   }
 
@@ -1110,6 +1137,8 @@ export function StudioEditorShell() {
   function currentData(): Record<string, unknown> {
     return (projectRef.current?.data || {}) as Record<string, unknown>;
   }
+  /** N-14: wavetables saved in this project's document. */
+  const wavetables = sanitizeWavetables((currentData() as { wavetables?: unknown }).wavetables);
   /** Load the library panel's lists the first time it opens (G12). */
   useEffect(() => {
     if (!libraryOpen || !user) return;
@@ -1745,10 +1774,18 @@ export function StudioEditorShell() {
   }
 
   /** Drop an imported upload onto the selected (or first) track at the playhead. */
-  function addUploadToTimeline(upload: StudioUpload) {
+  async function addUploadToTimeline(upload: StudioUpload) {
     const trackId = selectedTrack ?? tracks[0]?.id;
     if (!trackId || !upload.url) return;
     const title = upload.filename.replace(/\.[^.]+$/, "") || "Audio";
+    const duration = upload.duration_seconds ?? 8;
+    // Content → Auto-stretch added audio (S11): only uploads, never generated clips.
+    const stretch = autoStretchSpeed(
+      await computePeaks(upload.url),
+      duration,
+      bpm,
+      settingsRef.current.autoStretch
+    );
     insertClips([
       {
         trackId,
@@ -1756,14 +1793,30 @@ export function StudioEditorShell() {
           id: `clip-upload-${upload.id}-${Date.now().toString(36)}`,
           title,
           start: snapToGrid(playhead, secondsPerBar, gridDivisions),
-          duration: upload.duration_seconds ?? 8,
+          duration,
           volume: 1,
           pan: 0,
           audioUrl: upload.url,
           uploadId: upload.id,
+          ...(stretch
+            ? {
+                audio: {
+                  gainDb: 0,
+                  loop: false,
+                  reverse: false,
+                  pitch: 0,
+                  speed: stretch.speed,
+                },
+              }
+            : {}),
         } as ClipLike & { audioUrl?: string | null; uploadId?: string },
       },
     ]);
+    if (stretch) {
+      setExportToast(
+        `Stretched “${title}” from ${stretch.sourceBpm} to ${bpm} BPM.`
+      );
+    }
   }
 
   /** Drop a library song on a lane: insert where the pointer landed, snapped. */
@@ -3057,6 +3110,21 @@ export function StudioEditorShell() {
     );
   }
 
+  /** N-14: save a designed wavetable and point the open MIDI clip at it. */
+  function saveWavetable(table: CustomWavetable) {
+    const data = currentData();
+    const existing = sanitizeWavetables((data as { wavetables?: unknown }).wavetables);
+    writeProjectData(
+      { ...data, wavetables: [...existing.filter((entry) => entry.id !== table.id), table] },
+      "the wavetable"
+    );
+    if (wavetableClipId) {
+      setMidiInstrument(wavetableClipId, wavetableInstrumentId(table.id) as MidiInstrument);
+    }
+    setWavetableOpen(false);
+    setExportToast(`Wavetable “${table.name}” saved.`);
+  }
+
   const derivedChains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
     return (data.chains as Record<string, PluginChainEntry[]>) || {};
@@ -3576,6 +3644,7 @@ export function StudioEditorShell() {
       const wav = await renderMix(buffers, exportClips, exportTracks, {
         chain,
         chains,
+        wavetables,
         clipIds: new Set([clipId]),
         honourSolo: false,
         masterGain: 1,
@@ -4222,6 +4291,20 @@ export function StudioEditorShell() {
     const context = audioRef.current?.ctx ?? new AudioContext();
     await context.resume();
 
+    // N-14: build each designed wavetable once per playback start.
+    const waveCache = new Map<string, PeriodicWave>();
+    function waveFor(instrument: string | undefined): PeriodicWave | null {
+      const id = wavetableIdFromInstrument(instrument ?? "");
+      if (!id) return null;
+      const cached = waveCache.get(id);
+      if (cached) return cached;
+      const table = wavetables.find((candidate) => candidate.id === id);
+      if (!table) return null;
+      const wave = wavetablePeriodicWave(context, table.harmonics);
+      waveCache.set(id, wave);
+      return wave;
+    }
+
     const cache = bufferCacheRef.current;
     await Promise.all(
       arrangement.map(async (clip) => {
@@ -4395,6 +4478,15 @@ export function StudioEditorShell() {
         volumeNode.connect(destination);
         nodeInput = volumeNode;
       }
+      // Clip-level inserts (§34): clip → clip FX → clip gain/fade → track chain.
+      const clipFx = sanitizeChain((clip as { fx?: unknown }).fx);
+      let clipInput: AudioNode = nodeInput;
+      if (clipFx.length > 0) {
+        const chain = buildPluginChain(context, clipFx);
+        chain.output.connect(nodeInput);
+        audioRef.current?.disposeChains?.push(chain.dispose);
+        clipInput = chain.input;
+      }
       const fadeIn = Math.min(
         (clip as { fadeIn?: number }).fadeIn ?? 0,
         duration
@@ -4416,10 +4508,10 @@ export function StudioEditorShell() {
           clipGain.gain.setValueAtTime(1, when + fadeStart);
           clipGain.gain.linearRampToValueAtTime(0, when + remaining);
         }
-        clipGain.connect(nodeInput);
+        clipGain.connect(clipInput);
         source.connect(clipGain);
       } else {
-        source.connect(nodeInput);
+        source.connect(clipInput);
       }
       if (plan.loop) {
         source.start(when, plan.bufferStart);
@@ -4448,6 +4540,15 @@ export function StudioEditorShell() {
       const audible = !mix.muted;
       const volume = audible ? mix.volume : 0;
       const destination = trackInput(track?.id ?? clip.id, volume, track?.pan ?? 0);
+      // Clip-level inserts apply to MIDI clips too (clip → clip FX → track chain).
+      const clipFx = sanitizeChain((clip as { fx?: unknown }).fx);
+      let clipInput: AudioNode = destination;
+      if (clipFx.length > 0) {
+        const chain = buildPluginChain(context, clipFx);
+        chain.output.connect(destination);
+        audioRef.current?.disposeChains?.push(chain.dispose);
+        clipInput = chain.input;
+      }
       for (const note of notes) {
         const absolute = start + note.start;
         if (absolute + note.length <= from) continue;
@@ -4458,12 +4559,13 @@ export function StudioEditorShell() {
         audioRef.current?.sources.push(
           ...scheduleMidiNote(
             context,
-            destination,
+            clipInput,
             note,
             when,
             playbackRate,
             { bend, mod },
-            normalizeMidiInstrument((clip as ClipLike).instrument)
+            normalizeMidiInstrument((clip as ClipLike).instrument),
+            waveFor((clip as ClipLike).instrument)
           )
         );
       }
@@ -4580,36 +4682,39 @@ export function StudioEditorShell() {
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
           chains: trackChains,
+          wavetables,
           normalise,
           masterGain,
         });
         download(wav, `${project.title || "mix"}.wav`, "audio/wav");
-        setExportToast("Full mix download started!");
+        setExportToast("Full Song download started!");
       } else if (scope === "range") {
         // Exports the time selection, or the loop range as the reference fallback (§87).
         const bounds = timeSelection ?? { start: loopStart, end: loopEnd };
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
           chains: trackChains,
+          wavetables,
           normalise,
           masterGain,
           from: bounds.start,
           to: bounds.end,
         });
         download(wav, `${project.title || "mix"} - selection.wav`, "audio/wav");
-        setExportToast("Selection download started!");
+        setExportToast("Selected time range download started!");
       } else {
         for (const track of exportTracks) {
           const wav = await renderMix(buffers, exportClips, exportTracks, {
             chain,
             chains: trackChains,
+            wavetables,
             clipIds: new Set(track.clipIds),
             honourSolo: false,
           });
           const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
           download(wav, `${project.title || "project"} - ${label}.wav`, "audio/wav");
         }
-        setExportToast("One file per track download started!");
+        setExportToast("Multitrack download started!");
       }
     } catch {
       setError("Export failed. Check that the clips still have audio.");
@@ -4676,6 +4781,7 @@ export function StudioEditorShell() {
       const wav = await renderMix(buffers, exportClips, exportTracks, {
         chain: (currentData() as { masterChain?: MasterChainEntry[] }).masterChain,
         chains,
+        wavetables,
         clipIds: new Set(track.clipIds),
         honourSolo: false,
         // A bounce is the track alone: no master fader, no master mute.
@@ -5798,7 +5904,7 @@ export function StudioEditorShell() {
               onAudition={auditionSong}
               onToggleLike={(song, nextLiked) => void toggleSongLike(song, nextLiked)}
               onToggleUploadPlay={toggleUploadPreview}
-              onAddUpload={addUploadToTimeline}
+              onAddUpload={(upload) => void addUploadToTimeline(upload)}
               onToggleStemPlay={toggleStemPreview}
               onAddStem={addStemToTimeline}
               onOpenProject={(id) => {
@@ -6527,16 +6633,25 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!owner || (chains[owner.id] ?? []).length === 0}
+                  onClick={() => {
+                    setClipFxTarget(clip.id);
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-plus" /> Add FX…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={sanitizeChain((clip as { fx?: unknown }).fx).length === 0}
                   title={
-                    owner
-                      ? "Remove every plugin from this clip's track"
-                      : "No track owns this clip"
+                    sanitizeChain((clip as { fx?: unknown }).fx).length === 0
+                      ? "This clip has no effects"
+                      : "Remove this clip's own effects"
                   }
                   onClick={() => {
-                    if (!owner) return;
-                    commitChain(owner.id, []);
-                    setExportToast("Track effects removed.");
+                    setClipFx(clip.id, []);
+                    setExportToast("Clip effects removed.");
                     setClipMenu(null);
                   }}
                 >
@@ -6623,6 +6738,58 @@ export function StudioEditorShell() {
           })()
         : null}
       </div>
+
+      {wavetableOpen ? (
+        <StudioWavetableDesigner
+          onSave={saveWavetable}
+          onClose={() => {
+            setWavetableOpen(false);
+            setWavetableClipId(null);
+          }}
+        />
+      ) : null}
+
+      {clipFxTarget ? (
+        <div
+          className="se-dialog-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add clip effect"
+        >
+          <div className="se-dialog">
+            <h2>Add a clip effect</h2>
+            <p className="se-dialog-note">
+              Clip effects run before the clip&apos;s gain, fades and the track chain, so they stay
+              with the clip when it moves.
+            </p>
+            <ul className="se-dialog-list">
+              {STUDIO_PLUGINS.map((plugin) => (
+                <li key={plugin.id}>
+                  <button
+                    type="button"
+                    className="se-dialog-row"
+                    onClick={() => {
+                      const clip = clips.find((item) => item.id === clipFxTarget);
+                      const existing = sanitizeChain((clip as { fx?: unknown } | undefined)?.fx);
+                      setClipFx(clipFxTarget, addPlugin(existing, plugin.id));
+                      setClipFxTarget(null);
+                      setExportToast(`${plugin.name} added to the clip.`);
+                    }}
+                  >
+                    <Icon name="fa-plus" />
+                    <span className="se-dialog-title">{plugin.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="se-dialog-foot">
+              <button type="button" className="se-pill" onClick={() => setClipFxTarget(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {sunoSync?.status === "conflict" && !sunoPromptDismissed ? (
         <div
@@ -6975,6 +7142,15 @@ export function StudioEditorShell() {
           }}
           instrument={normalizeMidiInstrument(midiClip.instrument)}
           onInstrumentChange={(instrument) => setMidiInstrument(midiClip.id, instrument)}
+          wavetables={wavetables.map((table) => ({ id: table.id, name: table.name }))}
+          onDesignWavetable={
+            settings.advancedContent
+              ? () => {
+                  setWavetableClipId(midiClip.id);
+                  setWavetableOpen(true);
+                }
+              : undefined
+          }
           onImportMidi={(file) => void importMidiFile(file)}
           onToggleLoop={() => setLoop((value) => !value)}
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
@@ -7006,6 +7182,8 @@ export function StudioEditorShell() {
           }
           onSavePreset={savePluginPreset}
           onDesignPlugin={openPluginDesigner}
+          windowMode={settings.windowMode}
+          advancedContent={settings.advancedContent}
           onChange={(next) => commitChain(selectedTrack, next)}
         />
       ) : null}

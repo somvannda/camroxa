@@ -82,7 +82,7 @@ test("the main fader and mute affect playback and the export", async ({ page }) 
   const exportMix = async () => {
     await page.getByLabel("Export menu").click();
     const download = page.waitForEvent("download");
-    await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+    await page.getByRole("menuitem", { name: "Full Song" }).click();
     return wavRms(await download);
   };
 

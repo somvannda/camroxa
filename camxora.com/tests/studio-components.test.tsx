@@ -16,6 +16,7 @@ import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
 import { LIMITER_DEFAULTS } from "@/lib/studio-master-bus";
+import { DEFAULT_STUDIO_SETTINGS } from "@/lib/studio-settings";
 import type { StudioTrack } from "@/lib/studio-tracks";
 import type { StudioProject, StudioStem, StudioUpload } from "@/lib/studio-api";
 import { addStudioProjectComment, listStudioProjectComments } from "@/lib/studio-api";
@@ -41,7 +42,7 @@ function headerProps() {
   return {
     title: "Demo",
     projectId: "p1" as string | null,
-    settings: { ghostDrag: true, whatsThis: true, inputDeviceId: null, countIn: false },
+    settings: { ...DEFAULT_STUDIO_SETTINGS },
     onSettingsChange: noop,
     onRenamed: noop,
     onShowQuickStart: noop,
@@ -149,9 +150,10 @@ describe("StudioHeader", () => {
   it("disables the range export until a range exists", async () => {
     const user = userEvent.setup();
     render(<StudioHeader {...headerProps()} exportOpen />);
-    const range = screen.getByText("Selected time range (WAV)") as HTMLButtonElement;
+    const range = screen.getByText("Selected Time Range") as HTMLButtonElement;
     expect(range.disabled).toBe(true);
-    expect(screen.getByText("Full mix (WAV)")).toBeTruthy();
+    expect(screen.getByText("Full Song")).toBeTruthy();
+    expect(screen.getByText("Multitrack")).toBeTruthy();
     await user.click(screen.getByLabelText("Export menu"));
   });
 

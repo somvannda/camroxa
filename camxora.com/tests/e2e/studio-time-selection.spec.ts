@@ -128,7 +128,7 @@ test("the range menu loops the selection and the export scope unlocks", async ({
 
   await page.getByRole("button", { name: "Export menu" }).click();
   await expect(
-    page.getByRole("menuitem", { name: /Selected time range/ })
+    page.getByRole("menuitem", { name: /Selected Time Range/ })
   ).toBeEnabled();
 });
 

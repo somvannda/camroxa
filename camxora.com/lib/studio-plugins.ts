@@ -26,6 +26,7 @@ export type PluginId =
   | "limiter"
   | "reverb"
   | "rhythmGate"
+  | "stereoUtility"
   /** A plugin designed in the assistant (S45); the definition travels in the entry. */
   | "custom";
 
@@ -228,6 +229,18 @@ export const STUDIO_PLUGINS: readonly PluginDef[] = [
       { key: "mix", label: "Mix", min: 0, max: 1, default: 0.65, unit: "%", tier: "primary" },
       { key: "attack", label: "Atk", min: 0.01, max: 0.45, default: 0.12, tier: "secondary" },
       { key: "release", label: "Rel", min: 0.01, max: 0.45, default: 0.22, tier: "secondary" },
+    ],
+  },
+  {
+    id: "stereoUtility",
+    name: "Stereo Utility",
+    description:
+      "Balance, width and mono bass: keeps the low end centred and shapes the stereo image.",
+    params: [
+      { key: "level", label: "Level", min: -24, max: 12, default: 0, unit: "db", tier: "primary" },
+      { key: "width", label: "Width", min: 0, max: 200, default: 150, unit: "%", tier: "primary" },
+      { key: "pan", label: "Pan", min: -100, max: 100, default: 0, tier: "primary" },
+      { key: "bassMono", label: "Bass Mono", min: 20, max: 300, default: 120, unit: "hz", tier: "secondary" },
     ],
   },
 ] as const;

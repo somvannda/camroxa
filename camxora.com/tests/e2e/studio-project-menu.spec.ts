@@ -184,9 +184,10 @@ test("studio settings open with the captured accelerator and persist", async ({ 
   const dialog = page.getByRole("dialog", { name: "Studio settings" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Performance")).toBeVisible();
-  // Empty, uncaptured sections are removed rather than shipped as stubs.
-  await expect(dialog.getByText("Window management")).toHaveCount(0);
-  await expect(dialog.getByText("Content", { exact: true })).toHaveCount(0);
+  // S09-S11: all three captured panes ship, and no "not captured" stub remains.
+  for (const pane of ["Window management", "Content"]) {
+    await expect(dialog.getByRole("button", { name: pane })).toBeVisible();
+  }
   await expect(dialog.getByText("Not captured yet.")).toHaveCount(0);
 
   const ghost = dialog.getByRole("checkbox", { name: "Ghost drag for arrangement moves" });

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 
 import { Icon } from "@/components/Icon";
+import { StudioProjectThumbView } from "@/components/studio/StudioProjectThumb";
 import {
   createStudioProject,
   createStudioProjectShare,
@@ -109,6 +110,10 @@ export function StudioProjectMenu({
 }: StudioProjectMenuProps) {
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  /** S09-S11: which Studio Settings pane is showing. */
+  const [settingsPane, setSettingsPane] = useState<"performance" | "windows" | "content">(
+    "performance"
+  );
   const [projectTab, setProjectTab] = useState<"projects" | "deleted">("projects");
   const [projectQuery, setProjectQuery] = useState("");
   const [projectSort, setProjectSort] = useState<"newest" | "oldest">("newest");
@@ -145,6 +150,16 @@ export function StudioProjectMenu({
       document.removeEventListener("pointerdown", onPointer);
     };
   }, [open]);
+
+  /** A dialog opened from the menu closes on Escape (composition rule 6). */
+  useEffect(() => {
+    if (dialog === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDialog(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dialog]);
 
   useEffect(() => {
     setRenameValue(title);
@@ -507,7 +522,11 @@ export function StudioProjectMenu({
                       : "Studio settings"
           }
         >
-          <div className={`se-dialog${dialog === "open" ? " se-projects-dialog" : ""}`}>
+          <div
+            className={`se-dialog${dialog === "open" ? " se-projects-dialog" : ""}${
+              dialog === "settings" ? " se-settings-dialog" : ""
+            }`}
+          >
             {dialog === "open" ? (
               <>
                 <header className="se-projects-head">
@@ -606,9 +625,7 @@ export function StudioProjectMenu({
                               onClick={() => navigate(item.id)}
                               aria-label={`Open ${item.title || UNTITLED}`}
                             >
-                              <span className="se-project-preview" aria-hidden="true">
-                                <span />
-                              </span>
+                              <StudioProjectThumbView thumb={item.thumb} />
                               <span className="se-project-meta">
                                 <span className="se-project-thumb" aria-hidden="true">
                                   {initialOf(item.title || UNTITLED)}
@@ -661,24 +678,152 @@ export function StudioProjectMenu({
             ) : dialog === "settings" ? (
               <>
                 <h2>Studio settings</h2>
-                <section className="se-settings-section">
-                  <h3>Performance</h3>
-                  <label className="se-dialog-row">
-                    <input
-                      type="checkbox"
-                      checked={settings.ghostDrag}
-                      onChange={(event) =>
-                        onSettingsChange({ ...settings, ghostDrag: event.target.checked })
-                      }
-                    />
-                    <span className="se-dialog-title">Ghost drag for arrangement moves</span>
-                  </label>
-                  <p className="se-dialog-note">
-                    On, moving a clip keeps playing the pre-drag arrangement and applies the new
-                    position once when you drop it. Off, every move is applied to the engine live.
-                    The setting is read when the drag starts.
-                  </p>
-                </section>
+                <div className="se-settings">
+                  <nav className="se-settings-nav" aria-label="Settings sections">
+                    {(
+                      [
+                        ["performance", "Performance"],
+                        ["windows", "Window management"],
+                        ["content", "Content"],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        aria-current={settingsPane === id ? "page" : undefined}
+                        className={settingsPane === id ? "on" : ""}
+                        onClick={() => setSettingsPane(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </nav>
+
+                  <div className="se-settings-pane">
+                    {settingsPane === "performance" ? (
+                      <>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">
+                              Ghost drag for arrangement moves
+                            </span>
+                            <p className="se-dialog-note">
+                              On, a move holds DSP applies for the whole gesture: audio keeps
+                              playing the pre-drag arrangement and one apply lands at drop. Off,
+                              move frames stream to the engine live. Read at gesture start.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Ghost drag for arrangement moves"
+                            checked={settings.ghostDrag}
+                            onChange={(event) =>
+                              onSettingsChange({ ...settings, ghostDrag: event.target.checked })
+                            }
+                          />
+                        </div>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">Count-in before recording</span>
+                            <p className="se-dialog-note">
+                              One bar of clicks before a take starts. Recording is armed from the
+                              track row; the input is chosen next to the record button.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Count-in before recording"
+                            checked={settings.countIn}
+                            onChange={(event) =>
+                              onSettingsChange({ ...settings, countIn: event.target.checked })
+                            }
+                          />
+                        </div>
+                      </>
+                    ) : null}
+
+                    {settingsPane === "windows" ? (
+                      <div className="se-settings-card">
+                        <div className="se-settings-copy">
+                          <span className="se-dialog-title">Keyboard &amp; plugin windows</span>
+                          <p className="se-dialog-note">
+                            Docked, with a Pop out control on each surface&apos;s header. Popping
+                            one out is remembered for next time.
+                          </p>
+                        </div>
+                        <div className="se-segmented" role="radiogroup" aria-label="Plugin windows">
+                          {(
+                            [
+                              ["panels", "Panels"],
+                              ["windows", "Windows"],
+                              ["toggle", "Show toggle"],
+                            ] as const
+                          ).map(([id, label]) => (
+                            <button
+                              key={id}
+                              type="button"
+                              role="radio"
+                              aria-checked={settings.windowMode === id}
+                              className={settings.windowMode === id ? "on" : ""}
+                              onClick={() => onSettingsChange({ ...settings, windowMode: id })}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {settingsPane === "content" ? (
+                      <>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">Auto-stretch added audio</span>
+                            <p className="se-dialog-note">
+                              On: audio that you add from your library or through file uploads is
+                              stretched to the project tempo when it has a steady beat. Clips
+                              without a steady beat keep their original timing. Off: added audio
+                              always keeps its original timing and does not set the project tempo.
+                              Generated clips are not affected.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Auto-stretch added audio"
+                            checked={settings.autoStretch}
+                            onChange={(event) =>
+                              onSettingsChange({ ...settings, autoStretch: event.target.checked })
+                            }
+                          />
+                        </div>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">Advanced content features</span>
+                            <p className="se-dialog-note">
+                              Sound-design tools like the Wavetable Designer and Impulse Response
+                              Designer. Off, the menu items that open them are hidden.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Advanced content features"
+                            checked={settings.advancedContent}
+                            onChange={(event) =>
+                              onSettingsChange({
+                                ...settings,
+                                advancedContent: event.target.checked,
+                              })
+                            }
+                          />
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
               </>
             ) : dialog === "sync" ? (
               <>

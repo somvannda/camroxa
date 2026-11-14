@@ -49,6 +49,10 @@ export type StudioMidiEditorProps = {
   onScaleChange: (scale: string) => void;
   instrument: MidiInstrument;
   onInstrumentChange: (instrument: MidiInstrument) => void;
+  /** N-14: designed wavetables available to this project. */
+  wavetables?: Array<{ id: string; name: string }>;
+  /** Opens the Wavetable Designer; hidden when advanced content is off. */
+  onDesignWavetable?: () => void;
   onImportMidi: (file: File) => void;
   onToggleLoop: () => void;
   onChangeNotes: (notes: MidiNote[]) => void;
@@ -103,6 +107,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     onScaleChange,
     instrument,
     onInstrumentChange,
+    wavetables = [],
+    onDesignWavetable,
     onImportMidi,
     onToggleLoop,
     onChangeNotes,
@@ -814,8 +820,23 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             <option value="triangle">Triangle</option>
             <option value="sine">Sine</option>
             <option value="sawtooth">Saw</option>
+            {wavetables.map((table) => (
+              <option key={table.id} value={`wavetable:${table.id}`}>
+                {table.name}
+              </option>
+            ))}
           </select>
         </label>
+        {onDesignWavetable ? (
+          <button
+            type="button"
+            className="se-pill se-midi-design"
+            aria-label="Design a wavetable"
+            onClick={onDesignWavetable}
+          >
+            <Icon name="fa-wave-square" /> Design wavetable
+          </button>
+        ) : null}
         <label className="se-midi-control">
           Chord
           <select
