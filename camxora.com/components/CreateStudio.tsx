@@ -3514,13 +3514,6 @@ export function CreateStudio() {
                       }
                     >
                       <div className="s-menu-label">Model</div>
-                      <SMenuItem disabled>
-                        <Icon name="fa-wand-magic-sparkles" /> Create Custom Model
-                        <span className="check">Beta</span>
-                      </SMenuItem>
-                      <div className="s-menu-item" style={{ cursor: "default", height: "auto", padding: "4px 10px 8px" }}>
-                        <span className="s-note">Create a model based on your uploads (100 Credits)</span>
-                      </div>
                       <SMenuSeparator />
                       <div className="s-menu-label">All Models</div>
                       <SMenuRadioGroup

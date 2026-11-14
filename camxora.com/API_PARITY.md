@@ -139,3 +139,7 @@ Closed in this pass (2026-11-14):
   surfaces in the app is the stub D-034 forbids. Re-add them when a provider is
   wired; the Library now lists Songs, Playlists, Albums, Workspaces, Studio
   Projects, Cover Art, Uploads, History and Trash.
+- The Create model menu no longer offers the disabled "Create Custom Model"
+  (Beta, 100 credits) row: there is no custom-model backend, so the menu lists
+  only usable models. "Sample this song" keeps its disabled row but now states
+  the real blocker (clip-reference provider) instead of "coming soon".

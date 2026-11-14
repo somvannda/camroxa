@@ -148,7 +148,7 @@ export function SongRowMenu({
           <SMenuItem disabled={!ready} onSelect={onMashup}>
             <Icon name="fa-code-merge" /> Mashup
           </SMenuItem>
-          <SMenuItem disabled title="Coming soon">
+          <SMenuItem disabled title="Sample generation needs a clip-reference provider (not wired yet)">
             <Icon name="fa-waveform" /> Sample this song
           </SMenuItem>
           <SMenuItem onSelect={onInspire}>
