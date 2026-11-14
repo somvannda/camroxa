@@ -1,5 +1,11 @@
 # CamXora deployment operations
 
+> **HOLD (2026-11-14):** production deployment of `camxora.com/` is intentionally paused.
+> Do not deploy to production `camxora.com` yet, and do not replace `camxora.com` with
+> `music.camxora.com` — `music.camxora.com` must stay exactly as it is and keep working.
+> The `camxora.com/` app is built and verified locally until the user explicitly approves
+> deployment.
+
 **Purpose:** Runbook for sandbox and production deploys â€” nginx, AI routing, and common production incidents.  
 **Last updated:** 2026-07-16  
 **Related:** [`SANDBOX_DEPLOYMENT_GUIDE.md`](./SANDBOX_DEPLOYMENT_GUIDE.md), [`PRODUCTION_INFRASTRUCTURE_PLAN.md`](./PRODUCTION_INFRASTRUCTURE_PLAN.md)

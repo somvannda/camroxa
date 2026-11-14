@@ -24,6 +24,10 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   `STUDIO_INTERNAL_TOKEN` / `PLATFORM_STUDIO_INTERNAL_TOKEN` written to both service
   envs (internal health 401 without it, 200 with it). Local audio still approximates
   authored DSP by family.
+- **PRODUCTION HOLD (2026-11-14, mandatory):** do not deploy to production `camxora.com`
+  yet, and do not replace `camxora.com` with `music.camxora.com`. `music.camxora.com`
+  must stay as is and keep working. Keep building/verifying `camxora.com/` locally;
+  deployment and the domain replacement need an explicit later approval.
 
 ## Update 2026-11-13 — Suno Studio project mirror
 
