@@ -2328,11 +2328,20 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                   : "Record a take and use it as a reference for a new song."}
               </p>
               <div className="s-box">
-                Uploads and recording are not enabled for this workspace yet. You can still
-                add audio from the Studio editor.
+                {attachNotice === "upload"
+                  ? "The file picker opens in Create, where the audio is attached to the song you build next."
+                  : "The microphone opens in Create, where the take is attached to the song you build next."}
               </div>
             </div>
             <div className="s-modal-foot">
+              <Link
+                className="s-btn s-btn-primary"
+                href={`/create?attach=${attachNotice}`}
+                onClick={() => setAttachNotice(null)}
+              >
+                <Icon name={attachNotice === "upload" ? "fa-arrow-up-from-bracket" : "fa-microphone"} />{" "}
+                {attachNotice === "upload" ? "Open the uploader" : "Open the recorder"}
+              </Link>{" "}
               <Link className="s-btn s-btn-secondary" href="/studio/editor">
                 <Icon name="fa-table-columns" /> Open Studio
               </Link>

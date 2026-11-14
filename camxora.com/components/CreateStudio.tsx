@@ -789,6 +789,17 @@ export function CreateStudio() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const attach = params.get("attach");
+    if (attach !== "upload" && attach !== "record") return;
+    window.history.replaceState(null, "", "/create");
+    // Deep link from the Library's attach menu: land in the working upload /
+    // record flow instead of a dead "not enabled" panel.
+    openAudioModal(attach);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const taskId = params.get("mashup");
     if (!taskId) return;
     const variant = params.get("variant") === "alt" ? "alt" : "ok";
