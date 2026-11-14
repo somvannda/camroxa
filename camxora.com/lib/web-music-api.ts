@@ -300,6 +300,26 @@ export async function generateWebMusic(
   });
 }
 
+export async function generateWebMusicSounds(input: {
+  prompt: string;
+  model?: string;
+  workspace_id?: string;
+}): Promise<{
+  task_id: string;
+  status: string;
+  title: string;
+  style: string;
+  model?: string;
+  model_label?: string;
+  quota: WebMusicQuota;
+}> {
+  return musicJson("/api/v3/web-music/sounds", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listWebMusicGenerations(
   limit = 40,
   offset = 0,

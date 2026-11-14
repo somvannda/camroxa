@@ -78,6 +78,7 @@ import {
   type WebMusicStudioUpload,
   generateWebMusic,
   generateWebMusicDraft,
+  generateWebMusicSounds,
   generateWebMusicStyles,
   getWebMusicGeneration,
   listWebMusicGenerations,
@@ -333,6 +334,9 @@ export function CreateStudio() {
   const [lyricsSaving, setLyricsSaving] = useState(false);
   const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
+  const [soundPrompt, setSoundPrompt] = useState("");
+  const [soundBusy, setSoundBusy] = useState(false);
+  const [soundError, setSoundError] = useState("");
   const [audioHistory, setAudioHistory] = useState<WebMusicStudioOperation[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -928,6 +932,43 @@ export function CreateStudio() {
   const hasPending = songs.some((song) =>
     ["pending", "queued", "running"].includes(String(song.status).toLowerCase())
   );
+
+  async function submitSounds() {
+    const prompt = soundPrompt.trim();
+    if (prompt.length < 3 || soundBusy) return;
+    setSoundBusy(true);
+    setSoundError("");
+    try {
+      const created = await generateWebMusicSounds({
+        prompt,
+        workspace_id: activeWorkspaceId ?? undefined,
+      });
+      setQuota(created.quota);
+      const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
+      const pending: WebMusicGeneration =
+        loaded ?? {
+          id: created.task_id,
+          title: created.title || prompt.slice(0, 60),
+          style: created.style || prompt,
+          model: created.model,
+          model_label: created.model_label,
+          status: created.status || "pending",
+          created_at: new Date().toISOString(),
+          clips: [],
+        };
+      setSongs((current) => [
+        pending,
+        ...current.filter((item) => item.id !== pending.id),
+      ]);
+      setSoundPrompt("");
+    } catch (cause) {
+      setSoundError(
+        cause instanceof Error ? cause.message : "Could not create this sound."
+      );
+    } finally {
+      setSoundBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!hasPending) return;
@@ -3306,20 +3347,63 @@ export function CreateStudio() {
             ))}
           </div>
 
-          {createTab !== "songs" ? (
+          {createTab === "speech" ? (
             <div className="s-empty" style={{ flex: 1 }}>
               <span className="ico">
-                <Icon name={createTab === "speech" ? "fa-microphone-lines" : "fa-wave-square"} />
+                <Icon name="fa-microphone-lines" />
               </span>
-              <b>{createTab === "speech" ? "Speech" : "Sounds"} is coming soon</b>
+              <b>Speech is coming soon</b>
               <p>
-                {createTab === "speech"
-                  ? "Turn a script into narrated audio with cloned voices. This workspace is not enabled yet."
-                  : "Generate sound effects and one-shot samples. This workspace is not enabled yet."}
+                Turn a script into narrated audio with cloned voices. This workspace is not
+                enabled yet.
               </p>
               <button type="button" className="s-btn s-btn-secondary" onClick={() => setCreateTab("songs")}>
                 Create a song instead
               </button>
+            </div>
+          ) : createTab === "sounds" ? (
+            <div className="s-form-scroll">
+              <div
+                className="s-card"
+                style={{ maxWidth: 640, margin: "24px auto", padding: 20, cursor: "default" }}
+              >
+                <div className="s-field">
+                  <label className="s-field-label" htmlFor="create-sound-prompt">
+                    Describe the sound
+                  </label>
+                  <div className="s-style-box">
+                    <textarea
+                      id="create-sound-prompt"
+                      aria-label="Sound description"
+                      value={soundPrompt}
+                      onChange={(event) => setSoundPrompt(event.target.value)}
+                      placeholder="e.g. a warm tape hiss with a soft tail"
+                      maxLength={500}
+                      rows={4}
+                    />
+                  </div>
+                </div>
+                <p className="s-note">
+                  One sound effect per creation. It appears in your library like a song and can be
+                  placed in the Studio timeline.
+                </p>
+                {soundError ? (
+                  <p className="s-error" role="alert">
+                    {soundError}
+                  </p>
+                ) : null}
+                <div className="s-rowline" style={{ marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className="s-btn s-btn-primary"
+                    disabled={soundBusy || soundPrompt.trim().length < 3}
+                    onClick={() => void submitSounds()}
+                  >
+                    <Icon name="fa-wave-square" />{" "}
+                    {soundBusy ? "Creating sound..." : "Create sound"}
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <>

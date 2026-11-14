@@ -110,7 +110,6 @@ as a stub.
 | Surface | Control | Today | Next step |
 |---|---|---|---|
 | Create | **Speech** tab | "coming soon" panel | No TTS provider or reference endpoint exists in `musicapi` or the captured Suno API. Decide product support; until then remove the tab rather than keep a dead panel. |
-| Create | **Sounds** tab | "coming soon" panel | `musicapi` already builds sounds (`type: "sounds"` on `/me/generate`), but `platform_api` has no sounds job type, price row, or result list. Add a sounds job type + pricing entry + library rendering. |
 | Song menu | **Sample this song** | disabled | Needs a clip-based sample generation path (`artistClipId`/audio reference) end to end; only persona style references exist today. |
 | Song menu | **Use as Inspiration** | disabled | Can reuse the referenced clip's style/persona: pass its style into Create and attach the persona; needs an `artist_clip_id` passthrough in the platform generate call. |
 | Library | **Hooks** tile | empty state | No hook-generation provider. Remove the tile until a backend exists. |
@@ -129,3 +128,9 @@ Closed in this pass (2026-11-14):
   now deep-link `?clip=<generation>&variant=&intent=`. The editor materialises
   that version as a one-track project (`lib/studio-from-clip.ts`) and shows the
   relevant hint, instead of opening an unrelated project or staying disabled.
+- Create → **Sounds** is wired end to end: `POST /api/v3/web-music/sounds`
+  charges through the music price, queues a `kind='sounds'` task on the shared
+  queue, submits `POST /v1/sounds` in musicapi, and the existing poll/library
+  surface renders the result. Migration `200_suno_task_kind` adds the discriminator.
+  The price is intentionally the music price until the pricing table gets a
+  dedicated `sounds` row (a product/pricing decision, not code).
