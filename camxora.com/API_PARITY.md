@@ -109,7 +109,6 @@ as a stub.
 
 | Surface | Control | Today | Next step |
 |---|---|---|---|
-| Song menu | **Sample this song** | disabled | Needs a clip-based sample generation path (`artistClipId`/audio reference) end to end; only persona style references exist today. |
 | Studio | **YouTube Tutorials** | disabled | External channel does not exist; keep the honest disabled row. |
 | Studio | Plugin **unverified** badge | shown | Verify the remaining plugin parameter maps against the reference, then drop the badge. |
 
@@ -148,3 +147,10 @@ Closed in this pass (2026-11-14):
   `masterSignalChain` carries only limiter/EQ/compressor, so a master reverb
   would be a local-only effect (D-034). The dock offers EQ and Compressor, both
   rendered by the master bus.
+- Song menu → **Sample this song** is wired end to end: it opens Create with the
+  source clip attached (`/create?sample=<id>&variant=`), the form shows a
+  removable “Sampling …” chip, and submitting sends `sample_task_id` +
+  `sample_variant`. The server resolves the owned clip's durable audio URL,
+  stores it on the task (migration `201`), and forwards it as `audio_urls` to
+  musicapi's agentic audio-reference path. No raw provider URL comes from the
+  browser.

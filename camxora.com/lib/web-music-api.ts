@@ -20,6 +20,9 @@ export type WebMusicGenerateInput = {
   video_urls?: string[];
   persona_id?: string;
   workspace_id?: string;
+  /** "Sample this song": source generation whose audio is the reference. */
+  sample_task_id?: string;
+  sample_variant?: "ok" | "alt";
 };
 
 export type WebMusicQuota = {

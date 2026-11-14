@@ -337,6 +337,9 @@ export function CreateStudio() {
   const [soundPrompt, setSoundPrompt] = useState("");
   const [soundBusy, setSoundBusy] = useState(false);
   const [soundError, setSoundError] = useState("");
+  const [sampleSource, setSampleSource] = useState<
+    { id: string; variant: "ok" | "alt"; title: string } | null
+  >(null);
   const [audioHistory, setAudioHistory] = useState<WebMusicStudioOperation[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -813,6 +816,31 @@ export function CreateStudio() {
       return;
     }
     getWebMusicGeneration(inspireId)
+      .then(apply)
+      .catch(() => {
+        if (mounted.current) setToast("Could not load that song");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sampleId = params.get("sample");
+    if (!sampleId) return;
+    window.history.replaceState(null, "", "/create");
+    const variant: "ok" | "alt" = params.get("variant") === "alt" ? "alt" : "ok";
+    const apply = (song: WebMusicGeneration) => {
+      if (!mounted.current) return;
+      setSampleSource({ id: song.id, variant, title: song.title || "song" });
+      inspireFrom(song);
+      setToast(`Sampling ${song.title || "this song"} — describe the new song`);
+    };
+    const existing = songs.find((song) => song.id === sampleId);
+    if (existing) {
+      apply(existing);
+      return;
+    }
+    getWebMusicGeneration(sampleId)
       .then(apply)
       .catch(() => {
         if (mounted.current) setToast("Could not load that song");
@@ -2250,6 +2278,9 @@ export function CreateStudio() {
       video_urls: referenceVideo ? [referenceVideo.url] : undefined,
       persona_id: selectedPersona?.provider_persona_id || undefined,
       workspace_id: activeWorkspaceId ?? undefined,
+      ...(sampleSource
+        ? { sample_task_id: sampleSource.id, sample_variant: sampleSource.variant }
+        : {}),
     };
     setBatchProgress(count > 1 ? { done: 0, total: count } : null);
     let createdCount = 0;
@@ -2297,6 +2328,7 @@ export function CreateStudio() {
           : "Generation started. Your song will appear here."
       );
       setCooldownSeconds(5);
+      setSampleSource(null);
       void refreshSongs();
       void refresh();
     } catch (cause) {
@@ -3147,6 +3179,12 @@ export function CreateStudio() {
                         onCover={() => void coverFromRow(song, clip)}
                         onReusePrompt={() => reusePromptFrom(song)}
                       onInspire={() => inspireFrom(song)}
+                        onSample={() => {
+                          const variant = clip.variant === "alt" ? "alt" : "ok";
+                          setSampleSource({ id: song.id, variant, title: song.title || "song" });
+                          inspireFrom(song);
+                          setToast(`Sampling ${song.title || "this song"} — describe the new song`);
+                        }}
                         onMashup={() =>
                           setMashupSource({
                             song,
@@ -3428,6 +3466,19 @@ export function CreateStudio() {
           ) : (
             <>
               <div className="s-form-scroll">
+                {sampleSource ? (
+                  <div className="s-rowline" style={{ marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className="s-chip on"
+                      aria-label={`Remove sample ${sampleSource.title}`}
+                      onClick={() => setSampleSource(null)}
+                    >
+                      <Icon name="fa-waveform" /> Sampling {sampleSource.title}{" "}
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : null}
                 <div className="s-form-topline">
                   <div className="s-segment" role="tablist" aria-label="Create form mode">
                     <button

@@ -35,6 +35,7 @@ export type SongRowMenuProps = {
   onCover: () => void;
   onReusePrompt: () => void;
   onInspire: () => void;
+  onSample: () => void;
   onMashup: () => void;
   onVoice: () => void;
   onDetails: () => void;
@@ -67,6 +68,7 @@ export function SongRowMenu({
   onCover,
   onReusePrompt,
   onInspire,
+  onSample,
   onMashup,
   onVoice,
   onDetails,
@@ -148,7 +150,7 @@ export function SongRowMenu({
           <SMenuItem disabled={!ready} onSelect={onMashup}>
             <Icon name="fa-code-merge" /> Mashup
           </SMenuItem>
-          <SMenuItem disabled title="Sample generation needs a clip-reference provider (not wired yet)">
+          <SMenuItem disabled={!ready} onSelect={onSample}>
             <Icon name="fa-waveform" /> Sample this song
           </SMenuItem>
           <SMenuItem onSelect={onInspire}>

@@ -1234,6 +1234,11 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                       onInspire={() => {
                         window.location.href = `/create?inspire=${encodeURIComponent(song.id)}`;
                       }}
+                      onSample={() => {
+                        window.location.href = `/create?sample=${encodeURIComponent(
+                          song.id
+                        )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                      }}
                       onMashup={() => {
                         window.location.href = `/create?mashup=${encodeURIComponent(
                           song.id
