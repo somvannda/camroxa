@@ -248,14 +248,26 @@ function ConvolutionCard({
           aria-label={response ? `Impulse response ${response.name}` : "No impulse response"}
         >
           <line x1={0} x2={width} y1={height / 2} y2={height / 2} className="sp-ir-axis" />
+          {[0, 1, 2, 3].map((second) => {
+            const x = (second / 3) * width;
+            return (
+              <g key={second}>
+                <line
+                  x1={x}
+                  x2={x}
+                  y1={0}
+                  y2={height}
+                  className="sp-ir-tick"
+                  aria-hidden="true"
+                />
+                <text x={Math.min(x + 4, width - 20)} y={height - 3} className="sp-ir-label">
+                  {second}s
+                </text>
+              </g>
+            );
+          })}
           {wave ? <path d={wave} className="sp-ir-wave" /> : null}
           <circle cx={width - 12} cy={12} r={6} className="sp-ir-dot" />
-          <text x={4} y={height - 3} className="sp-ir-label">
-            0s
-          </text>
-          <text x={width - 20} y={height - 3} className="sp-ir-label">
-            2s
-          </text>
         </svg>
         <div className="sp-ir-picker" ref={wrapRef}>
           <button
