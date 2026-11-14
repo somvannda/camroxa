@@ -161,6 +161,31 @@ test("Stereo Utility is in the catalog and lands in the chain", async ({ page })
   await expect(slot.getByRole("slider", { name: "Width" })).toBeVisible();
 });
 
+test("the preset stepper auditions presets without opening the menu", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: "Preset stepper probe" });
+
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page
+    .getByRole("region", { name: /Plugins for/ })
+    .getByRole("button", { name: "Add effect", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Compressor/ })
+    .first()
+    .click();
+
+  const slot = page.getByRole("article", { name: "Compressor slot 1" });
+  const preset = slot.locator(".sp-preset");
+  await expect(preset).toHaveText("Default");
+  await slot.getByRole("button", { name: "Next Compressor preset" }).click();
+  await expect(preset).toHaveText("Vocal");
+  await slot.getByRole("button", { name: "Previous Compressor preset" }).click();
+  await expect(preset).toHaveText("Default");
+});
+
 test("export menu keeps the captured scopes", async ({ page }) => {
   test.setTimeout(120_000);
   await createStudioProject(page, { title: "Export label probe" });

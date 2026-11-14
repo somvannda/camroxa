@@ -4477,6 +4477,9 @@ html{color-scheme:dark}
 .sp-bypass.off{background:transparent;border-color:rgba(255,255,255,.2)}
 .sp-param input:focus-visible{outline:2px solid #52d17c;outline-offset:2px;border-radius:6px}
 .sp-preset{height:26px;padding:0 10px;border:0;border-radius:999px;background:#1c1c1e;color:#c2c2c1;font:inherit;font-size:11px;cursor:pointer}
+.sp-preset-step{display:grid;place-items:center;width:18px;height:26px;border:0;background:transparent;color:#8b90a6;cursor:pointer}
+.sp-preset-step:hover{color:#f7f4ef}
+.sp-preset-step .icon{width:10px;height:10px}
 .sp-update{height:24px;padding:0 8px;border:0;border-radius:5px;background:linear-gradient(100deg,#7c3aed,#a855f7);color:#fff;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
 .sp-slot-tools{display:flex;align-items:center;gap:2px;margin-left:auto}
 .sp-slot-tools button{display:grid;place-items:center;width:22px;height:22px;border:1px solid transparent;border-radius:4px;background:transparent;color:#8b90a6;cursor:pointer}

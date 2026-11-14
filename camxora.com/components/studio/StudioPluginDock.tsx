@@ -22,6 +22,7 @@ import {
   type CustomPlugin,
   type ParamDef,
   type PluginChainEntry,
+  type PluginDef,
   type PluginId,
   type UserPreset,
 } from "@/lib/studio-plugins";
@@ -703,6 +704,47 @@ export function StudioPluginDock({
    * "Show toggle" leaves the decision to each card's Pop out control (remembered in the
    * chain, so it survives a reload).
    */
+  /**
+   * S46: the `‹ Default ›` stepper auditions presets without opening the menu. It walks
+   * the same list the menu shows (Default, starter presets, saved presets).
+   */
+  function stepPreset(
+    entry: PluginChainEntry,
+    plugin: PluginDef,
+    direction: -1 | 1
+  ) {
+    const builtIn = presetsFor(plugin.id).map((preset) => ({
+      id: preset.id as string | null,
+      name: preset.name,
+      params: preset.params,
+      mode: preset.mode,
+    }));
+    const saved = userPresetsFor(userPresets, plugin.id).map((preset) => ({
+      id: preset.id as string | null,
+      name: preset.name,
+      params: preset.params,
+      mode: preset.mode,
+    }));
+    const list = [
+      {
+        id: null as string | null,
+        name: "Default",
+        params: defaultParams(plugin.id),
+        mode: undefined as string | undefined,
+      },
+      ...builtIn,
+      ...saved,
+    ];
+    const current = list.findIndex((preset) => preset.id === entry.presetId);
+    const index =
+      current === -1
+        ? direction > 0
+          ? 0
+          : list.length - 1
+        : (current + direction + list.length) % list.length;
+    onChange(applyPreset(chain, entry.entryId, list[index]));
+  }
+
   const isPopped = (entry: PluginChainEntry): boolean =>
     windowMode === "windows" ? true : windowMode === "panels" ? false : Boolean(entry.poppedOut);
 
@@ -736,6 +778,16 @@ export function StudioPluginDock({
                 <span className="sp-dot" aria-hidden="true" />
                 <strong>{plugin.name}</strong>
                 <span className="sp-preset-wrap">
+                  {!isDesigned ? (
+                    <button
+                      type="button"
+                      className="sp-preset-step"
+                      aria-label={`Previous ${plugin.name} preset`}
+                      onClick={() => stepPreset(entry, plugin, -1)}
+                    >
+                      <Icon name="fa-chevron-left" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="sp-preset"
@@ -751,6 +803,16 @@ export function StudioPluginDock({
                   >
                     {entry.dirty ? "Custom" : entry.presetName}
                   </button>
+                  {!isDesigned ? (
+                    <button
+                      type="button"
+                      className="sp-preset-step"
+                      aria-label={`Next ${plugin.name} preset`}
+                      onClick={() => stepPreset(entry, plugin, 1)}
+                    >
+                      <Icon name="fa-chevron-right" />
+                    </button>
+                  ) : null}
                   {presetMenu === entry.entryId ? (
                     <div
                       className="sp-preset-menu"
