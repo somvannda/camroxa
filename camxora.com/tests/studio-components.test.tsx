@@ -71,6 +71,8 @@ function headerProps() {
     onExport: noop,
     normalise: false,
     onToggleNormalise: noop,
+    exportFormat: "wav" as const,
+    onExportFormat: noop,
     libraryOpen: false,
     onToggleLibrary: noop,
     onBackToStart: noop,

@@ -56,6 +56,91 @@ test("full mix downloads a RIFF file and JSON exports the document", async ({ pa
   expect(document.data?.tracks).toHaveLength(1);
 });
 
+test("MP3 export encodes the same render", async ({ page }) => {
+  test.setTimeout(120_000);
+  const tag = Math.random().toString(36).slice(2, 8);
+  const title = `Mp3 ${tag}`;
+  await createStudioProject(page, { title });
+
+  await page.getByLabel("Export menu").click();
+  await page.getByRole("menuitemradio", { name: "MP3" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "MP3" })).toHaveAttribute(
+    "aria-checked",
+    "true"
+  );
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Full Song" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(`${title}.mp3`);
+
+  const path = await file.path();
+  if (!path) throw new Error("download has no path");
+  const bytes = await readFile(path);
+  // MPEG frame sync (0xFFEx) or an ID3 tag, and not a RIFF header.
+  const head = bytes.subarray(0, 3).toString("latin1");
+  expect(head === "ID3" || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)).toBe(true);
+  expect(bytes.subarray(0, 4).toString("latin1")).not.toBe("RIFF");
+  expect(bytes.length).toBeGreaterThan(2_000);
+});
+
+test("a project JSON round-trips back in as a new project", async ({ page }) => {
+  test.setTimeout(120_000);
+  const tag = Math.random().toString(36).slice(2, 8);
+  const title = `Round trip ${tag}`;
+  await createStudioProject(page, { title });
+
+  const document = {
+    title,
+    bpm: 96,
+    time_signature: "3/4",
+    data: {
+      lanes: [
+        { id: "clip-a", title: "Verse", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav", volume: 1, pan: 0 },
+      ],
+      tracks: [
+        {
+          id: "track-a",
+          name: "Track 1",
+          color: "#8b5cf6",
+          index: 0,
+          volume: 80,
+          pan: 0,
+          muted: false,
+          solo: false,
+          hidden: false,
+          groupId: null,
+          chain: [],
+          clipIds: ["clip-a"],
+        },
+      ],
+    },
+  };
+
+  await page.getByLabel("Import Studio project JSON").setInputFiles({
+    name: "round-trip.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(document), "utf8"),
+  });
+
+  await expect(page).toHaveURL(/\/studio\/editor\?project=/);
+  await expect(page.getByRole("button", { name: `${title} (imported)` })).toBeVisible();
+  await expect(page.locator(".se-clip")).toHaveCount(1);
+
+  const saved = await page.evaluate(async () => {
+    const id = new URL(window.location.href).searchParams.get("project");
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    return (await response.json()) as {
+      bpm: number;
+      time_signature: string;
+      data: { tracks: Array<{ name: string }> };
+    };
+  });
+  expect(saved.bpm).toBe(96);
+  expect(saved.time_signature).toBe("3/4");
+  expect(saved.data.tracks[0].name).toBe("Track 1");
+});
+
 test("Selected Time Range exports the loop range only", async ({ page }) => {
   test.setTimeout(120_000);
 

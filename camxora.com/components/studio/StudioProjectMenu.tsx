@@ -16,6 +16,7 @@ import {
   syncStudioProject,
   updateStudioProject,
   type StudioProject,
+  type StudioProjectData,
   type StudioProjectShare,
   type StudioProjectSync,
   type StudioProjectVersion,
@@ -132,6 +133,8 @@ export function StudioProjectMenu({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  /** Hidden file input behind "Import project…" (JSON round-trip of the export). */
+  const importRef = useRef<HTMLInputElement | null>(null);
 
   const label = title || UNTITLED;
   const shareUrl =
@@ -242,11 +245,49 @@ export function StudioProjectMenu({
     }
   }
 
+  /**
+   * Import a Studio JSON document (the shape Export → Project (JSON) writes). Validated
+   * before any write; the import always becomes a new project so it cannot clobber one.
+   */
+  async function importProject(file: File) {
+    setError("");
+    try {
+      const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
+      const source =
+        parsed.data && typeof parsed.data === "object"
+          ? (parsed.data as Record<string, unknown>)
+          : parsed;
+      if (!Array.isArray(source.lanes)) throw new Error("That JSON has no lanes array.");
+      const tracks = source.tracks;
+      if (!Array.isArray(tracks) || tracks.length === 0) {
+        throw new Error("That JSON has no tracks.");
+      }
+      const base =
+        typeof parsed.title === "string" && parsed.title.trim()
+          ? parsed.title.trim()
+          : file.name.replace(/\.json$/i, "");
+      const created = await createStudioProject({
+        title: `${base} (imported)`.slice(0, 120),
+        bpm: typeof parsed.bpm === "number" ? parsed.bpm : 120,
+        time_signature:
+          typeof parsed.time_signature === "string" ? parsed.time_signature : "4/4",
+        data: {
+          ...(parsed.data && typeof parsed.data === "object" ? parsed.data : {}),
+          lanes: source.lanes,
+          tracks,
+        } as StudioProjectData,
+      });
+      setOpen(false);
+      navigate(created.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not import that project.");
+    }
+  }
+
   function openDialog(next: Exclude<Dialog, null>) {
     setOpen(false);
     setError("");
-    setDialog(next);
-    if (next === "open") {
+    setDialog(next);    if (next === "open") {
       setProjectTab("projects");
       loadProjects(false);
     }
@@ -401,6 +442,7 @@ export function StudioProjectMenu({
 
       {open ? (
         <div className="se-project-menu" role="menu" aria-label="Project options">
+          {error ? <p className="se-dialog-error">{error}</p> : null}
           <button type="button" role="menuitem" onClick={startNewProject} disabled={busy}>
             <Icon name="fa-plus" /> New Project
           </button>
@@ -412,6 +454,15 @@ export function StudioProjectMenu({
           </button>
           <button type="button" role="menuitem" onClick={duplicate} disabled={busy}>
             <Icon name="fa-copy" /> Duplicate Project
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => importRef.current?.click()}
+            disabled={busy}
+            title="Create a project from a Studio JSON document (the export format)"
+          >
+            <Icon name="fa-file-import" /> Import project…
           </button>
           <button
             type="button"
@@ -456,6 +507,20 @@ export function StudioProjectMenu({
           </button>
         </div>
       ) : null}
+
+      {/* Hidden picker behind "Import project…": JSON only, validated before any write. */}
+      <input
+        ref={importRef}
+        type="file"
+        accept="application/json,.json"
+        className="se-import-input"
+        aria-label="Import Studio project JSON"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void importProject(file);
+        }}
+      />
 
       {dialog === "versions" ? (
         <aside

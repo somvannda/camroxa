@@ -141,6 +141,13 @@ export type RenderOptions = {
   normalise?: number | null;
   /** N-14: designed wavetables, so a MIDI clip using one renders the same as playback. */
   wavetables?: CustomWavetable[];
+  /**
+   * Output container. WAV is the default and stays byte-identical to before; MP3 is
+   * encoded after the render with the bundled LAME encoder.
+   */
+  format?: "wav" | "mp3";
+  /** MP3 bitrate in kbps (ignored for WAV). */
+  mp3Bitrate?: number;
 };
 
 /**
@@ -366,6 +373,11 @@ export async function renderMix(
   }
 
   const rendered = await context.startRendering();
+  if (options.format === "mp3") {
+    // Dynamic import: the encoder only loads for an MP3 export.
+    const { encodeMp3 } = await import("@/lib/studio-mp3");
+    return encodeMp3(rendered, options.mp3Bitrate ?? 192);
+  }
   const raw = Array.from({ length: rendered.numberOfChannels }, (_, index) =>
     rendered.getChannelData(index)
   );

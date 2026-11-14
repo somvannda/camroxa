@@ -128,6 +128,7 @@ import {
 } from "@/lib/studio-designer";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioWavetableDesigner } from "@/components/studio/StudioWavetableDesigner";
+import { StudioSpectrum } from "@/components/studio/StudioSpectrum";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
 import { StudioTakeLanes } from "@/components/studio/StudioTakeLanes";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
@@ -734,6 +735,10 @@ export function StudioEditorShell() {
   const [remixingSongId, setRemixingSongId] = useState<string | null>(null);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
+  /** Export container: WAV (default) or MP3, encoded after the offline render. */
+  const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
+  /** Analyser on the master bus, for the header spectrum. */
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   /** Undo/redo: documents, newest last. */
   const historyRef = useRef<{ undo: { data: unknown; label: string }[]; redo: { data: unknown; label: string }[] }>(
@@ -4192,6 +4197,7 @@ export function StudioEditorShell() {
       }
     });
     engine.disposeChains = [];
+    setAnalyser(null);
   }
 
   /** Stop and re-schedule from `from` with a specific arrangement (drag apply, §22). */
@@ -4350,6 +4356,7 @@ export function StudioEditorShell() {
     bus.output.connect(analyser);
     analyser.connect(context.destination);
     audioRef.current = { ctx: context, sources: [], analyser, disposeChains: [] };
+    setAnalyser(analyser);
 
     // Per-track input: gain plus the track's plugin chain, shared by its clips so an
     // effect is heard once instead of being duplicated per clip.
@@ -4686,6 +4693,9 @@ export function StudioEditorShell() {
       const normalise = exportNormalise ? EXPORT_TARGET_PEAK_DB : null;
       const trackChains = chains;
       const masterGain = masterMuted ? 0 : masterVolume / 100;
+      const format = exportFormat;
+      const extension = format === "mp3" ? "mp3" : "wav";
+      const mime = format === "mp3" ? "audio/mpeg" : "audio/wav";
 
       if (scope === "mix") {
         const wav = await renderMix(buffers, exportClips, exportTracks, {
@@ -4694,8 +4704,9 @@ export function StudioEditorShell() {
           wavetables,
           normalise,
           masterGain,
+          format,
         });
-        download(wav, `${project.title || "mix"}.wav`, "audio/wav");
+        download(wav, `${project.title || "mix"}.${extension}`, mime);
         setExportToast("Full Song download started!");
       } else if (scope === "range") {
         // Exports the time selection, or the loop range as the reference fallback (§87).
@@ -4706,10 +4717,11 @@ export function StudioEditorShell() {
           wavetables,
           normalise,
           masterGain,
+          format,
           from: bounds.start,
           to: bounds.end,
         });
-        download(wav, `${project.title || "mix"} - selection.wav`, "audio/wav");
+        download(wav, `${project.title || "mix"} - selection.${extension}`, mime);
         setExportToast("Selected time range download started!");
       } else {
         for (const track of exportTracks) {
@@ -4717,11 +4729,12 @@ export function StudioEditorShell() {
             chain,
             chains: trackChains,
             wavetables,
+            format,
             clipIds: new Set(track.clipIds),
             honourSolo: false,
           });
           const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
-          download(wav, `${project.title || "project"} - ${label}.wav`, "audio/wav");
+          download(wav, `${project.title || "project"} - ${label}.${extension}`, mime);
         }
         setExportToast("Multitrack download started!");
       }
@@ -5657,6 +5670,9 @@ export function StudioEditorShell() {
         onExport={(scope) => void runExport(scope)}
         normalise={exportNormalise}
         onToggleNormalise={() => setExportNormalise((value) => !value)}
+        exportFormat={exportFormat}
+        onExportFormat={setExportFormat}
+        spectrum={<StudioSpectrum analyser={analyser} />}
         libraryOpen={libraryOpen}
         onToggleLibrary={() => toggleLibrary()}
         onBackToStart={backToStart}
