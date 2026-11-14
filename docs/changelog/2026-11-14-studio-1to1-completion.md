@@ -19,6 +19,9 @@ captures show. Production `camxora.com` is still not deployed.
 | Clip FX | Clips carry their own insert chain (`clip.fx`), applied clip → clip FX → gain/fade → track chain in playback, export and bounce; clip menu gains **Add FX…** and **Remove FX** now removes the clip's chain | §31, §33, §34 |
 | Stereo Utility | New plugin (Level / Width / Pan / Bass Mono) with a real mid-side implementation and a mono-bass low cut | S21 dock |
 | Export menu | Scopes renamed to the captured **Full Song · Selected Time Range · Multitrack**, with the captured toasts | S49, S50, S51 |
+| Preset stepper | The `‹ Default ›` chevrons audition presets without opening the menu; hidden for designed plugins | S46 |
+| Convolution ruler | IR slot labels the captured 0 s · 1 s · 2 s · 3 s ticks instead of only 0 s / 2 s | S44 |
+| Hidden tracks | The popover gains the captured **Unmute all** action next to Show All Hidden Tracks | S21 |
 | My Projects | Cards draw a mini-timeline from a bounded `thumb` summary returned by the list endpoint | S04 |
 | Duplicate master effect | Master still refuses a second limiter and says so in the menu | “Already on Master” string |
 
@@ -35,9 +38,10 @@ stays dropped by product decision.
 - `npm run typecheck`, `npm run check:ui` clean.
 - Vitest **355** (44 files): new `studio-tempo` (7), `studio-wavetable` (6),
   `studio-project-thumb` (2), plus settings/menu/header updates.
-- Playwright: new `studio-content-settings.spec.ts` (6 tests: panes + persistence, IR gating,
-  clip FX add/remove with server polling, Stereo Utility, export scopes, wavetable designer).
-- Platform pytest: new `test_studio_project_thumb.py` (2 tests); full suite run separately.
+- Playwright: new `studio-content-settings.spec.ts` (7 tests: panes + persistence, IR gating,
+  clip FX add/remove with server polling, Stereo Utility, preset stepper, export scopes,
+  wavetable designer); full suite **170 passed / 2 skipped**.
+- Platform pytest: **3409 passed** (new `test_studio_project_thumb.py`).
 
 ## Files
 

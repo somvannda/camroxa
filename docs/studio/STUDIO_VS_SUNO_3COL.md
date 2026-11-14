@@ -190,6 +190,7 @@ Full measured list: `docs/studio/PIXEL_PARITY.md`. Capture-by-capture: `referenc
 | Delay, filter, drive, chorus, others | ✅ | ✅ | — |
 | Stereo Utility (Level / Width / Pan / Bass Mono) | ✅ mid-side implementation | ✅ (S21 dock) | — |
 | Presets (save/apply/clear/default) | ✅ project-scoped user presets | ✅ | — |
+| Preset stepper (‹ ›) | ✅ auditions Default / starter / saved presets without opening the menu | ✅ (S46) | — |
 | Master chain (limiter, EQ, compressor, drive) | ✅ limiter lookahead/pre-gain/attack/release/link | ✅ | — |
 | IR designer | ✅ our addition for custom impulses | ✗ | — |
 | Plugin designer (“Build it” → catalog plugin) | ✅ authored through Suno's agent, saved to MY PLUGINS | ✅ | `POST /internal/studio/projects/:id/plugins/author`, `GET …/author/:jobId` |
