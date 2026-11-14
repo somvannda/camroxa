@@ -2062,6 +2062,14 @@ export function StudioEditorShell() {
           (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
           "Could not save your offline changes."
         );
+        // A reconnect can reach the event before the network stack is usable, which
+        // fails the replay with a transport error. If the burst is still unsaved a
+        // moment later, retry once (no version check: the burst is authoritative).
+        window.setTimeout(() => {
+          if (!unsavedDataRef.current) return;
+          if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+          forceRetryRef.current?.();
+        }, 1200);
         return;
       }
       setSaveStatus((current) => (current === "offline" ? "saved" : current));

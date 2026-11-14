@@ -63,6 +63,7 @@ describe("StudioProjectMenu", () => {
       "Open Project",
       "Rename",
       "Duplicate Project",
+      "Import project…",
       "Version History",
       "Share Project",
       "Send to Suno Sync",
@@ -74,9 +75,11 @@ describe("StudioProjectMenu", () => {
     expect((items[0] as HTMLButtonElement).disabled).toBe(false);
     expect((items[5] as HTMLButtonElement).disabled).toBe(false);
     expect((items[6] as HTMLButtonElement).disabled).toBe(false);
-    expect((items[7] as HTMLButtonElement).disabled).toBe(true);
-    expect(items[7].getAttribute("title")).toMatch(/v1/);
-    expect((items[8] as HTMLButtonElement).disabled).toBe(false);
+    // Import project… is wired (hidden file input), then the disabled v1 copy.
+    expect((items[7] as HTMLButtonElement).disabled).toBe(false);
+    expect((items[8] as HTMLButtonElement).disabled).toBe(true);
+    expect(items[8].getAttribute("title")).toMatch(/v1/);
+    expect((items[9] as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("pushes the project to Suno and reports the result", async () => {

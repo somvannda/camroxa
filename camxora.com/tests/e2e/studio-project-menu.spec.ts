@@ -23,11 +23,12 @@ test("project menu renames the project and the name survives a reload", async ({
   await expect(menu).toBeVisible();
 
   // The order matches the capture; the one we cannot honour is disabled.
-  await expect(menu.getByRole("menuitem")).toHaveCount(10);
-  await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Share Project
-  await expect(menu.getByRole("menuitem").nth(6)).toBeEnabled(); // Send to Suno Sync
-  await expect(menu.getByRole("menuitem").nth(7)).toBeDisabled(); // v1 copy
-  await expect(menu.getByRole("menuitem").nth(8)).toBeEnabled(); // Settings
+  await expect(menu.getByRole("menuitem")).toHaveCount(11);
+  await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Version History
+  await expect(menu.getByRole("menuitem").nth(6)).toBeEnabled(); // Share Project
+  await expect(menu.getByRole("menuitem").nth(7)).toBeEnabled(); // Send to Suno Sync
+  await expect(menu.getByRole("menuitem").nth(8)).toBeDisabled(); // v1 copy
+  await expect(menu.getByRole("menuitem").nth(9)).toBeEnabled(); // Settings
 
   await menu.getByRole("menuitem", { name: "Rename" }).click();
   const dialog = page.getByRole("dialog", { name: "Rename project" });

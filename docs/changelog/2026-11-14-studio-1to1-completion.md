@@ -24,6 +24,12 @@ captures show. Production `camxora.com` is still not deployed.
 | Hidden tracks | The popover gains the captured **Unmute all** action next to Show All Hidden Tracks | S21 |
 | My Projects | Cards draw a mini-timeline from a bounded `thumb` summary returned by the list endpoint | S04 |
 | Recently Deleted | Delete is soft (`deleted_at`); the captured tab lists deleted projects and **Restore** puts the document back in Projects (migration `203`) | S04 §56 note 3 |
+| MP3 export | Export menu gains a WAV/MP3 toggle; MP3 is the same offline render encoded with the bundled LAME encoder (dynamic import) | requested |
+| Project JSON import | Project menu → **Import project…** validates lanes/tracks and creates a new project | requested |
+| Master spectrum | 32-band canvas drawn from the analyser the engine already puts on the master bus | requested |
+| FX sends | Per-track Delay/Reverb send levels into two shared buses, applied in playback and export; sliders live in the dock | requested |
+| Track groups A–D | Membership on the track, submix level in `data.groups`, collapse of member controls | requested (ARR-027) |
+| Song tempo tag | Library rows measure BPM from the clip audio (lazy, cached); key stays absent because a mix has no single reliable key | §19.2 |
 | Duplicate master effect | Master still refuses a second limiter and says so in the menu | “Already on Master” string |
 
 ## Visual parity pass (same day)
@@ -42,22 +48,25 @@ The populated feed also surfaced a real Create-page axe failure the empty-state 
 reached: feed day groups and the song rail jumped h1 → h3/h4. Day groups are h2 now and the
 rail title/sections are h2/h3 (`create-a11y.spec.ts` green).
 
-## Deliberately not built
-The audit’s first draft listed a mixer, FX sends, track groups, a master spectrum, mastering
-presets and MP3 export as Suno features. None of them appears in a capture or a shipped string;
-S47 is an explicit **negative** capture proving the reference has no mixer surface. Building
-them would be inventing surfaces, which D-034 forbids. The Learn menu’s YouTube Tutorials row
-stays dropped by product decision.
+## Not evidenced — built anyway, on request
+
+The audit listed a master spectrum, MP3 export, project JSON import, FX sends, track groups and
+mastering presets as “not evidenced”. The first three and the last are now real features (the
+master presets already existed). The rest of that list stays out: **S47 is a negative capture
+proving the reference has no mixer surface**, and copy/paste mix settings never appears in any
+capture or shipped string. The Learn menu’s YouTube Tutorials row stays dropped by product
+decision.
 
 ## Verification
 
 - `npm run typecheck`, `npm run check:ui` clean.
-- Vitest **355** (44 files): new `studio-tempo` (7), `studio-wavetable` (6),
-  `studio-project-thumb` (2), plus settings/menu/header updates.
+- Vitest **366** (47 files): new `studio-tempo` (7), `studio-wavetable` (6),
+  `studio-project-thumb` (2), `studio-groups` (5), `studio-sends` (4), `studio-song-tempo` (2),
+  plus settings/menu/header updates.
 - Playwright: new `studio-content-settings.spec.ts` (7 tests: panes + persistence, IR gating,
   clip FX add/remove with server polling, Stereo Utility, preset stepper, export scopes,
   wavetable designer) and `studio-soft-delete.spec.ts` (delete → Recently Deleted → restore);
-  full suite **171 passed / 2 skipped**.
+  full suite **176 passed / 2 skipped**.
 - Platform pytest: **3415 passed** (new `test_studio_project_thumb.py`,
   `test_web_music_studio_soft_delete.py`).
 - `next build` produces the production bundle; `next start` on a spare port serves a

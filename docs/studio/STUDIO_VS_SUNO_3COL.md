@@ -169,12 +169,13 @@ Full measured list: `docs/studio/PIXEL_PARITY.md`. Capture-by-capture: `referenc
 | Level meter per track | ✅ peak per track | ✅ | — |
 | Master fader + main mute | ✅ | ✅ | — |
 | Master peak + true-peak estimate | ✅ header readout (G10) | ✅ | — |
-| Track EQ / filter / FX sends / dynamics | ◐ inside the plugin dock chain (EQ, compressor, filter, drive), **no sends** | ✅ sends + per-track panels | — |
+| Track EQ / filter / dynamics | ✅ inside the plugin dock chain (EQ, compressor, filter, drive) | ✅ per-track panels | — |
+| FX sends (Delay, Reverb) | ✅ two shared buses with a per-track level, applied in playback and export | ✗ (not evidenced) | — |
 | Volume / pan automation lanes | ✅ | ✅ | — |
 | Copy/paste mix settings, reset mix | ✗ | ✗ (not evidenced in any capture or string) | — |
-| Track groups A–D with collapse and group mix | ✗ | ✗ (not evidenced) | — |
+| Track groups A–D with collapse and group mix | ✅ membership, level (submix gain) and collapse | ✗ (not evidenced) | — |
 | Mixer panel (strips + spectrum) | ✗ — **the reference has none** (S47: four footer tools, no mixer aria-label, Main is a chain) | ✗ | — |
-| Master spectrum analyser | ✗ | ✗ (not evidenced; the row meter is level/spectrum-styled) | — |
+| Master spectrum analyser | ✅ 32-band canvas from the master analyser | ✗ (not evidenced; the row meter is level/spectrum-styled) | — |
 | Master true-peak / loudness readout | ✅ peak/RMS/4× inter-sample estimate | ✅ | — |
 | Track collaborator avatars | ✅ presence | ✅ | `GET/POST /studio/projects/:id/presence` (platform) |
 
@@ -368,10 +369,18 @@ last evidenced surfaces:
 | **“Already on Master”** duplicate guard | Master refuses a second limiter and names it in the menu |
 | **Export scopes** (S49) | Menu now reads Full Song · Selected Time Range · Multitrack, with the captured toasts |
 | **My Projects thumbnails** (S04) | Cards draw a mini-timeline from a bounded `thumb` summary in the list response |
+| **Recently Deleted** (S04 §56) | Delete is soft (`deleted_at`, migration `203`) and the tab restores a project |
+| **MP3 export** | WAV/MP3 toggle; the MP3 is the same offline render through LAME |
+| **Project JSON import** | Project menu → Import project… validates lanes/tracks and creates a new project |
+| **Master spectrum** | 32-band canvas driven by the master analyser |
+| **FX sends** | Per-track Delay/Reverb levels into two shared buses (playback + export) |
+| **Track groups A–D** | Membership on the track, submix level in `data.groups`, collapse of member controls |
+| **Song tempo tag** | Library rows measure BPM from the clip audio (key stays absent: a mix has no single key) |
 
-**Deliberately absent (negative captures, not gaps):** the mixer surface (S47), FX sends and
-track groups (never evidenced), master spectrum, mastering presets, project JSON import, and
-the Learn menu’s YouTube Tutorials row (product decision).
+**Deliberately absent:** the mixer surface (S47 negative capture — the reference has none),
+copy/paste mix settings and reset mix (never evidenced), and the Learn menu’s YouTube
+Tutorials row (product decision). Mastering presets already existed on the master dock
+(Default / Clean / Warm / Loud).
 
 ### 14.2 Ours, beyond the capture
 
