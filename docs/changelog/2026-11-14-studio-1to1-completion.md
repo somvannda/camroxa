@@ -25,8 +25,23 @@ captures show. Production `camxora.com` is still not deployed.
 | My Projects | Cards draw a mini-timeline from a bounded `thumb` summary returned by the list endpoint | S04 |
 | Duplicate master effect | Master still refuses a second limiter and says so in the menu | “Already on Master” string |
 
-## Deliberately not built
+## Visual parity pass (same day)
 
+Nine captures at 1689×1277 (`docs/studio/compare/`) were paired with S04/S09/S10/S11/S21/S26/
+S40/S44/S46/S49. The pass found four defects the automated suite could not see:
+
+| Defect | Fix |
+|---|---|
+| Settings dialog stayed 480 px wide (the base `.se-dialog` max-width won) | 760 px card, left-aligned title, circular X close |
+| Hidden-tracks popover opened off the left edge of the viewport | Opens over the timeline, like S21 |
+| “What’s This?” card covered open context menus | Hover help pauses while a clip/track menu is open |
+| Export menu ignored Escape | Closes on Escape like every other overlay |
+
+The populated feed also surfaced a real Create-page axe failure the empty-state runs never
+reached: feed day groups and the song rail jumped h1 → h3/h4. Day groups are h2 now and the
+rail title/sections are h2/h3 (`create-a11y.spec.ts` green).
+
+## Deliberately not built
 The audit’s first draft listed a mixer, FX sends, track groups, a master spectrum, mastering
 presets and MP3 export as Suno features. None of them appears in a capture or a shipped string;
 S47 is an explicit **negative** capture proving the reference has no mixer surface. Building
