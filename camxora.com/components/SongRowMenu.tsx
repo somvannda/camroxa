@@ -34,6 +34,7 @@ export type SongRowMenuProps = {
   onCopyLink: () => void;
   onCover: () => void;
   onReusePrompt: () => void;
+  onInspire: () => void;
   onMashup: () => void;
   onVoice: () => void;
   onDetails: () => void;
@@ -65,6 +66,7 @@ export function SongRowMenu({
   onCopyLink,
   onCover,
   onReusePrompt,
+  onInspire,
   onMashup,
   onVoice,
   onDetails,
@@ -149,7 +151,7 @@ export function SongRowMenu({
           <SMenuItem disabled title="Coming soon">
             <Icon name="fa-waveform" /> Sample this song
           </SMenuItem>
-          <SMenuItem disabled title="Coming soon">
+          <SMenuItem onSelect={onInspire}>
             <Icon name="fa-wand-sparkles" /> Use as Inspiration
           </SMenuItem>
           <SMenuItem onSelect={onVoice}>

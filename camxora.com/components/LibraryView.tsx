@@ -1256,6 +1256,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                         const text = (song.style || song.lyrics || song.title || "").trim();
                         window.location.href = `/create?prompt=${encodeURIComponent(text)}`;
                       }}
+                      onInspire={() => {
+                        window.location.href = `/create?inspire=${encodeURIComponent(song.id)}`;
+                      }}
                       onMashup={() => {
                         window.location.href = `/create?mashup=${encodeURIComponent(
                           song.id

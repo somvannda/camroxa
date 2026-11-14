@@ -804,6 +804,27 @@ export function CreateStudio() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const inspireId = params.get("inspire");
+    if (!inspireId) return;
+    window.history.replaceState(null, "", "/create");
+    const apply = (song: WebMusicGeneration) => {
+      if (mounted.current) inspireFrom(song);
+    };
+    const existing = songs.find((song) => song.id === inspireId);
+    if (existing) {
+      apply(existing);
+      return;
+    }
+    getWebMusicGeneration(inspireId)
+      .then(apply)
+      .catch(() => {
+        if (mounted.current) setToast("Could not load that song");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const taskId = params.get("mashup");
     if (!taskId) return;
     const variant = params.get("variant") === "alt" ? "alt" : "ok";
@@ -1733,6 +1754,23 @@ export function CreateStudio() {
     setPrompt(text);
     document.getElementById("create-prompt")?.focus();
     setToast("Prompt reused");
+  }
+
+  /** Start a new song from this one's style (the captured "Use as Inspiration"). */
+  function inspireFrom(song: WebMusicGeneration) {
+    const style = (song.style || "").trim();
+    if (!style) {
+      setToast("This song has no style to inspire a new one");
+      return;
+    }
+    if (mode !== "custom") setMode("custom");
+    setStyle(style.slice(0, 1000));
+    setLyrics("");
+    setLyricsMode("write");
+    setInstrumental(Boolean(song.instrumental));
+    setStylesOpen(true);
+    setToast(`Inspired by ${song.title || "this song"} — write your own lyrics`);
+    window.setTimeout(() => document.getElementById("create-style")?.focus(), 0);
   }
 
   async function coverFromRow(song: WebMusicGeneration, clip: WebMusicClip) {
@@ -3112,6 +3150,7 @@ export function CreateStudio() {
                         onCopyLink={() => void copyClipLink(song, clip)}
                         onCover={() => void coverFromRow(song, clip)}
                         onReusePrompt={() => reusePromptFrom(song)}
+                      onInspire={() => inspireFrom(song)}
                         onMashup={() =>
                           setMashupSource({
                             song,
