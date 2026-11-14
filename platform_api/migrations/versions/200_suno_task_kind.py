@@ -14,8 +14,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "200_suno_task_kind"
-down_revision = "199_studio_upload_suno_clip"
+revision = "200"
+down_revision = "199"
 branch_labels = None
 depends_on = None
 
