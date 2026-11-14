@@ -25,8 +25,10 @@ import {
 } from "@/lib/studio-clip-audio";
 import { normaliseChannels } from "@/lib/studio-normalise";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
+import { createPluginAudio } from "@/lib/studio-plugin-audio";
 import { sanitizeChain } from "@/lib/studio-plugin-chain";
 import { groupGain, type GroupMix } from "@/lib/studio-groups";
+import { DELAY_BUS_PARAMS, REVERB_BUS_PARAMS, sanitizeSends, sendsActive, type TrackSends } from "@/lib/studio-sends";
 import type { TrackGroupId } from "@/lib/studio-tracks";
 import {
   normalizeMidiInstrument,
@@ -154,6 +156,8 @@ export type RenderOptions = {
   mp3Bitrate?: number;
   /** ARR-027: group levels, applied as a submix multiplier before the track fader. */
   groups?: GroupMix;
+  /** Per-track shared-bus sends, keyed by track id. */
+  sends?: Record<string, TrackSends>;
 };
 
 /**
@@ -194,6 +198,27 @@ export async function renderMix(
   master.connect(bus.input);
   bus.output.connect(context.destination);
 
+  // FX sends: shared Delay/Reverb buses, built only when a track actually sends.
+  const sendsInUse = tracks.some((track) =>
+    sendsActive(sanitizeSends(options.sends?.[track.id]))
+  );
+  const delayBus = sendsInUse
+    ? createPluginAudio(context, {
+        entryId: "send-delay",
+        pluginId: "delay",
+        params: { ...DELAY_BUS_PARAMS },
+      } as unknown as Parameters<typeof createPluginAudio>[1])
+    : null;
+  const reverbBus = sendsInUse
+    ? createPluginAudio(context, {
+        entryId: "send-reverb",
+        pluginId: "reverb",
+        params: { ...REVERB_BUS_PARAMS },
+      } as unknown as Parameters<typeof createPluginAudio>[1])
+    : null;
+  delayBus?.output.connect(master);
+  reverbBus?.output.connect(master);
+
   // One gain + optional plugin chain per track, shared by that track's clips so an
   // effect is heard once rather than duplicated per clip.
   const trackNodes = new Map<string, AudioNode>();
@@ -215,14 +240,27 @@ export async function renderMix(
     gain.connect(panner);
     panner.connect(master);
     const entries = options.chains?.[trackId] ?? [];
+    let inputNode: AudioNode = gain;
     if (entries.length > 0) {
       const chain = buildPluginChain(context, entries);
       chain.output.connect(gain);
-      trackNodes.set(trackId, chain.input);
-      return chain.input;
+      inputNode = chain.input;
     }
-    trackNodes.set(trackId, gain);
-    return gain;
+    // FX sends tap the pre-fader input node.
+    const trackSends = sanitizeSends(options.sends?.[trackId]);
+    for (const [kind, sendBus] of [
+      ["delay", delayBus],
+      ["reverb", reverbBus],
+    ] as const) {
+      const level = trackSends[kind];
+      if (!sendBus || level <= 0) continue;
+      const sendGain = context.createGain();
+      sendGain.gain.value = level / 100;
+      inputNode.connect(sendGain);
+      sendGain.connect(sendBus.input);
+    }
+    trackNodes.set(trackId, inputNode);
+    return inputNode;
   }
 
   for (const track of tracks) {

@@ -16,6 +16,7 @@
  */
 
 import { sanitizeAutomation, type AutomationPoint } from "@/lib/studio-automation";
+import { sanitizeSends, type TrackSends } from "@/lib/studio-sends";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
 /** The reference's four visual groups (A–D): assignment, collapse and a group mix. */
@@ -40,6 +41,8 @@ export type StudioTrack = {
   collapsed: boolean;
   /** Visual group A–D (reference ARR-027); `null` when ungrouped. */
   groupId?: TrackGroupId | null;
+  /** Shared-bus send levels (0–100); absent means dry. */
+  sends?: TrackSends;
   /** Ordered plugin chain; signal order. */
   chain: PluginChainEntry[];
   /** Volume automation points (0-100) in timeline seconds. */
@@ -124,6 +127,7 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
       hidden: Boolean(candidate.hidden),
       armed: Boolean(candidate.armed),
       collapsed: Boolean(candidate.collapsed),
+      sends: sanitizeSends(candidate.sends),
       groupId:
         typeof candidate.groupId === "string" &&
         (TRACK_GROUPS as readonly string[]).includes(candidate.groupId)

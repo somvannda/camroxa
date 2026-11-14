@@ -109,7 +109,8 @@ import {
   parseBeatsPerBar,
   secondsPerBar as secondsPerBarFor,
 } from "@/lib/studio-signature";
-import { buildPluginChain } from "@/lib/studio-plugin-audio";
+import { buildPluginChain, createPluginAudio } from "@/lib/studio-plugin-audio";
+import { DELAY_BUS_PARAMS, REVERB_BUS_PARAMS, sanitizeSends, sendsActive, type TrackSends } from "@/lib/studio-sends";
 import { addCustomPlugin, addPlugin, sanitizeChain } from "@/lib/studio-plugin-chain";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import {
@@ -2484,6 +2485,27 @@ export function StudioEditorShell() {
     if (playingRef.current) restartAudio(playheadRef.current, clips);
   }
 
+  /** Send levels are part of the graph, so a change while playing restarts playback. */
+  function setTrackSend(trackId: string, kind: "delay" | "reverb", value: number) {
+    const next = tracks.map((track) =>
+      track.id === trackId
+        ? {
+            ...track,
+            sends: {
+              ...sanitizeSends(track.sends),
+              [kind]: Math.max(0, Math.min(100, value)),
+            },
+          }
+        : track
+    );
+    commitTracks(next);
+    if (playingRef.current) {
+      window.setTimeout(() => {
+        if (playingRef.current) restartAudio(playheadRef.current, clips);
+      }, 0);
+    }
+  }
+
   /** S21 "Unmute all": un-mutes every hidden track without showing them. */
   function unmuteAllHidden() {    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
     if (!hiddenMuted) return;
@@ -4369,6 +4391,21 @@ export function StudioEditorShell() {
     analyser.fftSize = 2048;
     bus.output.connect(analyser);
     analyser.connect(context.destination);
+    // FX sends: two shared buses, built only when some track actually sends into them.
+    const sendsInUse = tracksRef.current.some((track) => sendsActive(sanitizeSends(track.sends)));
+    const makeSendBus = (kind: "delay" | "reverb") => {
+      const node = createPluginAudio(context, {
+        entryId: `send-${kind}`,
+        pluginId: kind,
+        params: kind === "delay" ? { ...DELAY_BUS_PARAMS } : { ...REVERB_BUS_PARAMS },
+      } as unknown as Parameters<typeof createPluginAudio>[1]);
+      node.output.connect(master);
+      return node;
+    };
+    const delayBus = sendsInUse ? makeSendBus("delay") : null;
+    const reverbBus = sendsInUse ? makeSendBus("reverb") : null;
+    if (delayBus) audioRef.current?.disposeChains?.push(delayBus.dispose);
+    if (reverbBus) audioRef.current?.disposeChains?.push(reverbBus.dispose);
     audioRef.current = { ctx: context, sources: [], analyser, disposeChains: [] };
     setAnalyser(analyser);
 
@@ -4421,6 +4458,20 @@ export function StudioEditorShell() {
       groupNode.gain.value = owner ? groupGain(groupsAtStart, owner) : 1;
       pre.connect(groupNode);
       groupNode.connect(input);
+      // FX sends tap the pre-fader group stage so each track contributes to the shared
+      // Delay/Reverb buses at its own level.
+      const trackSends = sanitizeSends(owner?.sends);
+      for (const [kind, sendBus] of [
+        ["delay", delayBus],
+        ["reverb", reverbBus],
+      ] as const) {
+        const level = trackSends[kind];
+        if (!sendBus || level <= 0) continue;
+        const sendGain = context.createGain();
+        sendGain.gain.value = level / 100;
+        pre.connect(sendGain);
+        sendGain.connect(sendBus.input);
+      }
       preTaps.set(trackId, pre);
       duckGains.set(trackId, duckGain);
       trackInputs.set(trackId, pre);
@@ -4712,6 +4763,9 @@ export function StudioEditorShell() {
         clipIds: track.clipIds,
       }));
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
+      const sendsByTrack = Object.fromEntries(
+        tracks.map((track) => [track.id, sanitizeSends(track.sends)])
+      );
       // Mix/range only: per-track files must keep their relative balance (G11).
       const normalise = exportNormalise ? EXPORT_TARGET_PEAK_DB : null;
       const trackChains = chains;
@@ -4729,6 +4783,7 @@ export function StudioEditorShell() {
           masterGain,
           format,
           groups: groupMix,
+        sends: sendsByTrack,
         });
         download(wav, `${project.title || "mix"}.${extension}`, mime);
         setExportToast("Full Song download started!");
@@ -4743,6 +4798,7 @@ export function StudioEditorShell() {
           masterGain,
           format,
           groups: groupMix,
+        sends: sendsByTrack,
           from: bounds.start,
           to: bounds.end,
         });
@@ -4756,6 +4812,7 @@ export function StudioEditorShell() {
             wavetables,
             format,
             groups: groupMix,
+        sends: sendsByTrack,
             clipIds: new Set(track.clipIds),
             honourSolo: false,
           });
@@ -4831,6 +4888,7 @@ export function StudioEditorShell() {
         chains,
         wavetables,
         groups: groupMix,
+        // A bounce is the track alone: sends would pull in the shared buses' tails.
         clipIds: new Set(track.clipIds),
         honourSolo: false,
         // A bounce is the track alone: no master fader, no master mute.
@@ -7239,6 +7297,8 @@ export function StudioEditorShell() {
           onDesignPlugin={openPluginDesigner}
           windowMode={settings.windowMode}
           advancedContent={settings.advancedContent}
+          sends={sanitizeSends(tracks.find((track) => track.id === selectedTrack)?.sends)}
+          onSendsChange={(kind, value) => setTrackSend(selectedTrack, kind, value)}
           onChange={(next) => commitChain(selectedTrack, next)}
         />
       ) : null}

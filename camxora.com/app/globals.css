@@ -4451,6 +4451,10 @@ html{color-scheme:dark}
 /* Studio plugin chain dock                                            */
 /* ------------------------------------------------------------------ */
 .sp-dock{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.06);background:#101012;flex:none;max-height:380px}
+.sp-sends{display:flex;align-items:center;gap:14px;padding:6px 12px;border-top:1px solid rgba(255,255,255,.06)}
+.sp-sends-label{font-size:11px;color:#8b90a6}
+.sp-send{display:flex;align-items:center;gap:6px;font-size:11px;color:#c2c2c1}
+.sp-send input{width:88px}
 .sp-rail{display:flex;align-items:flex-start;gap:10px;padding:10px;overflow-x:auto;scrollbar-width:thin}
 .sp-empty{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:96px;padding:16px;color:#c2c2c1}
 .sp-empty p{margin:0;font-size:12px;color:#8b90a6}

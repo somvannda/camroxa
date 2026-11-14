@@ -50,6 +50,7 @@ import {
 } from "@/lib/studio-ir";
 import { StudioIRDesigner } from "@/components/studio/StudioIRDesigner";
 import type { StudioWindowMode } from "@/lib/studio-settings";
+import { DEFAULT_SENDS, type TrackSends } from "@/lib/studio-sends";
 
 type Props = {
   chain: PluginChainEntry[];
@@ -72,6 +73,9 @@ type Props = {
   ) => void;
   /** S10: whether cards open docked, floating, or with a per-card toggle. */
   windowMode?: StudioWindowMode;
+  /** Shared-bus sends for the selected track. */
+  sends?: TrackSends;
+  onSendsChange?: (kind: "delay" | "reverb", value: number) => void;
   /** S11: sound-design tools are hidden when this is off. */
   advancedContent?: boolean;
 };
@@ -657,6 +661,8 @@ export function StudioPluginDock({
   onSavePreset,
   windowMode = "toggle",
   advancedContent = false,
+  sends = DEFAULT_SENDS,
+  onSendsChange,
 }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1311,6 +1317,26 @@ export function StudioPluginDock({
               ) : null}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {onSendsChange ? (
+        <div className="sp-sends" role="group" aria-label="Sends">
+          <span className="sp-sends-label">Sends</span>
+          {(["delay", "reverb"] as const).map((kind) => (
+            <label key={kind} className="sp-send">
+              <span>{kind === "delay" ? "Delay" : "Reverb"}</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={sends[kind]}
+                aria-label={`${kind === "delay" ? "Delay" : "Reverb"} send`}
+                onChange={(event) => onSendsChange(kind, Number(event.target.value))}
+              />
+            </label>
+          ))}
         </div>
       ) : null}
     </section>
