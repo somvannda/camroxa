@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -2809,7 +2809,7 @@ export function CreateStudio() {
             <div className="s-feed-scroll">
             {audioResultRows.length ? (
               <div>
-                <h3 className="s-day">Audio results</h3>
+                <h2 className="s-day">Audio results</h2>
                 {audioResultRows.map((operation) => {
                   const clip = operation.result?.clips?.[0];
                   if (!clip?.audioUrl) return null;
@@ -4671,7 +4671,7 @@ export function CreateStudio() {
           <div className="s-feed-scroll">
             {audioResultRows.length ? (
               <div>
-                <h3 className="s-day">Audio results</h3>
+                <h2 className="s-day">Audio results</h2>
                 {audioResultRows.map((operation) => {
                   const clip = operation.result?.clips?.[0];
                   if (!clip?.audioUrl) return null;
@@ -4912,14 +4912,14 @@ export function CreateStudio() {
             ) : viewMode === "list" ? (
               groupedRows.map((group) => (
                 <div key={group.label}>
-                  <h3 className="s-day">{group.label}</h3>
+                  <h2 className="s-day">{group.label}</h2>
                   {group.rows.map(renderRow)}
                 </div>
               ))
             ) : (
               groupedRows.map((group) => (
                 <div key={group.label}>
-                  <h3 className="s-day">{group.label}</h3>
+                  <h2 className="s-day">{group.label}</h2>
                   <div className="s-grid">
                     {group.rows.map((row) => (
                       <div

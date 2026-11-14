@@ -187,7 +187,7 @@ export function TrackRail({
                     </button>
                   </div>
                 ) : (
-                  <h4>
+                  <h2>
                     <span>{title}</span>
                     <button
                       type="button"
@@ -200,7 +200,7 @@ export function TrackRail({
                     >
                       <Icon name="fa-pen" />
                     </button>
-                  </h4>
+                  </h2>
                 )}
                 <div className="s-rail-sub">
                   <span className={`s-status ${ready ? "ok" : statusClass(detail.status)}`}>
@@ -392,7 +392,7 @@ export function TrackRail({
             ) : null}
 
             <section className="s-rail-card">
-              <h5>Settings</h5>
+              <h3>Settings</h3>
               <dl className="s-rail-kv">
                 <dt>Model</dt>
                 <dd>{detail.model_label || detail.model || "V6"}</dd>
@@ -426,14 +426,14 @@ export function TrackRail({
 
             {detail.negative_tags ? (
               <section className="s-rail-card">
-                <h5>Exclude styles</h5>
+                <h3>Exclude styles</h3>
                 <p className="s-rail-text">{detail.negative_tags}</p>
               </section>
             ) : null}
 
             <section className="s-rail-card">
               <div className="s-rail-card-head">
-                <h5>Style</h5>
+                <h3>Style</h3>
                 <button
                   type="button"
                   className="s-btn s-btn-icon sm"
@@ -461,7 +461,7 @@ export function TrackRail({
 
             <section className="s-rail-card">
               <div className="s-rail-card-head">
-                <h5>Lyrics</h5>
+                <h3>Lyrics</h3>
                 <button
                   type="button"
                   className="s-btn s-btn-icon sm"
