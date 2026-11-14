@@ -57,6 +57,8 @@ export type StudioTrackPanelProps = {
   onSelectMaster?: () => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
+  /** S21 "Unmute all": clears mute on hidden tracks without showing them. */
+  onUnmuteAllHidden: () => void;
   /** Capture head: one control expands or collapses every visible track. */
   onToggleAllCollapsed: () => void;
 
@@ -142,6 +144,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onSelectMaster,
     onToggleHidden,
     onShowAllHidden,
+  onUnmuteAllHidden,
     onToggleAllCollapsed,
     masterVolume,
     masterMuted,
@@ -574,6 +577,9 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     </button>
                   </div>
                 ))}
+                <button type="button" className="se-pill" onClick={onUnmuteAllHidden}>
+                  Unmute all
+                </button>
                 <button type="button" className="se-pill on" onClick={onShowAllHidden}>
                   Show All Hidden Tracks
                 </button>

@@ -2464,6 +2464,15 @@ export function StudioEditorShell() {
     commitTracks(tracks.map((track) => (track.hidden ? { ...track, hidden: false } : track)));
   }
 
+  /** S21 "Unmute all": un-mutes every hidden track without showing them. */
+  function unmuteAllHidden() {
+    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
+    if (!hiddenMuted) return;
+    commitTracks(
+      tracks.map((track) => (track.hidden && track.muted ? { ...track, muted: false } : track))
+    );
+  }
+
   function deleteTrack(trackId: string) {
     const track = tracks.find((candidate) => candidate.id === trackId);
     if (!track) return;
@@ -5734,6 +5743,7 @@ export function StudioEditorShell() {
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
+          onUnmuteAllHidden={unmuteAllHidden}
           onToggleAllCollapsed={toggleAllCollapsed}
           masterVolume={masterVolume}
           masterMuted={masterMuted}
