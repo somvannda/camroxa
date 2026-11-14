@@ -393,7 +393,7 @@ export function CreateStudio() {
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
 
-  const [createTab, setCreateTab] = useState<"songs" | "speech" | "sounds">("songs");
+  const [createTab, setCreateTab] = useState<"songs" | "sounds">("songs");
   const [feedSearch, setFeedSearch] = useState("");
   const [feedSort, setFeedSort] = useState<FeedSort>("new");
   const [feedFilters, setFeedFilters] = useState<FeedFilter[]>([]);
@@ -3363,7 +3363,6 @@ export function CreateStudio() {
             {(
               [
                 { id: "songs", label: "Songs" },
-                { id: "speech", label: "Speech" },
                 { id: "sounds", label: "Sounds" },
               ] as const
             ).map((item, index) => (
@@ -3379,28 +3378,14 @@ export function CreateStudio() {
                 {createTab === item.id ? (
                   <span
                     className="s-tab-indicator"
-                    style={{ left: `${(index * 100) / 3}%`, width: `${100 / 3}%` }}
+                    style={{ left: `${(index * 100) / 2}%`, width: `${100 / 2}%` }}
                   />
                 ) : null}
               </button>
             ))}
           </div>
 
-          {createTab === "speech" ? (
-            <div className="s-empty" style={{ flex: 1 }}>
-              <span className="ico">
-                <Icon name="fa-microphone-lines" />
-              </span>
-              <b>Speech is coming soon</b>
-              <p>
-                Turn a script into narrated audio with cloned voices. This workspace is not
-                enabled yet.
-              </p>
-              <button type="button" className="s-btn s-btn-secondary" onClick={() => setCreateTab("songs")}>
-                Create a song instead
-              </button>
-            </div>
-          ) : createTab === "sounds" ? (
+          {createTab === "sounds" ? (
             <div className="s-form-scroll">
               <div
                 className="s-card"

@@ -15,6 +15,8 @@ test("the Sounds tab creates a sound through the generation API", async ({ page 
   await signIn(page);
   await page.goto("/create");
   await expect(page.getByRole("tab", { name: "Sounds" })).toBeVisible({ timeout: 30_000 });
+  // Speech was removed: no provider exists, so the tab is not a dead stub.
+  await expect(page.getByRole("tab", { name: "Speech" })).toHaveCount(0);
 
   const captured: { body: Record<string, unknown> | null } = { body: null };
   await page.route("**/api/v3/web-music/sounds", async (route) => {

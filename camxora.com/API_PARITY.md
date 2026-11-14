@@ -109,9 +109,7 @@ as a stub.
 
 | Surface | Control | Today | Next step |
 |---|---|---|---|
-| Create | **Speech** tab | "coming soon" panel | No TTS provider or reference endpoint exists in `musicapi` or the captured Suno API. Decide product support; until then remove the tab rather than keep a dead panel. |
 | Song menu | **Sample this song** | disabled | Needs a clip-based sample generation path (`artistClipId`/audio reference) end to end; only persona style references exist today. |
-| Library | **Hooks** tile | empty state | No hook-generation provider. Remove the tile until a backend exists. |
 | Studio | **YouTube Tutorials** | disabled | External channel does not exist; keep the honest disabled row. |
 | Studio | Plugin **unverified** badge | shown | Verify the remaining plugin parameter maps against the reference, then drop the badge. |
 
@@ -136,3 +134,8 @@ Closed in this pass (2026-11-14):
 - Song menu → **Use as Inspiration** now opens Create in advanced mode with the
   song's style filled in and empty lyrics, so the user writes their own song in
   that style (`/create?inspire=<id>`).
+- **Speech** tab and **Hooks / Liked Hooks** library tabs were removed: no
+  provider or backend exists for either, and leaving "coming soon"/"not enabled"
+  surfaces in the app is the stub D-034 forbids. Re-add them when a provider is
+  wired; the Library now lists Songs, Playlists, Albums, Workspaces, Studio
+  Projects, Cover Art, Uploads, History and Trash.

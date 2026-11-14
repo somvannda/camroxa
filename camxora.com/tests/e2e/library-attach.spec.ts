@@ -17,7 +17,9 @@ test("library audio actions open the working upload and record flows", async ({ 
   await expect(page.getByRole("tablist", { name: "Library sections" })).toBeVisible({
     timeout: 30_000,
   });
-
+  // Hooks/Liked Hooks were removed: no provider exists for them.
+  await expect(page.getByRole("tab", { name: "Hooks", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Liked Hooks" })).toHaveCount(0);
   await page.getByRole("button", { name: "Audio actions" }).click();
   await page.getByRole("menuitem", { name: /^Upload/ }).click();
   const dialog = page.getByRole("dialog");
