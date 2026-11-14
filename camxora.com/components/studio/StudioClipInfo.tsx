@@ -1,17 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { Waveform } from "@/components/studio/Waveform";
 import type { WebMusicGeneration } from "@/lib/library-api";
+import {
+  addStudioProjectComment,
+  listStudioProjectComments,
+  type StudioShareComment,
+} from "@/lib/studio-api";
 
 /**
  * Clip info panel (spec §70): the right rail swaps from the library to an inspector for
  * the selected clip.
  *
- * Read-only by design: it shows what the document knows (timing, fade, trim offset, track)
- * plus the source generation (model, style, lyrics) and a real decoded waveform. The
- * Stems tab exposes the same request the provenance strip does; comments and the Magic
- * Bar chip have no captured contract here, so they are absent rather than mocked.
+ * Shows what the document knows (timing, fade, trim offset, track), the source
+ * generation (model, style, lyrics), a decoded waveform, the Stems request, and the
+ * captured S55 "Comments and notes" section: anonymous plain-text notes on this clip
+ * with a `Write a comment` pill — the reference deliberately shows no author or time.
  *
  * Anatomy follows S27: header, artwork hero, Remix affordance, waveform player,
  * Info/Stems tabs, then quiet section cards.
@@ -32,6 +37,8 @@ export type StudioClipInfoProps = {
     songId?: string;
   };
   trackName?: string;
+  /** Enables the clip's comments section; omitted in contexts without a project. */
+  projectId?: string;
   source: WebMusicGeneration | null;
   stems: { status: string; message?: string } | null;
   onRequestStems: () => void;
@@ -60,6 +67,7 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
     width,
     clip,
     trackName,
+    projectId,
     source,
     stems,
     onRequestStems,
@@ -74,6 +82,47 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
     clip.audioUrl;
   const [tab, setTab] = useState<"info" | "stems">("info");
   const date = sourceDate(source);
+  const [comments, setComments] = useState<StudioShareComment[] | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState("");
+  const [commentsOpen, setCommentsOpen] = useState(true);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let active = true;
+    setComments(null);
+    listStudioProjectComments(projectId, 100, clip.id)
+      .then((payload) => {
+        if (active) setComments(payload.items);
+      })
+      .catch(() => {
+        if (active) setComments([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, clip.id]);
+
+  async function submitComment() {
+    const text = commentDraft.trim();
+    if (!projectId || !text || commentBusy) return;
+    setCommentBusy(true);
+    setCommentError("");
+    try {
+      const created = await addStudioProjectComment(projectId, {
+        authorName: "You",
+        body: text,
+        clipId: clip.id,
+      });
+      setComments((current) => [created, ...(current ?? [])]);
+      setCommentDraft("");
+    } catch (cause) {
+      setCommentError(cause instanceof Error ? cause.message : "Could not save the comment");
+    } finally {
+      setCommentBusy(false);
+    }
+  }
 
   return (
     <aside className="se-inspector" aria-label="Clip info" style={{ width }}>
@@ -194,6 +243,64 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
                   <dd>{clip.offset ? mmss(clip.offset) : "None"}</dd>
                 </div>
               </dl>
+            </section>
+
+            <section className="se-clip-card se-comments" aria-label="Comments and notes">
+              <button
+                type="button"
+                className="se-comments-head"
+                aria-expanded={commentsOpen}
+                onClick={() => setCommentsOpen((open) => !open)}
+              >
+                <Icon name={commentsOpen ? "fa-chevron-down" : "fa-chevron-right"} />
+                <span>Comments and notes</span>
+              </button>
+              {commentsOpen ? (
+                <>
+                  {comments === null ? (
+                    <p className="se-clip-card-meta">Loading comments…</p>
+                  ) : null}
+                  {comments && comments.length === 0 ? (
+                    <p className="se-clip-card-meta">No comments yet.</p>
+                  ) : null}
+                  {[...(comments ?? [])].reverse().map((comment) => (
+                    <p key={comment.id} className="se-comment">
+                      {comment.body}
+                    </p>
+                  ))}
+                  {projectId ? (
+                    <div className="se-comment-input">
+                      <input
+                        value={commentDraft}
+                        placeholder="Write a comment"
+                        aria-label="Write a comment"
+                        disabled={commentBusy}
+                        onChange={(event) => setCommentDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void submitComment();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="se-icon"
+                        aria-label="Post comment"
+                        disabled={commentBusy || !commentDraft.trim()}
+                        onClick={() => void submitComment()}
+                      >
+                        <Icon name="fa-arrow-up" />
+                      </button>
+                    </div>
+                  ) : null}
+                  {commentError ? (
+                    <p className="se-clip-card-meta" role="alert">
+                      {commentError}
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
             </section>
           </div>
         ) : (

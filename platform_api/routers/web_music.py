@@ -752,6 +752,7 @@ class StudioCommentCreateRequest(BaseModel):
     author_name: str = Field(default="Guest", max_length=80)
     body: str = Field(min_length=1, max_length=2000)
     parent_id: UUID | None = None
+    clip_id: str | None = Field(default=None, max_length=128)
 
 
 class StudioPresenceTouchRequest(BaseModel):
@@ -802,11 +803,13 @@ async def list_studio_project_comments(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
     limit: int = Query(100, ge=1, le=100),
+    clip_id: str | None = Query(default=None, max_length=128),
 ) -> dict:
     return await service.list_studio_project_comments(
         UUID(ctx.user_id),
         project_id,
         limit=limit,
+        clip_id=clip_id,
     )
 
 
@@ -823,6 +826,7 @@ async def add_studio_project_comment(
         author_name=body.author_name,
         body=body.body,
         parent_id=body.parent_id,
+        clip_id=body.clip_id,
     )
 
 

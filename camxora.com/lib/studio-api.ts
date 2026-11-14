@@ -596,6 +596,7 @@ export async function getStudioSharedProject(token: string): Promise<StudioProje
 
 export type StudioShareComment = {
   id: string;
+  clip_id?: string | null;
   parent_id?: string | null;
   author_name: string;
   body: string;
@@ -691,16 +692,19 @@ export async function listProjectPresence(
 
 export async function listStudioProjectComments(
   projectId: string,
-  limit = 100
+  limit = 100,
+  clipId?: string
 ): Promise<{ items: StudioShareComment[] }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (clipId) params.set("clip_id", clipId);
   return studioJson(
-    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments?limit=${limit}`
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments?${params.toString()}`
   );
 }
 
 export async function addStudioProjectComment(
   projectId: string,
-  input: { authorName: string; body: string; parentId?: string | null }
+  input: { authorName: string; body: string; parentId?: string | null; clipId?: string }
 ): Promise<StudioShareComment> {
   return studioJson(
     `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments`,
@@ -711,6 +715,7 @@ export async function addStudioProjectComment(
         author_name: input.authorName || "You",
         body: input.body,
         parent_id: input.parentId || undefined,
+        clip_id: input.clipId || undefined,
       }),
     }
   );

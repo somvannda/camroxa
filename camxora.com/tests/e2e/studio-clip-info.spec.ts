@@ -74,3 +74,42 @@ test("clip info shows timing, source and a decoded waveform", async ({ page }) =
   await panel.getByRole("button", { name: "Back to arrangement" }).click();
   await expect(panel).toHaveCount(0);
 });
+
+test("clip comments are anonymous notes that survive a reload", async ({ page }) => {
+  test.setTimeout(120_000);
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, {
+    title: `Comments ${tag}`,
+    clips: [
+      { id: "clip", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" },
+    ],
+  });
+  await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
+
+  const openInspector = async () => {
+    const clip = page.locator(".se-clip").first();
+    const box = await clip.boundingBox();
+    if (!box) throw new Error("clip has no box");
+    await page.mouse.click(box.x + 30, box.y + 40, { button: "right" });
+    await page
+      .getByRole("menu", { name: "Clip options" })
+      .getByRole("menuitem", { name: "Clip Info" })
+      .click();
+    return page.getByRole("complementary", { name: "Clip info" });
+  };
+
+  const panel = await openInspector();
+  await expect(panel.getByText("Comments and notes")).toBeVisible();
+  const input = panel.getByLabel("Write a comment");
+  const note = `Tighten the low end ${tag}`;
+  await input.fill(note);
+  await input.press("Enter");
+  await expect(panel.getByText(note)).toBeVisible({ timeout: 15_000 });
+
+  // A reload must read the note back from the project, still without any author line.
+  await page.reload();
+  await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
+  const again = await openInspector();
+  await expect(again.getByText(note)).toBeVisible({ timeout: 15_000 });
+  await expect(again.getByText("You", { exact: true })).toHaveCount(0);
+});

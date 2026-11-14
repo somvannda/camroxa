@@ -5719,6 +5719,7 @@ export function StudioEditorShell() {
                 width={LIBRARY_W}
                 clip={inspected}
                 trackName={owner?.name}
+                projectId={project?.id ?? projectId ?? undefined}
                 source={clipSource}
                 stems={stems}
                 onRequestStems={openStemsDialog}

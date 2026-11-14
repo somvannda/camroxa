@@ -5022,6 +5022,13 @@ html{color-scheme:dark}
 .se-clip-cards{display:flex;flex-direction:column;gap:12px;padding:0 0 4px}
 .se-clip-card{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:12px;background:#141416}
 .se-clip-card-label{margin:0;font-size:12px;color:#8b90a6}
+.se-comments{gap:8px}
+.se-comments-head{display:flex;align-items:center;gap:6px;padding:0;background:none;border:0;color:#c9cde0;font-size:12px;font-weight:600;text-align:left;cursor:pointer}
+.se-comment{margin:0;font-size:13px;line-height:1.45;color:hsl(var(--foreground));overflow-wrap:anywhere}
+.se-comment-input{display:flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;background:#0c0c0e;border:1px solid #2b2b30}
+.se-comment-input:focus-within{border-color:hsl(var(--accent))}
+.se-comment-input input{flex:1;min-width:0;background:none;border:0;outline:none;color:hsl(var(--foreground));font-size:12px}
+.se-comment-input input::placeholder{color:#8b90a6}
 .se-clip-card-value{margin:0;font-size:14px;font-weight:600}
 .se-clip-card-meta{margin:0;font-size:12px;color:#8b90a6;line-height:1.45}
 .se-clip-lyrics{margin:0;font:inherit;font-size:12px;color:#c2c2c1;white-space:pre-wrap;max-height:120px;overflow:auto}

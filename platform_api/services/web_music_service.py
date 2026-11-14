@@ -3320,8 +3320,13 @@ class WebMusicService:
 
     @staticmethod
     def _studio_comment_payload(row: Any) -> dict[str, Any]:
+        try:
+            clip_id = row["clip_id"]
+        except (KeyError, IndexError):
+            clip_id = None
         return {
             "id": str(row["id"]),
+            "clip_id": str(clip_id) if clip_id else None,
             "parent_id": str(row["parent_id"]) if row["parent_id"] else None,
             "author_name": str(row["author_name"]),
             "body": str(row["body"]),
@@ -3551,6 +3556,7 @@ class WebMusicService:
         project_id: UUID,
         *,
         limit: int = 100,
+        clip_id: str | None = None,
     ) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -3563,15 +3569,18 @@ class WebMusicService:
                 details={"project_id": str(project_id)},
             )
         safe_limit = max(1, min(int(limit), 100))
+        safe_clip = str(clip_id or "").strip()[:128] or None
         rows = await self._pool.fetch(
             """
             SELECT * FROM studio_project_comments
             WHERE project_id = $1
+              AND ($3::text IS NULL OR clip_id = $3)
             ORDER BY created_at DESC
             LIMIT $2
             """,
             project_id,
             safe_limit,
+            safe_clip,
         )
         return {"items": [self._studio_comment_payload(row) for row in rows]}
 
@@ -3583,6 +3592,7 @@ class WebMusicService:
         author_name: str,
         body: str,
         parent_id: UUID | None = None,
+        clip_id: str | None = None,
     ) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -3617,8 +3627,8 @@ class WebMusicService:
         row = await self._pool.fetchrow(
             """
             INSERT INTO studio_project_comments
-                (project_id, user_id, author_name, body, parent_id)
-            VALUES ($1, $2, $3, $4, $5)
+                (project_id, user_id, author_name, body, parent_id, clip_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             """,
             project_id,
@@ -3626,6 +3636,7 @@ class WebMusicService:
             safe_name,
             safe_body,
             parent_id,
+            str(clip_id or "").strip()[:128] or None,
         )
         return self._studio_comment_payload(row)
 
