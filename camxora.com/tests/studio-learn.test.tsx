@@ -45,9 +45,12 @@ describe("StudioLearn menu", () => {
     expect(toggle.textContent?.replace(/\s+/g, " ").trim()).toBe("What's This? On");
     expect(toggle.getAttribute("aria-checked")).toBe("true");
 
-    // Destinations this build does not have stay visible but disabled.
+    // YouTube has no channel yet; the Learning Center is an in-app dialog.
     expect((items[1] as HTMLButtonElement).disabled).toBe(true);
-    expect((items[2] as HTMLButtonElement).disabled).toBe(true);
+    expect((items[2] as HTMLButtonElement).disabled).toBe(false);
+    await user.click(items[2]);
+    expect(await screen.findByRole("dialog", { name: "Learning Center" })).toBeTruthy();
+    expect(screen.getByText("Start an arrangement")).toBeTruthy();
   });
 
   it("toggles What's This? through the callback", async () => {

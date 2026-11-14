@@ -679,14 +679,6 @@ export function StudioProjectMenu({
                     The setting is read when the drag starts.
                   </p>
                 </section>
-                <section className="se-settings-section">
-                  <h3>Window management</h3>
-                  <p className="se-dialog-note">Not captured yet.</p>
-                </section>
-                <section className="se-settings-section">
-                  <h3>Content</h3>
-                  <p className="se-dialog-note">Not captured yet.</p>
-                </section>
               </>
             ) : dialog === "sync" ? (
               <>

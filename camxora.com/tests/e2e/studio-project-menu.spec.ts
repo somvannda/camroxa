@@ -184,8 +184,10 @@ test("studio settings open with the captured accelerator and persist", async ({ 
   const dialog = page.getByRole("dialog", { name: "Studio settings" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Performance")).toBeVisible();
-  await expect(dialog.getByText("Window management")).toBeVisible();
-  await expect(dialog.getByText("Content")).toBeVisible();
+  // Empty, uncaptured sections are removed rather than shipped as stubs.
+  await expect(dialog.getByText("Window management")).toHaveCount(0);
+  await expect(dialog.getByText("Content", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText("Not captured yet.")).toHaveCount(0);
 
   const ghost = dialog.getByRole("checkbox", { name: "Ghost drag for arrangement moves" });
   await expect(ghost).toBeChecked(); // captured default is "On"

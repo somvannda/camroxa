@@ -117,7 +117,7 @@ describe("StudioProjectMenu", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("shows the captured settings sections and toggles ghost drag", async () => {
+  it("shows the captured settings and toggles ghost drag", async () => {
     const user = userEvent.setup();
     const { onSettingsChange } = renderMenu();
 
@@ -126,9 +126,10 @@ describe("StudioProjectMenu", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Studio settings" });
     expect(dialog).toBeTruthy();
-    for (const section of ["Performance", "Window management", "Content"]) {
-      expect(screen.getByText(section)).toBeTruthy();
-    }
+    expect(screen.getByText("Performance")).toBeTruthy();
+    // Uncaptured, empty sections are removed instead of shipped as stubs.
+    expect(screen.queryByText("Window management")).toBeNull();
+    expect(screen.queryByText("Not captured yet.")).toBeNull();
 
     const ghost = screen.getByRole("checkbox", { name: "Ghost drag for arrangement moves" }) as HTMLInputElement;
     expect(ghost.checked).toBe(true);

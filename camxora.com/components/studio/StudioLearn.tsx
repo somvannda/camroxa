@@ -9,15 +9,40 @@ import { helpFor, SHORTCUTS, type HelpEntry } from "@/lib/studio-help";
  * Learn menu + What's This? hover help (reference §7 / §38).
  *
  * A popover, not a dialog: it does not dim the editor or trap focus, and it closes on an
- * outside click. The four captured rows keep their order; the two destinations this
- * build does not have (YouTube tutorials, Learning Center) are disabled with a reason
- * rather than removed (D-011 pattern), because the order is the captured part.
+ * outside click. The four captured rows keep their order. Keyboard Shortcuts and the
+ * Learning Center open in-app dialogs; YouTube Tutorials stays disabled until this
+ * product has a tutorial channel (an external dependency, recorded in
+ * `camxora.com/API_PARITY.md`).
  *
  * What's This? is the real feature: any control carrying `data-help` gets a light card
  * with a name and a sentence, toggled globally and persisted in Studio settings.
  */
 
 const SEEN_KEY = "studio:help:seen";
+
+/** Short, product-true tour; every step maps to a control that exists in this editor. */
+const LEARNING_STEPS = [
+  {
+    title: "Start an arrangement",
+    body: "Press A for an audio track or M for a MIDI track, or drag a song in from the Library.",
+  },
+  {
+    title: "Create a part",
+    body: "Use the prompt bar at the bottom; generated takes land on the selected track as clips.",
+  },
+  {
+    title: "Shape the sound",
+    body: "Add an effect from the dock, then drag its knobs. Bypass, reorder or pop out any slot.",
+  },
+  {
+    title: "Edit the timeline",
+    body: "Drag on the ruler to select a range; split, duplicate, loop or export it from the range menu.",
+  },
+  {
+    title: "Save and mirror",
+    body: "Edits autosave. The sync chip sends the arrangement to Suno and reports conflicts honestly.",
+  },
+];
 
 export type StudioLearnProps = {
   whatsThis: boolean;
@@ -43,6 +68,7 @@ function hasSeen() {
 export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
   const [open, setOpen] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
+  const [learning, setLearning] = useState(false);
   const [card, setCard] = useState<{ entry: HelpEntry; left: number; top: number } | null>(null);
   const [firstRun, setFirstRun] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -53,7 +79,7 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
 
   // Outside click closes the popover; Escape closes every layer we opened.
   useEffect(() => {
-    if (!open && !card && !shortcuts) return;
+    if (!open && !card && !shortcuts && !learning) return;
     const onPointer = (event: PointerEvent) => {
       const root = rootRef.current;
       if (open && root && !root.contains(event.target as Node)) setOpen(false);
@@ -63,6 +89,7 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
       if (event.key === "Escape") {
         setOpen(false);
         setShortcuts(false);
+        setLearning(false);
         setCard(null);
       }
     };
@@ -72,7 +99,7 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
       document.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, card, shortcuts]);
+  }, [open, card, shortcuts, learning]);
 
   // `?` opens the shortcut list — the accelerator the Learn menu advertises.
   useEffect(() => {
@@ -215,7 +242,14 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
               <Icon name="fa-arrow-up-right-from-square" />
             </span>
           </button>
-          <button type="button" role="menuitem" disabled title="No learning centre yet">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setLearning(true);
+            }}
+          >
             <Icon name="fa-circle-info" /> Learning Center
           </button>
           <button
@@ -231,6 +265,35 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
             <Icon name="fa-lightbulb" /> What&apos;s This?{" "}
             <span>{whatsThis ? "On" : "Off"}</span>
           </button>
+        </div>
+      ) : null}
+
+      {learning ? (
+        <div
+          className="se-dialog-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Learning Center"
+        >
+          <div className="se-dialog">
+            <h2>Learning Center</h2>
+            <p className="se-dialog-note">
+              Five things to try first. Press ? at any time for the full shortcut map.
+            </p>
+            <ol className="se-dialog-list">
+              {LEARNING_STEPS.map((step) => (
+                <li key={step.title} className="se-dialog-row">
+                  <span className="se-dialog-title">{step.title}</span>
+                  <span className="se-dialog-note">{step.body}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="se-dialog-foot">
+              <button type="button" className="se-pill" onClick={() => setLearning(false)}>
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

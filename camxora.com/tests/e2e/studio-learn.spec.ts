@@ -37,6 +37,19 @@ test("learn explains a control, then stays off after a reload", async ({ page })
   await shortcuts.getByRole("button", { name: "Close" }).click();
   await expect(shortcuts).toHaveCount(0);
 
+  // Learning Center is an in-app tour, not a dead menu row.
+  await page.getByRole("button", { name: "Learn", exact: true }).click();
+  await page
+    .getByRole("menu", { name: "Learn" })
+    .getByRole("menuitem", { name: /Learning Center/ })
+    .click();
+  const center = page.getByRole("dialog", { name: "Learning Center" });
+  await expect(center).toBeVisible();
+  await expect(center).toContainText("Start an arrangement");
+  await expect(center).toContainText("Save and mirror");
+  await center.getByRole("button", { name: "Close" }).click();
+  await expect(center).toHaveCount(0);
+
   // Hovering the tempo field explains it. Move the pointer away first: a pointer that is
   // already over the control fires no new pointerover, so a repeated hover would be a
   // no-op (and the listener may attach just after the first move under load).
