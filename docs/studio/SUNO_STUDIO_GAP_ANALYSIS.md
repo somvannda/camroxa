@@ -22,7 +22,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | MIDI | Piano roll + instrument + keyboard | Not in the web Studio (desktop app only) | **Missing** (deliberate: no captured contract for a browser piano roll) |
 | Generation in the DAW | Prompt bar + clip transforms | Generation lives on `/create`; **stems** is wired from the provenance strip; extend/cover/remaster/mashup/replace-section APIs exist in `lib/studio-api.ts` but their menu was never captured | **Partial** |
 | Export | Mix, range, multitrack | Browser render: full mix, one file per track, loop range, project JSON, optional −1 dBFS normalisation | **Parity** for the browser path (server render not wired) |
-| Collaboration | Share links, comments, presence | View + copy links, comments and presence APIs, fork; the editor exposes sharing only | **Partial** — comments/presence have no captured panel |
+| Collaboration | Share links, comments, presence | View + copy links, fork, share comments, presence cursors, and the captured S55 clip **Comments and notes** section | **Parity** for the captured collaboration surface (no threads/authors on clips, matching S55) |
 | Library | Songs / liked / stems / uploads / workspaces / projects | Songs, workspaces (with counts + filter), projects, uploads | **Partial** — stems tab waits on a real stems job (B-005); "liked" is per clip, not a song corpus |
 | Reliability | Autosave with silent overwrite | Save status, 409 reload/overwrite, offline draft, unsaved guard | **Beyond parity** (deliberate, D-004 family) |
 | Quality gates | n/a | 181 unit/component/API tests, 59 Playwright tests, axe-clean routes | **Present** — the service-backed e2e job runs in CI and gates PRs |

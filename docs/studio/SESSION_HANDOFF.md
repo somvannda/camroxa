@@ -12,14 +12,14 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   Song → Use as Inspiration, Song → Sample this song (audio reference end to end,
   migration `201`), Learning Center, Library upload/record deep links, song → Studio
   deep links with create-or-load, the "Chorus"/Rhythm Gate correction (live registry),
-  and removal of every dead control (Speech, Hooks, custom model, master Reverb stubs).
+  the captured S55 clip **Comments and notes** section, and removal of every dead control
+  (Speech, Hooks, custom model, master Reverb stubs).
   `SUNO_STUDIO_STATE_SCHEMA.md`, `API_PARITY.md` and the changelog record the details.
 - **Gates at tip:** web typecheck + `check:ui` clean · Vitest 339 · Playwright
-  162 passed / 2 skipped · platform pytest 3402 (2 pre-existing media failures) ·
-  musicapi codec 33. A signed-in sweep of 29 routes found zero console/page/API errors
-  (`UI_AUDIT.md`).
+  163 passed / 2 skipped · platform pytest 3407 (all green) · musicapi codec 33.
+  A signed-in sweep of 29 routes found zero console/page/API errors (`UI_AUDIT.md`).
 - **Local stack:** platform API on `:8100` with sandbox DB `camxora_pfm_sandbox`
-  (migrations `200`/`201` applied); web `:3103`; e2e needs both.
+  (migrations `200`/`201`/`202` applied); web `:3103`; e2e needs both.
 - **Only open item:** Studio → YouTube Tutorials, blocked on an external channel.
 
 ## Update 2026-11-13 (later) — Designed plugins on Suno's authoring agent

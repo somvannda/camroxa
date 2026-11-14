@@ -154,3 +154,7 @@ Closed in this pass (2026-11-14):
   stores it on the task (migration `201`), and forwards it as `audio_urls` to
   musicapi's agentic audio-reference path. No raw provider URL comes from the
   browser.
+- Studio clip inspector → **Comments and notes** (S55): anonymous plain-text
+  notes scoped to one clip (`studio_project_comments.clip_id`, migration `202`),
+  with Enter-to-post and persistence across reloads. Project-level/share
+  threads are unchanged.
