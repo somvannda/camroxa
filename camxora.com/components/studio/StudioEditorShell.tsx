@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent 
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
-import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
+import { getStudioProject, createStudioProject, findStudioProjectForSong, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import {
@@ -54,6 +54,7 @@ import {
   createWebMusicWorkspace,
   dislikeWebMusicGeneration,
   downloadWebMusicClipWav,
+  getWebMusicGeneration,
   setWebMusicTrash,
   fetchWebMusicDislikedKeys,
   fetchWebMusicLikedKeys,
@@ -61,6 +62,7 @@ import {
   listWebMusicWorkspaces,
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
+import { projectFromSong } from "@/lib/studio-from-clip";
 import {
   SONG_DRAG_TYPE,
   StudioLibrary,
@@ -795,12 +797,83 @@ export function StudioEditorShell() {
   /** Audition speed (G17): 0.5x / 1x / 2x. */
   const [playbackRate, setPlaybackRate] = useState(1);
   const [projectId, setProjectId] = useState<string | null>(null);
+  /** `?clip=<generation>` deep link: create a project from the song, then load it. */
+  const [clipImport, setClipImport] = useState<{
+    id: string;
+    variant: "ok" | "alt";
+    intent: string | null;
+  } | null>(null);
+  const clipImportRef = useRef("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const clip = params.get("clip");
     setProjectId(params.get("project"));
+    setClipImport(
+      clip
+        ? {
+            id: clip,
+            variant: params.get("variant") === "alt" ? "alt" : "ok",
+            intent: params.get("intent"),
+          }
+        : null
+    );
     setSettings(readStudioSettings());
   }, []);
+
+  // "Open in Studio" / Replace Section / Crop from a song row: materialise the
+  // song as a one-track project once, then stay on the normal project flow.
+  useEffect(() => {
+    if (authLoading || !user || !clipImport || projectId) return;
+    if (clipImportRef.current === clipImport.id) return;
+    clipImportRef.current = clipImport.id;
+    let active = true;
+    void (async () => {
+      try {
+        const existing = await findStudioProjectForSong(clipImport.id).catch(() => ({
+          id: null as string | null,
+        }));
+        if (existing.id) {
+          if (!active) return;
+          window.history.replaceState(
+            null,
+            "",
+            `/studio/editor?project=${encodeURIComponent(existing.id)}`
+          );
+          setClipImport(null);
+          setProjectId(existing.id);
+          return;
+        }
+        const song = await getWebMusicGeneration(clipImport.id);
+        const draft = projectFromSong(song, clipImport.variant);
+        if (!draft) {
+          if (active) setError("This song has no playable audio yet.");
+          return;
+        }
+        const created = await createStudioProject(draft);
+        if (!active) return;
+        window.history.replaceState(
+          null,
+          "",
+          `/studio/editor?project=${encodeURIComponent(created.id)}`
+        );
+        setClipImport(null);
+        setProjectId(created.id);
+        if (clipImport.intent === "replace-section") {
+          setExportToast("Select a range on the ruler, then choose Replace Section.");
+        } else if (clipImport.intent === "crop") {
+          setExportToast("Drag the clip handles to crop this song.");
+        }
+      } catch (cause) {
+        if (active) {
+          setError(cause instanceof Error ? cause.message : "Could not open this song in Studio.");
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user, clipImport, projectId]);
 
   useEffect(() => {
     if (authLoading) return;

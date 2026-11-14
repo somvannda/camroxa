@@ -113,8 +113,6 @@ as a stub.
 | Create | **Sounds** tab | "coming soon" panel | `musicapi` already builds sounds (`type: "sounds"` on `/me/generate`), but `platform_api` has no sounds job type, price row, or result list. Add a sounds job type + pricing entry + library rendering. |
 | Song menu | **Sample this song** | disabled | Needs a clip-based sample generation path (`artistClipId`/audio reference) end to end; only persona style references exist today. |
 | Song menu | **Use as Inspiration** | disabled | Can reuse the referenced clip's style/persona: pass its style into Create and attach the persona; needs an `artist_clip_id` passthrough in the platform generate call. |
-| Song menu | **Replace Section** | disabled | The operation already exists (`/studio/replace-section`); enable it by opening the song in Studio with a section-selection prompt. |
-| Song menu | **Crop** | disabled | Captured Suno route `/api/edit/crop/{clip_id}`; `musicapi` has no client/route yet. Add client + internal route + platform endpoint + clip-menu UI. |
 | Library | **Hooks** tile | empty state | No hook-generation provider. Remove the tile until a backend exists. |
 | Studio | **YouTube Tutorials** | disabled | External channel does not exist; keep the honest disabled row. |
 | Studio | Plugin **unverified** badge | shown | Verify the remaining plugin parameter maps against the reference, then drop the badge. |
@@ -127,3 +125,7 @@ Closed in this pass (2026-11-14):
 - Library → **Audio + → Upload/Record** deep-links into the working Create
   uploader/recorder (`/create?attach=upload|record`) instead of a "not enabled"
   panel.
+- Song menu → **Open in Editor / Open in Studio / Replace Section / Crop Song**
+  now deep-link `?clip=<generation>&variant=&intent=`. The editor materialises
+  that version as a one-track project (`lib/studio-from-clip.ts`) and shows the
+  relevant hint, instead of opening an unrelated project or staying disabled.

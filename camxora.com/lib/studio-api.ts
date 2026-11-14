@@ -178,6 +178,15 @@ export async function getStudioPluginAuthoringJob(
   );
 }
 
+/** The Studio project that already contains a generated song, if one exists. */
+export async function findStudioProjectForSong(
+  songId: string
+): Promise<{ id: string | null }> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/for-song/${encodeURIComponent(songId)}`
+  );
+}
+
 export async function createStudioProject(input: {
   title: string;
   major_version?: number;
