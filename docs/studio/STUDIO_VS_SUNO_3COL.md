@@ -399,6 +399,17 @@ the Learn menu’s YouTube Tutorials row (product decision).
 | [`compare/ours-editor-1689.png`](compare/ours-editor-1689.png) | `reference/screens/S17-editor-loaded-project.jpeg` |
 | [`compare/ours-editor-library-1689.png`](compare/ours-editor-library-1689.png) | `reference/screens/S52-library-workspaces.jpeg`, `S53-library-songs.jpeg` |
 | [`compare/ours-editor-1280.png`](compare/ours-editor-1280.png) | `reference/screens/S63-1280px.jpeg` |
+| [`compare/ours-settings-performance.png`](compare/ours-settings-performance.png) | `reference/screens/S09-settings-performance.jpeg` |
+| [`compare/ours-settings-window-management.png`](compare/ours-settings-window-management.png) | `reference/screens/S10-settings-window-management.jpeg` |
+| [`compare/ours-settings-content.png`](compare/ours-settings-content.png) | `reference/screens/S11-settings-content.jpeg` |
+| [`compare/ours-export-menu.png`](compare/ours-export-menu.png) | `reference/screens/S49-export-menu.jpeg` |
+| [`compare/ours-clip-menu.png`](compare/ours-clip-menu.png) | `reference/screens/S26-clip-context-menu.jpeg` |
+| [`compare/ours-plugin-dock-eq-convolution.png`](compare/ours-plugin-dock-eq-convolution.png) | `reference/screens/S40-plugin-dock-single.jpeg`, `S44-convolution-card.jpeg`, `S46-preset-menu.jpeg` |
+| [`compare/ours-hidden-tracks.png`](compare/ours-hidden-tracks.png) | `reference/screens/S21-hidden-track.jpeg` |
+| [`compare/ours-my-projects.png`](compare/ours-my-projects.png) | `reference/screens/S04-my-projects-modal.jpeg` |
+| [`compare/ours-wavetable-designer.png`](compare/ours-wavetable-designer.png) | N-14 (no capture; advanced content tool) |
 
-Captured with a 12-track / 44-clip project at 174 BPM so the frame density matches the
-reference demo, at DPR 1.
+All captured at 1689×1277, DPR 1, against the local sandbox stack. The visual pass also
+found four defects the tests had not: the settings dialog ignored its wide class (max-width
+from the base dialog), the hidden-tracks popover opened off-screen, the hover help card
+covered open context menus, and the export menu did not close on Escape. All four are fixed.
