@@ -5935,10 +5935,6 @@ export function StudioEditorShell() {
           </div>
           {modelOpen ? (
             <div className="se-model-menu" role="listbox" aria-label="Generation model">
-              <div className="se-model-custom" aria-disabled="true">
-                <span>Create Custom Model</span>
-                <span className="se-model-credits">100 Credits</span>
-              </div>
               <p className="se-model-label">All models</p>
               {(
                 [

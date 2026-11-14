@@ -141,5 +141,10 @@ Closed in this pass (2026-11-14):
   Projects, Cover Art, Uploads, History and Trash.
 - The Create model menu no longer offers the disabled "Create Custom Model"
   (Beta, 100 credits) row: there is no custom-model backend, so the menu lists
-  only usable models. "Sample this song" keeps its disabled row but now states
-  the real blocker (clip-reference provider) instead of "coming soon".
+  only usable models. The Studio prompt bar's model menu drops the same row.
+  "Sample this song" keeps its disabled row but now states the real blocker
+  (clip-reference provider) instead of "coming soon".
+- The Studio **master chain** no longer suggests Reverb: Suno's
+  `masterSignalChain` carries only limiter/EQ/compressor, so a master reverb
+  would be a local-only effect (D-034). The dock offers EQ and Compressor, both
+  rendered by the master bus.
