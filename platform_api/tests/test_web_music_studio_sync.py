@@ -392,6 +392,27 @@ async def test_author_studio_plugin_fails_when_the_agent_returns_no_job() -> Non
 
 
 @pytest.mark.asyncio
+async def test_studio_project_for_song_returns_the_existing_project() -> None:
+    service = _service()
+    service._pool.fetchrow = AsyncMock(return_value={"id": "project-1"})
+
+    result = await service.studio_project_for_song(uuid4(), "song-1")
+
+    assert result == {"id": "project-1"}
+    sql = service._pool.fetchrow.await_args.args[0]
+    assert "jsonb_array_elements" in sql
+    assert service._pool.fetchrow.await_args.args[2] == "song-1"
+
+
+@pytest.mark.asyncio
+async def test_studio_project_for_song_returns_null_when_none_exists() -> None:
+    service = _service()
+    service._pool.fetchrow = AsyncMock(return_value=None)
+
+    assert await service.studio_project_for_song(uuid4(), "song-1") == {"id": None}
+
+
+@pytest.mark.asyncio
 async def test_plugin_authoring_job_reads_the_mirror() -> None:
     service = _service()
     project_id = uuid4()

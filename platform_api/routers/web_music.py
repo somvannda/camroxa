@@ -524,6 +524,15 @@ async def get_studio_project(
     return await service.get_studio_project(UUID(ctx.user_id), project_id)
 
 
+@router.get("/studio/projects/for-song/{song_id}")
+async def get_studio_project_for_song(
+    song_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.studio_project_for_song(UUID(ctx.user_id), song_id)
+
+
 @router.get("/studio/projects/{project_id}/sync")
 async def get_studio_project_sync(
     project_id: UUID,

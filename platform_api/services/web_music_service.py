@@ -1986,6 +1986,34 @@ class WebMusicService:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         return self._studio_project_payload(row)
 
+    async def studio_project_for_song(self, user_id: UUID, song_id: str) -> dict[str, Any]:
+        """Find the existing Studio project that already contains this song.
+
+        "Open in Studio" must load the project it created before, not create a
+        duplicate on every click (the reference's create-or-load behavior).
+        """
+        safe_song = str(song_id or "").strip()[:128]
+        if not safe_song:
+            raise ValidationError("A song id is required.", details={"field": "song_id"})
+        row = await self._pool.fetchrow(
+            """
+            SELECT id
+            FROM studio_projects
+            WHERE user_id = $1
+              AND data ? 'lanes'
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(data->'lanes') AS lane
+                WHERE lane->>'songId' = $2
+              )
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            safe_song,
+        )
+        return {"id": str(row["id"]) if row else None}
+
     # --- Suno Studio mirror -------------------------------------------------
     # The mirror itself lives in musicapi (it owns the Suno accounts and the
     # pinned project mapping). platform_api only forwards the authoritative
