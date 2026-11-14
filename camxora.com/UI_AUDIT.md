@@ -186,8 +186,9 @@ exit animation can never swallow page clicks.
    documented behaviour in `DESIGN_SYSTEM.md` �7b (no flyout overflow on narrow cards),
    so it stays custom.
 2. **Saved-styles popup** in `/create` � currently unreachable: the trigger opens the
-   saved-styles modal instead of toggling `stylePresetsOpen`. Dead code; remove or wire up
-   in a follow-up.
+   saved-styles modal instead of toggling `stylePresetsOpen`. **Resolved 2026-11-14:**
+   the dead popover, its state and resets were removed; the modal's Write/Existing tabs
+   are now the only saved-styles surface.
 3. **`/studio/editor` clip context menu** � anchored to cursor coordinates
    (`clipMenu.x/y`), not a trigger element. Correct primitive is
    `@radix-ui/react-context-menu`, which is not a dependency yet.
@@ -198,3 +199,21 @@ exit animation can never swallow page clicks.
 - Live DOM checks (authenticated, `:3104`): every migrated menu opens with the expected
   `menuitem` / `menuitemcheckbox` / `menuitemradio` roles; Download submenus render;
   legacy `.s-menu[role=menu]` count is 0 on `/library` and on the migrated `/create` rows.
+
+## Signed-in runtime sweep — 2026-11-14
+
+A temporary Playwright sweep signed in with the sandbox account and visited every
+member route with `networkidle`, collecting page errors, console errors and any
+API `4xx/5xx` (download/auth paths excluded):
+
+`/account`, `/library`, `/library/trash`, `/discover`, `/community`, `/charts`,
+`/playlists/khmer-hits`, `/notifications`, `/invite`, `/artist-dashboard`,
+`/artist-program`, `/redeem`, `/create`, `/publish`, `/studio`, `/studio/editor`,
+`/download`, `/developers`, `/support`, `/contact`, `/legal`, `/about`,
+`/features`, `/pricing`, `/blog`, `/changelog`, `/search?q=love`, `/services`,
+`/google-api`.
+
+Result: **29 routes, all 200 at their own URL (no redirects), zero console
+errors, zero uncaught page errors, zero failing API calls.** The sweep spec was
+temporary and removed afterwards; rerun it with the same route list if a future
+change touches shared providers or the layout.

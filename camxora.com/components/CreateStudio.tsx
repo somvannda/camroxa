@@ -516,7 +516,6 @@ export function CreateStudio() {
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
-  const [stylePresetsOpen, setStylePresetsOpen] = useState(false);
   const [stylesModalOpen, setStylesModalOpen] = useState(false);
   const [stylesModalMode, setStylesModalMode] = useState<"write" | "existing">("write");
   const [dragging, setDragging] = useState(false);
@@ -600,7 +599,6 @@ export function CreateStudio() {
         setWorkspaceMenuOpen(false);
         setSaveMenuOpen(false);
         setRowMenuKey(null);
-        setStylePresetsOpen(false);
         setAddMenuOpen(false);
         setAddSubmenu(null);
       }
@@ -615,7 +613,6 @@ export function CreateStudio() {
         setWorkspaceMenuOpen(false);
         setSaveMenuOpen(false);
         setRowMenuKey(null);
-        setStylePresetsOpen(false);
         setAddMenuOpen(false);
         setAddSubmenu(null);
         setAttachModal(null);
@@ -1429,7 +1426,6 @@ export function CreateStudio() {
       setStyle((current) => [current.trim(), ...tags].filter(Boolean).join(", ").slice(0, 1000));
       setMode("custom");
       setAdvancedOpen(false);
-      setStylePresetsOpen(false);
       setAttachModal(null);
       setToast(`Styles from ${playlist.name} added`);
     } catch (cause) {
@@ -3865,40 +3861,6 @@ export function CreateStudio() {
                           >
                             <Icon name="fa-bookmark" />
                           </button>
-                          {stylePresetsOpen ? (
-                            <div className="s-menu" role="menu" style={{ top: 40, right: 0, width: 260 }}>
-                              <div className="s-menu-label">Saved styles</div>
-                              {savedStylePrompts.length ? (
-                                savedStylePrompts.map((value) => (
-                                  <button
-                                    key={value}
-                                    type="button"
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    onClick={() => {
-                                      setStyle(value);
-                                      setStylePresetsOpen(false);
-                                    }}
-                                  >
-                                    <Icon name="fa-bookmark" />
-                                    <span
-                                      style={{
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {value}
-                                    </span>
-                                  </button>
-                                ))
-                              ) : (
-                                <div className="s-note" style={{ padding: 10 }}>
-                                  Styles you generate are saved here.
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
                         </div>
 
                           <button
