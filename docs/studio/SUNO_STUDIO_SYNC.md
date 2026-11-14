@@ -237,7 +237,7 @@ Mapping summary:
 | `lanes[].instrument` | synth `waveform1` | both | sine/triangle/saw (verified live) |
 | `lanes[].takes` | `tracks[].takeLanes[].clips` | both | alternates need a Suno asset |
 | local upload audio | `clips[].asset` | both | imported once into the pinned account, clip id cached |
-| `chains` (all built-ins) | `tracks[].signalChain` | both | compressor, convolution, delay, distortion, chorus, gate, limiter, reverb, EQ; a designed plugin mirrors once Suno's agent has authored it (`catalogPluginId` + `pluginVersionId`, see `SUNO_STUDIO_AGENT_PLUGINS.md`); an entry without ids stays local across a pull and is reported |
+| `chains` (all built-ins) | `tracks[].signalChain` | both | compressor, convolution, delay, distortion, rhythm gate, gate, limiter, reverb, EQ; a designed plugin mirrors once Suno's agent has authored it (`catalogPluginId` + `pluginVersionId`, see `SUNO_STUDIO_AGENT_PLUGINS.md`); an entry without ids stays local across a pull and is reported |
 | `masterChain` | `masterSignalChain` | both | limiter, EQ and compressor (verified live) |
 | `markers` | `sections` | both | registry keyed by id, beats (verified live) |
 | track groups | — | removed | no group/bus field exists in the document (D-034) |

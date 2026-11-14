@@ -4540,6 +4540,7 @@ html{color-scheme:dark}
 .sp-knobs.sp-knob-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 6px;justify-items:center;justify-content:initial}
 .sp-knob-readout{font-size:11px;color:#8b90a6;font-variant-numeric:tabular-nums}
 .sp-knob{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:#8b90a6}
+.sp-choice{height:26px;min-width:64px;padding:0 6px;border-radius:8px;border:1px solid #2b2b30;background:#141416;color:hsl(var(--foreground));font-size:11px}
 .sp-knob-dial{position:relative;width:46px;height:46px;border-radius:50%;background:conic-gradient(hsl(var(--accent)) 0 var(--p), #2b2b30 var(--p) 270deg, transparent 270deg)}
 .sp-knob-dial::after{content:"";position:absolute;inset:6px;border-radius:50%;background:#141416;z-index:0}
 .sp-knob-pointer{z-index:1}

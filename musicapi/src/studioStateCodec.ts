@@ -499,10 +499,15 @@ export const SUNO_PLUGIN_CATALOG: Record<string, SunoPluginMapping> = {
     // 0–100 % drive → 0–24 dB input gain.
     scales: { drive: 0.24 },
   },
-  chorus: {
+  rhythmGate: {
+    // Live registry name is "Rhythm Gate"; the old local id was a mislabel.
     pluginVersionId: "537ba288-f700-4c96-b103-c84e2b62fab6",
-    params: { depth: "depth", mix: "mix" },
-    scales: { depth: 0.01, mix: 0.01 },
+    params: {
+      attack: "attack",
+      depth: "depth",
+      mix: "mix",
+      release: "release",
+    },
   },
 };
 
@@ -529,21 +534,8 @@ const DISTORTION_SHAPES: Record<string, string> = {
   crush: "Crush",
 };
 
-/** Hz → Suno's division string (`1/4` = one beat). */
-function chorusDivision(hz: number, bpm: number): string {
-  const cyclesPerBeat = (Math.max(0.01, hz) * 60) / Math.max(1, bpm);
-  const raw = 4 * Math.max(0.01, cyclesPerBeat);
-  const denominator = Math.max(1, Math.min(32, 2 ** Math.round(Math.log2(raw))));
-  return `1/${denominator}`;
-}
-
-function chorusHz(division: unknown, bpm: number): number {
-  const match = /^1\/(\d+)$/.exec(String(division ?? ""));
-  const denominator = match ? Number(match[1]) : 8;
-  // A 1/4 division is one beat, so a 1/n division is n/4 beats per cycle.
-  const cyclesPerBeat = denominator / 4;
-  return round((cyclesPerBeat * bpm) / 60);
-}
+/** Rhythm Gate's rate enum, in the order the local index stores it. */
+const RHYTHM_GATE_RATES = ["1/16", "1/8", "1/4"] as const;
 
 const SUNO_PLUGIN_BY_VERSION = new Map(
   Object.entries(SUNO_PLUGIN_CATALOG).map(([pluginId, def]) => [def.pluginVersionId, pluginId])
@@ -743,9 +735,15 @@ export function chainEntryToSuno(
     params.Crush = 0;
     params["Post Resonance"] = 0.707;
   }
-  if (pluginId === "chorus") {
-    const hz = Number((entry.params as Record<string, unknown> | undefined)?.rate) || 0.8;
-    params["rate (1/16, 1/8, 1/4)"] = chorusDivision(hz, bpm);
+  if (pluginId === "rhythmGate") {
+    const index = Math.max(
+      0,
+      Math.min(
+        RHYTHM_GATE_RATES.length - 1,
+        Math.round(Number((entry.params as Record<string, unknown> | undefined)?.rate) || 0)
+      )
+    );
+    params["rate (1/16, 1/8, 1/4)"] = RHYTHM_GATE_RATES[index];
   }
   const entryId =
     typeof entry.entryId === "string" && entry.entryId
@@ -817,8 +815,9 @@ export function chainEntryFromSuno(
   if (pluginId === "distortion" && typeof sunoParams.Shape === "string") {
     mode = sunoParams.Shape.toLowerCase();
   }
-  if (pluginId === "chorus") {
-    params.rate = chorusHz(sunoParams["rate (1/16, 1/8, 1/4)"], bpm);
+  if (pluginId === "rhythmGate") {
+    const division = String(sunoParams["rate (1/16, 1/8, 1/4)"] ?? "1/8");
+    params.rate = Math.max(0, RHYTHM_GATE_RATES.indexOf(division as (typeof RHYTHM_GATE_RATES)[number]));
   }
   return {
     entryId: typeof entry.id === "string" ? `entry-${entry.id.slice(0, 8)}` : `entry-${fallbackIndex}`,

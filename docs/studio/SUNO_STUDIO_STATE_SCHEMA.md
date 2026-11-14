@@ -217,7 +217,7 @@ mapping needs; the codec does not write chains yet.
 | Delay (v1) | `e2b9270b-…` | 14 | beats, feedback, highCut, lowCut, milliseconds, mix, mode |
 | Delay (v2/v3) | `e871ca3a-…`, `1b5d6b90-…` | 6 | same shape |
 | Distortion / crusher | `20c5b585-…` | 5 | Bias, Crush, Input Gain, Mix, Output Gain, Post Cutoff, Post Resonance, Pre Tilt, Shape |
-| Chorus | `537ba288-…` | 3 | attack, depth, mix, rate (1/16, 1/8, 1/4), release |
+| Rhythm Gate | `537ba288-…` | 3 | attack, depth, mix, rate (1/16, 1/8, 1/4), release |
 | Gate | `14fb47e6-…` | 6 | attack, floor, hold, release, threshold |
 | Filter / warm drive | `d51aa72c-…` | 3 | cutoff, filter type, high-pass resonance, low-pass resonance, mix, warm drive |
 | Stereo / master utility | `d645cdcd-…` | 3 | Bass Mono Crossover, Level, Output Trim, Pan, Phase Invert, Stereo Flip, Width |
@@ -238,19 +238,26 @@ Notes for the mapping:
 ### Implemented mapping (2026-11-13)
 
 The codec writes chains for every built-in plugin: **compressor, convolution,
-delay, distortion, chorus, gate, limiter, reverb and EQ** (four bands; the fifth
-and sixth are disabled), plus the **master limiter, EQ and compressor** and the
-**synth instance** every MIDI track needs (`waveform1` from our instrument).
+delay, distortion, rhythm gate, gate, limiter, reverb and EQ** (four bands; the
+fifth and sixth are disabled), plus the **master limiter, EQ and compressor** and
+the **synth instance** every MIDI track needs (`waveform1` from our instrument).
 
 Parameter translation is explicit (`gain` → `output`, dotted EQ keys → `freqN`/
-`gainN`/`qN`/`enabledN`, delay percentages → 0–1 with `mode`/`beats`, chorus Hz →
-a `1/n` division, distortion mode → `Shape`).
+`gainN`/`qN`/`enabledN`, delay percentages → 0–1 with `mode`/`beats`, Rhythm Gate's
+rate index → `1/16`|`1/8`|`1/4`, distortion mode → `Shape`).
 
-Live probe (throwaway project, archived): a MIDI track with a triangle synth, a
-fold distortion and a chorus read back as
-`[{synth, waveform1:"triangle"}, {distortion, Shape:"Fold", Input Gain:12}, {chorus, rate:"1/2"}]`,
+Live probe (throwaway project, archived): a MIDI track with a triangle synth and a
+fold distortion read back as
+`[{synth, waveform1:"triangle"}, {distortion, Shape:"Fold", Input Gain:12}]`,
 and the master chain as
 `[limiter, eq(gain3:6), compressor(threshold:-18, ratio:5)]`.
+
+**Correction (2026-11-14):** the version id the catalog called "Chorus"
+(`537ba288-…`) resolves to **Rhythm Gate** on the live registry (attack, depth,
+mix, rate enum, release). The local plugin, help entry and codec mapping were
+renamed, old `chorus` chain entries migrate to `rhythmGate`, and the previous
+echo probe (`rate:"1/2"`) proved only that Suno echoes unknown values — not that
+`1/2` was a valid division. The three valid values are `1/16`, `1/8`, `1/4`.
 
 Custom plugins authored by Suno's agent carry `catalogPluginId` + `pluginVersionId`
 and mirror like any other effect; the authoring flow and payloads are in

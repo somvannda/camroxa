@@ -101,9 +101,9 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
     title: "Reverb",
     body: "Algorithmic reverb with decay, mix, width, damping, predelay and low/high cut.",
   },
-  "plugin-chorus": {
-    title: "Chorus",
-    body: "Modulated short delay that thickens the signal; this catalog card is not yet verified against the reference.",
+  "plugin-rhythm-gate": {
+    title: "Rhythm Gate",
+    body: "Transport-synced rhythmic gate: rate sets the division, depth the cut, attack and release its shape.",
   },
   clip: {
     title: "Clip",

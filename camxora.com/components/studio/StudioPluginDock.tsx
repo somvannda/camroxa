@@ -352,19 +352,38 @@ function ConvolutionCard({
         </div>
       </div>
       <div className="sp-knobs sp-knob-grid">
-        {params.map((param) => (
-          <ParamKnob
-            key={param.key}
-            label={param.label}
-            unit={param.unit}
-            min={param.min}
-            max={param.max}
-            step={param.max - param.min > 100 ? 1 : 0.1}
-            value={values[param.key] ?? param.default}
-            disabled={disabled}
-            onChange={(value) => onChange(param.key, value)}
-          />
-        ))}
+        {params.map((param) =>
+          param.choices ? (
+            <label key={param.key} className="sp-knob">
+              <select
+                className="sp-choice"
+                aria-label={param.label}
+                value={values[param.key] ?? param.default}
+                disabled={disabled}
+                onChange={(event) => onChange(param.key, Number(event.target.value))}
+              >
+                {param.choices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+              <span className="sp-knob-label">{param.label}</span>
+            </label>
+          ) : (
+            <ParamKnob
+              key={param.key}
+              label={param.label}
+              unit={param.unit}
+              min={param.min}
+              max={param.max}
+              step={param.max - param.min > 100 ? 1 : 0.1}
+              value={values[param.key] ?? param.default}
+              disabled={disabled}
+              onChange={(value) => onChange(param.key, value)}
+            />
+          )
+        )}
       </div>
     </div>
     {designOpen ? (
@@ -580,7 +599,7 @@ const PREVIEW_PATHS: Record<string, string> = {
   gate: "M0 8 H70 L80 46 H200",
   delay: "M0 30 H40 L50 12 L60 30 H80 L90 18 L100 30 H120 L130 22 L140 30 H200",
   reverb: "M0 12 Q40 12 60 30 Q90 52 200 44",
-  chorus: "M0 30 Q25 6 50 30 T100 30 T150 30 T200 30",
+  rhythmGate: "M0 10 H30 V44 H50 V10 H80 V44 H100 V10 H130 V44 H150 V10 H180 V44 H200",
   distortion: "M0 42 L20 18 L40 42 L60 18 L80 42 L100 18 L120 42 L140 18 L160 42 L180 18 L200 42",
   convolution: "M0 46 L30 44 L60 10 L70 40 L90 34 L120 42 L150 40 L200 46",
 };
@@ -930,20 +949,45 @@ export function StudioPluginDock({
                 <div className={plugin.id === "compressor" ? "sp-comp-body" : undefined}>
                   {plugin.id === "compressor" ? <CompressorCurve params={entry.params} /> : null}
                   <div className="sp-knobs sp-knob-grid">
-                    {[...primary, ...secondary].map((param) => (
-                      <ParamKnob
-                        key={param.key}
-                        label={param.label}
-                        unit={param.unit}
-                        min={param.min}
-                        max={param.max}
-                        step={param.max - param.min > 100 ? 1 : 0.1}
-                        log={param.unit === "hz"}
-                        value={entry.params[param.key] ?? param.default}
-                        disabled={entry.bypassed}
-                        onChange={(value) => onChange(setParam(chain, entry.entryId, param.key, value))}
-                      />
-                    ))}
+                    {[...primary, ...secondary].map((param) =>
+                      param.choices ? (
+                        <label key={param.key} className="sp-knob">
+                          <select
+                            className="sp-choice"
+                            aria-label={param.label}
+                            value={entry.params[param.key] ?? param.default}
+                            disabled={entry.bypassed}
+                            onChange={(event) =>
+                              onChange(
+                                setParam(chain, entry.entryId, param.key, Number(event.target.value))
+                              )
+                            }
+                          >
+                            {param.choices.map((choice) => (
+                              <option key={choice.value} value={choice.value}>
+                                {choice.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="sp-knob-label">{param.label}</span>
+                        </label>
+                      ) : (
+                        <ParamKnob
+                          key={param.key}
+                          label={param.label}
+                          unit={param.unit}
+                          min={param.min}
+                          max={param.max}
+                          step={param.max - param.min > 100 ? 1 : 0.1}
+                          log={param.unit === "hz"}
+                          value={entry.params[param.key] ?? param.default}
+                          disabled={entry.bypassed}
+                          onChange={(value) =>
+                            onChange(setParam(chain, entry.entryId, param.key, value))
+                          }
+                        />
+                      )
+                    )}
                   </div>
                 </div>
               )}
@@ -1157,7 +1201,7 @@ export function StudioPluginDock({
                     ) : null}
                     <span
                       className="sp-card-learn"
-                      data-help={`plugin-${plugin.id}`}
+                      data-help={`plugin-${plugin.id.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`}
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();

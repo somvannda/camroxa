@@ -420,26 +420,32 @@ export function createPluginAudio(
     };
   }
 
-  if (id === "chorus") {
-    const mix = wetDry(ctx, params.mix ?? 30);
-    const delay = ctx.createDelay(0.1);
+  if (id === "rhythmGate") {
+    // Approximation: a square-LFO gain gate at 120 BPM (1/4 = 2 Hz, 1/8 = 4 Hz,
+    // 1/16 = 8 Hz). Attack/release shape Suno's envelope; WebAudio's tremolo
+    // approximation ignores them, so the card states it is approximate.
+    const mix = wetDry(ctx, (params.mix ?? 0.65) * 100);
+    const gate = ctx.createGain();
     const lfo = ctx.createOscillator();
     const depth = ctx.createGain();
-    lfo.type = "sine";
-    lfo.connect(depth).connect(delay.delayTime);
-    mix.input.connect(delay).connect(mix.wet).connect(mix.output);
+    lfo.type = "square";
+    lfo.connect(depth).connect(gate.gain);
+    mix.input.connect(gate).connect(mix.wet).connect(mix.output);
     lfo.start();
 
     const apply = (p: Record<string, number>) => {
-      lfo.frequency.value = clamp(p.rate ?? 0.8, 0.05, 10);
-      depth.gain.value = (clamp(p.depth ?? 40, 0, 100) / 100) * 0.005;
-      delay.delayTime.value = 0.02;
-      mix.setMix(p.mix ?? 30);
+      const index = clamp(Math.round(p.rate ?? 1), 0, 2);
+      lfo.frequency.value = [8, 4, 2][index];
+      const amount = clamp(p.depth ?? 0.75, 0, 1);
+      gate.gain.value = 1 - amount / 2;
+      depth.gain.value = amount / 2;
+      mix.setMix(clamp((p.mix ?? 0.65) * 100, 0, 100));
     };
     apply(params);
     return {
       input: mix.input,
       output: mix.output,
+      approximate: true,
       update: apply,
       dispose: () => {
         try {
@@ -447,7 +453,7 @@ export function createPluginAudio(
         } catch {
           /* already stopped */
         }
-        [delay, depth, mix.input, mix.output].forEach((n) => n.disconnect());
+        [gate, depth, mix.input, mix.output].forEach((n) => n.disconnect());
       },
     };
   }

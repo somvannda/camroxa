@@ -10,9 +10,10 @@
  * stored chain cannot drift apart.
  *
  * Sources: reference catalog cards (§48), plugin dock panels (§50), and the
- * decompiled registry ids (§51). `chorus` came from the bundle but has no
- * captured card, so its parameters are marked unverified — do not present them
- * as reference-exact until a screenshot confirms them.
+ * decompiled registry ids (§51). The local `chorus` id was a mislabel: the live
+ * registry resolves `537ba288…` to **Rhythm Gate** (attack, depth, mix, rate
+ * division, release), so the catalog now ships that plugin and migrates old
+ * `chorus` chain entries.
  */
 
 export type PluginId =
@@ -24,7 +25,7 @@ export type PluginId =
   | "gate"
   | "limiter"
   | "reverb"
-  | "chorus"
+  | "rhythmGate"
   /** A plugin designed in the assistant (S45); the definition travels in the entry. */
   | "custom";
 
@@ -62,6 +63,8 @@ export type ParamDef = {
   tier?: ParamTier;
   /** Beat-synced mode replaces the ms control with note divisions. */
   tempoSynced?: boolean;
+  /** A fixed set of values rendered as a select instead of a knob. */
+  choices?: Array<{ value: number; label: string }>;
 };
 
 export type PluginMode = { id: string; label: string };
@@ -205,16 +208,28 @@ export const STUDIO_PLUGINS: readonly PluginDef[] = [
     ],
   },
   {
-    id: "chorus",
-    name: "Chorus",
-    description: "Chorus effect (present in the shipped registry; catalog card not yet captured).",
-    // Unverified: id is confirmed by the bundle, parameters are conventional
-    // defaults pending a catalog screenshot. Do not claim reference parity.
-    unverified: true,
+    id: "rhythmGate",
+    name: "Rhythm Gate",
+    description:
+      "Transport-synced rhythmic gate. Rate picks the division, depth sets the cut, attack/release shape it.",
     params: [
-      { key: "rate", label: "Rate", min: 0.05, max: 10, default: 0.8, unit: "hz", tier: "primary" },
-      { key: "depth", label: "Depth", min: 0, max: 100, default: 40, unit: "%", tier: "primary" },
-      { key: "mix", label: "Mix", min: 0, max: 100, default: 30, unit: "%", tier: "primary" },
+      {
+        key: "rate",
+        label: "Rate",
+        min: 0,
+        max: 2,
+        default: 1,
+        tier: "primary",
+        choices: [
+          { value: 0, label: "1/16" },
+          { value: 1, label: "1/8" },
+          { value: 2, label: "1/4" },
+        ],
+      },
+      { key: "depth", label: "Depth", min: 0, max: 1, default: 0.75, unit: "%", tier: "primary" },
+      { key: "mix", label: "Mix", min: 0, max: 1, default: 0.65, unit: "%", tier: "primary" },
+      { key: "attack", label: "Atk", min: 0.01, max: 0.45, default: 0.12, tier: "secondary" },
+      { key: "release", label: "Rel", min: 0.01, max: 0.45, default: 0.22, tier: "secondary" },
     ],
   },
 ] as const;
@@ -402,7 +417,14 @@ export function sanitizeParams(
   for (const param of plugin.params) {
     const raw = input?.[param.key];
     const value = typeof raw === "number" && Number.isFinite(raw) ? raw : param.default;
-    out[param.key] = Math.min(param.max, Math.max(param.min, value));
+    const clamped = Math.min(param.max, Math.max(param.min, value));
+    out[param.key] = param.choices?.length
+      ? param.choices.reduce(
+          (best, choice) =>
+            Math.abs(choice.value - clamped) < Math.abs(best - clamped) ? choice.value : best,
+          param.choices[0].value
+        )
+      : clamped;
   }
   return out;
 }

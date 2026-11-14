@@ -253,7 +253,13 @@ export function sanitizeChain(input: unknown): PluginChainEntry[] {
       });
       continue;
     }
-    const plugin = getPlugin(candidate.pluginId);
+    // The registry id historically shipped as "Chorus" is Rhythm Gate; migrate
+    // old entries so a saved project keeps its effect instead of dropping it.
+    const rawPluginId = String(candidate.pluginId);
+    const legacyChorus = rawPluginId === "chorus";
+    const plugin = getPlugin(
+      (legacyChorus ? "rhythmGate" : rawPluginId) as PluginId
+    );
     if (!plugin) continue;
     const entryId =
       typeof candidate.entryId === "string" && candidate.entryId && !seen.has(candidate.entryId)
@@ -264,6 +270,13 @@ export function sanitizeChain(input: unknown): PluginChainEntry[] {
       typeof candidate.mode === "string" && plugin.modes?.some((m) => m.id === candidate.mode)
         ? candidate.mode
         : plugin.modes?.[0]?.id;
+    const legacyParams: Record<string, unknown> = legacyChorus
+      ? {
+          rate: Number(candidate.params?.rate) > 6 ? 0 : Number(candidate.params?.rate) > 3 ? 1 : 2,
+          depth: (Number(candidate.params?.depth) || 40) / 100,
+          mix: (Number(candidate.params?.mix) || 30) / 100,
+        }
+      : {};
     out.push({
       entryId,
       pluginId: plugin.id,
@@ -273,7 +286,7 @@ export function sanitizeChain(input: unknown): PluginChainEntry[] {
       mode,
       params: sanitizeParams(
         plugin.id,
-        candidate.params as Record<string, unknown> | undefined
+        { ...(candidate.params as Record<string, unknown> | undefined), ...legacyParams }
       ),
       assetId: typeof candidate.assetId === "string" ? candidate.assetId : null,
       sidechain: sanitizeSidechain(candidate.sidechain),

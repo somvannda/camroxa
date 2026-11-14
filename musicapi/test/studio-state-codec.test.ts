@@ -591,7 +591,7 @@ test("MidI tracks get a synth instance with our waveform", () => {
   assert.equal(projected.lanes[0].midi?.instrument, "triangle");
 });
 
-test("distortion and chorus translate their enum and division params", () => {
+test("distortion and Rhythm Gate translate their enum and division params", () => {
   const data = localDocument();
   data.chains = {
     "track-1": [
@@ -603,9 +603,9 @@ test("distortion and chorus translate their enum and division params", () => {
         presetName: "Custom",
       },
       {
-        entryId: "fx-chorus",
-        pluginId: "chorus",
-        params: { rate: 1, depth: 40, mix: 30 },
+        entryId: "fx-gate",
+        pluginId: "rhythmGate",
+        params: { rate: 2, depth: 0.75, mix: 0.65, attack: 0.12, release: 0.22 },
         presetName: "Custom",
       },
     ],
@@ -630,14 +630,21 @@ test("distortion and chorus translate their enum and division params", () => {
   assert.equal(distParams["Pre Tilt"], -20);
   assert.equal(distParams["Post Cutoff"], 2000);
 
-  const chorus = chain.find(
+  const gate = chain.find(
     (entry) => entry.pluginVersionId === "537ba288-f700-4c96-b103-c84e2b62fab6"
   );
-  const chorusParams = chorus?.params as Record<string, unknown>;
-  // 1 Hz at 120 BPM = 2 cycles/beat → 1/2 note.
-  assert.equal(chorusParams["rate (1/16, 1/8, 1/4)"], "1/2");
-  assert.equal(chorusParams.depth, 0.4);
-  assert.equal(chorusParams.mix, 0.3);
+  const gateParams = gate?.params as Record<string, unknown>;
+  // Index 2 is the 1/4 division; percentages stay 0–1.
+  assert.equal(gateParams["rate (1/16, 1/8, 1/4)"], "1/4");
+  assert.equal(gateParams.depth, 0.75);
+  assert.equal(gateParams.mix, 0.65);
+  assert.equal(gateParams.attack, 0.12);
+  assert.equal(gateParams.release, 0.22);
+
+  const projected = sunoStateToProjectData(state);
+  const pulled = projected.chains[stableSunoId("track-1")] ?? [];
+  const pulledGate = pulled.find((entry) => entry.pluginId === "rhythmGate");
+  assert.equal((pulledGate?.params as Record<string, number>).rate, 2);
 });
 
 test("alternate takes become take-lane clips when they have a Suno asset", () => {
