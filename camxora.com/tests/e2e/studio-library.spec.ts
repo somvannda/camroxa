@@ -295,21 +295,20 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
   // reason. Both outcomes are accepted so the spec runs on either stack. The sandbox DB
   // keeps uploads between runs, so wait for the outcome rather than for "a row exists".
   const refused = library.getByRole("alert").first();
-  const outcome = await expect
-    .poll(
-      async () => {
-        if ((await library.getByRole("alert").count()) > 0) return "refused";
-        const adds = library.getByLabel("Add demo-loop.wav");
-        const count = await adds.count();
-        for (let index = 0; index < count; index += 1) {
-          if (await adds.nth(index).isEnabled()) return "imported";
-        }
-        return "pending";
-      },
-      { timeout: 20_000, intervals: [250] }
-    )
+  const readOutcome = async () => {
+    if ((await library.getByRole("alert").count()) > 0) return "refused";
+    const adds = library.getByLabel("Add demo-loop.wav");
+    const count = await adds.count();
+    for (let index = 0; index < count; index += 1) {
+      if (await adds.nth(index).isEnabled()) return "imported";
+    }
+    return "pending";
+  };
+  await expect
+    .poll(readOutcome, { timeout: 20_000, intervals: [250] })
     .not.toBe("pending");
 
+  const outcome = await readOutcome();
   if (outcome === "refused") {
     await expect(refused).toContainText(/not configured|Upload failed/i);
   } else {
