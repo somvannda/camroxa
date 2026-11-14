@@ -1204,6 +1204,8 @@ class WebMusicService:
         video_urls: list[str] | None = None,
         persona_id: str | None = None,
         workspace_id: UUID | None = None,
+        sample_task_id: UUID | None = None,
+        sample_variant: str = "ok",
     ) -> dict[str, Any]:
         logger.info(
             "service.generate enter user=%s mode=%r instr=%s model=%r title_len=%s lyrics_len=%s style_len=%s prompt_len=%s workspace=%s",
@@ -1251,6 +1253,43 @@ class WebMusicService:
                     "The selected voice is not available.",
                     details={"field": "persona_id"},
                 )
+
+        reference_audio_urls: list[str] = []
+        if sample_task_id is not None:
+            # "Sample this song": the source clip's durable audio becomes the
+            # generation's reference. Ownership and readiness are checked here,
+            # so the browser never passes a raw provider URL.
+            reference_row = await self._pool.fetchrow(
+                """
+                SELECT status, audio_url_ok, audio_url_alt
+                FROM suno_tasks
+                WHERE id = $1 AND user_id = $2
+                """,
+                sample_task_id,
+                user_id,
+            )
+            if reference_row is None:
+                raise ValidationError(
+                    "The reference song was not found.",
+                    details={"field": "sample_task_id"},
+                )
+            if str(reference_row["status"] or "").lower() != "success":
+                raise ValidationError(
+                    "The reference song is not ready yet.",
+                    details={"field": "sample_task_id"},
+                )
+            raw_reference_url = (
+                reference_row["audio_url_alt"]
+                if str(sample_variant).lower() == "alt"
+                else reference_row["audio_url_ok"]
+            )
+            reference_url = str(raw_reference_url or "").strip()
+            if not reference_url:
+                raise ValidationError(
+                    "The reference song has no playable audio yet.",
+                    details={"field": "sample_task_id"},
+                )
+            reference_audio_urls = [reference_url]
 
         if mode_key == "simple":
             if not safe_prompt:
@@ -1449,6 +1488,7 @@ class WebMusicService:
                 workspace_id=workspace_id,
                 is_preview=is_preview,
                 preview_seconds=preview_seconds,
+                reference_audio_urls=reference_audio_urls,
             )
             logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
         except BaseException:
@@ -1584,6 +1624,7 @@ class WebMusicService:
                 is_preview: bool = False,
                 preview_seconds: int | None = None,
                 kind: str = "music",
+                reference_audio_urls: list[str] | None = None,
             ) -> UUID:
         from platform_api.dependencies import get_job_queue_repo
         from platform_api.services.generation_service import compute_suno_request_hash
@@ -1609,13 +1650,15 @@ class WebMusicService:
                 id, user_id, request_hash, model, title, lyrics, style,
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                audio_weight, reference_image_urls, reference_video_urls, persona_id, is_preview, preview_seconds, kind, created_at, updated_at
+                audio_weight, reference_image_urls, reference_video_urls, reference_audio_urls,
+                persona_id, is_preview, preview_seconds, kind, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
-                $16, $17::jsonb, $18::jsonb, $19, $20, $21, $22, NOW(), NOW()
+                $16, $17::jsonb, $18::jsonb, $19::jsonb,
+                $20, $21, $22, $23, NOW(), NOW()
             )
             """,
             task_id,
@@ -1636,6 +1679,7 @@ class WebMusicService:
             audio_weight,
             json.dumps(list(image_urls or [])),
             json.dumps(list(video_urls or [])),
+            json.dumps(list(reference_audio_urls or [])),
             persona_id,
             is_preview,
             preview_seconds,
@@ -1661,7 +1705,8 @@ class WebMusicService:
             """
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                   audio_weight, reference_image_urls, reference_video_urls, persona_id,
+                   audio_weight, reference_image_urls, reference_video_urls,
+                   reference_audio_urls, persona_id,
                    COALESCE(kind, 'music') AS kind
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
@@ -1693,6 +1738,19 @@ class WebMusicService:
         else:
             reference_videos = list(raw_videos or [])
 
+        try:
+            raw_audio = row["reference_audio_urls"]
+        except (KeyError, IndexError):
+            # A database that has not run migration 201 yet.
+            raw_audio = []
+        if isinstance(raw_audio, str):
+            try:
+                reference_audio = json.loads(raw_audio) or []
+            except Exception:
+                reference_audio = []
+        else:
+            reference_audio = list(raw_audio or [])
+
         request = SunoRequest(
             model=str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL),
             title=str(row["title"] or ""),
@@ -1706,6 +1764,7 @@ class WebMusicService:
             audio_weight=row["audio_weight"],
             image_urls=reference_images,
             video_urls=reference_videos,
+            audio_urls=reference_audio,
             persona_id=str(row["persona_id"] or "").strip() or None,
         )
         try:

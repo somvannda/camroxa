@@ -55,6 +55,9 @@ class WebMusicGenerateRequest(BaseModel):
     video_urls: list[str] = Field(default_factory=list, max_length=1)
     persona_id: str | None = Field(default=None, max_length=128)
     workspace_id: UUID | None = None
+    # "Sample this song": source generation whose audio becomes a reference.
+    sample_task_id: UUID | None = None
+    sample_variant: Literal["ok", "alt"] = "ok"
 
 
 class WebMusicSoundsRequest(BaseModel):
@@ -1730,6 +1733,8 @@ async def generate(
             video_urls=body.video_urls,
             persona_id=body.persona_id,
             workspace_id=body.workspace_id,
+            sample_task_id=body.sample_task_id,
+            sample_variant=body.sample_variant,
         )
     except QuotaExceededError:
         # A paying user hitting a preview/plan limit is not farm abuse.

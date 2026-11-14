@@ -807,6 +807,7 @@ class SunoClient:
         audio_weight: float | None = None,
         image_urls: list[str] | None = None,
         video_urls: list[str] | None = None,
+        audio_urls: list[str] | None = None,
         persona_id: str | None = None,
         persona_model: str | None = None,
     ) -> dict[str, Any]:
@@ -904,6 +905,12 @@ class SunoClient:
             cleaned_videos = [str(url).strip() for url in video_urls if str(url).strip()]
             if cleaned_videos:
                 payload["videoUrls"] = cleaned_videos[:1]
+        if audio_urls:
+            # Audio references are uploaded and resolved by musicapi (the public
+            # `audio_urls` field); Suno composes them with any visual reference.
+            cleaned_audio = [str(url).strip() for url in audio_urls if str(url).strip()]
+            if cleaned_audio:
+                payload["audioUrls"] = cleaned_audio[:1]
         if persona_id:
             cleaned_persona = str(persona_id).strip()
             if cleaned_persona:
