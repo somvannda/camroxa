@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
+import { useEffect } from "react";
 import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
 import { STUDIO_SIGNATURES } from "@/lib/studio-signature";
 import type { StudioSettings } from "@/lib/studio-settings";
@@ -138,6 +139,16 @@ export function StudioHeader(props: StudioHeaderProps) {
     onUndo,
     onRedo,
   } = props;
+
+  // Overlays close on Escape (composition rule 6).
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onToggleExport();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [exportOpen, onToggleExport]);
 
   return (
     <header className="se-head">

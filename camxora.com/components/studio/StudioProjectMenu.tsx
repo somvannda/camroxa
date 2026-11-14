@@ -677,6 +677,14 @@ export function StudioProjectMenu({
               </>
             ) : dialog === "settings" ? (
               <>
+                <button
+                  type="button"
+                  className="se-dialog-x"
+                  aria-label="Close"
+                  onClick={() => setDialog(null)}
+                >
+                  <Icon name="fa-xmark" />
+                </button>
                 <h2>Studio settings</h2>
                 <div className="se-settings">
                   <nav className="se-settings-nav" aria-label="Settings sections">
@@ -929,11 +937,6 @@ export function StudioProjectMenu({
                   }}
                   disabled={busy}
                 >
-                  Close
-                </button>
-              ) : null}
-              {dialog === "settings" ? (
-                <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>
                   Close
                 </button>
               ) : null}

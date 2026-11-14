@@ -23,6 +23,8 @@ export type StudioFooterProps = {
   onToggleLibrary: () => void;
   whatsThis: boolean;
   onWhatsThis: (next: boolean) => void;
+  /** Hide the hover card while a menu owns the pointer. */
+  helpPaused?: boolean;
   /** S29: the take-lanes band is open. */
   takeLanesOpen?: boolean;
   onToggleTakeLanes?: () => void;
@@ -47,6 +49,7 @@ export function StudioFooter(props: StudioFooterProps) {
     onToggleLibrary,
     whatsThis,
     onWhatsThis,
+    helpPaused = false,
     takeLanesOpen = false,
     onToggleTakeLanes,
     automationOpen = false,
@@ -130,7 +133,7 @@ export function StudioFooter(props: StudioFooterProps) {
         </span>
         <button type="button" className="se-icon" onClick={onToggleLibrary} aria-label="Toggle library" data-help="library"><Icon name="fa-table-columns" /></button>
         <button type="button" className={`se-icon${loop ? " on" : ""}`} onClick={onLoop} aria-label="Loop" aria-pressed={loop} data-help="loop"><Icon name="fa-repeat" /></button>
-        <StudioLearn whatsThis={whatsThis} onWhatsThis={onWhatsThis} />
+        <StudioLearn whatsThis={whatsThis} onWhatsThis={onWhatsThis} paused={helpPaused} />
       </div>
     </footer>
   );

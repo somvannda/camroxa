@@ -157,6 +157,17 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
   useEffect(() => {
     if (menuTrackId === null) setColorOpen(false);
   }, [menuTrackId]);
+
+  // Overlays close on Escape (composition rule 6); the hidden-tracks popover sits in
+  // this panel but its open state belongs to the editor.
+  useEffect(() => {
+    if (!hiddenOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onToggleHidden();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [hiddenOpen, onToggleHidden]);
   const allCollapsed =
     visible.length > 0 && visible.every((track) => track.collapsed);
   const hiddenTracks = tracks.filter((track) => track.hidden);

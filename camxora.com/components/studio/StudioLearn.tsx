@@ -46,6 +46,8 @@ const LEARNING_STEPS = [
 export type StudioLearnProps = {
   whatsThis: boolean;
   onWhatsThis: (next: boolean) => void;
+  /** True while a menu or dialog owns the pointer: the hover card would cover it. */
+  paused?: boolean;
 };
 
 function markSeen() {
@@ -64,7 +66,7 @@ function hasSeen() {
   }
 }
 
-export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
+export function StudioLearn({ whatsThis, onWhatsThis, paused = false }: StudioLearnProps) {
   const [open, setOpen] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [learning, setLearning] = useState(false);
@@ -124,7 +126,7 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
 
   // Hover / focus help. One delegated listener, so controls only opt in with data-help.
   useEffect(() => {
-    if (!whatsThis) {
+    if (!whatsThis || paused) {
       setCard(null);
       return;
     }
@@ -164,7 +166,7 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
       document.removeEventListener("focusin", onOver);
       window.removeEventListener("scroll", hide, true);
     };
-  }, [whatsThis]);
+  }, [whatsThis, paused]);
 
   function dismissFirstRun() {
     markSeen();
@@ -180,7 +182,7 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
 
   return (
     <div className="se-learn" ref={rootRef}>
-      {card ? (
+      {card && !paused ? (
         <div
           className="se-help-card"
           role="tooltip"

@@ -7216,6 +7216,7 @@ export function StudioEditorShell() {
         }}
         onToggleLibrary={() => toggleLibrary()}
         whatsThis={settings.whatsThis}
+        helpPaused={Boolean(clipMenu || menuTrackId)}
         takeLanesOpen={takeLanesOpen}
         onToggleTakeLanes={() => {
           setTakeLanesOpen((open) => !open);
