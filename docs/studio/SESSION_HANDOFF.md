@@ -5,7 +5,7 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
 ## Update 2026-11-14 — Web completion pass (local branch, production hold)
 
 - **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`, branch
-  `feat/web-completion-pass` (19 commits, clean, **not pushed or merged**). Production
+  `feat/web-completion-pass` (clean, **not pushed or merged**). Production
   remains on hold: do not deploy `camxora.com`, do not replace it with `music.camxora.com`.
 - **Closed in this pass:** Create → Sounds (full platform job + `POST /v1/sounds`),
   Song → Use as Inspiration, Song → Sample this song (audio reference end to end,
