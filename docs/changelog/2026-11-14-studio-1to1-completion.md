@@ -29,7 +29,10 @@ captures show. Production `camxora.com` is still not deployed.
 | Master spectrum | 32-band canvas drawn from the analyser the engine already puts on the master bus | requested |
 | FX sends | Per-track Delay/Reverb send levels into two shared buses, applied in playback and export; sliders live in the dock | requested |
 | Track groups A–D | Membership on the track, submix level in `data.groups`, collapse of member controls | requested (ARR-027) |
-| Song tempo tag | Library rows measure BPM from the clip audio (lazy, cached); key stays absent because a mix has no single reliable key | §19.2 |
+| Song tempo tag | Library rows measure BPM from the clip audio (lazy, cached) | §19.2 |
+| Song key tag | Library rows estimate the key from a chroma vector + Krumhansl profiles and label it **≈** (never as metadata) | §19.2 |
+| Stems tab verified | Provider-shaped stems result lists and places a stem (`studio-stems.spec.ts`); the platform projection is unit-tested. The provider call still needs a live session | B-005 |
+| Record + bounce verified with storage | `STUDIO_EXPECT_UPLOADS=1` against moto S3: record → upload → take, and render-in-place bounce | B-006/B-007 |
 | Duplicate master effect | Master still refuses a second limiter and says so in the menu | “Already on Master” string |
 
 ## Visual parity pass (same day)
@@ -60,13 +63,13 @@ decision.
 ## Verification
 
 - `npm run typecheck`, `npm run check:ui` clean.
-- Vitest **366** (47 files): new `studio-tempo` (7), `studio-wavetable` (6),
+- Vitest **372** (48 files): new `studio-tempo` (7), `studio-wavetable` (6),
   `studio-project-thumb` (2), `studio-groups` (5), `studio-sends` (4), `studio-song-tempo` (2),
   plus settings/menu/header updates.
 - Playwright: new `studio-content-settings.spec.ts` (7 tests: panes + persistence, IR gating,
   clip FX add/remove with server polling, Stereo Utility, preset stepper, export scopes,
   wavetable designer) and `studio-soft-delete.spec.ts` (delete → Recently Deleted → restore);
-  full suite **176 passed / 2 skipped**.
+  full suite **177 passed / 2 skipped**.
 - Platform pytest: **3415 passed** (new `test_studio_project_thumb.py`,
   `test_web_music_studio_soft_delete.py`).
 - `next build` produces the production bundle; `next start` on a spare port serves a

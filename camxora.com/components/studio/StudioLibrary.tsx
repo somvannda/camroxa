@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { SongTempo } from "@/components/studio/StudioSongTempo";
+import { SongKey } from "@/components/studio/StudioSongKey";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import { groupByDay, relativeAge } from "@/lib/studio-library-grouping";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
@@ -740,6 +741,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                                     <span key={tag}>{tag}</span>
                                   ))}
                                   <SongTempo url={clip?.audio_url} duration={clip?.duration_seconds} />
+                                  <SongKey url={clip?.audio_url} />
                                 </span>
                               ) : null}
                             </span>

@@ -37,7 +37,14 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   163 passed / 2 skipped · platform pytest 3407 (all green) · musicapi codec 33.
   A signed-in sweep of 29 routes found zero console/page/API errors (`UI_AUDIT.md`).
 - **Local stack:** platform API on `:8100` with sandbox DB `camxora_pfm_sandbox`
-  (migrations `200`/`201`/`202` applied); web `:3103`; e2e needs both.
+  (migrations `200`–`203` applied); web `:3103`; musicapi `:4003`; **moto S3 on `:9000`**
+  with `PLATFORM_STREAMING_B2_*` env so record uploads and render-in-place work. Run the
+  storage-dependent specs with `STUDIO_EXPECT_UPLOADS=1` (and
+  `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100` for the in-place bounce check).
+- **Provider legs still external:** no `SUNO_CLIENT_COOKIE`/`SUNO_JWT` and the stored
+  `client_cookie` rows were encrypted with a key this environment does not have, so a real
+  stems job and the voice verify/persona flow cannot be exercised here. Both contract paths
+  are covered with provider-shaped fixtures.
 - **No open items.** YouTube Tutorials was dropped by product decision (no channel,
   and tutorials are not part of this product); the Learn menu now offers Keyboard
   Shortcuts and the Learning Center only.

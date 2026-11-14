@@ -375,7 +375,7 @@ last evidenced surfaces:
 | **Master spectrum** | 32-band canvas driven by the master analyser |
 | **FX sends** | Per-track Delay/Reverb levels into two shared buses (playback + export) |
 | **Track groups A–D** | Membership on the track, submix level in `data.groups`, collapse of member controls |
-| **Song tempo tag** | Library rows measure BPM from the clip audio (key stays absent: a mix has no single key) |
+| **Song tempo tag** | Library rows measure BPM from the clip audio (lazy, cached); key is estimated from a chroma vector and shown as **≈ C major** | §19.2 |
 
 **Deliberately absent:** the mixer surface (S47 negative capture — the reference has none),
 copy/paste mix settings and reset mix (never evidenced), and the Learn menu’s YouTube
