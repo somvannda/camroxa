@@ -2,6 +2,25 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-14 — Web completion pass (local branch, production hold)
+
+- **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`, branch
+  `feat/web-completion-pass` (19 commits, clean, **not pushed or merged**). Production
+  remains on hold: do not deploy `camxora.com`, do not replace it with `music.camxora.com`.
+- **Closed in this pass:** Create → Sounds (full platform job + `POST /v1/sounds`),
+  Song → Use as Inspiration, Song → Sample this song (audio reference end to end,
+  migration `201`), Learning Center, Library upload/record deep links, song → Studio
+  deep links with create-or-load, the "Chorus"/Rhythm Gate correction (live registry),
+  and removal of every dead control (Speech, Hooks, custom model, master Reverb stubs).
+  `SUNO_STUDIO_STATE_SCHEMA.md`, `API_PARITY.md` and the changelog record the details.
+- **Gates at tip:** web typecheck + `check:ui` clean · Vitest 339 · Playwright
+  162 passed / 2 skipped · platform pytest 3402 (2 pre-existing media failures) ·
+  musicapi codec 33. A signed-in sweep of 29 routes found zero console/page/API errors
+  (`UI_AUDIT.md`).
+- **Local stack:** platform API on `:8100` with sandbox DB `camxora_pfm_sandbox`
+  (migrations `200`/`201` applied); web `:3103`; e2e needs both.
+- **Only open item:** Studio → YouTube Tutorials, blocked on an external channel.
+
 ## Update 2026-11-13 (later) — Designed plugins on Suno's authoring agent
 
 - **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`, **merged and pushed**
