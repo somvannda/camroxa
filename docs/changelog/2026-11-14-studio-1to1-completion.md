@@ -57,6 +57,10 @@ stays dropped by product decision.
   clip FX add/remove with server polling, Stereo Utility, preset stepper, export scopes,
   wavetable designer); full suite **170 passed / 2 skipped**.
 - Platform pytest: **3409 passed** (new `test_studio_project_thumb.py`).
+- `next build` produces the production bundle; `next start` on a spare port serves a
+  29-route signed-in sweep with no page errors, no 5xx and no console errors after sign-in
+  (the only noise is the expected pre-auth 401 probes on the first load).
+- The dev server serves the same 30-route sweep clean.
 
 ## Files
 
