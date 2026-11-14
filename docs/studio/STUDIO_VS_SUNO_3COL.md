@@ -413,3 +413,53 @@ All captured at 1689×1277, DPR 1, against the local sandbox stack. The visual p
 found four defects the tests had not: the settings dialog ignored its wide class (max-width
 from the base dialog), the hidden-tracks popover opened off-screen, the hover help card
 covered open context menus, and the export menu did not close on Escape. All four are fixed.
+
+### 15.1 Reference screen coverage
+
+`docs/studio/compare/` now holds **34 captures**. Paired file per reference screen:
+
+| Reference | Ours | Notes |
+|---|---|---|
+| S04 My Projects | `ours-my-projects` | real mini-timelines |
+| S05 empty project | `ours-empty-project` | |
+| S06 onboarding | `ours-onboarding` | |
+| S07 project menu | `ours-project-menu` | |
+| S08 version history | `ours-version-history` | |
+| S09/S10/S11 settings | `ours-settings-performance`, `…-window-management`, `…-content` | |
+| S12 share | `ours-share-dialog` | naming gate: `studio-project-menu.spec.ts` |
+| S13/S14 Learn, shortcuts | `ours-learn-menu`, `ours-shortcuts` | |
+| S16 empty editor | `ours-empty-project` | |
+| S17/S18 loaded editor, track row | `ours-editor-1689` | row geometry: `studio-pixel.spec.ts` |
+| S19 track options | `ours-track-options` | |
+| S20 add track | `ours-add-track` | |
+| S21 hidden tracks | `ours-hidden-tracks` | |
+| S22 ruler/zoom | `ours-ruler-zoom` | |
+| S23 section markers | — | `studio-new-features.spec.ts` |
+| S24 loop | `ours-loop-region` | |
+| S25 clip selected / trim | `ours-clip-selected` | trim: `studio-trim.spec.ts` |
+| S26 clip menu | `ours-clip-menu` | |
+| S27 clip info | — | `studio-clip-info.spec.ts` |
+| S28 clip colour | `ours-clip-color` | |
+| S29 take lanes | `ours-take-lanes` | populated: `studio-takes.spec.ts` |
+| S30 stretch/warp | — | `studio-warp.spec.ts` |
+| S31/S33 MIDI editor, velocity | `ours-midi-editor`, `ours-midi-velocity` | |
+| S32 modulation lane | — | MIDI tabs cover it |
+| S34–S38 prompt bar, model picker | `ours-editor-1689` (bar), — (picker) | `studio-pixel.spec.ts` |
+| S39 plugin catalog | — | `studio-pixel.spec.ts` |
+| S40/S41/S42/S44/S46 dock, EQ, IR, presets | `ours-plugin-dock-eq-convolution` | |
+| S43 sidechain | — | `studio-plugins.spec.ts` |
+| S45 designer | — | `studio-designer.spec.ts` |
+| S47 no mixer | **negative capture** | we match by not having one |
+| S48 master chain | — | `studio-master.spec.ts` |
+| S49/S50/S51 export | `ours-export-menu` | bytes/toasts: `studio-export.spec.ts` |
+| S52/S53 library | `ours-editor-library-1689`, `ours-library-songs` | |
+| S54/S56 share page | `ours-share-dialog` | `studio-share-page.spec.ts` |
+| S55 comments | — | `studio-clip-info.spec.ts` |
+| S57/S58 empty states | `ours-library-empty` | loading: `studio-smoke.spec.ts` |
+| S59 no conflict UI | **negative capture** | we exceed it deliberately |
+| S60/S61 refusal states | — | mocked in `create-sample`/`studio-transforms` specs |
+| S62 offline | — | `studio-offline.spec.ts` |
+| S63/S64/S65 responsive | `ours-editor-1280-audit`, `ours-editor-1024` | 768 gate: `studio-pixel.spec.ts` |
+
+Remaining “—” rows are states whose fidelity is asserted numerically by the named spec
+rather than by a fresh screenshot; no reference surface there is unimplemented.
