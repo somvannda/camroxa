@@ -3,6 +3,14 @@
 Honest comparison: what the reference exposes, what we have, what is missing, and
 what we deliberately do not copy.
 
+> **2026-11-14 completion pass.** The captured surfaces are all implemented now; the last
+> gaps (Settings → Window management/Content, the Wavetable Designer behind advanced
+> content, clip-level inserts, Stereo Utility, auto-stretch, export-scope labels, project
+> thumbnails) closed in `docs/changelog/2026-11-14-studio-1to1-completion.md`. The
+> three-column table lives in `STUDIO_VS_SUNO_3COL.md`. Rows below that describe a
+> missing feature are historical unless marked otherwise. The reference has **no mixer**
+> (S47), so the lack of one here is parity, not a gap.
+
 Scoring for this document:
 
 - **Parity** — the workflow exists and behaves comparably.

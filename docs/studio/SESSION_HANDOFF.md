@@ -2,6 +2,23 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-14 (later) — Studio 1:1 completion pass (local branch)
+
+- **Worktree:** `...\worktree\d16337\studio-arrangement-grid`; branch from `origin/main`.
+  Production is still on **`985ccf00`** and must not be deployed.
+- **The last captured surfaces are now implemented:** the three-pane Studio Settings
+  (Performance · Window management · Content), advanced-content gating, the **Wavetable
+  Designer**, clip-level inserts (Add FX… / Remove FX), the **Stereo Utility** plugin,
+  auto-stretch on added uploads (tempo detection), the captured export scopes, and
+  My Projects mini-timeline thumbnails.
+- **Correction to the earlier audit:** Suno Studio has **no mixer** (S47 negative capture),
+  no FX sends, no track groups, no master spectrum and no mastering presets in any capture or
+  shipped string. Those rows were removed from the gap list instead of being invented.
+- **Gates:** web typecheck + `check:ui` clean · Vitest **355** · Playwright
+  **169 passed / 2 skipped** · platform pytest **3409** · platform migration-free.
+- **Docs:** `docs/studio/STUDIO_VS_SUNO_3COL.md` (the three-column audit),
+  `docs/changelog/2026-11-14-studio-1to1-completion.md`.
+
 ## Update 2026-11-14 — Web completion pass (local branch, production hold)
 
 - **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`; the
