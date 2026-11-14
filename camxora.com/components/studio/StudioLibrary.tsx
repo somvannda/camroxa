@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { SongTempo } from "@/components/studio/StudioSongTempo";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import { groupByDay, relativeAge } from "@/lib/studio-library-grouping";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
@@ -733,11 +734,12 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                               <span className="se-lib-meta">
                                 {song.style?.slice(0, 44) || "No style"}
                               </span>
-                              {tags.length > 0 ? (
+                              {tags.length > 0 || clip?.audio_url ? (
                                 <span className="se-lib-tags">
                                   {tags.map((tag) => (
                                     <span key={tag}>{tag}</span>
                                   ))}
+                                  <SongTempo url={clip?.audio_url} duration={clip?.duration_seconds} />
                                 </span>
                               ) : null}
                             </span>
