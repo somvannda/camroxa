@@ -928,7 +928,56 @@ class SunoClient:
         finally:
             await client.aclose()
 
-    async def check_status(self, task_id: str, *, api_key: str | None = None) -> dict[str, Any]:
+    async def submit_sounds(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit a sound-effect generation (`POST /v1/sounds`).
+
+        Sounds share the queue, billing and poll loop with songs; only the submit
+        endpoint and the (prompt-only) payload differ.
+        """
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        cleaned_prompt = str(prompt or "").strip()
+        if not cleaned_prompt:
+            raise ExternalServiceError(
+                "Describe the sound to generate.",
+                is_retryable=False,
+                details={"provider": "suno", "reason": "missing_prompt"},
+            )
+        payload: dict[str, Any] = {"prompt": cleaned_prompt}
+        cleaned_model = str(model or "").strip()
+        if cleaned_model:
+            payload["model"] = cleaned_model
+
+        client = self._build_client(api_key)
+        try:
+            response = await client.post("/v1/sounds", json=payload)
+            response.raise_for_status()
+            body = response.json()
+            job_id = str(body.get("job_id") or "").strip()
+            if not job_id:
+                raise ExternalServiceError(
+                    "Suno sounds response was missing a job id.",
+                    is_retryable=True,
+                    details={"provider": "suno", "reason": "missing_task_id"},
+                )
+            return {"taskId": job_id}
+        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_error(exc, context="submit_sounds") from exc
+        finally:
+            await client.aclose()
+
+    async def check_status(
+        self, task_id: str, *, api_key: str | None = None) -> dict[str, Any]:
         """Check the status of a previously submitted Suno task.
 
         Args:

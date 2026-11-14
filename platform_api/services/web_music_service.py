@@ -1471,6 +1471,97 @@ class WebMusicService:
             "workspace_id": str(resolved_workspace_id),
         }
 
+    async def generate_sounds(
+        self,
+        user_id: UUID,
+        *,
+        prompt: str,
+        model: str | None = None,
+        workspace_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """Queue one sound-effect generation.
+
+        Sounds share the music queue, charge and poll loop; only the submit call
+        differs (`POST /v1/sounds`). The prompt is stored as the row's `style` so
+        the library row and the retry path have everything they need.
+        """
+        safe_prompt = str(prompt or "").strip()
+        if len(safe_prompt) < 3:
+            raise ValidationError(
+                "Describe the sound you want to create.",
+                details={"field": "prompt"},
+            )
+        safe_prompt = safe_prompt[:500]
+        safe_model = str(model or "").strip()[:32]
+        queue_limit = await self._queue_cap_for_user(user_id)
+        queue_used = await self._active_generate_queue_count(user_id)
+        if queue_used >= queue_limit:
+            raise RateLimitedError(
+                f"You already have {queue_used} sounds waiting. Wait until one starts.",
+                retry_after=5,
+                details={"queue_used": queue_used, "queue_limit": queue_limit},
+            )
+
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.web_music_suno_guard import raise_if_suno_blocklisted
+
+        runtime_config = await get_suno_blocklist_service().get_runtime_config()
+        title = safe_prompt[:60].strip() or "Sound"
+        raise_if_suno_blocklisted(
+            runtime_config,
+            title=title,
+            lyrics="",
+            style=safe_prompt,
+        )
+
+        reservation_id = str(uuid4())
+        try:
+            quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
+        except BaseException:
+            await self._release_daily_slot(user_id, reference_id=reservation_id)
+            raise
+
+        task_id: UUID | None = None
+        try:
+            task_id = await self._enqueue_web_generate(
+                user_id,
+                reservation_id=reservation_id,
+                model=safe_model or DEFAULT_SUNO_MUSIC_MODEL,
+                title=title,
+                lyrics="",
+                style=safe_prompt,
+                instrumental=True,
+                negative_tags=None,
+                vocal_gender=None,
+                style_weight=0,
+                weirdness_constraint=0,
+                audio_weight=0,
+                workspace_id=workspace_id,
+                kind="sounds",
+            )
+        except BaseException:
+            await self._release_daily_slot(
+                user_id,
+                reference_id=reservation_id,
+                task_id=str(task_id) if task_id else None,
+            )
+            raise
+
+        await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
+        self._open_charges.pop(reservation_id, None)
+        resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
+        return {
+            "task_id": str(task_id),
+            "status": "QUEUED",
+            "title": title,
+            "style": safe_prompt,
+            "model": safe_model or DEFAULT_SUNO_MUSIC_MODEL,
+            "is_preview": False,
+            "preview_seconds": None,
+            "quota": await self._with_queue_fields(user_id, quota),
+            "workspace_id": str(resolved_workspace_id),
+        }
+
     async def _enqueue_web_generate(
         self,
         user_id: UUID,
@@ -1489,10 +1580,11 @@ class WebMusicService:
         image_urls: list[str] | None = None,
         video_urls: list[str] | None = None,
         persona_id: str | None = None,
-        workspace_id: UUID | None,
-        is_preview: bool = False,
-        preview_seconds: int | None = None,
-    ) -> UUID:
+                workspace_id: UUID | None,
+                is_preview: bool = False,
+                preview_seconds: int | None = None,
+                kind: str = "music",
+            ) -> UUID:
         from platform_api.dependencies import get_job_queue_repo
         from platform_api.services.generation_service import compute_suno_request_hash
         from platform_api.services.job_types import (
@@ -1509,6 +1601,7 @@ class WebMusicService:
             style=style,
             instrumental=instrumental,
         )
+        safe_kind = "sounds" if str(kind) == "sounds" else "music"
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
         await self._pool.execute(
             """
@@ -1516,13 +1609,13 @@ class WebMusicService:
                 id, user_id, request_hash, model, title, lyrics, style,
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                audio_weight, reference_image_urls, reference_video_urls, persona_id, is_preview, preview_seconds, created_at, updated_at
+                audio_weight, reference_image_urls, reference_video_urls, persona_id, is_preview, preview_seconds, kind, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
-                $16, $17::jsonb, $18::jsonb, $19, $20, $21, NOW(), NOW()
+                $16, $17::jsonb, $18::jsonb, $19, $20, $21, $22, NOW(), NOW()
             )
             """,
             task_id,
@@ -1546,6 +1639,7 @@ class WebMusicService:
             persona_id,
             is_preview,
             preview_seconds,
+            safe_kind,
         )
         paid = await self._is_paid_queue_user(user_id)
         await get_job_queue_repo().enqueue(
@@ -1567,7 +1661,8 @@ class WebMusicService:
             """
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                   audio_weight, reference_image_urls, reference_video_urls, persona_id
+                   audio_weight, reference_image_urls, reference_video_urls, persona_id,
+                   COALESCE(kind, 'music') AS kind
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -1614,7 +1709,18 @@ class WebMusicService:
             persona_id=str(row["persona_id"] or "").strip() or None,
         )
         try:
-            external_task_id = await self._generation.submit_suno_external_id(request)
+            kind = str(row["kind"] or "music")
+        except (KeyError, IndexError):
+            # A database that has not run migration 200 yet: every row is a song.
+            kind = "music"
+        try:
+            if kind == "sounds":
+                external_task_id = await self._generation.submit_suno_sounds(
+                    prompt=str(row["style"] or "").strip(),
+                    model=str(row["model"] or "").strip() or None,
+                )
+            else:
+                external_task_id = await self._generation.submit_suno_external_id(request)
         except Exception:
             await self._release_daily_slot(
                 user_id,
@@ -1630,7 +1736,9 @@ class WebMusicService:
                 task_id,
                 user_id,
                 TaskStatus.FAILED.value,
-                "Could not start this song at Suno. Credits were refunded.",
+                "Could not start this sound. Credits were refunded."
+                if kind == "sounds"
+                else "Could not start this song. Credits were refunded.",
             )
             raise
 

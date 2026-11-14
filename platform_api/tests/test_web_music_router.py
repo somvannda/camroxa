@@ -135,6 +135,31 @@ class TestWebMusicRouter:
         assert data["quota"]["remaining"] == 3
         mock_web_music_service.generate.assert_awaited()
 
+    async def test_generate_sounds(
+        self, client: AsyncClient, mock_web_music_service: AsyncMock
+    ) -> None:
+        task_id = uuid4()
+        mock_web_music_service.generate_sounds = AsyncMock(
+            return_value={
+                "task_id": str(task_id),
+                "status": "QUEUED",
+                "title": "Warm tape hiss",
+                "style": "a warm tape hiss with a soft tail",
+                "model": "V6_MINI",
+                "quota": {"limit": 5, "used": 1, "remaining": 4, "is_pro": False},
+            }
+        )
+        response = await client.post(
+            "/api/v1/web-music/sounds",
+            json={"prompt": "a warm tape hiss with a soft tail"},
+        )
+        assert response.status_code == 202
+        data = response.json()
+        assert data["task_id"] == str(task_id)
+        assert data["quota"]["remaining"] == 4
+        call = mock_web_music_service.generate_sounds.await_args
+        assert call.kwargs["prompt"] == "a warm tape hiss with a soft tail"
+
     async def test_list_generations(self, client: AsyncClient) -> None:
         response = await client.get("/api/v1/web-music/generations")
         assert response.status_code == 200

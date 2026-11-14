@@ -3015,6 +3015,26 @@ class GenerationService:
 
         return extract_suno_generate_task_id(suno_response)
 
+    async def submit_suno_sounds(
+        self, *, prompt: str, model: str | None = None
+    ) -> str:
+        """Submit a sound effect and return the external job id.
+
+        Sounds are prompt-only: no lyrics, style or persona, and the poll surface
+        is the same record-info endpoint songs use.
+        """
+        wrapper, _provider = await self._music_pool_wrapper()
+        response = await wrapper.execute(
+            lambda api_key: self._suno_client.submit_sounds(
+                prompt=prompt,
+                model=model,
+                api_key=api_key,
+            )
+        )
+        from platform_api.clients.suno_client import extract_suno_generate_task_id
+
+        return extract_suno_generate_task_id(response)
+
     # ------------------------------------------------------------------
     # submit_image (Requirements 12.1, 12.2, 12.5, 12.6, 7.2, 7.6)
     # ------------------------------------------------------------------

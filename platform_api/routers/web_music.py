@@ -57,6 +57,12 @@ class WebMusicGenerateRequest(BaseModel):
     workspace_id: UUID | None = None
 
 
+class WebMusicSoundsRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=500)
+    model: str | None = Field(default=None, max_length=32)
+    workspace_id: UUID | None = None
+
+
 class TrashClipsRequest(BaseModel):
     trash: bool
     clip_ids: list[str] = Field(default_factory=list, max_length=200)
@@ -1744,6 +1750,45 @@ async def generate(
             if payload.get("preview_seconds") is not None
             else None
         ),
+        quota=WebMusicQuotaResponse(**payload["quota"]),
+    )
+
+
+@router.post("/sounds", response_model=WebMusicGenerateResponse, status_code=202)
+async def generate_sounds(
+    body: WebMusicSoundsRequest,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicGenerateResponse:
+    await enforce_generation_freeze(http_request, ctx.user_id)
+    await reject_probe_payload(
+        http_request,
+        ctx.user_id,
+        "",
+        body.prompt,
+        body.prompt[:120],
+        body.prompt,
+        None,
+    )
+    await enforce_rate_limit(http_request, ctx.user_id)
+    credited = await service.has_generation_credits(UUID(ctx.user_id))
+    await track_generation_attempt(http_request, ctx.user_id, credited=credited)
+    payload = await service.generate_sounds(
+        UUID(ctx.user_id),
+        prompt=body.prompt,
+        model=body.model,
+        workspace_id=body.workspace_id,
+    )
+    return WebMusicGenerateResponse(
+        task_id=str(payload["task_id"]),
+        status=str(payload["status"]),
+        title=str(payload["title"]),
+        style=str(payload["style"]),
+        model=str(payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        model_label=str(payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        is_preview=False,
+        preview_seconds=None,
         quota=WebMusicQuotaResponse(**payload["quota"]),
     )
 
