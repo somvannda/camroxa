@@ -2,10 +2,11 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
-## Update 2026-11-14 (later) — Studio 1:1 completion pass (local branch)
+## Update 2026-11-14 (later) — Studio 1:1 completion pass (merged to `main`)
 
-- **Worktree:** `...\worktree\d16337\studio-arrangement-grid`; branch from `origin/main`.
-  Production is still on **`985ccf00`** and must not be deployed.
+- **Branch:** `test/studio-e2e-stability`, **merged to `origin/main`** as
+  `90e08ff7` (fast-forward, 12 commits). Production is still on **`985ccf00`** and must
+  not be deployed.
 - **The last captured surfaces are now implemented:** the three-pane Studio Settings
   (Performance · Window management · Content), advanced-content gating, the **Wavetable
   Designer**, clip-level inserts (Add FX… / Remove FX), the **Stereo Utility** plugin,
