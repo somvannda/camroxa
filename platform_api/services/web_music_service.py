@@ -2112,7 +2112,9 @@ class WebMusicService:
         if include_data:
             payload["data"] = data if isinstance(data, dict) else {}
         else:
-            payload["thumb"] = self._studio_thumb(data if isinstance(data, dict) else {})
+            payload["thumb"] = WebMusicService._studio_thumb(
+                data if isinstance(data, dict) else {}
+            )
         return payload
 
     @staticmethod
