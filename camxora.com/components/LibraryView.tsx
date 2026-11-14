@@ -1927,14 +1927,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           >
             Liked
           </button>
-          <button
-            type="button"
-            className="s-pill"
-            disabled
-            title="Public visibility is not available yet"
-          >
-            Public
-          </button>
             </>
           ) : null}
           <button
