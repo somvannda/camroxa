@@ -20,7 +20,9 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   A signed-in sweep of 29 routes found zero console/page/API errors (`UI_AUDIT.md`).
 - **Local stack:** platform API on `:8100` with sandbox DB `camxora_pfm_sandbox`
   (migrations `200`/`201`/`202` applied); web `:3103`; e2e needs both.
-- **Only open item:** Studio → YouTube Tutorials, blocked on an external channel.
+- **No open items.** YouTube Tutorials was dropped by product decision (no channel,
+  and tutorials are not part of this product); the Learn menu now offers Keyboard
+  Shortcuts and the Learning Center only.
 
 ## Update 2026-11-13 (later) — Designed plugins on Suno's authoring agent
 

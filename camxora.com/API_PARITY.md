@@ -107,10 +107,10 @@ Production is on hold: `camxora.com/` is built and verified locally only, and
 did nothing is tracked here; a gap is either implemented or removed — never left
 as a stub.
 
-| Surface | Control | Today | Next step |
-|---|---|---|---|
-| Studio | **YouTube Tutorials** | disabled | External channel does not exist; keep the honest disabled row. |
-| Studio | Plugin **unverified** badge | shown | Verify the remaining plugin parameter maps against the reference, then drop the badge. |
+**No remaining gaps.** The last two were closed by removal: the plugin
+"unverified" badge (nothing is unverified after the live registry check) and the
+Learn menu's YouTube Tutorials row (no channel exists and the product does not do
+tutorials — a permanently disabled row is not a feature).
 
 Closed in this pass (2026-11-14):
 

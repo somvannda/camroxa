@@ -27,7 +27,7 @@ test("learn explains a control, then stays off after a reload", async ({ page })
   await page.getByRole("button", { name: "Learn", exact: true }).click();
   const menu = page.getByRole("menu", { name: "Learn" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem")).toHaveCount(3); // + the What's This? checkbox
+  await expect(menu.getByRole("menuitem")).toHaveCount(2); // + the What's This? checkbox
   await expect(menu.getByRole("menuitemcheckbox")).toHaveAttribute("aria-checked", "true");
 
   await menu.getByRole("menuitem", { name: /Keyboard Shortcuts/ }).click();

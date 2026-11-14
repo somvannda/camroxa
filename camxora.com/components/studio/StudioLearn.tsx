@@ -9,10 +9,9 @@ import { helpFor, SHORTCUTS, type HelpEntry } from "@/lib/studio-help";
  * Learn menu + What's This? hover help (reference §7 / §38).
  *
  * A popover, not a dialog: it does not dim the editor or trap focus, and it closes on an
- * outside click. The four captured rows keep their order. Keyboard Shortcuts and the
- * Learning Center open in-app dialogs; YouTube Tutorials stays disabled until this
- * product has a tutorial channel (an external dependency, recorded in
- * `camxora.com/API_PARITY.md`).
+ * outside click. Keyboard Shortcuts and the Learning Center open in-app dialogs. The
+ * reference's YouTube Tutorials row is intentionally dropped: this product has no
+ * tutorial channel, and a permanently disabled row is not a feature.
  *
  * What's This? is the real feature: any control carrying `data-help` gets a light card
  * with a name and a sentence, toggled globally and persisted in Studio settings.
@@ -230,17 +229,6 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
             }}
           >
             <Icon name="fa-list" /> Keyboard Shortcuts <span>shift ?</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled
-            title="No tutorial channel for this product yet"
-          >
-            <Icon name="fa-circle-play" /> YouTube Tutorials{" "}
-            <span aria-hidden="true">
-              <Icon name="fa-arrow-up-right-from-square" />
-            </span>
           </button>
           <button
             type="button"
