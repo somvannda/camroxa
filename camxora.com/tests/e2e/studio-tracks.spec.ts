@@ -111,3 +111,43 @@ test("track level and pan sliders persist, and collapse hides them", async ({ pa
   await expect(page.getByRole("slider", { name: "Volume Track 1" })).toBeVisible();
   await expect.poll(async () => (await track()).collapsed, { timeout: 15_000 }).toBe(false);
 });
+
+
+test("track groups A-D assign, mix and collapse", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, { title: `Groups ${tag}` });
+
+  const saved = () =>
+    page.evaluate(async (id) => {
+      const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+      const project = (await response.json()) as {
+        data?: {
+          groups?: Record<string, number>;
+          tracks?: Array<{ groupId?: string | null; collapsed?: boolean }>;
+        };
+      };
+      const track = project.data?.tracks?.[0];
+      return { groups: project.data?.groups ?? {}, track };
+    }, projectId);
+
+  await page.getByLabel("Group for Track 1").selectOption("A");
+  await expect.poll(async () => (await saved()).track?.groupId, { timeout: 15_000 }).toBe("A");
+
+  const groupLevel = page.getByRole("slider", { name: "Group A level" });
+  await expect(groupLevel).toBeVisible();
+  await groupLevel.fill("40");
+  await expect
+    .poll(async () => (await saved()).groups.A, { timeout: 15_000 })
+    .toBe(40);
+
+  await page.getByRole("button", { name: "Collapse group A" }).click();
+  await expect(page.getByRole("slider", { name: "Volume Track 1" })).toHaveCount(0);
+  await expect
+    .poll(async () => (await saved()).track?.collapsed, { timeout: 15_000 })
+    .toBe(true);
+
+  await page.getByRole("button", { name: "Collapse group A" }).click();
+  await expect(page.getByRole("slider", { name: "Volume Track 1" })).toBeVisible();
+});

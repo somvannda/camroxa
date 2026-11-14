@@ -129,6 +129,8 @@ import {
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioWavetableDesigner } from "@/components/studio/StudioWavetableDesigner";
 import { StudioSpectrum } from "@/components/studio/StudioSpectrum";
+import { groupGain, groupsInUse, sanitizeGroups, type GroupMix } from "@/lib/studio-groups";
+import type { TrackGroupId } from "@/lib/studio-tracks";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
 import { StudioTakeLanes } from "@/components/studio/StudioTakeLanes";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
@@ -1144,6 +1146,8 @@ export function StudioEditorShell() {
   }
   /** N-14: wavetables saved in this project's document. */
   const wavetables = sanitizeWavetables((currentData() as { wavetables?: unknown }).wavetables);
+  /** ARR-027: group A–D levels, a submix multiplier over member tracks. */
+  const groupMix = sanitizeGroups((currentData() as { groups?: unknown }).groups);
   /** Load the library panel's lists the first time it opens (G12). */
   useEffect(() => {
     if (!libraryOpen || !user) return;
@@ -2469,9 +2473,19 @@ export function StudioEditorShell() {
     commitTracks(tracks.map((track) => (track.hidden ? { ...track, hidden: false } : track)));
   }
 
+  /**
+   * ARR-027: a group level is a submix multiplier, so the running graph has to rebuild to
+   * hear it (the group node is created per playback start).
+   */
+  function setGroupMix(groupId: TrackGroupId, value: number) {
+    const data = currentData();
+    const next = { ...groupMix, [groupId]: Math.max(0, Math.min(100, value)) };
+    writeProjectData({ ...data, groups: next }, "the group level");
+    if (playingRef.current) restartAudio(playheadRef.current, clips);
+  }
+
   /** S21 "Unmute all": un-mutes every hidden track without showing them. */
-  function unmuteAllHidden() {
-    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
+  function unmuteAllHidden() {    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
     if (!hiddenMuted) return;
     commitTracks(
       tracks.map((track) => (track.hidden && track.muted ? { ...track, muted: false } : track))
@@ -4398,7 +4412,15 @@ export function StudioEditorShell() {
         }
       }
       const pre = context.createGain();
-      pre.connect(input);
+      // ARR-027: the group is a submix stage, so automation on the fader still applies
+      // on top of the group level instead of replacing it. Read from the document so a
+      // restart triggered by a group change sees the new level.
+      const groupsAtStart = sanitizeGroups((currentData() as { groups?: unknown }).groups);
+      const groupNode = context.createGain();
+      const owner = tracksRef.current.find((track) => track.id === trackId);
+      groupNode.gain.value = owner ? groupGain(groupsAtStart, owner) : 1;
+      pre.connect(groupNode);
+      groupNode.connect(input);
       preTaps.set(trackId, pre);
       duckGains.set(trackId, duckGain);
       trackInputs.set(trackId, pre);
@@ -4686,6 +4708,7 @@ export function StudioEditorShell() {
         solo: track.solo,
         volumeAutomation: track.volumeAutomation,
         panAutomation: track.panAutomation,
+        groupId: track.groupId ?? null,
         clipIds: track.clipIds,
       }));
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
@@ -4705,6 +4728,7 @@ export function StudioEditorShell() {
           normalise,
           masterGain,
           format,
+          groups: groupMix,
         });
         download(wav, `${project.title || "mix"}.${extension}`, mime);
         setExportToast("Full Song download started!");
@@ -4718,6 +4742,7 @@ export function StudioEditorShell() {
           normalise,
           masterGain,
           format,
+          groups: groupMix,
           from: bounds.start,
           to: bounds.end,
         });
@@ -4730,6 +4755,7 @@ export function StudioEditorShell() {
             chains: trackChains,
             wavetables,
             format,
+            groups: groupMix,
             clipIds: new Set(track.clipIds),
             honourSolo: false,
           });
@@ -4804,6 +4830,7 @@ export function StudioEditorShell() {
         chain: (currentData() as { masterChain?: MasterChainEntry[] }).masterChain,
         chains,
         wavetables,
+        groups: groupMix,
         clipIds: new Set(track.clipIds),
         honourSolo: false,
         // A bounce is the track alone: no master fader, no master mute.
@@ -5760,6 +5787,8 @@ export function StudioEditorShell() {
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
           onUnmuteAllHidden={unmuteAllHidden}
+          groups={groupMix}
+          onGroupMix={(groupId, value) => setGroupMix(groupId as TrackGroupId, value)}
           onToggleAllCollapsed={toggleAllCollapsed}
           masterVolume={masterVolume}
           masterMuted={masterMuted}

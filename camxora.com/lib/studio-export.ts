@@ -26,6 +26,8 @@ import {
 import { normaliseChannels } from "@/lib/studio-normalise";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
 import { sanitizeChain } from "@/lib/studio-plugin-chain";
+import { groupGain, type GroupMix } from "@/lib/studio-groups";
+import type { TrackGroupId } from "@/lib/studio-tracks";
 import {
   normalizeMidiInstrument,
   sanitizePoints,
@@ -68,6 +70,8 @@ export type ExportClip = {
 export type ExportTrack = {
   id: string;
   name?: string;
+  /** ARR-027: group membership drives the submix multiplier. */
+  groupId?: TrackGroupId | null;
   volume?: number;
   pan?: number;
   muted?: boolean;
@@ -148,6 +152,8 @@ export type RenderOptions = {
   format?: "wav" | "mp3";
   /** MP3 bitrate in kbps (ignored for WAV). */
   mp3Bitrate?: number;
+  /** ARR-027: group levels, applied as a submix multiplier before the track fader. */
+  groups?: GroupMix;
 };
 
 /**
@@ -198,7 +204,10 @@ export async function renderMix(
     const existing = trackNodes.get(trackId);
     if (existing) return existing;
     const gain = context.createGain();
-    gain.gain.value = Math.max(0, volume) / 100;
+    // ARR-027: the group is a submix stage ahead of the track fader.
+    const ownerTrack = tracks.find((track) => track.id === trackId);
+    const groupLevel = ownerTrack ? groupGain(options.groups ?? {}, ownerTrack) : 1;
+    gain.gain.value = (Math.max(0, volume) / 100) * groupLevel;
     const panner = context.createStereoPanner();
     panner.pan.value = Math.max(-1, Math.min(1, pan / 100));
     trackGains.set(trackId, gain);

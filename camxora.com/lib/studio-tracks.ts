@@ -18,6 +18,10 @@
 import { sanitizeAutomation, type AutomationPoint } from "@/lib/studio-automation";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
+/** The reference's four visual groups (A–D): assignment, collapse and a group mix. */
+export type TrackGroupId = "A" | "B" | "C" | "D";
+export const TRACK_GROUPS: readonly TrackGroupId[] = ["A", "B", "C", "D"];
+
 export type StudioTrack = {
   id: string;
   name: string;
@@ -34,7 +38,8 @@ export type StudioTrack = {
   armed?: boolean;
   /** Per-track controls collapsed in the panel (reference T-02). */
   collapsed: boolean;
-  /** Visual group A–D from the legacy model. */
+  /** Visual group A–D (reference ARR-027); `null` when ungrouped. */
+  groupId?: TrackGroupId | null;
   /** Ordered plugin chain; signal order. */
   chain: PluginChainEntry[];
   /** Volume automation points (0-100) in timeline seconds. */
@@ -119,7 +124,12 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
       hidden: Boolean(candidate.hidden),
       armed: Boolean(candidate.armed),
       collapsed: Boolean(candidate.collapsed),
-          chain: [], // chains are sanitised separately, by track id
+      groupId:
+        typeof candidate.groupId === "string" &&
+        (TRACK_GROUPS as readonly string[]).includes(candidate.groupId)
+          ? (candidate.groupId as TrackGroupId)
+          : null,
+      chain: [], // chains are sanitised separately, by track id
       volumeAutomation: sanitizeAutomation(candidate.volumeAutomation, 0, 100),
       panAutomation: sanitizeAutomation(candidate.panAutomation, -100, 100),
       clipIds,
