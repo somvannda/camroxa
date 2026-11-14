@@ -1969,13 +1969,17 @@ class WebMusicService:
         limit: int = 40,
         offset: int = 0,
         include_archived: bool = False,
+        deleted: bool = False,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 100))
         safe_offset = max(0, int(offset))
+        # S04 "Recently Deleted": the tab lists soft-deleted projects, every other list
+        # hides them. One flag keeps both branches in one query.
         rows = await self._pool.fetch(
             """
             SELECT p.id, p.title, p.major_version, p.bpm, p.time_signature,
                    p.pinned, p.tags, p.archived, p.created_at, p.updated_at, p.data,
+                   p.deleted_at,
                    COALESCE(c.comment_count, 0) AS comment_count,
                    c.last_comment_at
             FROM studio_projects p
@@ -1988,21 +1992,27 @@ class WebMusicService:
             ) c ON c.project_id = p.id
             WHERE p.user_id = $1
               AND ($4::boolean OR p.archived = false)
-            ORDER BY p.pinned DESC, p.updated_at DESC
+              AND (($5::boolean AND p.deleted_at IS NOT NULL)
+                   OR (NOT $5::boolean AND p.deleted_at IS NULL))
+            ORDER BY p.pinned DESC, COALESCE(p.deleted_at, p.updated_at) DESC
             LIMIT $2 OFFSET $3
             """,
             user_id,
             safe_limit,
             safe_offset,
             bool(include_archived),
+            bool(deleted),
         )
         total = await self._pool.fetchval(
             """
             SELECT count(*) FROM studio_projects
             WHERE user_id = $1 AND ($2::boolean OR archived = false)
+              AND (($3::boolean AND deleted_at IS NOT NULL)
+                   OR (NOT $3::boolean AND deleted_at IS NULL))
             """,
             user_id,
             bool(include_archived),
+            bool(deleted),
         )
         items = [self._studio_project_payload(row, include_data=False) for row in rows]
         statuses = await self._studio_batch_sync_statuses(
@@ -2032,6 +2042,7 @@ class WebMusicService:
             """
             SELECT id, user_id, title, major_version, bpm, time_signature, data
             FROM studio_projects
+            WHERE deleted_at IS NULL
             ORDER BY updated_at ASC
             LIMIT $1
             """,
@@ -2108,6 +2119,7 @@ class WebMusicService:
             ),
             "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
             "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+            "deleted_at": row["deleted_at"].isoformat() if row.get("deleted_at") else None,
         }
         if include_data:
             payload["data"] = data if isinstance(data, dict) else {}
@@ -2187,7 +2199,7 @@ class WebMusicService:
 
     async def get_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
         row = await self._pool.fetchrow(
-            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
             project_id,
             user_id,
         )
@@ -2209,6 +2221,7 @@ class WebMusicService:
             SELECT id
             FROM studio_projects
             WHERE user_id = $1
+              AND deleted_at IS NULL
               AND data ? 'lanes'
               AND EXISTS (
                 SELECT 1
@@ -2907,7 +2920,7 @@ class WebMusicService:
                 tags = COALESCE($9::text[], tags),
                 archived = COALESCE($10, archived),
                 updated_at = now()
-            WHERE id = $1 AND user_id = $2
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
             RETURNING *
             """,
             project_id,
@@ -2927,8 +2940,13 @@ class WebMusicService:
         return self._studio_project_payload(row)
 
     async def delete_studio_project(self, user_id: UUID, project_id: UUID) -> None:
+        """Soft delete (S04): the row stays so "Recently Deleted" can restore it."""
         row = await self._pool.fetchrow(
-            "DELETE FROM studio_projects WHERE id = $1 AND user_id = $2 RETURNING id, user_id",
+            """
+            UPDATE studio_projects SET deleted_at = now()
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+            RETURNING id, user_id, data
+            """,
             project_id,
             user_id,
         )
@@ -2945,6 +2963,24 @@ class WebMusicService:
                 {"user_id": str(row["user_id"]), "archived": True},
             )
 
+    async def restore_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        """S04: put a soft-deleted project back in the Projects tab."""
+        row = await self._pool.fetchrow(
+            """
+            UPDATE studio_projects SET deleted_at = NULL, updated_at = now()
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError(
+                "Deleted Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        return self._studio_project_payload(row, include_data=False)
+
     async def fork_studio_project(
         self,
         user_id: UUID,
@@ -2957,7 +2993,7 @@ class WebMusicService:
             INSERT INTO studio_projects
                 (user_id, title, major_version, bpm, time_signature, data)
             SELECT $2, COALESCE($3, title || ' copy'), major_version, bpm, time_signature, data
-            FROM studio_projects WHERE id = $1 AND user_id = $2
+            FROM studio_projects WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
             RETURNING *
             """,
             project_id,

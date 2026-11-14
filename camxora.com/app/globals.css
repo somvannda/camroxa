@@ -5265,7 +5265,8 @@ html{color-scheme:dark}
 .se-projects-sort{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:0;border-radius:999px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:13px;cursor:pointer}
 .se-projects-sort:disabled{opacity:.5;cursor:not-allowed}
 .se-projects-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-height:min(56vh,520px);overflow-y:auto;padding:2px}
-.se-project-card{display:flex;flex-direction:column;padding:0;border:0;border-radius:14px;background:#1c1c1e;color:#f7f4ef;font:inherit;text-align:left;cursor:pointer;overflow:hidden}
+.se-project-card{display:flex;flex-direction:column;padding:0;border:0;border-radius:14px;background:#1c1c1e;color:#f7f4ef;font:inherit;text-align:left;cursor:pointer;overflow:hidden;position:relative}
+.se-project-restore{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:hsl(var(--accent));color:#0b0716;font-size:11px;font-weight:600}
 .se-project-card:hover{outline:2px solid rgba(168,85,247,.5)}
 .se-project-preview{position:relative;display:block;height:176px;overflow:hidden;background:linear-gradient(135deg,#242428,#151517)}
 .se-project-preview span{position:absolute;left:18px;right:18px;top:20px;height:10px;border-radius:4px;background:rgba(168,85,247,.35);box-shadow:0 22px 0 rgba(96,165,250,.28),0 44px 0 rgba(253,66,156,.26)}

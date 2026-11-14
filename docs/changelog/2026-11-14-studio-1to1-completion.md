@@ -23,6 +23,7 @@ captures show. Production `camxora.com` is still not deployed.
 | Convolution ruler | IR slot labels the captured 0 s · 1 s · 2 s · 3 s ticks instead of only 0 s / 2 s | S44 |
 | Hidden tracks | The popover gains the captured **Unmute all** action next to Show All Hidden Tracks | S21 |
 | My Projects | Cards draw a mini-timeline from a bounded `thumb` summary returned by the list endpoint | S04 |
+| Recently Deleted | Delete is soft (`deleted_at`); the captured tab lists deleted projects and **Restore** puts the document back in Projects (migration `203`) | S04 §56 note 3 |
 | Duplicate master effect | Master still refuses a second limiter and says so in the menu | “Already on Master” string |
 
 ## Visual parity pass (same day)
@@ -55,8 +56,10 @@ stays dropped by product decision.
   `studio-project-thumb` (2), plus settings/menu/header updates.
 - Playwright: new `studio-content-settings.spec.ts` (7 tests: panes + persistence, IR gating,
   clip FX add/remove with server polling, Stereo Utility, preset stepper, export scopes,
-  wavetable designer); full suite **170 passed / 2 skipped**.
-- Platform pytest: **3409 passed** (new `test_studio_project_thumb.py`).
+  wavetable designer) and `studio-soft-delete.spec.ts` (delete → Recently Deleted → restore);
+  full suite **171 passed / 2 skipped**.
+- Platform pytest: **3415 passed** (new `test_studio_project_thumb.py`,
+  `test_web_music_studio_soft_delete.py`).
 - `next build` produces the production bundle; `next start` on a spare port serves a
   29-route signed-in sweep with no page errors, no 5xx and no console errors after sign-in
   (the only noise is the expected pre-auth 401 probes on the first load).

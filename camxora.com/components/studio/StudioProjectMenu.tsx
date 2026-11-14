@@ -11,6 +11,7 @@ import {
   listStudioProjectShares,
   listStudioProjects,
   listStudioProjectVersions,
+  restoreStudioProject,
   restoreStudioProjectVersion,
   syncStudioProject,
   updateStudioProject,
@@ -118,6 +119,8 @@ export function StudioProjectMenu({
   const [projectQuery, setProjectQuery] = useState("");
   const [projectSort, setProjectSort] = useState<"newest" | "oldest">("newest");
   const [projects, setProjects] = useState<StudioProject[] | null>(null);
+  /** S04 "Recently Deleted": loaded when that tab opens, null until then. */
+  const [deletedProjects, setDeletedProjects] = useState<StudioProject[] | null>(null);
   const [versions, setVersions] = useState<StudioProjectVersion[] | null>(null);
   const [renameValue, setRenameValue] = useState(title);
   const [gateValue, setGateValue] = useState(title);
@@ -203,15 +206,49 @@ export function StudioProjectMenu({
     }
   }
 
+  /**
+   * S04: the Projects tab and the Recently Deleted tab are two lists from one endpoint.
+   * Loading is lazy per tab and never blocks the dialog shell.
+   */
+  function loadProjects(deleted: boolean) {
+    if (deleted) {
+      setDeletedProjects(null);
+      listStudioProjects(50, 0, true, true)
+        .then((result) => setDeletedProjects(result.items ?? []))
+        .catch(() => setDeletedProjects([]));
+      return;
+    }
+    setProjects(null);
+    listStudioProjects(20, 0, false)
+      .then((result) => setProjects(result.items ?? []))
+      .catch(() => setProjects([]));
+  }
+
+  function selectProjectTab(tab: "projects" | "deleted") {
+    setProjectTab(tab);
+    if (tab === "deleted" && deletedProjects === null) loadProjects(true);
+  }
+
+  /** S04: restore a soft-deleted project and put it back at the top of Projects. */
+  async function restoreProject(id: string) {
+    setError("");
+    try {
+      const restored = await restoreStudioProject(id);
+      setDeletedProjects((current) => (current ?? []).filter((item) => item.id !== id));
+      setProjects((current) => [restored, ...(current ?? []).filter((item) => item.id !== id)]);
+      setProjectTab("projects");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not restore that project.");
+    }
+  }
+
   function openDialog(next: Exclude<Dialog, null>) {
     setOpen(false);
     setError("");
     setDialog(next);
     if (next === "open") {
-      setProjects(null);
-      listStudioProjects(20, 0, false)
-        .then((result) => setProjects(result.items ?? []))
-        .catch(() => setProjects([]));
+      setProjectTab("projects");
+      loadProjects(false);
     }
     if (next === "versions") {
       setVersions(null);
@@ -549,107 +586,118 @@ export function StudioProjectMenu({
                       role="tab"
                       aria-selected={projectTab === tab}
                       className={projectTab === tab ? "on" : ""}
-                      onClick={() => setProjectTab(tab)}
+                      onClick={() => selectProjectTab(tab)}
                     >
                       {tab === "projects" ? "Projects" : "Recently Deleted"}
                     </button>
                   ))}
                 </div>
 
-                {projectTab === "deleted" ? (
-                  <p className="se-dialog-note">
-                    Deleted projects are not kept in this build, so there is nothing to restore.
-                  </p>
-                ) : (
-                  <>
-                    <div className="se-projects-tools">
-                      <label className="se-projects-search">
-                        <Icon name="fa-magnifying-glass" />
-                        <input
-                          value={projectQuery}
-                          onChange={(event) => setProjectQuery(event.target.value)}
-                          placeholder="Search for Project"
-                          aria-label="Search projects"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="se-projects-sort"
-                        disabled
-                        title="Project filters are not built"
-                      >
-                        <Icon name="fa-filter" /> Filters
-                      </button>
-                      <select
-                        className="se-projects-sort"
-                        aria-label="Sort projects"
-                        value={projectSort}
-                        onChange={(event) =>
-                          setProjectSort(event.target.value === "oldest" ? "oldest" : "newest")
-                        }
-                      >
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>
-                      </select>
-                    </div>
+                <div className="se-projects-tools">
+                  <label className="se-projects-search">
+                    <Icon name="fa-magnifying-glass" />
+                    <input
+                      value={projectQuery}
+                      onChange={(event) => setProjectQuery(event.target.value)}
+                      placeholder="Search for Project"
+                      aria-label="Search projects"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="se-projects-sort"
+                    disabled
+                    title="Project filters are not built"
+                  >
+                    <Icon name="fa-filter" /> Filters
+                  </button>
+                  <select
+                    className="se-projects-sort"
+                    aria-label="Sort projects"
+                    value={projectSort}
+                    onChange={(event) =>
+                      setProjectSort(event.target.value === "oldest" ? "oldest" : "newest")
+                    }
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                  </select>
+                </div>
 
-                    {(() => {
-                      if (projects === null) {
-                        return <p className="se-dialog-note">Loading projects</p>;
-                      }
-                      const needle = projectQuery.trim().toLowerCase();
-                      const visible = projects
-                        .filter((item) => !needle || item.title?.toLowerCase().includes(needle))
-                        .slice()
-                        .sort((a, b) => {
-                          const at = new Date(a.updated_at || a.created_at || 0).getTime();
-                          const bt = new Date(b.updated_at || b.created_at || 0).getTime();
-                          return projectSort === "newest" ? bt - at : at - bt;
-                        });
-                      return (
-                        <div className="se-projects-grid">
-                          <button
-                            type="button"
-                            className="se-project-card is-new"
-                            onClick={startNewProject}
-                            disabled={busy}
-                          >
-                            <Icon name="fa-plus" />
-                            <span>New Project</span>
-                          </button>
-                          {visible.map((item) => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="se-project-card"
-                              onClick={() => navigate(item.id)}
-                              aria-label={`Open ${item.title || UNTITLED}`}
-                            >
-                              <StudioProjectThumbView thumb={item.thumb} />
-                              <span className="se-project-meta">
-                                <span className="se-project-thumb" aria-hidden="true">
-                                  {initialOf(item.title || UNTITLED)}
-                                </span>
-                                <span className="se-project-text">
-                                  <strong>{item.title || UNTITLED}</strong>
-                                  <small>
-                                    {item.updated_at
-                                      ? new Date(item.updated_at).toLocaleDateString()
-                                      : "No date"}
-                                  </small>
-                                </span>
-                              </span>
-                            </button>
-                          ))}
-                          {visible.length === 0 ? (
-                            <p className="se-dialog-note">No projects match that search.</p>
+                {(() => {
+                  const source = projectTab === "deleted" ? deletedProjects : projects;
+                  if (source === null) {
+                    return <p className="se-dialog-note">Loading projects</p>;
+                  }
+                  const needle = projectQuery.trim().toLowerCase();
+                  const visible = source
+                    .filter((item) => !needle || item.title?.toLowerCase().includes(needle))
+                    .slice()
+                    .sort((a, b) => {
+                      const at = new Date(a.updated_at || a.created_at || 0).getTime();
+                      const bt = new Date(b.updated_at || b.created_at || 0).getTime();
+                      return projectSort === "newest" ? bt - at : at - bt;
+                    });
+                  return (
+                    <div className="se-projects-grid">
+                      {projectTab === "projects" ? (
+                        <button
+                          type="button"
+                          className="se-project-card is-new"
+                          onClick={startNewProject}
+                          disabled={busy}
+                        >
+                          <Icon name="fa-plus" />
+                          <span>New Project</span>
+                        </button>
+                      ) : null}
+                      {visible.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="se-project-card"
+                          onClick={() =>
+                            projectTab === "deleted" ? void restoreProject(item.id) : navigate(item.id)
+                          }
+                          aria-label={`${projectTab === "deleted" ? "Restore" : "Open"} ${
+                            item.title || UNTITLED
+                          }`}
+                        >
+                          <StudioProjectThumbView thumb={item.thumb} />
+                          <span className="se-project-meta">
+                            <span className="se-project-thumb" aria-hidden="true">
+                              {initialOf(item.title || UNTITLED)}
+                            </span>
+                            <span className="se-project-text">
+                              <strong>{item.title || UNTITLED}</strong>
+                              <small>
+                                {projectTab === "deleted"
+                                  ? `Deleted ${
+                                      item.deleted_at
+                                        ? new Date(item.deleted_at).toLocaleDateString()
+                                        : "recently"
+                                    }`
+                                  : item.updated_at
+                                    ? new Date(item.updated_at).toLocaleDateString()
+                                    : "No date"}
+                              </small>
+                            </span>
+                          </span>
+                          {projectTab === "deleted" ? (
+                            <span className="se-project-restore">Restore</span>
                           ) : null}
-                        </div>
-                      );
-                    })()}
-                  </>
-                )}
-              </>
+                        </button>
+                      ))}
+                      {visible.length === 0 ? (
+                        <p className="se-dialog-note">
+                          {projectTab === "deleted"
+                            ? "Nothing here. Deleted projects stay restorable."
+                            : "No projects match that search."}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })()}              </>
             ) : dialog === "rename" ? (
               <>
                 <h2>Rename project</h2>

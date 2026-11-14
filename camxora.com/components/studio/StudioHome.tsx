@@ -544,7 +544,10 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 id="studio-delete-title">Delete “{deleteTarget.title}”?</h2>
-            <p>This removes the project and its saved versions. It cannot be undone.</p>
+            <p>
+              This moves the project to <b>Recently Deleted</b>. Open it from My Projects to
+              restore it.
+            </p>
             <div className="studio-dialog-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>
                 Keep project

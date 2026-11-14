@@ -499,12 +499,14 @@ async def list_studio_projects(
     limit: int = Query(40, ge=1, le=100),
     offset: int = Query(0, ge=0),
     include_archived: bool = Query(False),
+    deleted: bool = Query(False),
 ) -> dict:
     return await service.list_studio_projects(
         UUID(ctx.user_id),
         limit=limit,
         offset=offset,
         include_archived=include_archived,
+        deleted=deleted,
     )
 
 
@@ -642,6 +644,15 @@ async def delete_studio_project(
 ) -> Response:
     await service.delete_studio_project(UUID(ctx.user_id), project_id)
     return Response(status_code=204)
+
+
+@router.post("/studio/projects/{project_id}/restore")
+async def restore_studio_project(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.restore_studio_project(UUID(ctx.user_id), project_id)
 
 
 @router.post("/studio/projects/{project_id}/fork", status_code=201)

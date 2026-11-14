@@ -236,7 +236,7 @@ Full measured list: `docs/studio/PIXEL_PARITY.md`. Capture-by-capture: `referenc
 |---|---|---|---|
 | List / search / sort / pin / archive / tag | ✅ | ✅ | `GET /v1/studio/projects`, `PATCH …/:id` (mirror + local fields) |
 | Duplicate / fork | ✅ | ✅ | `POST /v1/studio/projects/:id/fork` |
-| Delete with confirm | ✅ | ✅ | `DELETE /v1/studio/projects/:id` |
+| Delete with confirm | ✅ soft delete — the project moves to **Recently Deleted** and can be restored | ✅ deletion is soft, with recovery (S04 §56) | `DELETE /v1/studio/projects/:id` · `POST …/restore` |
 | Automatic versions + named snapshots | ✅ server throttles to 1/20 s, keeps 50 | ✅ “Projects are saved automatically” | — **platform only**: `/studio/projects/:id/versions` |
 | Restore a version | ✅ | ✅ | — platform only |
 | Share link (view/edit, expiry, revoke) | ✅ | ✅ | — platform only (`studio_project_shares`) |

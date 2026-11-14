@@ -29,6 +29,8 @@ export type StudioProject = {
   sync?: { status: "pending" | "linked" | "synced" | "conflict" | "error" } | null;
   /** S04: compact arrangement preview computed by the list endpoint. */
   thumb?: StudioProjectThumb | null;
+  /** S04: set while the project sits in "Recently Deleted". */
+  deleted_at?: string | null;
 };
 
 /** One row of a project-card mini-timeline. */
@@ -74,10 +76,22 @@ export class StudioConflictError extends Error {
 export async function listStudioProjects(
   limit = 20,
   offset = 0,
-  includeArchived = false
+  includeArchived = false,
+  /** S04 "Recently Deleted": list soft-deleted projects instead of active ones. */
+  deleted = false
 ): Promise<{ items: StudioProject[]; total: number }> {
   return studioJson(
-    `/api/v3/web-music/studio/projects?limit=${limit}&offset=${offset}&include_archived=${includeArchived ? "true" : "false"}`
+    `/api/v3/web-music/studio/projects?limit=${limit}&offset=${offset}&include_archived=${
+      includeArchived ? "true" : "false"
+    }&deleted=${deleted ? "true" : "false"}`
+  );
+}
+
+/** S04: restore a project from "Recently Deleted". */
+export async function restoreStudioProject(id: string): Promise<StudioProject> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/restore`,
+    { method: "POST" }
   );
 }
 
