@@ -10333,6 +10333,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     in_: Record<string, unknown>,
   ): Record<string, unknown> {
     const prompt = (in_.prompt as string) || "";
+    // sunoapi.org clients (including platform_api) send the free-form idea here.
+    const description = (in_.gpt_description_prompt as string) || "";
     const customMode = Boolean(in_.customMode ?? in_.custom_mode ?? in_.defaultParamFlag);
     const style = ((in_.style as string) || (in_.tags as string)) || "";
     const title = (in_.title as string) || "";
@@ -10390,7 +10392,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (title) parts.push(title);
       if (style) parts.push(`[genre: ${style}]`);
       if (prompt) parts.push(prompt);
-      out.gpt_description_prompt = parts.join(" ") || prompt || undefined;
+      out.gpt_description_prompt =
+        parts.join(" ") || prompt || description || undefined;
     }
     return out;
   }
@@ -10416,7 +10419,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const inBody = (req.body ?? {}) as Record<string, unknown>;
     const body = translateBodyToMusic(inBody);
-    if (!body.gpt_description_prompt && !body.prompt && !hasReferenceMedia(body)) {
+    if (
+      !body.gpt_description_prompt &&
+      !body.prompt &&
+      !(inBody.gpt_description_prompt as string) &&
+      !hasReferenceMedia(body)
+    ) {
       return reply.code(400).send({ error: "prompt is required." });
     }
     const model = (body.model as string) || undefined;

@@ -41,10 +41,17 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   with `PLATFORM_STREAMING_B2_*` env so record uploads and render-in-place work. Run the
   storage-dependent specs with `STUDIO_EXPECT_UPLOADS=1` (and
   `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100` for the in-place bounce check).
-- **Provider legs still external:** no `SUNO_CLIENT_COOKIE`/`SUNO_JWT` and the stored
-  `client_cookie` rows were encrypted with a key this environment does not have, so a real
-  stems job and the voice verify/persona flow cannot be exercised here. Both contract paths
-  are covered with provider-shaped fixtures.
+- **Provider legs:** a working Suno session exists for the sandbox user, so generation,
+  stems and persona creation were **verified live on 2026-11-14** (changelog has the ids).
+  For the **e2e gate**, restart the platform API without that provider env (DB only):
+  the provider-configured stack makes `/api/v3/health` probe external services and the
+  mirror status call wait on musicapi, which slows every list/save by seconds.
+  To repeat the live calls, the platform needs `PLATFORM_ENCRYPTION_MASTER_KEY` (canonical
+  `platform_api/.env`), `PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003`,
+  `PLATFORM_SUNO_CALLBACK_BASE_URL` (a non-local host), `PLATFORM_STUDIO_INTERNAL_TOKEN`,
+  the `PLATFORM_STREAMING_B2_*` values, the `platform_api.worker` process, and
+  `system_settings.credits_only_v3_charge=true` in the sandbox DB. The provider API key in
+  `api_key_entries` must exist in musicapi's `api_keys` (same sha256 hash).
 - **No open items.** YouTube Tutorials was dropped by product decision (no channel,
   and tutorials are not part of this product); the Learn menu now offers Keyboard
   Shortcuts and the Learning Center only.

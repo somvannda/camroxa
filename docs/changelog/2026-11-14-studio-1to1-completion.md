@@ -31,8 +31,34 @@ captures show. Production `camxora.com` is still not deployed.
 | Track groups A–D | Membership on the track, submix level in `data.groups`, collapse of member controls | requested (ARR-027) |
 | Song tempo tag | Library rows measure BPM from the clip audio (lazy, cached) | §19.2 |
 | Song key tag | Library rows estimate the key from a chroma vector + Krumhansl profiles and label it **≈** (never as metadata) | §19.2 |
-| Stems tab verified | Provider-shaped stems result lists and places a stem (`studio-stems.spec.ts`); the platform projection is unit-tested. The provider call still needs a live session | B-005 |
+| Stems tab verified | Provider-shaped stems result lists and places a stem (`studio-stems.spec.ts`); **and a real 2-stem job ran live**, stored in B2 | B-005 |
+| Voice persona verified live | A generated vocal song produced a provider persona (`61c050dc-…`) via `POST /studio/generations/{id}/personas` | B-005 |
 | Record + bounce verified with storage | `STUDIO_EXPECT_UPLOADS=1` against moto S3: record → upload → take, and render-in-place bounce | B-006/B-007 |
+
+## Live provider evidence (2026-11-14)
+
+A working Suno session was recovered from the `suno_accounts` row for the sandbox user
+(the other two rows were encrypted with a key this environment does not hold). With the
+platform talked to the local musicapi, the real provider paths ran:
+
+| Path | Evidence |
+|---|---|
+| **Stems (2-stem)** | Task `90c28ba4-2306-4a05-8f53-bd0e544495ed` → provider clip `9c995dd2-…` → operation `ae98d516-…` **complete**; `GET /studio/stems` returns `(Vocals)` stored in B2; the Stems tab lists it and **Add** places a clip with a real URL (`compare/ours-stems-live.png`) |
+| **Voice persona** | Vocal song `dec67289-…` → `POST /studio/generations/{id}/personas` → persona `Voice check 26489` **complete** with provider persona `61c050dc-af7c-465a-baf8-455c149ad01b` |
+| **Record → take** | `STUDIO_EXPECT_UPLOADS=1` with the fake microphone and moto S3 |
+| **Render-in-place bounce** | Same flag + `STUDIO_UPLOAD_PROXY_URL`, object landed in the bucket |
+
+Two defects were found by running it for real and fixed:
+
+1. **musicapi `/api/v1/generate` ignored `gpt_description_prompt`** — the
+   platform's Suno client sends the idea in that field, so the compat layer answered
+   `400 prompt is required`. It now accepts it (and the platform generation succeeds).
+2. **Local platform wiring** needed the provider key-pool master key, the local Suno base
+   URL and a non-local callback base; the sandbox also needs
+   `system_settings.credits_only_v3_charge=true` so generation uses the v3 charge bridge.
+3. **List ordering stayed index-friendly:** the Recently Deleted filter kept
+   `ORDER BY p.updated_at DESC` (not `COALESCE(deleted_at, updated_at)`, which forced a sort
+   over 26k rows), and a delete now bumps `updated_at` so deleted projects sort by recency.
 | Duplicate master effect | Master still refuses a second limiter and says so in the menu | “Already on Master” string |
 
 ## Visual parity pass (same day)

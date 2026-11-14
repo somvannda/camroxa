@@ -1994,7 +1994,7 @@ class WebMusicService:
               AND ($4::boolean OR p.archived = false)
               AND (($5::boolean AND p.deleted_at IS NOT NULL)
                    OR (NOT $5::boolean AND p.deleted_at IS NULL))
-            ORDER BY p.pinned DESC, COALESCE(p.deleted_at, p.updated_at) DESC
+            ORDER BY p.pinned DESC, p.updated_at DESC
             LIMIT $2 OFFSET $3
             """,
             user_id,
@@ -2943,7 +2943,7 @@ class WebMusicService:
         """Soft delete (S04): the row stays so "Recently Deleted" can restore it."""
         row = await self._pool.fetchrow(
             """
-            UPDATE studio_projects SET deleted_at = now()
+            UPDATE studio_projects SET deleted_at = now(), updated_at = now()
             WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
             RETURNING id, user_id, data
             """,
