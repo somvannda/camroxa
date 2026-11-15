@@ -87,6 +87,15 @@ def mock_web_music_service() -> AsyncMock:
         }
     )
     service.generate_draft = AsyncMock(return_value=("[Verse]\nCity lights", "Night Drive"))
+    service.generate_song_plan = AsyncMock(
+        return_value={
+            "ideas": [
+                {"title": "Night Drive", "theme": "a late drive home", "structure": "Chorus, Verse"},
+                {"title": "Neon Rain", "theme": "streetlights in the rain", "structure": "Verse, Chorus"},
+            ],
+            "credits_charged": 3,
+        }
+    )
     service.generate_styles = AsyncMock(return_value="synthwave, analog synth, 118 BPM")
     service.delete_generation = AsyncMock(return_value=None)
     return service
@@ -261,6 +270,49 @@ class TestWebMusicRouter:
         assert response.status_code == 200
         assert response.json()["title"] == "Night Drive"
         mock_web_music_service.generate_draft.assert_awaited()
+
+    async def test_song_plan(self, client: AsyncClient, mock_web_music_service: AsyncMock) -> None:
+        response = await client.post(
+            "/api/v1/web-music/song-plan",
+            json={"prompt": "neon city night drive", "count": 2},
+        )
+        assert response.status_code == 200
+        ideas = response.json()["ideas"]
+        assert [idea["title"] for idea in ideas] == ["Night Drive", "Neon Rain"]
+        assert response.json()["credits_charged"] == 3
+        assert mock_web_music_service.generate_song_plan.await_args.kwargs["count"] == 2
+
+    async def test_song_plan_rejects_oversized_batch(
+        self, client: AsyncClient, mock_web_music_service: AsyncMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/web-music/song-plan",
+            json={"prompt": "neon city night drive", "count": 21},
+        )
+        assert response.status_code == 422
+        mock_web_music_service.generate_song_plan.assert_not_awaited()
+
+    async def test_generate_forwards_theme(
+        self, client: AsyncClient, mock_web_music_service: AsyncMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/web-music/generate",
+            json={
+                "mode": "simple",
+                "prompt": "synth pop",
+                "theme": "a rooftop sunrise",
+                "structure": "Chorus, Verse",
+            },
+        )
+        assert response.status_code == 202
+        assert (
+            mock_web_music_service.generate.await_args.kwargs["theme"]
+            == "a rooftop sunrise"
+        )
+        assert (
+            mock_web_music_service.generate.await_args.kwargs["structure"]
+            == "Chorus, Verse"
+        )
 
     async def test_generate_styles_accepts_long_lyrics(
         self, client: AsyncClient, mock_web_music_service: AsyncMock

@@ -44,6 +44,11 @@ class WebMusicGenerateRequest(BaseModel):
     title: str = Field(default="", max_length=200)
     # Suno V6 customMode lyrics cap (V5 series also accepts 5000).
     prompt: str = Field(default="", max_length=5000)
+    # Per-song angle from the batch planner; keeps batch songs distinct while
+    # the shared description still drives the style.
+    theme: str = Field(default="", max_length=500)
+    # Optional section layout from the batch planner (e.g. "Chorus, Verse, ...").
+    structure: str = Field(default="", max_length=300)
     instrumental: bool = False
     model: str = Field(default=DEFAULT_SUNO_MUSIC_MODEL, pattern=SUNO_MODEL_PATTERN)
     negative_tags: str | None = Field(default=None, max_length=1000)
@@ -392,6 +397,22 @@ class WebMusicDraftRequest(BaseModel):
 class WebMusicDraftResponse(BaseModel):
     lyrics: str
     title: str
+
+
+class WebMusicSongPlanRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=5000)
+    count: int = Field(default=10, ge=1, le=20)
+
+
+class WebMusicSongIdea(BaseModel):
+    title: str
+    theme: str = ""
+    structure: str = ""
+
+
+class WebMusicSongPlanResponse(BaseModel):
+    ideas: list[WebMusicSongIdea]
+    credits_charged: int = 0
 
 
 class WebMusicStyleRequest(BaseModel):
@@ -1655,6 +1676,42 @@ async def generate_draft(
     return WebMusicDraftResponse(lyrics=lyrics, title=title)
 
 
+@router.post("/song-plan", response_model=WebMusicSongPlanResponse)
+async def song_plan(
+    body: WebMusicSongPlanRequest,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicSongPlanResponse:
+    """Plan a batch of distinct song ideas so one description ≠ ten clones."""
+    logger.info(
+        "web-music /song-plan called user=%s count=%s prompt_len=%s",
+        ctx.user_id,
+        body.count,
+        len(body.prompt or ""),
+    )
+    await enforce_generation_freeze(http_request, ctx.user_id)
+    await reject_probe_payload(http_request, ctx.user_id, body.prompt)
+    await enforce_rate_limit(http_request, ctx.user_id)
+    try:
+        plan = await service.generate_song_plan(
+            UUID(ctx.user_id),
+            prompt=body.prompt,
+            count=body.count,
+        )
+    except Exception:
+        logger.exception(
+            "web-music /song-plan failed user=%s count=%s",
+            ctx.user_id,
+            body.count,
+        )
+        raise
+    return WebMusicSongPlanResponse(
+        ideas=[WebMusicSongIdea(**idea) for idea in plan["ideas"]],
+        credits_charged=int(plan.get("credits_charged") or 0),
+    )
+
+
 @router.post("/generate-styles", response_model=WebMusicStyleResponse)
 async def generate_styles(
     body: WebMusicStyleRequest,
@@ -1739,6 +1796,8 @@ async def generate(
             instrumental=body.instrumental,
             model=body.model,
             prompt=body.prompt,
+            theme=body.theme,
+            structure=body.structure,
             negative_tags=body.negative_tags,
             vocal_gender=body.vocal_gender,
             style_weight=body.style_weight,

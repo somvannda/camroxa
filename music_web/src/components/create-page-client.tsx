@@ -1394,6 +1394,10 @@ export default function CreatePageClient() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Create failed';
       const lowered = message.toLowerCase();
+      // A 524 (or any gateway timeout) is the proxy giving up on a slow
+      // origin, not a rejection: the song may well have been queued and
+      // charged. Say so and reload instead of asking the user to retry blindly.
+      const gatewayTimeout = /\b524\b|gateway time-?out|took too long/i.test(message);
       const packBlocked =
         lowered.includes('requires purchased credits') ||
         lowered.includes('preview is used') ||
@@ -1406,10 +1410,13 @@ export default function CreatePageClient() {
             : 'Buy a credit pack to keep creating music.',
         );
       }
+      const shown = gatewayTimeout
+        ? `${message} — the server took too long to answer. Any song it did start is in your library below.`
+        : message;
       setCreateError(
         count > 1 && createdCount > 0
-          ? `Created ${createdCount} of ${count} songs, then stopped: ${message}`
-          : message,
+          ? `Created ${createdCount} of ${count} songs, then stopped: ${shown}`
+          : shown,
       );
       void fetchWebMusicQuota()
         .then(setQuota)
@@ -1417,6 +1424,9 @@ export default function CreatePageClient() {
       void fetchCreditBalance()
         .then(setCreditBalance)
         .catch(() => undefined);
+      if (gatewayTimeout) {
+        void refreshList(activeWorkspaceId).catch(() => undefined);
+      }
     } finally {
       setBusy(false);
       setBatchProgress(null);

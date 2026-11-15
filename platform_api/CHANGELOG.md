@@ -6,6 +6,49 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-15] - Web Create: Simple-mode batches survive the edge timeout
+
+### Fixed
+
+- `POST /api/v3/web-music/generate` wrote Simple-mode lyrics inside the request
+  by polling Suno for up to 120s, past Cloudflare's ~100s origin limit, so every
+  batch after the first song died with HTTP 524 while holding a credit
+  reservation. The endpoint now queues the row and returns immediately; the
+  worker writes the title and lyrics in `write_queued_lyrics()` (before it takes
+  the Suno submit lock) and refunds the song if that fails. See
+  [`docs/changelog/2026-11-15-web-music-simple-batch-524.md`](../docs/changelog/2026-11-15-web-music-simple-batch-524.md).
+
+### Changed
+
+- Suno's lyrics poll budget drops from 120s to 45s, so a slow lyrics task fails
+  retryably with a real message instead of surfacing as a bare 524.
+- The web Create screens treat a 524/gateway timeout as "unknown", explain that
+  the song may be queued, and reload the library instead of inviting a retry
+  that would charge twice.
+
+## [2026-11-13] - Web Create: distinct titles and lyrics per batch
+
+### Added
+
+- `POST /api/v3/web-music/song-plan` plans a batch of distinct song ideas
+  (title, theme, section layout) in one text-LLM call, so one description no
+  longer yields ten clones.
+- `/web-music/generate` accepts optional `theme` and `structure` from that plan;
+  Simple mode uses them to write lyrics for that specific angle while the shared
+  description still drives the Suno style.
+
+### Changed
+
+- Simple mode no longer forwards the whole production description to Suno's
+  lyrics endpoint, which truncates at 200 characters and therefore returned the
+  same lyrics and title for every song in a batch. It now sends a compact prompt
+  built from the theme, a content-pool opening line, the section layout and the
+  listener's recent titles.
+- Generations claim `title_pool` / `openings` seeds when the client did not
+  supply a title, finalize them on submit and release them on failure; recent
+  titles are passed as an avoid list. Pools stay optional — an empty pool never
+  blocks a paid generation.
+
 ## [2026-11-10] - Creator Program: publishing, royalties, payouts and tax
 
 ### Added

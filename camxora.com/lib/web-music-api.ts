@@ -9,6 +9,8 @@ export type WebMusicGenerateInput = {
   style?: string;
   title?: string;
   prompt?: string;
+  theme?: string;
+  structure?: string;
   instrumental?: boolean;
   model?: WebMusicModel;
   negative_tags?: string;
@@ -279,6 +281,24 @@ export async function generateWebMusicDraft(prompt: string): Promise<{ lyrics: s
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt }),
+  });
+}
+
+export type WebMusicSongIdea = {
+  title: string;
+  theme: string;
+  structure: string;
+};
+
+/** Plan distinct titles/angles for a batch before spending song credits. */
+export async function planWebMusicSongs(input: {
+  prompt: string;
+  count: number;
+}): Promise<{ ideas: WebMusicSongIdea[]; credits_charged: number }> {
+  return musicJson("/api/v3/web-music/song-plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: input.prompt, count: input.count }),
   });
 }
 
