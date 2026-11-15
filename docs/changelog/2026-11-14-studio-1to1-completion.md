@@ -2,6 +2,21 @@
 
 Date: **2026-11-14** · Local only (production hold unchanged)
 
+> **2026-11-15 — clone definition + gate.** “1:1 with Suno Studio” is now a contract with a
+> command behind it: `docs/studio/CLONE_DEFINITION.md` defines seven rules (coverage,
+> geometry, functional strings, behaviour, allowed divergences, provider parity, gated), and
+> `npm run check:clone` enforces the first three —
+> - `reference/PAIRING.json` maps every reference screen to a paired capture, a named spec or
+>   an explicit negative marker;
+> - `reference/METRICS.json` must stay byte-identical to `public/studio-metrics.json` and the
+>   metrics probe/spec must exist;
+> - `reference/FUNCTIONAL_STRINGS.json` lists the captured control strings that must exist in
+>   the shipped UI (YouTube Tutorials is the only sanctioned absence).
+>
+> The library tag strip now matches S53: one `V6 Cover` tag, then key, then BPM (length moved
+> to the clip info rail). The “Liked” tile was already corpus-level: a song is liked when any
+> of its clips is liked.
+
 The three-column audit (`docs/studio/STUDIO_VS_SUNO_3COL.md`) found the arrangement surface at
 parity but four captured surfaces missing. This pass closes them, plus the smaller deltas the
 captures show. Production `camxora.com` is still not deployed.

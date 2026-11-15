@@ -25,7 +25,7 @@ describe("primaryClip", () => {
 });
 
 describe("songTags", () => {
-  it("uses model, short label and length", () => {
+  it("combines model and variant into the captured single tag", () => {
     expect(
       songTags(
         song({
@@ -33,7 +33,7 @@ describe("songTags", () => {
           clips: [{ variant: "alt", label: "Cover", duration_seconds: 127, audio_url: "u" }],
         })
       )
-    ).toEqual(["V6", "Cover", "2:07"]);
+    ).toEqual(["V6 Cover"]);
   });
 
   it("falls back to the variant when a label is too long to fit the strip", () => {
@@ -51,7 +51,7 @@ describe("songTags", () => {
           ],
         })
       )
-    ).toEqual(["V6 PRO", "ok", "0:04"]);
+    ).toEqual(["V6 PRO ok"]);
   });
 
   it("omits pieces the clip does not have", () => {

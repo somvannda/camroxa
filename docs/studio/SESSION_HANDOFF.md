@@ -2,6 +2,22 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-15 — clone definition, gate and full capture coverage
+
+- **“1:1” is now a gate, not a claim.** `docs/studio/CLONE_DEFINITION.md` defines the seven
+  rules; `npm run check:clone` enforces coverage, geometry and functional strings.
+  - `reference/PAIRING.json`: every reference screen → paired capture **or** named spec **or**
+    explicit negative marker.
+  - `reference/METRICS.json` must match `public/studio-metrics.json`; the metrics probe and
+    spec must exist.
+  - `reference/FUNCTIONAL_STRINGS.json`: 70 captured control strings must exist in the UI.
+- **Coverage: 73/73** reference screens evidenced — **53 paired captures** in
+  `docs/studio/compare/`, 32 spec-covered, 2 negative (S47 no mixer, S59 no conflict UI).
+- **S53 alignment:** the library tag strip is one `V6 Cover` tag, then key, then BPM; the
+  length moved to the clip info rail. “Liked” was already corpus-level (any liked clip).
+- **Allowed divergence (signed):** brand wordmark/logo, palette, our own prose, and additive
+  features. Functional strings match verbatim; YouTube Tutorials is the only absent row.
+
 ## Update 2026-11-14 (later) — Studio 1:1 completion pass (merged to `main`)
 
 - **Branch:** `test/studio-e2e-stability`, **merged to `origin/main`** as

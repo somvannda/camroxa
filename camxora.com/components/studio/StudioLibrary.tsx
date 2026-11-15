@@ -111,18 +111,19 @@ export function primaryClip(song: WebMusicGeneration) {
 }
 
 /**
- * Tag strip under a song title (§19.2): version/model, variant, length. Key and tempo
- * are shown by the reference but are not part of our generation payload, so they are
- * absent instead of guessed.
+ * Tag strip under a song title (§19.2). The reference strip reads `V6 COVER · D minor ·
+ * 128 BPM`: one model+variant tag, then key, then tempo. Length is not part of the strip
+ * (it lives on the clip's info rail), and key/tempo are measured client-side because the
+ * generation payload does not carry them.
  */
 export function songTags(song: WebMusicGeneration): string[] {
   const clip = primaryClip(song);
-  const tags: string[] = [];
-  if (song.model_label) tags.push(song.model_label);
-  if (clip?.label && clip.label.length <= 12) tags.push(clip.label);
-  else if (clip?.variant) tags.push(clip.variant);
-  if (clip?.duration_seconds) tags.push(formatUploadLength(clip.duration_seconds));
-  return tags;
+  const model = song.model_label ? song.model_label.toUpperCase() : "";
+  const variant = clip?.label && clip.label.length <= 12 ? clip.label : clip?.variant ?? "";
+  if (model && variant) return [`${model} ${variant}`];
+  if (model) return [model];
+  if (variant) return [variant];
+  return [];
 }
 
 /** First letter of a name, for the artwork fallback. */
@@ -740,8 +741,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                                   {tags.map((tag) => (
                                     <span key={tag}>{tag}</span>
                                   ))}
-                                  <SongTempo url={clip?.audio_url} duration={clip?.duration_seconds} />
                                   <SongKey url={clip?.audio_url} />
+                                  <SongTempo url={clip?.audio_url} duration={clip?.duration_seconds} />
                                 </span>
                               ) : null}
                             </span>

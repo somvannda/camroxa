@@ -541,7 +541,7 @@ describe("StudioLibrary", () => {
         })}
       />
     );
-    for (const tag of ["V6", "Cover", "2:07"]) {
+    for (const tag of ["V6 Cover"]) {
       expect(screen.getByText(tag)).toBeTruthy();
     }
   });
