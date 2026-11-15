@@ -320,6 +320,7 @@ class WebMusicGenerationResponse(BaseModel):
     instrumental: bool = False
     status: str
     error_message: str | None = None
+    can_retry: bool = False
     created_at: str | None = None
     is_preview: bool = False
     unlockable: bool = False
@@ -355,6 +356,7 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         instrumental=bool(payload.get("instrumental")),
         status=str(payload.get("status") or "PENDING"),
         error_message=payload.get("error_message"),
+        can_retry=bool(payload.get("can_retry")),
         created_at=created_text,
         is_preview=bool(payload.get("is_preview")),
         unlockable=bool(payload.get("unlockable")),

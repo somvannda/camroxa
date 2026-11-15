@@ -82,6 +82,7 @@ export type WebMusicGeneration = {
   instrumental: boolean;
   status: string;
   error_message?: string | null;
+  can_retry?: boolean;
   created_at?: string | null;
   is_preview?: boolean;
   unlockable?: boolean;

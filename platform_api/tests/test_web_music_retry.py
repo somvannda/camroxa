@@ -158,3 +158,18 @@ async def test_retry_refunds_when_the_queue_rejects_the_job(queue: AsyncMock) ->
         if "SET status = $3" in str(call.args[0])
     ]
     assert restored and restored[0][3] == "failed"
+
+
+def test_list_payload_offers_retry_only_when_it_can_work() -> None:
+    """The button must not appear on a row with no saved description.
+
+    Rows created before migration 204 have ``lyrics_brief = NULL``; offering
+    Retry there only produces "This song has no saved description to retry".
+    """
+    from platform_api.routers.web_music import _generation_response
+
+    base = {"id": str(uuid4()), "title": "Untitled", "status": "FAILED"}
+
+    assert _generation_response({**base, "can_retry": True}).can_retry is True
+    assert _generation_response({**base, "can_retry": False}).can_retry is False
+    assert _generation_response(base).can_retry is False

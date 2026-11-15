@@ -7,6 +7,7 @@ import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, P
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
 import { UpgradeModal } from '@/components/upgrade-modal';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { AddToPlaylistButton, ClipPlaylistNames } from '@/components/add-to-playlist-button';
 import {
   MusicCharCount,
@@ -576,6 +577,7 @@ export default function CreatePageClient() {
   const [unlockingKeys, setUnlockingKeys] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [retryingIds, setRetryingIds] = useState<string[]>([]);
+  const [retryTarget, setRetryTarget] = useState<WebMusicGeneration | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedClipKeys, setSelectedClipKeys] = useState<string[]>([]);
   const [batchFormat, setBatchFormat] = useState<DownloadKind>('mp3');
@@ -1238,11 +1240,6 @@ export default function CreatePageClient() {
 
   async function onRetryGeneration(generation: WebMusicGeneration) {
     // The failed attempt was refunded, so a retry is an ordinary charged create.
-    // Ask first: never spend credits the listener did not choose to spend.
-    const confirmed = window.confirm(
-      `Retry "${generation.title}"? This creates a new song and costs ${creditsPerSong} credits.`,
-    );
-    if (!confirmed) return;
     setCreateError(null);
     setRetryingIds((prev) => (prev.includes(generation.id) ? prev : [...prev, generation.id]));
     try {
@@ -1254,8 +1251,10 @@ export default function CreatePageClient() {
       void fetchCreditBalance()
         .then(setCreditBalance)
         .catch(() => undefined);
+      setRetryTarget(null);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Could not retry song');
+      setRetryTarget(null);
     } finally {
       setRetryingIds((prev) => prev.filter((id) => id !== generation.id));
     }
@@ -2096,22 +2095,29 @@ export default function CreatePageClient() {
                         <p className="mt-1 text-sm text-rose-300">
                           {generation.error_message || 'Generation failed.'}
                         </p>
+                        {!generation.can_retry ? (
+                          <p className="mt-1 text-xs text-slate-400">
+                            This attempt predates retry, so its description was not saved. Create it again from the form.
+                          </p>
+                        ) : null}
                       </div>
-                      <button
-                        type="button"
-                        disabled={retrying || deleting}
-                        onClick={() => void onRetryGeneration(generation)}
-                        title={`Try this song again (new charge: ${creditsPerSong} credits)`}
-                        aria-label="Retry this song"
-                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-violet-400/30 bg-violet-500/10 px-2.5 py-1.5 text-xs font-medium text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
-                      >
-                        {retrying ? (
-                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        )}
-                        <span className="hidden sm:inline">{retrying ? 'Retrying…' : 'Retry'}</span>
-                      </button>
+                      {generation.can_retry ? (
+                        <button
+                          type="button"
+                          disabled={retrying || deleting}
+                          onClick={() => setRetryTarget(generation)}
+                          title={`Try this song again (new charge: ${creditsPerSong} credits)`}
+                          aria-label="Retry this song"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-violet-400/30 bg-violet-500/10 px-2.5 py-1.5 text-xs font-medium text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
+                        >
+                          {retrying ? (
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          )}
+                          <span className="hidden sm:inline">{retrying ? 'Retrying…' : 'Retry'}</span>
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         disabled={deleting}
@@ -2372,6 +2378,22 @@ export default function CreatePageClient() {
           </div>
         )}
       </section>
+      <ConfirmDialog
+        isOpen={retryTarget !== null}
+        title="Retry this song?"
+        message={
+          retryTarget
+            ? `We will write and generate “${retryTarget.title}” again from the same description. The failed attempt was already refunded, so this is a new charge.`
+            : ''
+        }
+        detail={retryTarget ? `Cost: ${creditsPerSong} credits · ${totalCredits} left` : undefined}
+        confirmLabel="Retry song"
+        busy={retryTarget ? retryingIds.includes(retryTarget.id) : false}
+        onConfirm={() => {
+          if (retryTarget) void onRetryGeneration(retryTarget);
+        }}
+        onCancel={() => setRetryTarget(null)}
+      />
       <UpgradeModal
         isOpen={showUpgradeModal}
         onClose={closePackModal}

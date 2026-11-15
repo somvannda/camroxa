@@ -7033,7 +7033,7 @@ class WebMusicService:
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
                    packaged_storage_key_ok, packaged_storage_key_alt,
-                   trashed_variants, purged_variants
+                   trashed_variants, purged_variants, lyrics_brief
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
               AND {trash_filter} AND {aged_out}
@@ -8999,6 +8999,10 @@ class WebMusicService:
             "instrumental": bool(row["instrumental"]),
             "status": str(row["status"] or "pending").upper(),
             "error_message": row["error_message"],
+            "can_retry": bool(
+                str(row["status"] or "").strip().lower() == TaskStatus.FAILED.value
+                and _row_value(row, "lyrics_brief")
+            ),
             "trashed_variants": list(_row_value(row, "trashed_variants") or []),
             "purged_variants": list(_row_value(row, "purged_variants") or []),
             "workspace_id": (
