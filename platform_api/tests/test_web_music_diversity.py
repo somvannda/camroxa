@@ -462,6 +462,87 @@ async def test_transient_lyrics_failure_waits_for_the_next_attempt(
     ]
 
 
+class _BlockedConfig:
+    """Stand-in for the runtime blocklist: "lowlight" is blocked, and replaced."""
+
+    block_terms = {"lowlight"}
+    replacements = {"lowlight": "afterglow"}
+    warn_terms: set[str] = set()
+
+
+@pytest.mark.asyncio
+async def test_blocked_pool_seed_is_replaced_instead_of_refunding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blocked word in *our* seed must not refund the song.
+
+    Production learned "lowlight" from a Suno callback in July and the content
+    pool kept serving "the low-light ocean". Simple mode injected that line into
+    the lyrics and then its own guard refused to create the song.
+    """
+    service_cfg = MagicMock()
+    service_cfg.get_runtime_config = AsyncMock(return_value=_BlockedConfig())
+    monkeypatch.setattr(
+        "platform_api.dependencies.get_suno_blocklist_service", lambda: service_cfg
+    )
+
+    async def fake_claim(**kwargs):
+        text = (
+            "Teal Horizon"
+            if kwargs["kind"] == "titles"
+            else "We soft-glow caller, the low-light ocean"
+        )
+        return ClaimedPoolItem(
+            kind=kwargs["kind"],
+            item_id=1,
+            text=text,
+            secondary_text=None,
+            reservation_token=kwargs["reservation_token"],
+        )
+
+    monkeypatch.setattr(
+        "platform_api.services.web_music_service.claim_pool_item", fake_claim
+    )
+    monkeypatch.setattr(
+        "platform_api.services.web_music_service.finalize_pool_item", AsyncMock()
+    )
+
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock(
+        return_value=("[Verse]\ncity lights", "Clean Night")
+    )
+    service = WebMusicService(AsyncMock(), generation)
+    service._pool.fetchrow = AsyncMock(return_value=_queued_row(task_id))
+    service._pool.execute = AsyncMock()
+    service._recent_web_titles = AsyncMock(return_value=[])
+    service._release_daily_slot = AsyncMock()
+
+    await service.write_queued_lyrics(
+        user_id,
+        task_id,
+        reservation_id="res-1",
+        brief={"prompt": "moody synthwave", "theme": "", "structure": "", "title": ""},
+    )
+
+    # The opening still reaches Suno, with the blocked token replaced.
+    prompt_sent = generation.generate_suno_lyrics.await_args.args[0]
+    assert "low-light" not in prompt_sent.lower()
+    assert "afterglow" in prompt_sent.lower()
+
+    writes = [
+        call.args
+        for call in service._pool.execute.await_args_list
+        if "SET title = $3, lyrics = $4" in str(call.args[0])
+    ]
+    assert writes, "the song was not written"
+    lyrics = writes[0][4].lower()
+    assert "low-light" not in lyrics
+    assert "afterglow" in lyrics
+    service._release_daily_slot.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_content_refusal_fails_even_when_attempts_remain(
     mute_blocklist: None, monkeypatch: pytest.MonkeyPatch

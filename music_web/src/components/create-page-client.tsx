@@ -2100,7 +2100,7 @@ export default function CreatePageClient() {
                         <p className="mt-1 text-sm text-rose-300">
                           {generation.error_message || 'Generation failed.'}
                         </p>
-                        {!generation.can_retry ? (
+                        {generation.can_retry === false ? (
                           <p className="mt-1 text-xs text-slate-400">
                             This attempt predates retry, so its description was not saved. Create it again from the form.
                           </p>

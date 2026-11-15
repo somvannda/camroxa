@@ -2474,12 +2474,14 @@ class WebMusicService:
             is_valid_web_music_title,
             prepare_web_music_title,
             raise_if_suno_blocklisted,
+            sanitize_text_for_suno,
         )
 
         prompt = str(brief.get("prompt") or "").strip()
         theme = str(brief.get("theme") or "").strip()
         structure = _compact_ws(str(brief.get("structure") or ""), 60)
         recent_titles = await self._recent_web_titles(user_id)
+        runtime_config = await get_suno_blocklist_service().get_runtime_config()
         claimed_items: list[ClaimedPoolItem] = []
         pool_token = str(uuid4())
         pool_owner = f"web-music:{user_id}:{task_id}"
@@ -2497,7 +2499,9 @@ class WebMusicService:
                         avoid_texts=recent_titles,
                     )
                     claimed_items.append(title_item)
-                    pool_title = title_item.text
+                    pool_title = sanitize_text_for_suno(
+                        title_item.text, runtime_config=runtime_config
+                    )
                 except Exception as exc:
                     # Pools are an enhancement: an empty/exhausted pool or a DB
                     # hiccup must never block a user's paid generation.
@@ -2516,9 +2520,15 @@ class WebMusicService:
                         reservation_token=pool_token,
                     )
                     claimed_items.append(opening_item)
-                    forced_opening = build_forced_opening_text(
-                        line1=opening_item.text,
-                        line2=opening_item.secondary_text,
+                    # Admin-blocked words in a seed would be refused by Suno and
+                    # then rejected by our own guard; replace them before the
+                    # opening reaches the lyrics prompt.
+                    forced_opening = sanitize_text_for_suno(
+                        build_forced_opening_text(
+                            line1=opening_item.text,
+                            line2=opening_item.secondary_text,
+                        ),
+                        runtime_config=runtime_config,
                     )
                 except Exception as exc:
                     logger.info(
@@ -2600,7 +2610,28 @@ class WebMusicService:
                     "Could not name this song. Describe the song you want in a few words.",
                     details={"field": "prompt"},
                 )
-            runtime_config = await get_suno_blocklist_service().get_runtime_config()
+            runtime_config = runtime_config or await get_suno_blocklist_service().get_runtime_config()
+            # Simple mode writes its own lyrics and seeds, so a blocked token here
+            # is ours, not the listener's. Replace it (the admin blocklist carries
+            # a replacement for each term, e.g. lowlight -> afterglow) instead of
+            # refunding a song because a pool opening line contained it.
+            sanitized_lyrics = (
+                lyrics
+                if instrumental
+                else sanitize_text_for_suno(str(lyrics or ""), runtime_config=runtime_config)
+            )
+            sanitized_title = sanitize_text_for_suno(
+                str(title or ""), runtime_config=runtime_config
+            )
+            if sanitized_lyrics != lyrics or sanitized_title != title:
+                logger.info(
+                    "web-music sanitized generated words user=%s task=%s title_changed=%s",
+                    user_id,
+                    task_id,
+                    sanitized_title != title,
+                )
+                title = sanitized_title
+                lyrics = sanitized_lyrics
             raise_if_suno_blocklisted(
                 runtime_config,
                 title=title,
