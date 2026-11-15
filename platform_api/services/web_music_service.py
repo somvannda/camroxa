@@ -72,6 +72,13 @@ from platform_api.services.web_music_previews import (
     model_label,
     preview_quota_payload,
 )
+from platform_api.services.content_pool_service import (
+    ClaimedPoolItem,
+    build_forced_opening_text,
+    claim_pool_item,
+    finalize_pool_item,
+    release_claimed_items,
+)
 from platform_api.services.generation_service import GenerationService
 from platform_api.services.suno_audio_resolver import (
     download_suno_mp3_bytes,
@@ -331,6 +338,150 @@ def _duration_seconds(row: Any, key: str) -> float | None:
     except (TypeError, ValueError):
         return None
     return value if value > 0 else None
+
+
+# Suno's lyrics endpoint truncates its prompt at 200 characters.
+_WEB_LYRICS_PROMPT_MAX = 200
+_WEB_RECENT_TITLE_LIMIT = 80
+_WEB_SONG_PLAN_MAX = 20
+
+_PLAN_STOPWORDS = frozenset(
+    {
+        "a", "an", "and", "as", "at", "be", "by", "for", "from", "in", "into",
+        "is", "it", "of", "on", "or", "that", "the", "this", "to", "with",
+        "song", "songs", "music", "track", "tracks", "style", "sound", "vibe",
+    }
+)
+_ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
+
+
+def _compact_ws(value: str, limit: int) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip())[:limit]
+
+
+def build_web_simple_lyrics_prompt(
+    *,
+    prompt: str = "",
+    theme: str = "",
+    forced_opening: str = "",
+    structure_hint: str = "",
+    avoid_titles: list[str] | tuple[str, ...] = (),
+) -> str:
+    """Compose the (max 200 char) Suno lyrics prompt for Simple mode.
+
+    Simple mode used to forward the whole production description, which Suno
+    truncates to the same 200 characters every time — identical lyrics and
+    titles on every song of a batch. Keep the parts that actually differentiate
+    a song (theme, forced opening line, section layout, titles to avoid) and
+    drop production notes, which belong in the Suno style field.
+    """
+    topic = _compact_ws(theme, 60) or _compact_ws(prompt, 90)
+    parts: list[str] = []
+    if topic:
+        parts.append(f"Lyrics: {topic}")
+    opening = _compact_ws(forced_opening, 40)
+    if opening:
+        parts.append(f"Open: {opening}")
+    cleaned = [str(item).strip()[:22] for item in avoid_titles if str(item).strip()][:2]
+    if cleaned:
+        parts.append("Avoid: " + ", ".join(cleaned))
+    hint = _compact_ws(structure_hint, 24)
+    if hint:
+        parts.append(f"Sections: {hint}")
+    # Add in priority order and drop whatever no longer fits Suno's limit.
+    kept: list[str] = []
+    for part in parts:
+        candidate = " | ".join([*kept, part])
+        if len(candidate) <= _WEB_LYRICS_PROMPT_MAX:
+            kept.append(part)
+    return " | ".join(kept)[:_WEB_LYRICS_PROMPT_MAX]
+
+
+def ensure_lyrics_opening(lyrics: str, forced_opening: str) -> str:
+    """Guarantee a content-pool opening line opens the generated lyrics."""
+    opening = "\n".join(
+        line.strip() for line in str(forced_opening or "").splitlines() if line.strip()
+    )
+    if not opening:
+        return lyrics
+    body = str(lyrics or "").strip()
+    if not body:
+        return opening
+    first_line = opening.splitlines()[0].strip().lower()
+    lines = body.splitlines()
+    if first_line and first_line in " ".join(lines[:2]).lower():
+        return body
+    if lines and lines[0].strip().startswith("["):
+        return lines[0] + "\n" + opening + "\n" + "\n".join(lines[1:])
+    return opening + "\n" + body
+
+
+def _structure_hint(headers: tuple[str, ...] | list[str]) -> str:
+    labels = [re.sub(r"[\[\]]", "", str(header)).strip() for header in headers]
+    return ", ".join(label for label in labels if label)[:60]
+
+
+def _fallback_plan_title(prompt: str, theme: str, index: int, taken: set[str]) -> str:
+    """Build a readable title when the planner returned nothing usable."""
+    words = [
+        word
+        for word in re.findall(r"[A-Za-z0-9']+", f"{theme} {prompt}")
+        if word.lower() not in _PLAN_STOPWORDS
+    ]
+    base = " ".join(words[:4]).title() or "New Song"
+    suffix = _ROMAN[index % len(_ROMAN)]
+    candidate = f"{base} {suffix}"
+    if candidate.lower() in taken:
+        candidate = f"{base} {index + 1}"
+    return candidate[:80]
+
+
+def _sanitize_song_plan(
+    raw: str,
+    *,
+    prompt: str,
+    count: int,
+    avoid_titles: list[str] | tuple[str, ...] = (),
+) -> list[dict[str, str]]:
+    """Coerce an LLM plan into exactly ``count`` usable, distinct song ideas."""
+    from platform_api.ai.parsing.response_parser import parse_json_array
+    from platform_api.services.web_music_suno_guard import (
+        is_valid_web_music_title,
+        prepare_web_music_title,
+    )
+
+    parsed = parse_json_array(raw)
+    if parsed is None:
+        parsed = []
+    avoid = {
+        prepare_web_music_title(title=str(item), lyrics="").lower()
+        for item in avoid_titles
+        if str(item or "").strip()
+    }
+    ideas: list[dict[str, str]] = []
+    taken: set[str] = set()
+    for index in range(count):
+        entry = parsed[index] if index < len(parsed) and isinstance(parsed[index], dict) else {}
+        theme = _compact_ws(str(entry.get("theme") or ""), 220)
+        structure = _compact_ws(str(entry.get("structure") or ""), 120)
+        raw_title = _compact_ws(str(entry.get("title") or ""), 120)
+        title = prepare_web_music_title(title=raw_title, lyrics="")
+        if (
+            not title
+            or not is_valid_web_music_title(title)
+            or title.lower() in taken
+            or title.lower() in avoid
+        ):
+            title = _fallback_plan_title(prompt, theme, index, taken | avoid)
+        taken.add(title.lower())
+        ideas.append(
+            {
+                "title": title[:80],
+                "theme": theme,
+                "structure": structure,
+            }
+        )
+    return ideas
 
 
 class WebMusicService:
@@ -843,6 +994,119 @@ class WebMusicService:
             return
         await self._credit_service.refund_credits(str(user_id), amount, source)
 
+    async def _recent_web_titles(self, user_id: UUID, *, limit: int = _WEB_RECENT_TITLE_LIMIT) -> list[str]:
+        """Titles this listener already generated, newest first, de-duplicated."""
+        try:
+            rows = await self._pool.fetch(
+                """
+                SELECT title
+                FROM suno_tasks
+                WHERE user_id = $1
+                  AND source = $2
+                  AND title IS NOT NULL
+                  AND BTRIM(title) <> ''
+                ORDER BY created_at DESC
+                LIMIT $3
+                """,
+                user_id,
+                SUNO_TASK_SOURCE_WEB_MUSIC,
+                max(1, int(limit)),
+            )
+        except Exception:
+            # Diversity is an enhancement: never fail a generation over it.
+            logger.warning(
+                "web-music recent title lookup failed user=%s", user_id, exc_info=True
+            )
+            return []
+        titles: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            title = str(_row_value(row, "title") or "").strip()
+            key = title.lower()
+            if not title or key in seen:
+                continue
+            seen.add(key)
+            titles.append(title)
+        return titles
+
+    async def generate_song_plan(
+        self,
+        user_id: UUID,
+        *,
+        prompt: str,
+        count: int = _WEB_SONG_PLAN_MAX,
+    ) -> dict[str, Any]:
+        """Plan a batch of distinct songs (title + theme + layout) in one LLM call.
+
+        Simple mode used to send the same prompt for every song of a batch, so
+        Suno returned the same title and lyrics each time. One planning call is
+        cheaper than N lyric calls and gives every song its own angle.
+        """
+        safe_prompt = str(prompt or "").strip()
+        if not safe_prompt:
+            raise ValidationError(
+                "Describe the songs you want to create.", details={"field": "prompt"}
+            )
+        safe_count = max(1, min(int(count or 1), _WEB_SONG_PLAN_MAX))
+        recent_titles = await self._recent_web_titles(user_id, limit=40)
+
+        routing, chain, charged = await self._charge_for_text_operation(
+            user_id,
+            operation="web_music_lyrics",
+            consume_source="web_music_lyrics",
+        )
+        provider = str(routing.provider)
+        provider_chain = [
+            (str(item.provider), str(item.sub_model or ""))
+            for item in chain
+            if str(item.sub_model or "").strip()
+        ]
+        system_prompt = (
+            "You plan a batch of DISTINCT songs for AI music generation. "
+            f"Return ONLY a JSON array of exactly {safe_count} objects, no markdown. "
+            'Each object has exactly these keys: "title" (original 2-5 word song title), '
+            '"theme" (one concrete sentence, max 20 words, naming a specific situation, '
+            'image or point of view), "structure" (comma-separated section list, e.g. '
+            '"Chorus, Verse, Chorus, Bridge, Chorus"). '
+            "Rules: every title must be unique and differently worded; every theme must "
+            "use a different subject, character, setting and imagery; never reuse or "
+            "paraphrase a title from the avoid list; titles use only letters, numbers, "
+            "spaces, apostrophes and hyphens; JSON only, no commentary."
+        )
+        user_parts = [f"Song description / style brief:\n{safe_prompt[:4000]}"]
+        if recent_titles:
+            user_parts.append(
+                "Titles this listener already used (do not reuse):\n"
+                + "; ".join(recent_titles[:40])
+            )
+        user_parts.append(f"Plan exactly {safe_count} distinct songs.")
+        try:
+            raw = await self._generation.generate_text(
+                system_prompt=system_prompt,
+                user_prompt="\n\n".join(user_parts),
+                provider=provider,
+                model=str(routing.sub_model or ""),
+                temperature=0.95,
+                max_tokens=min(2600, 140 * safe_count + 200),
+                prefer_json=True,
+                provider_chain=provider_chain or None,
+            )
+        except Exception as exc:
+            await self._refund_text_operation(user_id, charged, "web_music_plan_refund")
+            reraise_text_assist_failure(exc)
+
+        await self._settle_text_operation(user_id, "web_music_lyrics", routing)
+        self._open_charges.pop(f"text:{user_id}:web_music_lyrics", None)
+        return {
+            "ideas": _sanitize_song_plan(
+                raw,
+                prompt=safe_prompt,
+                count=safe_count,
+                avoid_titles=recent_titles,
+            ),
+            "credits_charged": int(charged or 0),
+        }
+
     async def generate_draft(self, user_id: UUID, prompt: str) -> tuple[str, str]:
         """Generate lyrics and title via configured text LLM (credit-priced)."""
         safe_prompt = str(prompt or "").strip()
@@ -1195,6 +1459,8 @@ class WebMusicService:
         instrumental: bool,
         model: str,
         prompt: str,
+        theme: str = "",
+        structure: str = "",
         negative_tags: str | None = None,
         vocal_gender: str | None = None,
         style_weight: float | None = None,
@@ -1221,6 +1487,8 @@ class WebMusicService:
 
         safe_lyrics = str(lyrics or "").strip()
         safe_prompt = str(prompt or "").strip()
+        safe_theme = str(theme or "").strip()
+        safe_structure = _compact_ws(structure, 60)
         safe_negative = str(negative_tags or "").strip()
         raw_title = str(title or "").strip()
         safe_style = str(style or "").strip()
@@ -1385,20 +1653,90 @@ class WebMusicService:
             raise
         logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
 
+        claimed_items: list[ClaimedPoolItem] = []
         if mode_key == "simple":
+            from platform_api.services.ai_structure_diversity import choose_ai_structure_seed
+
+            recent_titles = await self._recent_web_titles(user_id)
+            pool_title = ""
+            forced_opening = ""
+            pool_token = str(uuid4())
+            pool_owner = f"web-music:{user_id}:{reservation_id}"
+            if not raw_title:
+                try:
+                    title_item = await claim_pool_item(
+                        kind="titles",
+                        reservation_owner=pool_owner,
+                        reservation_token=pool_token,
+                        avoid_texts=recent_titles,
+                    )
+                    claimed_items.append(title_item)
+                    pool_title = title_item.text
+                except Exception as exc:
+                    # Pools are an enhancement: an empty/exhausted pool or a DB
+                    # hiccup must never block a user's paid generation.
+                    logger.info(
+                        "service.generate title-pool seed unavailable user=%s reservation=%s reason=%s",
+                        user_id,
+                        reservation_id,
+                        exc,
+                    )
+            if not instrumental:
+                try:
+                    opening_item = await claim_pool_item(
+                        kind="openings",
+                        reservation_owner=pool_owner,
+                        reservation_token=pool_token,
+                    )
+                    claimed_items.append(opening_item)
+                    forced_opening = build_forced_opening_text(
+                        line1=opening_item.text,
+                        line2=opening_item.secondary_text,
+                    )
+                except Exception as exc:
+                    logger.info(
+                        "service.generate opening-pool seed unavailable user=%s reservation=%s reason=%s",
+                        user_id,
+                        reservation_id,
+                        exc,
+                    )
+            structure_hint = safe_structure
+            if not structure_hint:
+                structure_hint = _structure_hint(
+                    choose_ai_structure_seed(
+                        batch_index=int(uuid4().int % 64),
+                    ).headers
+                )
             try:
                 logger.info("service.generate step simple_lyrics_llm user=%s", user_id)
+                lyrics_prompt = build_web_simple_lyrics_prompt(
+                    prompt=safe_prompt,
+                    theme=safe_theme,
+                    forced_opening=forced_opening,
+                    structure_hint=structure_hint,
+                    avoid_titles=recent_titles,
+                )
                 generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
-                    safe_prompt
+                    lyrics_prompt
                 )
             except BaseException:
+                await release_claimed_items(claimed_items)
                 await release_reservation()
                 raise
-            safe_lyrics = str(generated_lyrics or "").strip() or safe_prompt
-            safe_title = prepare_web_music_title(
-                title=raw_title or str(generated_title or ""),
-                lyrics=safe_lyrics,
-            ) or prepare_web_music_title(title=safe_prompt, lyrics="")
+            safe_lyrics = ensure_lyrics_opening(
+                str(generated_lyrics or "").strip() or safe_prompt,
+                forced_opening,
+            )
+            safe_title = ""
+            for candidate in (raw_title, pool_title, str(generated_title or "").strip()):
+                if not str(candidate or "").strip():
+                    continue
+                cleaned = prepare_web_music_title(title=candidate, lyrics="")
+                if is_valid_web_music_title(cleaned):
+                    safe_title = cleaned
+                    break
+            if not safe_title:
+                safe_title = prepare_web_music_title(title=safe_prompt, lyrics=safe_lyrics)
             try:
                 if not is_valid_web_music_title(safe_title):
                     raise ValidationError(
@@ -1413,6 +1751,7 @@ class WebMusicService:
                     negative_tags=safe_negative,
                 )
             except BaseException:
+                await release_claimed_items(claimed_items)
                 await release_reservation()
                 raise
 
@@ -1452,11 +1791,23 @@ class WebMusicService:
             )
             logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
         except BaseException:
+            await release_claimed_items(claimed_items)
             await release_reservation(task_id=str(task_id) if task_id else None)
             raise
 
         await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
         self._open_charges.pop(reservation_id, None)
+        for item in claimed_items:
+            try:
+                await finalize_pool_item(item=item)
+            except Exception:
+                logger.warning(
+                    "service.generate content-pool finalize failed user=%s kind=%s item=%s",
+                    user_id,
+                    item.kind,
+                    item.item_id,
+                    exc_info=True,
+                )
 
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
         return {

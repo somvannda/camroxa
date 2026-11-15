@@ -6,6 +6,29 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-13] - Web Create: distinct titles and lyrics per batch
+
+### Added
+
+- `POST /api/v3/web-music/song-plan` plans a batch of distinct song ideas
+  (title, theme, section layout) in one text-LLM call, so one description no
+  longer yields ten clones.
+- `/web-music/generate` accepts optional `theme` and `structure` from that plan;
+  Simple mode uses them to write lyrics for that specific angle while the shared
+  description still drives the Suno style.
+
+### Changed
+
+- Simple mode no longer forwards the whole production description to Suno's
+  lyrics endpoint, which truncates at 200 characters and therefore returned the
+  same lyrics and title for every song in a batch. It now sends a compact prompt
+  built from the theme, a content-pool opening line, the section layout and the
+  listener's recent titles.
+- Generations claim `title_pool` / `openings` seeds when the client did not
+  supply a title, finalize them on submit and release them on failure; recent
+  titles are passed as an avoid list. Pools stay optional — an empty pool never
+  blocks a paid generation.
+
 ## [2026-11-10] - Creator Program: publishing, royalties, payouts and tax
 
 ### Added

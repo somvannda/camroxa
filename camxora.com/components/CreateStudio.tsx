@@ -83,6 +83,7 @@ import {
   listWebMusicGenerations,
   listWebMusicWorkspaces,
   likeWebMusicGeneration,
+  planWebMusicSongs,
   saveBlob,
   unlockWebMusicPreview,
   updateWebMusicGeneration,
@@ -92,6 +93,7 @@ import {
   type WebMusicModel,
   type WebMusicPlaylistSummary,
   type WebMusicQuota,
+  type WebMusicSongIdea,
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
 import { createStoreZip, type ZipEntry } from "@/lib/zip-store";
@@ -2142,6 +2144,24 @@ export function CreateStudio() {
       mode === "simple" ? (compareModels ? COMPARE_MODELS.length : simpleSongCount) : 1;
     const modelForSong = (index: number) =>
       mode === "simple" && compareModels ? COMPARE_MODELS[index] ?? model : model;
+    // A single description used to produce N identical titles and lyrics.
+    // Plan N distinct angles first; if the planner fails, the server still
+    // seeds titles/openings from the content pools.
+    let songIdeas: WebMusicSongIdea[] = [];
+    if (mode === "simple" && count > 1 && !title.trim()) {
+      setNotice(`Planning ${count} distinct songs…`);
+      try {
+        const plan = await planWebMusicSongs({ prompt: prompt.trim(), count });
+        songIdeas = plan.ideas.slice(0, count);
+        if (plan.credits_charged > 0) {
+          setNotice(
+            `Planned ${songIdeas.length} distinct songs · ${plan.credits_charged.toLocaleString()} credits`
+          );
+        }
+      } catch {
+        songIdeas = [];
+      }
+    }
     const payload: WebMusicGenerateInput = {
       mode: mode === "simple" ? "simple" : "advanced",
       prompt:
@@ -2172,14 +2192,21 @@ export function CreateStudio() {
         if (index > 0) {
           await new Promise((resolve) => window.setTimeout(resolve, BATCH_SUBMIT_GAP_MS));
         }
-        const created = await generateWebMusic({ ...payload, model: modelForSong(index) });
+        const idea = songIdeas[index];
+        const created = await generateWebMusic({
+          ...payload,
+          model: modelForSong(index),
+          title: title.trim() || idea?.title || payload.title,
+          theme: idea?.theme || undefined,
+          structure: idea?.structure || undefined,
+        });
         createdCount += 1;
         setQuota(created.quota);
         setBatchProgress({ done: createdCount, total: count });
         const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
         const pending: WebMusicGeneration = loaded ?? {
           id: created.task_id,
-          title: created.title || title || "Untitled",
+          title: created.title || idea?.title || title || "Untitled",
           lyrics: finalLyrics,
           style: created.style || style,
           model: modelForSong(index),
@@ -2207,7 +2234,7 @@ export function CreateStudio() {
       }
       setNotice(
         count > 1
-          ? `Queued ${count} songs. They will appear here as they finish.`
+          ? `Queued ${count} distinct songs. They will appear here as they finish.`
           : "Generation started. Your song will appear here."
       );
       setCooldownSeconds(5);
