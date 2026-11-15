@@ -153,6 +153,74 @@ async def test_enqueue_paid_outranks_free(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_advanced_generate_keeps_the_clients_lyrics(mute_blocklist) -> None:
+    """Desktop Create drafts its own lyrics, then submits advanced mode.
+
+    Simple mode (web) ships an empty ``lyrics_brief``; advanced mode must not,
+    or the worker would replace the listener's drafted lyrics before submit.
+    """
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.submit_suno = AsyncMock()
+    service = WebMusicService(MagicMock(), generation)
+    service._is_paid_queue_user = AsyncMock(return_value=True)
+    service._active_generate_queue_count = AsyncMock(return_value=0)
+    service._reserve_daily_slot = AsyncMock(return_value={"limit": 1000, "used": 0, "remaining": 100, "is_pro": True})
+    service._enqueue_web_generate = AsyncMock(return_value=task_id)
+    service._link_generation_debit_reference = AsyncMock()
+    service._resolve_workspace_id = AsyncMock(return_value=uuid4())
+    service._with_queue_fields = AsyncMock(side_effect=lambda _uid, quota: dict(quota))
+
+    payload = await service.generate(
+        user_id,
+        mode="advanced",
+        lyrics="verse one\nchorus",
+        style="pop",
+        title="Hello Song",
+        instrumental=False,
+        model="V6_MINI",
+        prompt="",
+    )
+
+    kwargs = service._enqueue_web_generate.await_args.kwargs
+    assert kwargs["lyrics_brief"] is None
+    assert kwargs["lyrics"] == "verse one\nchorus"
+    assert kwargs["title"] == "Hello Song"
+    assert payload["title"] == "Hello Song"
+    generation.submit_suno.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lyrics_already_on_the_row_are_never_rewritten() -> None:
+    """A retried job (or the desktop path) must not pay for lyrics twice."""
+    user_id = uuid4()
+    task_id = uuid4()
+    pool = MagicMock()
+    pool.fetchrow = AsyncMock(
+        return_value={
+            "id": task_id,
+            "title": "Hello Song",
+            "lyrics": "verse one",  # already drafted client-side
+            "style": "pop",
+            "model": "V6_MINI",
+            "instrumental": False,
+            "external_task_id": None,
+            "negative_tags": None,
+            "status": "pending",
+        }
+    )
+    service = WebMusicService(pool, MagicMock())
+    service._write_simple_song = AsyncMock()
+
+    await service.write_queued_lyrics(
+        user_id, task_id, brief={"prompt": "a song"}, reservation_id="res-1"
+    )
+
+    service._write_simple_song.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_fulfill_refunds_when_suno_rejects() -> None:
     user_id = uuid4()
     task_id = uuid4()
