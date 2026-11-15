@@ -17,6 +17,9 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   length moved to the clip info rail. “Liked” was already corpus-level (any liked clip).
 - **Allowed divergence (signed):** brand wordmark/logo, palette, our own prose, and additive
   features. Functional strings match verbatim; YouTube Tutorials is the only absent row.
+- **Team pass (same day):** the feature ledger/gap analysis were reconciled
+  (`fb555d02`), 24 contract tests pin soft delete/restore/list/thumb (`a9540403`), and
+  platform pytest is **3439**. `CLONE_DEFINITION.md` §6 is signed off.
 
 ## Update 2026-11-14 (later) — Studio 1:1 completion pass (merged to `main`)
 

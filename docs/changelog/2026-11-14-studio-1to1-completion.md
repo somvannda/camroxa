@@ -16,6 +16,11 @@ Date: **2026-11-14** · Local only (production hold unchanged)
 > The library tag strip now matches S53: one `V6 Cover` tag, then key, then BPM (length moved
 > to the clip info rail). The “Liked” tile was already corpus-level: a song is liked when any
 > of its clips is liked.
+>
+> **Team pass (same day):** the feature ledger and gap analysis were reconciled against the
+> shipped shell (`fb555d02`), and 24 contract tests now pin the soft-delete/restore lifecycle,
+> deleted-list filter, `deleted_at` payload and thumb bounds (`a9540403`); platform pytest is
+> **3439**.
 
 The three-column audit (`docs/studio/STUDIO_VS_SUNO_3COL.md`) found the arrangement surface at
 parity but four captured surfaces missing. This pass closes them, plus the smaller deltas the

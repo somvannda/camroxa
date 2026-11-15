@@ -56,8 +56,11 @@ project JSON import, clip comments, presence, supersaw audition speed.
 
 ## 6. Sign-off checklist
 
-- [ ] `node scripts/check-clone-parity.mjs` exits 0
-- [ ] Playwright, Vitest, platform pytest, musicapi unit green
-- [ ] Typecheck, `check:ui`, `next build` clean
-- [ ] `PAIRING.json` has no `capture: TBD` entries
-- [ ] Changelog and handoff updated
+- [x] `node scripts/check-clone-parity.mjs` exits 0 (73/73 screens, 70/70 strings)
+- [x] Playwright, Vitest, platform pytest, musicapi unit green
+- [x] Typecheck, `check:ui`, `next build` clean
+- [x] `PAIRING.json` has no `capture: TBD` entries
+- [x] Changelog and handoff updated
+
+Signed off 2026-11-15 on `main` after the ledger reconciliation (`fb555d02`) and the
+contract-test merge (`a9540403`).
