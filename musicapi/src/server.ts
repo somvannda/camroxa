@@ -3656,6 +3656,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         if (result.status === "complete" || result.status === "error") break;
         await new Promise((r) => setTimeout(r, 3_000));
       }
+      // Suno answers a *rejected* prompt with a finished job and no text
+      // ("Your prompt contains producer tag …"). Returning that object marked
+      // the job complete, so record-info answered SUCCESS with an empty
+      // response and the real reason never reached the caller, which could only
+      // report "lyrics finished with no text". Throw instead: the job then
+      // keeps the provider message, and the retry policy decides whether
+      // another account can help (a content rejection is not worth retrying;
+      // a missing/empty result is).
+      const text = typeof result.text === "string" ? result.text.trim() : "";
+      if (result.status !== "complete" || !text) {
+        const detail =
+          (typeof result.error_message === "string" && result.error_message.trim()) ||
+          (typeof result.msg === "string" && result.msg.trim()) ||
+          "";
+        if (result.status === "error") {
+          throw new Error(detail || "Suno lyrics generation failed.");
+        }
+        throw new Error(
+          `Suno lyrics timed out without text.${detail ? ` ${detail}` : ""}`,
+        );
+      }
       return result;
     };
   }
@@ -10644,16 +10665,29 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    */
   function lyricsRecordInfo(job: Job) {
     const res = (job.result ?? {}) as Record<string, unknown>;
-    const status =
-      job.status === "complete"
+    const text = typeof res.text === "string" ? res.text.trim() : "";
+    const innerError =
+      (typeof res.error_message === "string" && res.error_message.trim()) ||
+      (typeof res.msg === "string" && res.msg.trim()) ||
+      "";
+    // A job that finished without lyrics is a failure, not a SUCCESS with an
+    // empty response: callers treat SUCCESS as "here are your lyrics" and can
+    // only report the empty body as an unexplained failure.
+    const finishedWithoutLyrics = job.status === "complete" && !text;
+    const failed = job.status === "error" || finishedWithoutLyrics;
+    const failureMessage =
+      innerError ||
+      job.error ||
+      (finishedWithoutLyrics ? "Lyrics generation returned no text." : "Lyrics generation failed");
+    const status = failed
+      ? "GENERATE_LYRICS_FAILED"
+      : job.status === "complete"
         ? "SUCCESS"
-        : job.status === "error"
-          ? "GENERATE_LYRICS_FAILED"
-          : "PENDING";
-    const hasLyrics = job.status === "complete" && typeof res.text === "string";
+        : "PENDING";
+    const hasLyrics = job.status === "complete" && Boolean(text);
     return {
       code: 200,
-      msg: job.status === "error" ? job.error || "Lyrics generation failed" : "success",
+      msg: failed ? failureMessage : "success",
       data: {
         taskId: job.id,
         param: JSON.stringify({ prompt: job.prompt ?? "" }),
@@ -10672,8 +10706,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           : null,
         status,
         type: "LYRICS",
-        errorCode: job.status === "error" ? 500 : null,
-        errorMessage: job.status === "error" ? job.error ?? null : null,
+        errorCode: failed ? 500 : null,
+        errorMessage: failed ? failureMessage : null,
       },
     };
   }

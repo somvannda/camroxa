@@ -6,6 +6,24 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-15] - Web Create: a refused lyrics prompt says why, and is retried
+
+### Fixed
+
+- A Suno lyrics refusal ("Your prompt contains producer tag ...") reached the
+  listener as "This song could not be written", because `musicapi` reported the
+  rejected task as `SUCCESS` with an empty body. `write_queued_lyrics()` now
+  stores the provider's reason, mapped to something actionable for the artist /
+  producer-reference case, and keeps any other detail verbatim. See
+  [`docs/changelog/2026-11-15-web-music-lyrics-refusal-message.md`](../docs/changelog/2026-11-15-web-music-lyrics-refusal-message.md).
+
+### Changed
+
+- `_write_simple_song()` retries once without the content-pool opening line when
+  the lyrics call fails, so a decorative seed that trips Suno's artist filter no
+  longer costs the listener a song (production lost 4 of 5 that way: `low-light`
+  was read as the producer tag `lowlight`).
+
 ## [2026-11-15] - Web Create: Simple-mode batches survive the edge timeout
 
 ### Fixed

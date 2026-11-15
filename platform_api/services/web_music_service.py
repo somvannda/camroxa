@@ -362,6 +362,34 @@ def _compact_ws(value: str, limit: int) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())[:limit]
 
 
+# Suno refuses a lyrics prompt that reads like an artist/producer reference and
+# answers with a finished job and no text: "Your prompt contains producer tag
+# lowlight - we don't reference specific artists on Suno". Surface that instead
+# of a generic failure, but never echo the raw provider frame.
+_LYRICS_ARTIST_REFUSAL_HINTS = (
+    "producer tag",
+    "reference specific artists",
+    "references specific artists",
+)
+_SUNO_FAILED_PREFIX = re.compile(r"^suno failed \([^)]*\):\s*", re.IGNORECASE)
+
+
+def lyrics_failure_user_message(exc: BaseException | str) -> str:
+    """Turn a lyric-generation failure into something the listener can act on."""
+    raw = str(exc or "").strip()
+    raw = _SUNO_FAILED_PREFIX.sub("", raw)
+    lowered = raw.lower()
+    if any(hint in lowered for hint in _LYRICS_ARTIST_REFUSAL_HINTS):
+        return (
+            "Suno refused this prompt because it reads like an artist or producer "
+            "reference. Change the description and try again. Credits were refunded."
+        )
+    detail = _compact_ws(raw.split("\n", 1)[0], 240)
+    if detail:
+        return f"Suno could not write this song: {detail} Credits were refunded."
+    return "This song could not be written. Credits were refunded."
+
+
 def build_web_simple_lyrics_prompt(
     *,
     prompt: str = "",
@@ -2142,12 +2170,12 @@ class WebMusicService:
                 style=str(row["style"] or "Contemporary pop"),
                 negative_tags=str(row["negative_tags"] or "").strip() or None,
             )
-        except BaseException:
+        except BaseException as exc:
             await self._fail_queued_generate(
                 user_id,
                 task_id,
                 reservation_id=reservation_id,
-                message="This song could not be written. Credits were refunded.",
+                message=lyrics_failure_user_message(exc),
             )
             raise
         await self._persist_written_song(
@@ -2311,6 +2339,7 @@ class WebMusicService:
                         exc,
                     )
             if not instrumental:
+                opening_item: ClaimedPoolItem | None = None
                 try:
                     opening_item = await claim_pool_item(
                         kind="openings",
@@ -2336,19 +2365,51 @@ class WebMusicService:
                             batch_index=int(task_id.int % 64),
                         ).headers
                     )
-                lyrics_prompt = build_web_simple_lyrics_prompt(
-                    prompt=prompt,
-                    theme=theme,
-                    forced_opening=forced_opening,
-                    structure_hint=structure_hint,
-                    avoid_titles=recent_titles,
-                )
+
+                def _lyrics_prompt(opening: str) -> str:
+                    return build_web_simple_lyrics_prompt(
+                        prompt=prompt,
+                        theme=theme,
+                        forced_opening=opening,
+                        structure_hint=structure_hint,
+                        avoid_titles=recent_titles,
+                    )
+
                 logger.info(
                     "web-music simple lyrics start user=%s task=%s", user_id, task_id
                 )
-                generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
-                    lyrics_prompt
-                )
+                try:
+                    generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
+                        _lyrics_prompt(forced_opening)
+                    )
+                except ExternalServiceError as exc:
+                    if opening_item is None:
+                        raise
+                    # The pooled opening line is decorative, and Suno's artist
+                    # filter can read it as a producer tag ("low-light" →
+                    # "lowlight"). Drop it and try once without it before
+                    # failing a song the listener already paid for.
+                    logger.warning(
+                        "web-music forced opening rejected; retrying without it "
+                        "user=%s task=%s reason=%s",
+                        user_id,
+                        task_id,
+                        exc,
+                    )
+                    claimed_items = [item for item in claimed_items if item is not opening_item]
+                    try:
+                        await release_claimed_items([opening_item])
+                    except Exception:  # noqa: BLE001 - releasing a seed is best effort
+                        logger.info(
+                            "web-music opening seed release failed user=%s task=%s",
+                            user_id,
+                            task_id,
+                            exc_info=True,
+                        )
+                    forced_opening = ""
+                    generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
+                        _lyrics_prompt("")
+                    )
                 lyrics = ensure_lyrics_opening(
                     str(generated_lyrics or "").strip() or prompt,
                     forced_opening,

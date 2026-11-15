@@ -8,12 +8,14 @@ from uuid import uuid4
 import pytest
 
 from platform_api.services.content_pool_service import ClaimedPoolItem
+from platform_api.exceptions import ExternalServiceError
 from platform_api.services.web_music_service import (
     _WEB_LYRICS_PROMPT_MAX,
     _sanitize_song_plan,
     WebMusicService,
     build_web_simple_lyrics_prompt,
     ensure_lyrics_opening,
+    lyrics_failure_user_message,
 )
 
 
@@ -301,3 +303,119 @@ async def test_refunded_song_is_not_resurrected(
 
     generation.generate_suno_lyrics.assert_not_awaited()
     generation.submit_suno_external_id.assert_not_awaited()
+
+
+class TestLyricsRefusalMessage:
+    """The listener must learn *why* Suno would not write the song."""
+
+    def test_producer_tag_refusal_is_actionable(self) -> None:
+        message = lyrics_failure_user_message(
+            "Suno failed (GENERATE_LYRICS_FAILED): Your prompt contains producer tag "
+            "lowlight - we don't reference specific artists on Suno, please change "
+            "your prompt and try again."
+        )
+        assert "artist or producer reference" in message
+        assert "Credits were refunded" in message
+        assert "Suno failed (" not in message
+
+    def test_provider_detail_is_kept(self) -> None:
+        message = lyrics_failure_user_message("Suno lyrics timed out after 45s.")
+        assert "Suno lyrics timed out after 45s." in message
+        assert message.endswith("Credits were refunded.")
+
+    def test_empty_reason_falls_back(self) -> None:
+        assert lyrics_failure_user_message("") == (
+            "This song could not be written. Credits were refunded."
+        )
+
+
+def _refusal() -> ExternalServiceError:
+    return ExternalServiceError(
+        "Suno failed (GENERATE_LYRICS_FAILED): Your prompt contains producer tag "
+        "lowlight - we don't reference specific artists on Suno, please change your "
+        "prompt and try again.",
+        is_retryable=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_rejected_pool_opening_is_dropped_and_retried(
+    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Suno's artist filter can read the pooled opening line as a producer tag.
+
+    The line is decorative, so drop it and write the lyrics again instead of
+    failing a song the listener already paid for (production saw 4 of 5 songs
+    die on "low-light" being read as the producer tag "lowlight").
+    """
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock(
+        side_effect=[_refusal(), ("[Verse]\nclean night", "Clean Night")]
+    )
+    service = WebMusicService(AsyncMock(), generation)
+    service._pool.fetchrow = AsyncMock(return_value=_queued_row(task_id))
+    service._pool.execute = AsyncMock()
+    service._recent_web_titles = AsyncMock(return_value=[])
+    released = AsyncMock()
+    monkeypatch.setattr(
+        "platform_api.services.web_music_service.release_claimed_items", released
+    )
+    _pool_seeds(monkeypatch)
+
+    await service.write_queued_lyrics(
+        user_id,
+        task_id,
+        reservation_id="res-1",
+        brief={"prompt": "moody synthwave", "theme": "", "structure": "", "title": ""},
+    )
+
+    assert generation.generate_suno_lyrics.await_count == 2
+    first_prompt = generation.generate_suno_lyrics.await_args_list[0].args[0]
+    second_prompt = generation.generate_suno_lyrics.await_args_list[1].args[0]
+    assert "Streetlights hum" in first_prompt
+    assert "Streetlights hum" not in second_prompt
+    released.assert_awaited()  # the rejected seed goes back to the pool
+
+    writes = [
+        call.args
+        for call in service._pool.execute.await_args_list
+        if "SET title = $3, lyrics = $4" in str(call.args[0])
+    ]
+    assert writes, "the retried lyrics were never persisted"
+    assert writes[0][4].startswith("[Verse]")
+
+
+@pytest.mark.asyncio
+async def test_refusal_reason_is_stored_on_the_song(
+    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refusal that survives the retry must be readable in the library."""
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock(side_effect=_refusal())
+    service = WebMusicService(AsyncMock(), generation)
+    service._pool.fetchrow = AsyncMock(return_value=_queued_row(task_id))
+    service._pool.execute = AsyncMock()
+    service._recent_web_titles = AsyncMock(return_value=[])
+    service._release_daily_slot = AsyncMock()
+    _pool_seeds(monkeypatch)
+
+    with pytest.raises(ExternalServiceError):
+        await service.write_queued_lyrics(
+            user_id,
+            task_id,
+            reservation_id="res-1",
+            brief={"prompt": "moody synthwave", "theme": "", "structure": "", "title": ""},
+        )
+
+    failed = [
+        call.args
+        for call in service._pool.execute.await_args_list
+        if "SET status = $3, error_message = $4" in str(call.args[0])
+    ]
+    assert failed, "the refused song was never marked failed"
+    assert "artist or producer reference" in failed[0][4]
+    service._release_daily_slot.assert_awaited()
