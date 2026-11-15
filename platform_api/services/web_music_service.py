@@ -1739,9 +1739,11 @@ class WebMusicService:
             safe_lyrics = ""
             safe_title = prepare_web_music_title(title=raw_title, lyrics="")
             if not is_valid_web_music_title(safe_title):
-                safe_title = prepare_web_music_title(title=safe_prompt, lyrics="")
-            if not is_valid_web_music_title(safe_title):
-                # The worker picks the real title once the lyrics exist.
+                # Only the listener's own title survives queueing. The prompt is
+                # a production description: using it as the placeholder put a
+                # 60-character slab of style text in every card of a batch until
+                # the worker wrote the real title (and left it there on failure).
+                # The list shows "Writing lyrics…" until the title exists.
                 safe_title = _WEB_SIMPLE_TITLE_FALLBACK
 
         if not instrumental and safe_lyrics.strip().lower() == "[instrumental]":
