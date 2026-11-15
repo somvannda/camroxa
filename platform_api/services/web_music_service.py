@@ -428,6 +428,27 @@ def build_web_simple_lyrics_prompt(
     return " | ".join(kept)[:_WEB_LYRICS_PROMPT_MAX]
 
 
+def build_web_simple_description(brief: dict[str, Any]) -> str:
+    """Compose the single description Suno receives in Simple mode.
+
+    Suno writes the title and the lyrics from this; we only keep the planned
+    angle (theme + section order + an optional listener title) so a batch of ten
+    songs from one description is still ten different songs.
+    """
+    prompt = _compact_ws(str(brief.get("prompt") or ""), 1200)
+    theme = _compact_ws(str(brief.get("theme") or ""), 200)
+    structure = _compact_ws(str(brief.get("structure") or ""), 120)
+    title = _compact_ws(str(brief.get("title") or ""), 80)
+    parts = [prompt or "An original song"]
+    if theme:
+        parts.append(f"The song is about {theme}")
+    if structure:
+        parts.append(f"Use the section order {structure}")
+    if title:
+        parts.append(f"Title it \"{title}\"")
+    return ". ".join(part.rstrip(".") for part in parts if part)[:2000]
+
+
 def ensure_lyrics_opening(lyrics: str, forced_opening: str) -> str:
     """Guarantee a content-pool opening line opens the generated lyrics."""
     opening = "\n".join(
@@ -2168,7 +2189,7 @@ class WebMusicService:
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
                    audio_weight, reference_image_urls, reference_video_urls,
-                   reference_audio_urls, persona_id,
+                   reference_audio_urls, persona_id, lyrics_brief,
                    COALESCE(kind, 'music') AS kind,
                    status
             FROM suno_tasks
@@ -2217,6 +2238,20 @@ class WebMusicService:
         else:
             reference_audio = list(raw_audio or [])
 
+        raw_brief = _row_value(row, "lyrics_brief")
+        if isinstance(raw_brief, str):
+            try:
+                raw_brief = json.loads(raw_brief or "{}")
+            except ValueError:
+                raw_brief = {}
+        # Simple mode: one description, and Suno writes both the title and the
+        # lyrics. No second provider call, nothing of ours in the lyrics.
+        description = (
+            build_web_simple_description(raw_brief)
+            if isinstance(raw_brief, dict) and not str(row["lyrics"] or "").strip()
+            else ""
+        )
+
         request = SunoRequest(
             model=str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL),
             title=str(row["title"] or ""),
@@ -2232,6 +2267,7 @@ class WebMusicService:
             video_urls=reference_videos,
             audio_urls=reference_audio,
             persona_id=str(row["persona_id"] or "").strip() or None,
+            description=description,
         )
         try:
             kind = str(row["kind"] or "music")
@@ -7734,6 +7770,17 @@ class WebMusicService:
                     image_url_alt = COALESCE(NULLIF(BTRIM($8), ''), image_url_alt),
                     duration_ok = COALESCE($9::double precision, duration_ok),
                     duration_alt = COALESCE($10::double precision, duration_alt),
+                    title_ok = COALESCE(NULLIF(BTRIM($11), ''), title_ok),
+                    title_alt = COALESCE(NULLIF(BTRIM($12), ''), title_alt),
+                    title = CASE
+                        WHEN COALESCE(title, '') IN ('', 'Untitled')
+                        THEN COALESCE(NULLIF(BTRIM($11), ''), title)
+                        ELSE title
+                    END,
+                    lyrics = CASE
+                        WHEN COALESCE(BTRIM(lyrics), '') = '' THEN $13
+                        ELSE lyrics
+                    END,
                     updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -7747,6 +7794,9 @@ class WebMusicService:
                 urls.image_url_alt,
                 urls.duration_ok,
                 urls.duration_alt,
+                urls.title_ok,
+                urls.title_alt,
+                urls.lyrics or "",
             )
             try:
                 self._upload_service.schedule_web_music_b2_backfill(

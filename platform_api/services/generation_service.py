@@ -3011,6 +3011,7 @@ class GenerationService:
             persona_id=request.persona_id,
             persona_model=request.persona_model
             or ("voice_persona" if request.persona_id else None),
+            description=request.description,
         )
         from platform_api.clients.suno_client import extract_suno_generate_task_id
 
@@ -3725,6 +3726,7 @@ class GenerationService:
         audio_urls: list[str] | None = None,
         persona_id: str | None = None,
         persona_model: str | None = None,
+        description: str = "",
     ) -> dict[str, Any]:
         wrapper, _provider = await self._music_pool_wrapper()
         return await wrapper.execute(
@@ -3746,6 +3748,7 @@ class GenerationService:
                 audio_urls=audio_urls,
                 persona_id=persona_id,
                 persona_model=persona_model,
+                description=description,
             )
         )
 

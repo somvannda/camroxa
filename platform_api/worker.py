@@ -251,18 +251,8 @@ async def _handle_web_music_generate(job: Any, payload: dict[str, Any]) -> None:
         credit_service=None,
         redis=redis,
     )
-    brief = payload.get("lyrics_brief")
-    if isinstance(brief, dict):
-        # Simple mode has no lyrics yet. Write them *before* the Suno submit
-        # lock so a batch writes in parallel and only the submit serializes.
-        await service.write_queued_lyrics(
-            user_id,
-            task_id,
-            brief=brief,
-            reservation_id=reservation_id,
-            final_attempt=int(getattr(job, "attempts", 1) or 1)
-            >= int(getattr(job, "max_attempts", 1) or 1),
-        )
+    # Simple mode submits the description and lets Suno write the title and the
+    # lyrics (one provider call). Nothing left to prepare here.
     lock_token = await _acquire_web_suno_lock(redis)
     try:
         await service.fulfill_queued_generate(

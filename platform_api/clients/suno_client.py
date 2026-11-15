@@ -52,6 +52,10 @@ class SunoGeneratePollResult:
     tags_alt: str = ""
     audio_id_ok: str = ""
     audio_id_alt: str = ""
+    # Description-mode songs: Suno writes the title and the lyrics.
+    title_ok: str = ""
+    title_alt: str = ""
+    lyrics: str = ""
     error: str = ""
 
 
@@ -270,6 +274,49 @@ def _extract_clip_tags(clip: dict[str, Any]) -> str:
     if isinstance(tags, list):
         return ", ".join(str(item).strip() for item in tags if str(item).strip())
     return str(clip.get("style", "") or "").strip()
+
+
+def _extract_clip_title(clip: dict[str, Any]) -> str:
+    """The song title Suno picked (description mode) or echoed back (custom)."""
+    for key in ("title", "name"):
+        value = str(clip.get(key) or "").strip()
+        if value:
+            return value
+    metadata = clip.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("title", "name"):
+            value = str(metadata.get(key) or "").strip()
+            if value:
+                return value
+    return ""
+
+
+def _extract_clip_lyrics(clip: dict[str, Any]) -> str:
+    """Lyrics Suno wrote for a description-mode song.
+
+    Suno keeps them in ``metadata.prompt`` for non-custom generations (the same
+    field musicapi's lyrics-detail endpoint falls back to), and the clip may echo
+    them directly as ``lyrics``/``prompt``. Instrumentals carry the literal
+    ``[Instrumental]`` placeholder, which is not lyrics.
+    """
+
+    def _usable(value: Any) -> str:
+        text = str(value or "").strip()
+        if not text or text.strip("[]").strip().lower() == "instrumental":
+            return ""
+        return text
+
+    for key in ("lyrics", "prompt"):
+        text = _usable(clip.get(key))
+        if text:
+            return text
+    metadata = clip.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("prompt", "lyrics"):
+            text = _usable(metadata.get(key))
+            if text:
+                return text
+    return ""
 
 
 def _extract_clip_audio_id(clip: dict[str, Any]) -> str:
@@ -520,6 +567,8 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
     durations: list[float | None] = []
     tags: list[str] = []
     audio_ids: list[str] = []
+    titles: list[str] = []
+    lyrics_text = ""
     for clip in clips:
         audio_url, image_url, duration, clip_tags, audio_id = _clip_metadata(clip)
         # Keep clips that only have an id (URL arrives later / CDN synthesize).
@@ -534,6 +583,9 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
         durations.append(duration)
         tags.append(clip_tags)
         audio_ids.append(audio_id)
+        titles.append(_extract_clip_title(clip))
+        if not lyrics_text:
+            lyrics_text = _extract_clip_lyrics(clip)
 
     # An explicit upstream failure wins over any partial audio it returned: a
     # job that failed after storing only the first of two clips must not be
@@ -568,6 +620,9 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
             tags_alt=tags[1] if len(tags) > 1 else "",
             audio_id_ok=audio_ids[0] if audio_ids else "",
             audio_id_alt=audio_ids[1] if len(audio_ids) > 1 else "",
+            title_ok=titles[0] if titles else "",
+            title_alt=titles[1] if len(titles) > 1 else "",
+            lyrics=lyrics_text,
         )
 
     if is_suno_pending_status(status):
@@ -814,6 +869,7 @@ class SunoClient:
         audio_urls: list[str] | None = None,
         persona_id: str | None = None,
         persona_model: str | None = None,
+        description: str = "",
     ) -> dict[str, Any]:
         """Submit a music generation task to Suno.
 
@@ -829,6 +885,8 @@ class SunoClient:
             style_weight: Style adherence weight (0.0-1.0).
             weirdness_constraint: Creativity/novelty constraint (0.0-1.0).
             audio_weight: Audio consistency weight (0.0-1.0).
+            description: Free-form idea. When set (and no lyrics), Suno writes the
+                title and the lyrics itself — description mode, one provider call.
 
         Returns:
             Response dict from Suno containing the task ID and status.
@@ -846,18 +904,20 @@ class SunoClient:
         normalized_title = str(title or "").strip()
         normalized_lyrics = str(lyrics or "").strip()
         normalized_style = str(style or "").strip() or "Contemporary pop"
-        if not normalized_title:
-            raise ExternalServiceError(
-                "Suno requires a song title in custom mode.",
-                is_retryable=False,
-                details={"provider": "suno", "reason": "missing_title"},
-            )
-        if not instrumental and not normalized_lyrics:
-            raise ExternalServiceError(
-                "Suno requires lyrics in custom mode.",
-                is_retryable=False,
-                details={"provider": "suno", "reason": "missing_lyrics"},
-            )
+        normalized_description = str(description or "").strip()
+        if not normalized_description:
+            if not normalized_title:
+                raise ExternalServiceError(
+                    "Suno requires a song title in custom mode.",
+                    is_retryable=False,
+                    details={"provider": "suno", "reason": "missing_title"},
+                )
+            if not instrumental and not normalized_lyrics:
+                raise ExternalServiceError(
+                    "Suno requires lyrics in custom mode.",
+                    is_retryable=False,
+                    details={"provider": "suno", "reason": "missing_lyrics"},
+                )
 
         callback = str(callback_url or "").strip()
         if not callback:
@@ -884,10 +944,24 @@ class SunoClient:
             "callBackUrl": callback,
         }
 
+        if normalized_description:
+            # Description mode: Suno writes the title and the lyrics. One call,
+            # no lyrics task, no prompt/lyrics to police — the listener's idea is
+            # the whole input. `style` still travels so the genre is honoured.
+            payload = {
+                "model": model,
+                "gpt_description_prompt": normalized_description[:2000],
+                "customMode": False,
+                "instrumental": instrumental,
+                "callBackUrl": callback,
+            }
+            if normalized_style:
+                payload["style"] = normalized_style
+
         # V6 exposes a dedicated ``lyrics`` field that takes priority over
         # ``prompt`` in custom mode. Send both so V6 sings the exact lyrics.
         # (Instrumentals keep this empty so no placeholder gets sung.)
-        if str(model or "").strip().upper().startswith("V6"):
+        if not normalized_description and str(model or "").strip().upper().startswith("V6"):
             payload["lyrics"] = normalized_lyrics
 
         if negative_tags:

@@ -29,6 +29,8 @@ class SunoRequest:
     audio_urls: list[str] = field(default_factory=list)
     persona_id: str | None = None
     persona_model: str | None = None
+    # Description mode: Suno writes the title and the lyrics (web Simple mode).
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)

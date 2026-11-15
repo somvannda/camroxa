@@ -141,10 +141,11 @@ function describeRefreshError(err: unknown): string {
 }
 
 function clipDisplayTitle(generation: WebMusicGeneration, clip: WebMusicClip): string {
-  // Simple mode names the song in the worker, so a queued row has no title yet.
-  // Say that instead of showing the provisional placeholder as if it were real.
+  // Suno names the song (Simple mode sends a description and it writes both the
+  // title and the lyrics), so a queued row has no title yet. Say that instead of
+  // showing a placeholder as if it were real.
   if (isGeneratingStatus(generation) && !String(generation.lyrics || '').trim()) {
-    return 'Writing lyrics…';
+    return 'Writing song…';
   }
   const fromClip = String(clip.title || '').trim();
   if (fromClip) return fromClip;

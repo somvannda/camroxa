@@ -85,6 +85,9 @@ class SunoTaskDownloadUrls:
     tags_alt: str = ""
     audio_id_ok: str = ""
     audio_id_alt: str = ""
+    title_ok: str = ""
+    title_alt: str = ""
+    lyrics: str = ""
     refreshed: bool = False
 
 
@@ -151,6 +154,9 @@ def urls_from_generate_poll(result: SunoGeneratePollResult) -> SunoTaskDownloadU
         tags_alt=str(result.tags_alt or "").strip(),
         audio_id_ok=str(result.audio_id_ok or "").strip(),
         audio_id_alt=str(result.audio_id_alt or "").strip(),
+        title_ok=str(result.title_ok or "").strip(),
+        title_alt=str(result.title_alt or "").strip(),
+        lyrics=str(result.lyrics or "").strip(),
         refreshed=True,
     )
 
@@ -903,8 +909,14 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
     audio_ids: list[str] = []
     image_urls: list[str] = []
     durations: list[float | None] = []
+    titles: list[str] = []
+    lyrics_text = ""
     for clip in clips:
-        from platform_api.clients.suno_client import _extract_clip_image_url
+        from platform_api.clients.suno_client import (
+            _extract_clip_image_url,
+            _extract_clip_lyrics,
+            _extract_clip_title,
+        )
 
         audio_id = _extract_clip_audio_id(clip)
         url = _extract_clip_download_url(clip)
@@ -916,6 +928,9 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
         audio_ids.append(audio_id)
         image_urls.append(_extract_clip_image_url(clip))
         durations.append(_extract_clip_duration(clip))
+        titles.append(_extract_clip_title(clip))
+        if not lyrics_text:
+            lyrics_text = _extract_clip_lyrics(clip)
     if not download_urls:
         return SunoTaskDownloadUrls()
 
@@ -928,6 +943,9 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
         image_url_alt=image_urls[1] if len(image_urls) > 1 else "",
         duration_ok=durations[0] if durations else None,
         duration_alt=durations[1] if len(durations) > 1 else None,
+        title_ok=titles[0] if titles else "",
+        title_alt=titles[1] if len(titles) > 1 else "",
+        lyrics=lyrics_text,
         refreshed=True,
     )
 
