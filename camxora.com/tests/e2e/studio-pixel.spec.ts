@@ -876,6 +876,35 @@ test("the convolution card loads an impulse response from the library", async ({
   );
 });
 
+test("a track can hold the same plugin twice without duplicate React keys", async ({ page }) => {
+  test.setTimeout(120_000);
+  const warnings: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("same key")) {
+      warnings.push(message.text());
+    }
+  });
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel duplicate chain" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+
+  await page.locator(".sp-add-inline").click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Convolution/ })
+    .first()
+    .click();
+
+  await page.locator(".sp-dock").getByRole("button", { name: "Add effect" }).click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Convolution/ })
+    .first()
+    .click();
+
+  await expect(page.locator(".sp-slot")).toHaveCount(2);
+  await expect(page.locator(".se-chain-chip")).toHaveCount(2);
+  expect(warnings).toEqual([]);
+});
+
 test("the assistant explains credit and moderation refusals", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

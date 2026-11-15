@@ -20,6 +20,12 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
 - **Team pass (same day):** the feature ledger/gap analysis were reconciled
   (`fb555d02`), 24 contract tests pin soft delete/restore/list/thumb (`a9540403`), and
   platform pytest is **3439**. `CLONE_DEFINITION.md` §6 is signed off.
+- **Console clean-up:** the footer effect chips are keyed by slot position, not plugin id, so a
+  chain with two Convolutions no longer logs the duplicate-key warning. Unit + Playwright
+  regressions cover it.
+- **Worktree note:** the OpenCode worktree was rebuilt from `origin/main` `e64181c4` on
+  `fix/studio-duplicate-plugin-key`; recreate `camxora.com/.env.local` after any rebuild
+  (`PLATFORM_API_URL=http://localhost:8100`, `NEXT_PUBLIC_TURNSTILE_DISABLED=1`).
 
 ## Update 2026-11-14 (later) — Studio 1:1 completion pass (merged to `main`)
 
@@ -128,13 +134,13 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
 
 | | |
 |---|---|
-| Worktree | `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-rebuild` |
-| Branch | `feat/studio-rebuild` — clean, pushed, **reconciled with `origin/main`** (`0` behind, `502` ahead) |
+| Worktree | `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-arrangement-grid` |
+| Branch | `fix/studio-duplicate-plugin-key` — from `origin/main` (`e64181c4`), clean |
 | Web | `localhost:3103` (`npm run dev` in `camxora.com`) |
 | Platform API | `localhost:8100` — **must run from this worktree** |
 | MusicAPI | `localhost:4003` |
 | Local account | `somvannda@gmail.com` / `StudioLocal!2026` |
-| UI login | needs `NEXT_PUBLIC_TURNSTILE_DISABLED=1` in `camxora.com/.env.local` |
+| Web env | `camxora.com/.env.local` must exist (gitignored): `PLATFORM_API_URL=http://localhost:8100` plus `NEXT_PUBLIC_TURNSTILE_DISABLED=1` for UI login. Without it the rewrite falls back to `:8000` and every `/api/v3` call 500s. |
 | Capture archive | `docs/studio/reference/screens/` — 85 images |
 
 ## State in one paragraph

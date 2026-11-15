@@ -988,6 +988,31 @@ describe("StudioFooter", () => {
     expect(onZoomIn).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("All projects").getAttribute("href")).toBe("/studio");
   });
+
+  it("keeps both chips when the same plugin sits in the chain twice", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(
+        <StudioFooter
+          chain={["convolution", "convolution"]}
+          hasTrack
+          loop={false}
+          onLoop={noop}
+          onZoomOut={noop}
+          onZoomFit={noop}
+          onZoomIn={noop}
+          onSearch={noop}
+          onToggleLibrary={noop}
+          whatsThis={false}
+          onWhatsThis={noop}
+        />
+      );
+      expect(screen.getAllByText("Convolution")).toHaveLength(2);
+      expect(errors.mock.calls.flat().join(" ")).not.toContain("same key");
+    } finally {
+      errors.mockRestore();
+    }
+  });
 });
 
 describe("ClipSourceStrip", () => {

@@ -105,8 +105,15 @@ export function StudioFooter(props: StudioFooterProps) {
 
       <div className="se-chain">
         {hasTrack && chain.length > 0 ? (
-          chain.map((pluginId) => (
-            <span key={pluginId} className="se-chain-chip" data-plugin={pluginId}>{getPlugin(pluginId)?.name ?? pluginId}</span>
+          chain.map((pluginId, index) => (
+            // A chain may hold the same plugin twice, so the slot position is part of the key.
+            <span
+              key={`${pluginId || "slot"}-${index}`}
+              className="se-chain-chip"
+              data-plugin={pluginId}
+            >
+              {getPlugin(pluginId)?.name ?? pluginId}
+            </span>
           ))
         ) : null}
         <button

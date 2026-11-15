@@ -21,6 +21,12 @@ Date: **2026-11-14** · Local only (production hold unchanged)
 > shipped shell (`fb555d02`), and 24 contract tests now pin the soft-delete/restore lifecycle,
 > deleted-list filter, `deleted_at` payload and thumb bounds (`a9540403`); platform pytest is
 > **3439**.
+>
+> **Duplicate React key (2026-11-15).** The footer chip strip keyed its effects by plugin id,
+> so a chain that held the same plugin twice (e.g. two Convolutions, which the chain model
+> allows) logged `Encountered two children with the same key, 'convolution'` on every render.
+> Chips are now keyed by slot position, with a unit test and a Playwright regression that
+> fails on the old key and watches the real console.
 
 The three-column audit (`docs/studio/STUDIO_VS_SUNO_3COL.md`) found the arrangement surface at
 parity but four captured surfaces missing. This pass closes them, plus the smaller deltas the
