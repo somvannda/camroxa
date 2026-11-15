@@ -6,6 +6,23 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-15] - Web Create: retry a failed song instead of only deleting it
+
+### Added
+
+- `POST /api/v3/web-music/generations/{id}/retry` re-runs one failed Simple-mode
+  song from the description saved on the row (new charge, queue cap enforced), so
+  the web matches the desktop's long-standing "Retry this song". Migration 204
+  adds `suno_tasks.lyrics_brief`; failed rows also stop showing after 7 days. See
+  [`docs/changelog/2026-11-15-web-music-failed-song-retry.md`](../docs/changelog/2026-11-15-web-music-failed-song-retry.md).
+
+### Fixed
+
+- A retryable lyrics failure refunded the song on the first attempt even though
+  the job queue had attempts left, so a slow provider cost the listener their
+  song. The row now stays queued until the last attempt; only a content refusal
+  (or exhaustion) fails and refunds it.
+
 ## [2026-11-15] - Web Create: a refused lyrics prompt says why, and is retried
 
 ### Fixed

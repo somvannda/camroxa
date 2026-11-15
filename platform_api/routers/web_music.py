@@ -1833,6 +1833,38 @@ async def generate(
     )
 
 
+@router.post(
+    "/generations/{task_id}/retry",
+    response_model=WebMusicGenerateResponse,
+    status_code=202,
+)
+async def retry_generation(
+    task_id: UUID,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicGenerateResponse:
+    """Re-run one failed song from its saved description (new charge)."""
+    await enforce_generation_freeze(http_request, ctx.user_id)
+    await enforce_rate_limit(http_request, ctx.user_id)
+    payload = await service.retry_failed_generation(UUID(ctx.user_id), task_id)
+    return WebMusicGenerateResponse(
+        task_id=str(payload["task_id"]),
+        status=str(payload["status"]),
+        title=str(payload["title"]),
+        style=str(payload["style"]),
+        model=str(payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        model_label=str(payload.get("model_label") or payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        is_preview=bool(payload.get("is_preview")),
+        preview_seconds=(
+            int(payload["preview_seconds"])
+            if payload.get("preview_seconds") is not None
+            else None
+        ),
+        quota=WebMusicQuotaResponse(**payload["quota"]),
+    )
+
+
 @router.post("/sounds", response_model=WebMusicGenerateResponse, status_code=202)
 async def generate_sounds(
     body: WebMusicSoundsRequest,

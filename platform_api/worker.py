@@ -260,6 +260,8 @@ async def _handle_web_music_generate(job: Any, payload: dict[str, Any]) -> None:
             task_id,
             brief=brief,
             reservation_id=reservation_id,
+            final_attempt=int(getattr(job, "attempts", 1) or 1)
+            >= int(getattr(job, "max_attempts", 1) or 1),
         )
     lock_token = await _acquire_web_suno_lock(redis)
     try:

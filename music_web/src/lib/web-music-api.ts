@@ -314,6 +314,16 @@ export async function deleteWebMusicGeneration(id: string): Promise<void> {
   );
 }
 
+/** Re-run a failed song from its saved description (a new, charged attempt). */
+export async function retryWebMusicGeneration(
+  id: string,
+): Promise<{ task_id: string; status: string }> {
+  return musicFetch<{ task_id: string; status: string }>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/retry`,
+    { method: 'POST' },
+  );
+}
+
 export function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

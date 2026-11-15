@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
+import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
@@ -41,6 +41,7 @@ import {
   createWebMusicWorkspace,
   updateWebMusicWorkspace,
   deleteWebMusicGeneration,
+  retryWebMusicGeneration,
   downloadWebMusicClip,
   downloadWebMusicClipWav,
   downloadWebMusicTimedLyrics,
@@ -574,6 +575,7 @@ export default function CreatePageClient() {
   const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
   const [unlockingKeys, setUnlockingKeys] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [retryingIds, setRetryingIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedClipKeys, setSelectedClipKeys] = useState<string[]>([]);
   const [batchFormat, setBatchFormat] = useState<DownloadKind>('mp3');
@@ -1231,6 +1233,31 @@ export default function CreatePageClient() {
       setCreateError(err instanceof Error ? err.message : 'Could not delete song');
     } finally {
       setDeletingIds((prev) => prev.filter((id) => id !== generation.id));
+    }
+  }
+
+  async function onRetryGeneration(generation: WebMusicGeneration) {
+    // The failed attempt was refunded, so a retry is an ordinary charged create.
+    // Ask first: never spend credits the listener did not choose to spend.
+    const confirmed = window.confirm(
+      `Retry "${generation.title}"? This creates a new song and costs ${creditsPerSong} credits.`,
+    );
+    if (!confirmed) return;
+    setCreateError(null);
+    setRetryingIds((prev) => (prev.includes(generation.id) ? prev : [...prev, generation.id]));
+    try {
+      await retryWebMusicGeneration(generation.id);
+      await refreshList(activeWorkspaceId).catch(() => undefined);
+      void fetchWebMusicQuota()
+        .then(setQuota)
+        .catch(() => undefined);
+      void fetchCreditBalance()
+        .then(setCreditBalance)
+        .catch(() => undefined);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not retry song');
+    } finally {
+      setRetryingIds((prev) => prev.filter((id) => id !== generation.id));
     }
   }
 
@@ -2053,6 +2080,7 @@ export default function CreatePageClient() {
               {items.map((generation) => {
                 if (isFailedStatus(generation.status)) {
                   const deleting = deletingIds.includes(generation.id);
+                  const retrying = retryingIds.includes(generation.id);
                   return (
                     <div
                       key={generation.id}
@@ -2069,6 +2097,21 @@ export default function CreatePageClient() {
                           {generation.error_message || 'Generation failed.'}
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        disabled={retrying || deleting}
+                        onClick={() => void onRetryGeneration(generation)}
+                        title={`Try this song again (new charge: ${creditsPerSong} credits)`}
+                        aria-label="Retry this song"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-violet-400/30 bg-violet-500/10 px-2.5 py-1.5 text-xs font-medium text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
+                      >
+                        {retrying ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        )}
+                        <span className="hidden sm:inline">{retrying ? 'Retrying…' : 'Retry'}</span>
+                      </button>
                       <button
                         type="button"
                         disabled={deleting}

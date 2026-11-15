@@ -1805,6 +1805,153 @@ class WebMusicService:
             "workspace_id": str(resolved_workspace_id),
         }
 
+    async def retry_failed_generation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+    ) -> dict[str, Any]:
+        """Re-run one failed Simple-mode song, keeping its saved description.
+
+        The desktop Create page has always offered "Retry this song". The web
+        dropped the request instead: the failed row only kept the refund. The
+        brief is stored on the row now, so the retry can rebuild the song.
+
+        This is a **new** generation: the failed one was refunded, so the retry
+        is charged like any create. Refunded means the listener chose it, not
+        that the app silently spends their credits.
+        """
+        from platform_api.dependencies import get_job_queue_repo
+        from platform_api.services.job_types import (
+            JOB_WEB_MUSIC_GENERATE,
+            PRI_WEB_MUSIC_FREE,
+            PRI_WEB_MUSIC_PAID,
+        )
+
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, status, model, title, style, instrumental, is_preview,
+                   workspace_id, kind, lyrics_brief,
+                   COALESCE(cardinality(trashed_variants), 0) AS trashed
+            FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if row is None:
+            raise NotFoundError("Song not found.")
+        if str(row["status"] or "").strip().lower() != TaskStatus.FAILED.value:
+            raise ValidationError(
+                "Only a failed song can be retried.",
+                details={"field": "status"},
+            )
+        if int(row["trashed"] or 0) > 0:
+            raise ValidationError(
+                "Restore this song before retrying it.",
+                details={"field": "status"},
+            )
+        brief = row["lyrics_brief"]
+        if isinstance(brief, str):
+            try:
+                brief = json.loads(brief or "{}")
+            except ValueError:
+                brief = {}
+        if not isinstance(brief, dict) or not str(brief.get("prompt") or "").strip():
+            # Advanced-mode songs and sounds carry no brief: the listener still
+            # has the form, so re-create from there instead of guessing.
+            raise ValidationError(
+                "This song has no saved description to retry. Create it again from the form.",
+                details={"field": "prompt"},
+            )
+
+        queue_limit = await self._queue_cap_for_user(user_id)
+        queue_used = await self._active_generate_queue_count(user_id)
+        if queue_used >= queue_limit:
+            raise RateLimitedError(
+                f"You already have {queue_used} songs waiting. Wait until one starts.",
+                retry_after=5,
+                details={"queue_used": queue_used, "queue_limit": queue_limit},
+            )
+
+        normalized_model = str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL).strip().upper()
+        is_preview = bool(row["is_preview"])
+        reservation_id = str(uuid4())
+        try:
+            quota = await self._reserve_daily_slot(
+                user_id,
+                reservation_id=reservation_id,
+                model=normalized_model,
+                allow_free_preview=is_preview,
+            )
+        except BaseException:
+            await self._release_daily_slot(user_id, reference_id=reservation_id)
+            raise
+
+        try:
+            claimed = await self._pool.fetchval(
+                """
+                UPDATE suno_tasks
+                SET status = $3, error_message = NULL, external_task_id = NULL,
+                    lyrics = '', audio_url_ok = NULL, audio_url_alt = NULL,
+                    audio_id_ok = NULL, audio_id_alt = NULL, updated_at = NOW()
+                WHERE id = $1 AND user_id = $2 AND lower(status) = $4
+                RETURNING id
+                """,
+                task_id,
+                user_id,
+                TaskStatus.PENDING.value,
+                TaskStatus.FAILED.value,
+            )
+            if claimed is None:
+                # Another tab already reset it between the read and this write.
+                raise ValidationError(
+                    "This song is already being retried.", details={"field": "status"}
+                )
+            paid = await self._is_paid_queue_user(user_id)
+            await get_job_queue_repo().enqueue(
+                user_id=user_id,
+                job_type=JOB_WEB_MUSIC_GENERATE,
+                payload={
+                    "user_id": str(user_id),
+                    "task_id": str(task_id),
+                    "reservation_id": reservation_id,
+                    "lyrics_brief": brief,
+                },
+                priority=PRI_WEB_MUSIC_PAID if paid else PRI_WEB_MUSIC_FREE,
+                max_attempts=3,
+            )
+        except BaseException:
+            # The charge must not survive a retry that never started, and a row
+            # left pending without a job would look queued forever.
+            await self._release_daily_slot(
+                user_id, reference_id=reservation_id, task_id=str(task_id)
+            )
+            await self._pool.execute(
+                """
+                UPDATE suno_tasks SET status = $3, updated_at = NOW()
+                WHERE id = $1 AND user_id = $2 AND lower(status) = $4
+                """,
+                task_id,
+                user_id,
+                TaskStatus.FAILED.value,
+                TaskStatus.PENDING.value,
+            )
+            raise
+
+        await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
+        self._open_charges.pop(reservation_id, None)
+        return {
+            "task_id": str(task_id),
+            "status": "QUEUED",
+            "title": str(row["title"] or ""),
+            "style": str(row["style"] or ""),
+            "model": normalized_model,
+            "is_preview": is_preview,
+            "quota": await self._with_queue_fields(user_id, quota),
+            "workspace_id": str(row["workspace_id"]) if row["workspace_id"] else None,
+        }
+
     async def generate_sounds(
         self,
         user_id: UUID,
@@ -1955,14 +2102,15 @@ class WebMusicService:
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
                 audio_weight, reference_image_urls, reference_video_urls, reference_audio_urls,
-                persona_id, is_preview, preview_seconds, kind, created_at, updated_at
+                persona_id, is_preview, preview_seconds, kind, created_at, updated_at,
+                lyrics_brief
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
                 $16, $17::jsonb, $18::jsonb, $19::jsonb,
-                $20, $21, $22, $23, NOW(), NOW()
+                $20, $21, $22, $23, NOW(), NOW(), $24::jsonb
             )
             """,
             task_id,
@@ -1988,6 +2136,7 @@ class WebMusicService:
             is_preview,
             preview_seconds,
             safe_kind,
+            json.dumps(lyrics_brief) if lyrics_brief else None,
         )
         paid = await self._is_paid_queue_user(user_id)
         await get_job_queue_repo().enqueue(
@@ -2129,12 +2278,19 @@ class WebMusicService:
         *,
         brief: dict[str, Any],
         reservation_id: str,
+        final_attempt: bool = True,
     ) -> None:
         """Write a Simple-mode song's title and lyrics before it is submitted.
 
         Runs before the worker takes the Suno submit lock, so the songs of a
         batch write their lyrics in parallel and only the provider submit stays
         serialized. Idempotent: a retried job finds the lyrics already stored.
+
+        ``final_attempt`` is False while the job queue still has attempts left:
+        a *retryable* provider failure then propagates without a refund, so a
+        slow lyrics task costs the listener a wait instead of their song. A
+        content rejection fails immediately either way — retrying it cannot
+        help.
         """
         row = await self._pool.fetchrow(
             """
@@ -2171,6 +2327,17 @@ class WebMusicService:
                 negative_tags=str(row["negative_tags"] or "").strip() or None,
             )
         except BaseException as exc:
+            if not final_attempt and getattr(exc, "is_retryable", False):
+                # Transient (timeout, 5xx, rate limit): leave the row pending and
+                # let the job queue try again. Refunding here is what turned a
+                # slow lyrics task into "your song could not be written".
+                logger.warning(
+                    "web-music lyrics will retry user=%s task=%s reason=%s",
+                    user_id,
+                    task_id,
+                    exc,
+                )
+                raise
             await self._fail_queued_generate(
                 user_id,
                 task_id,
@@ -6835,12 +7002,16 @@ class WebMusicService:
             if trashed
             else "cardinality(trashed_variants) + cardinality(purged_variants) < 2"
         )
+        # A failed song is a receipt, not a library item: keep it long enough to
+        # read the reason (and retry it), then age it out of the list instead of
+        # letting failures pile up forever.
+        aged_out = "NOT (lower(status) = 'failed' AND updated_at < now() - interval '7 days')"
         total = int(
             await self._pool.fetchval(
                 f"""
                 SELECT COUNT(*)::int FROM suno_tasks
                 WHERE user_id = $1 AND source = $2 AND workspace_id = $3
-                  AND {trash_filter}
+                  AND {trash_filter} AND {aged_out}
                 """,
                 user_id,
                 SUNO_TASK_SOURCE_WEB_MUSIC,
@@ -6865,7 +7036,7 @@ class WebMusicService:
                    trashed_variants, purged_variants
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
-              AND {trash_filter}
+              AND {trash_filter} AND {aged_out}
             ORDER BY created_at DESC
             LIMIT $4 OFFSET $5
             """,

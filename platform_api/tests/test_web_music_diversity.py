@@ -419,3 +419,72 @@ async def test_refusal_reason_is_stored_on_the_song(
     assert failed, "the refused song was never marked failed"
     assert "artist or producer reference" in failed[0][4]
     service._release_daily_slot.assert_awaited()
+
+
+def _transient() -> ExternalServiceError:
+    return ExternalServiceError(
+        "Suno lyrics timed out after 45s.",
+        is_retryable=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_transient_lyrics_failure_waits_for_the_next_attempt(
+    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retryable failure must not refund a song the queue will try again."""
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock(side_effect=_transient())
+    service = WebMusicService(AsyncMock(), generation)
+    service._pool.fetchrow = AsyncMock(return_value=_queued_row(task_id))
+    service._pool.execute = AsyncMock()
+    service._recent_web_titles = AsyncMock(return_value=[])
+    service._release_daily_slot = AsyncMock()
+    _pool_seeds(monkeypatch)
+
+    with pytest.raises(ExternalServiceError):
+        await service.write_queued_lyrics(
+            user_id,
+            task_id,
+            reservation_id="res-1",
+            brief={"prompt": "moody synthwave", "theme": "", "structure": "", "title": ""},
+            final_attempt=False,
+        )
+
+    # No refund and no failed row: the job queue retries it.
+    service._release_daily_slot.assert_not_awaited()
+    assert not [
+        call.args
+        for call in service._pool.execute.await_args_list
+        if "SET status = $3, error_message = $4" in str(call.args[0])
+    ]
+
+
+@pytest.mark.asyncio
+async def test_content_refusal_fails_even_when_attempts_remain(
+    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retrying a refused prompt cannot help, so refund it straight away."""
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock(side_effect=_refusal())
+    service = WebMusicService(AsyncMock(), generation)
+    service._pool.fetchrow = AsyncMock(return_value=_queued_row(task_id))
+    service._pool.execute = AsyncMock()
+    service._recent_web_titles = AsyncMock(return_value=[])
+    service._release_daily_slot = AsyncMock()
+    _pool_seeds(monkeypatch)
+
+    with pytest.raises(ExternalServiceError):
+        await service.write_queued_lyrics(
+            user_id,
+            task_id,
+            reservation_id="res-1",
+            brief={"prompt": "moody synthwave", "theme": "", "structure": "", "title": ""},
+            final_attempt=False,
+        )
+
+    service._release_daily_slot.assert_awaited()
