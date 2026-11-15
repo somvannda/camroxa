@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 # Timeout for Suno API requests (seconds)
 _SUNO_TIMEOUT = 30.0
 _SUNO_LYRICS_POLL_INTERVAL_SECONDS = 2.0
-_SUNO_LYRICS_MAX_WAIT_SECONDS = 120.0
+# Suno lyrics usually land in ~15s. The old 120s ceiling outlived the edge
+# proxy's 100s response limit, so a slow batch song surfaced as a bare HTTP 524
+# instead of a retryable "lyrics timed out". Give up early and let the caller
+# report it (and refund) properly.
+_SUNO_LYRICS_MAX_WAIT_SECONDS = 45.0
 
 SunoLyricsPollState = Literal["pending", "success", "failed"]
 SunoGeneratePollState = Literal["pending", "success", "failed"]

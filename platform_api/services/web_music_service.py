@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -344,6 +345,8 @@ def _duration_seconds(row: Any, key: str) -> float | None:
 _WEB_LYRICS_PROMPT_MAX = 200
 _WEB_RECENT_TITLE_LIMIT = 80
 _WEB_SONG_PLAN_MAX = 20
+# Placeholder while the worker writes the real title from the lyrics.
+_WEB_SIMPLE_TITLE_FALLBACK = "Untitled"
 
 _PLAN_STOPWORDS = frozenset(
     {
@@ -1653,107 +1656,26 @@ class WebMusicService:
             raise
         logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
 
-        claimed_items: list[ClaimedPoolItem] = []
+        # Simple mode has no lyrics yet: Suno writes them, and that task polls
+        # for up to two minutes. Doing it here put the edge proxy's 100s
+        # response limit (Cloudflare 524) in the middle of every batch — the
+        # first song landed and the rest died — so the row is queued now and
+        # the worker writes the lyrics in fulfill_queued_generate().
+        lyrics_brief: dict[str, str] | None = None
         if mode_key == "simple":
-            from platform_api.services.ai_structure_diversity import choose_ai_structure_seed
-
-            recent_titles = await self._recent_web_titles(user_id)
-            pool_title = ""
-            forced_opening = ""
-            pool_token = str(uuid4())
-            pool_owner = f"web-music:{user_id}:{reservation_id}"
-            if not raw_title:
-                try:
-                    title_item = await claim_pool_item(
-                        kind="titles",
-                        reservation_owner=pool_owner,
-                        reservation_token=pool_token,
-                        avoid_texts=recent_titles,
-                    )
-                    claimed_items.append(title_item)
-                    pool_title = title_item.text
-                except Exception as exc:
-                    # Pools are an enhancement: an empty/exhausted pool or a DB
-                    # hiccup must never block a user's paid generation.
-                    logger.info(
-                        "service.generate title-pool seed unavailable user=%s reservation=%s reason=%s",
-                        user_id,
-                        reservation_id,
-                        exc,
-                    )
-            if not instrumental:
-                try:
-                    opening_item = await claim_pool_item(
-                        kind="openings",
-                        reservation_owner=pool_owner,
-                        reservation_token=pool_token,
-                    )
-                    claimed_items.append(opening_item)
-                    forced_opening = build_forced_opening_text(
-                        line1=opening_item.text,
-                        line2=opening_item.secondary_text,
-                    )
-                except Exception as exc:
-                    logger.info(
-                        "service.generate opening-pool seed unavailable user=%s reservation=%s reason=%s",
-                        user_id,
-                        reservation_id,
-                        exc,
-                    )
-            structure_hint = safe_structure
-            if not structure_hint:
-                structure_hint = _structure_hint(
-                    choose_ai_structure_seed(
-                        batch_index=int(uuid4().int % 64),
-                    ).headers
-                )
-            try:
-                logger.info("service.generate step simple_lyrics_llm user=%s", user_id)
-                lyrics_prompt = build_web_simple_lyrics_prompt(
-                    prompt=safe_prompt,
-                    theme=safe_theme,
-                    forced_opening=forced_opening,
-                    structure_hint=structure_hint,
-                    avoid_titles=recent_titles,
-                )
-                generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
-                    lyrics_prompt
-                )
-            except BaseException:
-                await release_claimed_items(claimed_items)
-                await release_reservation()
-                raise
-            safe_lyrics = ensure_lyrics_opening(
-                str(generated_lyrics or "").strip() or safe_prompt,
-                forced_opening,
-            )
-            safe_title = ""
-            for candidate in (raw_title, pool_title, str(generated_title or "").strip()):
-                if not str(candidate or "").strip():
-                    continue
-                cleaned = prepare_web_music_title(title=candidate, lyrics="")
-                if is_valid_web_music_title(cleaned):
-                    safe_title = cleaned
-                    break
-            if not safe_title:
-                safe_title = prepare_web_music_title(title=safe_prompt, lyrics=safe_lyrics)
-            try:
-                if not is_valid_web_music_title(safe_title):
-                    raise ValidationError(
-                        "Enter a song title (at least 2 letters, no URLs or empty brackets).",
-                        details={"field": "title"},
-                    )
-                raise_if_suno_blocklisted(
-                    runtime_config,
-                    title=safe_title,
-                    lyrics=safe_lyrics if not instrumental else "",
-                    style=safe_style,
-                    negative_tags=safe_negative,
-                )
-            except BaseException:
-                await release_claimed_items(claimed_items)
-                await release_reservation()
-                raise
+            lyrics_brief = {
+                "prompt": safe_prompt,
+                "theme": safe_theme,
+                "structure": safe_structure,
+                "title": raw_title,
+            }
+            safe_lyrics = ""
+            safe_title = prepare_web_music_title(title=raw_title, lyrics="")
+            if not is_valid_web_music_title(safe_title):
+                safe_title = prepare_web_music_title(title=safe_prompt, lyrics="")
+            if not is_valid_web_music_title(safe_title):
+                # The worker picks the real title once the lyrics exist.
+                safe_title = _WEB_SIMPLE_TITLE_FALLBACK
 
         if not instrumental and safe_lyrics.strip().lower() == "[instrumental]":
             instrumental = True
@@ -1774,7 +1696,12 @@ class WebMusicService:
                 reservation_id=reservation_id,
                 model=normalized_model,
                 title=safe_title,
-                lyrics=safe_lyrics if not instrumental else (safe_lyrics or "Instrumental"),
+                lyrics=(
+                    ""
+                    if lyrics_brief is not None
+                    else safe_lyrics if not instrumental else (safe_lyrics or "Instrumental")
+                ),
+                lyrics_brief=lyrics_brief,
                 style=safe_style,
                 instrumental=instrumental,
                 negative_tags=safe_negative or None,
@@ -1791,23 +1718,11 @@ class WebMusicService:
             )
             logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
         except BaseException:
-            await release_claimed_items(claimed_items)
             await release_reservation(task_id=str(task_id) if task_id else None)
             raise
 
         await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
         self._open_charges.pop(reservation_id, None)
-        for item in claimed_items:
-            try:
-                await finalize_pool_item(item=item)
-            except Exception:
-                logger.warning(
-                    "service.generate content-pool finalize failed user=%s kind=%s item=%s",
-                    user_id,
-                    item.kind,
-                    item.item_id,
-                    exc_info=True,
-                )
 
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
         return {
@@ -1843,6 +1758,7 @@ class WebMusicService:
         workspace_id: UUID | None,
         is_preview: bool = False,
         preview_seconds: int | None = None,
+        lyrics_brief: dict[str, str] | None = None,
     ) -> UUID:
         from platform_api.dependencies import get_job_queue_repo
         from platform_api.services.generation_service import compute_suno_request_hash
@@ -1853,13 +1769,22 @@ class WebMusicService:
         )
 
         task_id = uuid4()
-        request_hash = compute_suno_request_hash(
-            model=model,
-            title=title,
-            lyrics=lyrics,
-            style=style,
-            instrumental=instrumental,
-        )
+        if lyrics_brief is not None:
+            # Simple mode has no lyrics yet, so a content hash would be
+            # identical for every song of a batch and violate
+            # UNIQUE(user_id, request_hash). Keep it per-task and replace it
+            # in fulfill_queued_generate() once the lyrics exist.
+            request_hash = hashlib.sha256(
+                f"pending-lyrics:{task_id}:{model}".encode()
+            ).hexdigest()
+        else:
+            request_hash = compute_suno_request_hash(
+                model=model,
+                title=title,
+                lyrics=lyrics,
+                style=style,
+                instrumental=instrumental,
+            )
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
         await self._pool.execute(
             """
@@ -1906,19 +1831,27 @@ class WebMusicService:
                 "user_id": str(user_id),
                 "task_id": str(task_id),
                 "reservation_id": reservation_id,
+                "lyrics_brief": lyrics_brief,
             },
             priority=PRI_WEB_MUSIC_PAID if paid else PRI_WEB_MUSIC_FREE,
             max_attempts=3,
         )
         return task_id
 
-    async def fulfill_queued_generate(self, user_id: UUID, task_id: UUID, *, reservation_id: str) -> None:
-        """Send one queued web song to Suno. Refunds if Suno never accepts it."""
+    async def fulfill_queued_generate(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        reservation_id: str,
+    ) -> None:
+        """Send one queued web song to Suno. Refunds if it never gets there."""
         row = await self._pool.fetchrow(
             """
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                   audio_weight, reference_image_urls, reference_video_urls, persona_id
+                   audio_weight, reference_image_urls, reference_video_urls, persona_id,
+                   status
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -1929,6 +1862,9 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Queued song was not found.")
         if str(row["external_task_id"] or "").strip():
+            return
+        if str(_row_value(row, "status", "") or "").strip().lower() == TaskStatus.FAILED.value:
+            # It was already refunded; a retried job must not deliver it free.
             return
 
         raw_images = row["reference_image_urls"]
@@ -1967,21 +1903,11 @@ class WebMusicService:
         try:
             external_task_id = await self._generation.submit_suno_external_id(request)
         except Exception:
-            await self._release_daily_slot(
+            await self._fail_queued_generate(
                 user_id,
-                reference_id=reservation_id,
-                task_id=str(task_id),
-            )
-            await self._pool.execute(
-                """
-                UPDATE suno_tasks
-                SET status = $3, error_message = $4, updated_at = NOW()
-                WHERE id = $1 AND user_id = $2
-                """,
                 task_id,
-                user_id,
-                TaskStatus.FAILED.value,
-                "Could not start this song at Suno. Credits were refunded.",
+                reservation_id=reservation_id,
+                message="Could not start this song at Suno. Credits were refunded.",
             )
             raise
 
@@ -1998,6 +1924,295 @@ class WebMusicService:
         )
         await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
         self._open_charges.pop(reservation_id, None)
+
+    async def write_queued_lyrics(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        brief: dict[str, Any],
+        reservation_id: str,
+    ) -> None:
+        """Write a Simple-mode song's title and lyrics before it is submitted.
+
+        Runs before the worker takes the Suno submit lock, so the songs of a
+        batch write their lyrics in parallel and only the provider submit stays
+        serialized. Idempotent: a retried job finds the lyrics already stored.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, title, lyrics, style, model, instrumental, external_task_id,
+                   negative_tags, status
+            FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if row is None:
+            raise NotFoundError("Queued song was not found.")
+        if str(row["external_task_id"] or "").strip():
+            return
+        if str(_row_value(row, "status", "") or "").strip().lower() == TaskStatus.FAILED.value:
+            # Already refunded by an earlier attempt; do not resurrect it.
+            return
+        if str(row["lyrics"] or "").strip():
+            return
+
+        instrumental = bool(row["instrumental"])
+        try:
+            title, lyrics, claimed_items = await self._write_simple_song(
+                user_id,
+                task_id=task_id,
+                brief=brief,
+                # The row still carries a provisional title; the listener's own
+                # title (if any) travels in the brief.
+                requested_title=str(brief.get("title") or ""),
+                instrumental=instrumental,
+                style=str(row["style"] or "Contemporary pop"),
+                negative_tags=str(row["negative_tags"] or "").strip() or None,
+            )
+        except BaseException:
+            await self._fail_queued_generate(
+                user_id,
+                task_id,
+                reservation_id=reservation_id,
+                message="This song could not be written. Credits were refunded.",
+            )
+            raise
+        await self._persist_written_song(
+            user_id,
+            task_id,
+            model=str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL),
+            title=title,
+            lyrics=lyrics,
+            style=str(row["style"] or "Contemporary pop"),
+            instrumental=instrumental,
+        )
+        for item in claimed_items:
+            try:
+                await finalize_pool_item(item=item)
+            except Exception:
+                logger.warning(
+                    "web-music content-pool finalize failed user=%s kind=%s item=%s",
+                    user_id,
+                    item.kind,
+                    item.item_id,
+                    exc_info=True,
+                )
+
+    async def _fail_queued_generate(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        reservation_id: str,
+        message: str,
+    ) -> None:
+        """Refund a queued song that never reached Suno and mark it failed."""
+        await self._release_daily_slot(
+            user_id,
+            reference_id=reservation_id,
+            task_id=str(task_id),
+        )
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET status = $3, error_message = $4, updated_at = NOW()
+            WHERE id = $1 AND user_id = $2
+            """,
+            task_id,
+            user_id,
+            TaskStatus.FAILED.value,
+            message,
+        )
+
+    async def _persist_written_song(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        model: str,
+        title: str,
+        lyrics: str,
+        style: str,
+        instrumental: bool,
+    ) -> None:
+        """Store the lyrics the worker wrote and refresh the request hash.
+
+        The row was inserted with a per-task placeholder hash because
+        ``suno_tasks`` is ``UNIQUE(user_id, request_hash)`` and Simple-mode
+        songs have no lyrics to hash yet. Keep the placeholder if the real
+        hash collides with another task instead of failing the song.
+        """
+        from platform_api.services.generation_service import compute_suno_request_hash
+
+        request_hash = compute_suno_request_hash(
+            model=str(model or DEFAULT_SUNO_MUSIC_MODEL),
+            title=title,
+            lyrics=lyrics,
+            style=style,
+            instrumental=instrumental,
+        )
+        try:
+            await self._pool.execute(
+                """
+                UPDATE suno_tasks
+                SET title = $3, lyrics = $4, request_hash = $5, updated_at = NOW()
+                WHERE id = $1 AND user_id = $2
+                """,
+                task_id,
+                user_id,
+                title,
+                lyrics,
+                request_hash,
+            )
+        except Exception:
+            logger.info(
+                "web-music request hash kept pending (collision?) user=%s task=%s",
+                user_id,
+                task_id,
+            )
+            await self._pool.execute(
+                """
+                UPDATE suno_tasks
+                SET title = $3, lyrics = $4, updated_at = NOW()
+                WHERE id = $1 AND user_id = $2
+                """,
+                task_id,
+                user_id,
+                title,
+                lyrics,
+            )
+
+    async def _write_simple_song(
+        self,
+        user_id: UUID,
+        *,
+        task_id: UUID,
+        brief: dict[str, Any],
+        requested_title: str,
+        instrumental: bool,
+        style: str,
+        negative_tags: str | None,
+    ) -> tuple[str, str, list[ClaimedPoolItem]]:
+        """Write one Simple-mode song's title and lyrics, worker side.
+
+        Content-pool seeds are claimed here and returned unfinalized so the
+        caller can release them if the Suno submit never happens.
+        """
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.ai_structure_diversity import choose_ai_structure_seed
+        from platform_api.services.web_music_suno_guard import (
+            is_valid_web_music_title,
+            prepare_web_music_title,
+            raise_if_suno_blocklisted,
+        )
+
+        prompt = str(brief.get("prompt") or "").strip()
+        theme = str(brief.get("theme") or "").strip()
+        structure = _compact_ws(str(brief.get("structure") or ""), 60)
+        recent_titles = await self._recent_web_titles(user_id)
+        claimed_items: list[ClaimedPoolItem] = []
+        pool_token = str(uuid4())
+        pool_owner = f"web-music:{user_id}:{task_id}"
+        pool_title = ""
+        forced_opening = ""
+        generated_title = ""
+        lyrics = "Instrumental"
+        try:
+            if not str(requested_title or "").strip():
+                try:
+                    title_item = await claim_pool_item(
+                        kind="titles",
+                        reservation_owner=pool_owner,
+                        reservation_token=pool_token,
+                        avoid_texts=recent_titles,
+                    )
+                    claimed_items.append(title_item)
+                    pool_title = title_item.text
+                except Exception as exc:
+                    # Pools are an enhancement: an empty/exhausted pool or a DB
+                    # hiccup must never block a user's paid generation.
+                    logger.info(
+                        "web-music title-pool seed unavailable user=%s task=%s reason=%s",
+                        user_id,
+                        task_id,
+                        exc,
+                    )
+            if not instrumental:
+                try:
+                    opening_item = await claim_pool_item(
+                        kind="openings",
+                        reservation_owner=pool_owner,
+                        reservation_token=pool_token,
+                    )
+                    claimed_items.append(opening_item)
+                    forced_opening = build_forced_opening_text(
+                        line1=opening_item.text,
+                        line2=opening_item.secondary_text,
+                    )
+                except Exception as exc:
+                    logger.info(
+                        "web-music opening-pool seed unavailable user=%s task=%s reason=%s",
+                        user_id,
+                        task_id,
+                        exc,
+                    )
+                structure_hint = structure
+                if not structure_hint:
+                    structure_hint = _structure_hint(
+                        choose_ai_structure_seed(
+                            batch_index=int(task_id.int % 64),
+                        ).headers
+                    )
+                lyrics_prompt = build_web_simple_lyrics_prompt(
+                    prompt=prompt,
+                    theme=theme,
+                    forced_opening=forced_opening,
+                    structure_hint=structure_hint,
+                    avoid_titles=recent_titles,
+                )
+                logger.info(
+                    "web-music simple lyrics start user=%s task=%s", user_id, task_id
+                )
+                generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
+                    lyrics_prompt
+                )
+                lyrics = ensure_lyrics_opening(
+                    str(generated_lyrics or "").strip() or prompt,
+                    forced_opening,
+                )
+
+            title = ""
+            for candidate in (
+                requested_title,
+                pool_title,
+                str(generated_title or "").strip(),
+                prompt,
+            ):
+                cleaned = prepare_web_music_title(title=candidate, lyrics="")
+                if is_valid_web_music_title(cleaned):
+                    title = cleaned
+                    break
+            if not title:
+                raise ValidationError(
+                    "Could not name this song. Describe the song you want in a few words.",
+                    details={"field": "prompt"},
+                )
+            runtime_config = await get_suno_blocklist_service().get_runtime_config()
+            raise_if_suno_blocklisted(
+                runtime_config,
+                title=title,
+                lyrics="" if instrumental else lyrics,
+                style=style,
+                negative_tags=negative_tags or "",
+            )
+            return title, lyrics, claimed_items
+        except BaseException:
+            await release_claimed_items(claimed_items)
+            raise
 
     async def _resolve_workspace_id(
         self,

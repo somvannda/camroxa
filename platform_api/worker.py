@@ -243,16 +243,26 @@ async def _handle_web_music_generate(job: Any, payload: dict[str, Any]) -> None:
         redis = get_redis()
     except Exception:
         redis = None
+    service = WebMusicService(
+        get_db_pool(),
+        get_generation_service(),
+        # v3 charges-only wallet is the single source of truth; no legacy
+        # web-subscription credit service is constructed any more.
+        credit_service=None,
+        redis=redis,
+    )
+    brief = payload.get("lyrics_brief")
+    if isinstance(brief, dict):
+        # Simple mode has no lyrics yet. Write them *before* the Suno submit
+        # lock so a batch writes in parallel and only the submit serializes.
+        await service.write_queued_lyrics(
+            user_id,
+            task_id,
+            brief=brief,
+            reservation_id=reservation_id,
+        )
     lock_token = await _acquire_web_suno_lock(redis)
     try:
-        service = WebMusicService(
-            get_db_pool(),
-            get_generation_service(),
-            # v3 charges-only wallet is the single source of truth; no legacy
-            # web-subscription credit service is constructed any more.
-            credit_service=None,
-            redis=redis,
-        )
         await service.fulfill_queued_generate(
             user_id,
             task_id,

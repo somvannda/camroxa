@@ -110,28 +110,8 @@ def mute_blocklist(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-@pytest.mark.asyncio
-async def test_simple_generation_uses_theme_and_pool_seeds(
-    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """One shared description + a per-song theme must not yield one song twice."""
-    user_id = uuid4()
-    task_id = uuid4()
-    generation = MagicMock()
-    generation.generate_suno_lyrics = AsyncMock(
-        return_value=("[Verse]\ncity lights", "Same Title As Yesterday")
-    )
-    service = WebMusicService(MagicMock(), generation)
-    service._is_paid_queue_user = AsyncMock(return_value=True)
-    service._active_generate_queue_count = AsyncMock(return_value=0)
-    service._reserve_daily_slot = AsyncMock(
-        return_value={"limit": 1000, "used": 0, "remaining": 100, "is_pro": True}
-    )
-    service._enqueue_web_generate = AsyncMock(return_value=task_id)
-    service._link_generation_debit_reference = AsyncMock()
-    service._resolve_workspace_id = AsyncMock(return_value=uuid4())
-    service._with_queue_fields = AsyncMock(side_effect=lambda _uid, quota: quota)
-    service._recent_web_titles = AsyncMock(return_value=["Midnight Pulse"])
+def _pool_seeds(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Claim a pool title/opening line instead of whatever the LLM returns."""
 
     async def fake_claim(**kwargs):
         text = "Teal Horizon" if kwargs["kind"] == "titles" else "Streetlights hum"
@@ -150,8 +130,56 @@ async def test_simple_generation_uses_theme_and_pool_seeds(
     monkeypatch.setattr(
         "platform_api.services.web_music_service.finalize_pool_item", finalize
     )
+    return finalize
 
-    payload = await service.generate(
+
+def _queued_row(task_id) -> dict[str, object]:
+    return {
+        "id": task_id,
+        "title": "Untitled",
+        "lyrics": "",
+        "style": "Contemporary pop",
+        "model": "V6_MINI",
+        "instrumental": False,
+        "external_task_id": None,
+        "negative_tags": None,
+        "vocal_gender": None,
+        "style_weight": 0.5,
+        "weirdness_constraint": 0.5,
+        "audio_weight": 0.5,
+        "reference_image_urls": [],
+        "reference_video_urls": [],
+        "persona_id": None,
+        "status": "pending",
+    }
+
+
+@pytest.mark.asyncio
+async def test_simple_generation_queues_without_waiting_for_lyrics(
+    mute_blocklist: None,
+) -> None:
+    """Suno's lyrics task must not run inside the POST.
+
+    It polls for up to two minutes, which put the edge proxy's 100s response
+    limit (HTTP 524) in the middle of every batch: the first song landed and
+    the rest died.
+    """
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock()
+    service = WebMusicService(AsyncMock(), generation)
+    service._is_paid_queue_user = AsyncMock(return_value=True)
+    service._active_generate_queue_count = AsyncMock(return_value=0)
+    service._reserve_daily_slot = AsyncMock(
+        return_value={"limit": 1000, "used": 0, "remaining": 100, "is_pro": True}
+    )
+    service._enqueue_web_generate = AsyncMock(return_value=task_id)
+    service._link_generation_debit_reference = AsyncMock()
+    service._resolve_workspace_id = AsyncMock(return_value=uuid4())
+    service._with_queue_fields = AsyncMock(side_effect=lambda _uid, quota: quota)
+
+    await service.generate(
         user_id,
         mode="simple",
         lyrics="",
@@ -163,12 +191,113 @@ async def test_simple_generation_uses_theme_and_pool_seeds(
         theme="a rooftop sunrise after the party",
     )
 
+    generation.generate_suno_lyrics.assert_not_awaited()
+    enqueued = service._enqueue_web_generate.await_args.kwargs
+    assert enqueued["lyrics"] == ""
+    assert enqueued["lyrics_brief"] == {
+        "prompt": "moody synthwave, warm bass, female vocal",
+        "theme": "a rooftop sunrise after the party",
+        "structure": "",
+        "title": "",
+    }
+
+
+@pytest.mark.asyncio
+async def test_worker_writes_simple_lyrics_before_submitting(
+    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One shared description + a per-song theme must not yield one song twice."""
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock(
+        return_value=("[Verse]\ncity lights", "Same Title As Yesterday")
+    )
+    service = WebMusicService(AsyncMock(), generation)
+    service._pool.fetchrow = AsyncMock(return_value=_queued_row(task_id))
+    service._recent_web_titles = AsyncMock(return_value=["Midnight Pulse"])
+    finalize = _pool_seeds(monkeypatch)
+
+    await service.write_queued_lyrics(
+        user_id,
+        task_id,
+        reservation_id="res-1",
+        brief={
+            "prompt": "moody synthwave, warm bass, female vocal",
+            "theme": "a rooftop sunrise after the party",
+            "structure": "",
+            "title": "",
+        },
+    )
+
     lyrics_prompt = generation.generate_suno_lyrics.await_args.args[0]
     assert "rooftop sunrise" in lyrics_prompt
-    assert len(lyrics_prompt) <= _WEB_LYRICS_PROMPT_MAX
-    # The pool title wins over the generator's repeated title.
-    assert payload["title"] == "Teal Horizon"
     assert "Midnight Pulse" in lyrics_prompt  # avoid list reached the prompt
-    enqueued = service._enqueue_web_generate.await_args.kwargs
-    assert "Streetlights hum" in enqueued["lyrics"]
+    assert len(lyrics_prompt) <= _WEB_LYRICS_PROMPT_MAX
+
+    writes = [
+        call.args
+        for call in service._pool.execute.await_args_list
+        if "SET title = $3, lyrics = $4" in str(call.args[0])
+    ]
+    assert writes, "the written lyrics were never persisted"
+    # The pool title wins over the generator's repeated title, and the pool
+    # opening line opens the generated lyrics.
+    assert writes[0][3] == "Teal Horizon"
+    assert "Streetlights hum" in writes[0][4]
     assert finalize.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_lyrics_failure_refunds_the_queued_song(
+    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed lyrics task must refund, not leave the song charged forever."""
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock(side_effect=RuntimeError("suno lyrics down"))
+    service = WebMusicService(AsyncMock(), generation)
+    service._pool.fetchrow = AsyncMock(return_value=_queued_row(task_id))
+    service._recent_web_titles = AsyncMock(return_value=[])
+    service._release_daily_slot = AsyncMock()
+    _pool_seeds(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="suno lyrics down"):
+        await service.write_queued_lyrics(
+            user_id,
+            task_id,
+            reservation_id="res-1",
+            brief={"prompt": "dreamy lofi", "theme": "", "structure": "", "title": ""},
+        )
+
+    service._release_daily_slot.assert_awaited()
+    assert service._release_daily_slot.await_args.kwargs["reference_id"] == "res-1"
+
+
+@pytest.mark.asyncio
+async def test_refunded_song_is_not_resurrected(
+    mute_blocklist: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retried job must not deliver a song an earlier attempt refunded."""
+    user_id = uuid4()
+    task_id = uuid4()
+    generation = MagicMock()
+    generation.generate_suno_lyrics = AsyncMock()
+    generation.submit_suno_external_id = AsyncMock(return_value="ext-1")
+    service = WebMusicService(AsyncMock(), generation)
+    refunded = _queued_row(task_id)
+    refunded["status"] = "failed"
+    service._pool.fetchrow = AsyncMock(return_value=refunded)
+    _pool_seeds(monkeypatch)
+
+    await service.write_queued_lyrics(
+        user_id,
+        task_id,
+        reservation_id="res-1",
+        brief={"prompt": "dreamy lofi", "theme": "", "structure": "", "title": ""},
+    )
+    await service.fulfill_queued_generate(user_id, task_id, reservation_id="res-1")
+
+    generation.generate_suno_lyrics.assert_not_awaited()
+    generation.submit_suno_external_id.assert_not_awaited()

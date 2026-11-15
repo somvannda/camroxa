@@ -2242,10 +2242,16 @@ export function CreateStudio() {
       void refresh();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Could not start generation";
+      // A 524 is the edge proxy giving up on a slow origin, not a rejection:
+      // the song may have been queued and charged anyway, so reload the
+      // library instead of letting the user submit a duplicate.
+      const gatewayTimeout = /\b524\b|gateway time-?out|took too long/i.test(message);
       const hint =
         cause instanceof WebMusicApiError && cause.status === 402
           ? " Open Buy packs to add credits."
-          : "";
+          : gatewayTimeout
+            ? " The server took too long to answer — any song it did start is in your library."
+            : "";
       setError(
         createdCount > 0
           ? `Created ${createdCount} of ${count} songs, then stopped: ${message}${hint}`
@@ -2253,6 +2259,9 @@ export function CreateStudio() {
       );
       const nextQuota = await fetchWebMusicQuota().catch(() => null);
       if (nextQuota && mounted.current) setQuota(nextQuota);
+      if (gatewayTimeout) {
+        void refreshSongs();
+      }
     } finally {
       if (mounted.current) {
         setBusy(false);
