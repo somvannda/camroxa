@@ -50,7 +50,7 @@ test("the clip menu splits, renames and recolours a clip", async ({ page }) => {
 
   // Re-open the menu on the clip and split.
   await page.mouse.click(box.x + 30, box.y + 40, { button: "right" });
-  await menu.getByRole("menuitem", { name: /Split/ }).click();
+  await menu.getByRole("menuitem", { name: "Split Ctrl E" }).click();
   await expect(page.locator(".se-clip")).toHaveCount(2);
   const split = await lanes();
   expect(split).toHaveLength(2);

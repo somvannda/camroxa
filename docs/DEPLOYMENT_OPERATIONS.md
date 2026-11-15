@@ -1,5 +1,11 @@
 # CamXora deployment operations
 
+> **HOLD (2026-11-14):** production deployment of `camxora.com/` is intentionally paused.
+> Do not deploy to production `camxora.com` yet, and do not replace `camxora.com` with
+> `music.camxora.com` — `music.camxora.com` must stay exactly as it is and keep working.
+> The `camxora.com/` app is built and verified locally until the user explicitly approves
+> deployment.
+
 **Purpose:** Runbook for sandbox and production deploys â€” nginx, AI routing, and common production incidents.  
 **Last updated:** 2026-07-16  
 **Related:** [`SANDBOX_DEPLOYMENT_GUIDE.md`](./SANDBOX_DEPLOYMENT_GUIDE.md), [`PRODUCTION_INFRASTRUCTURE_PLAN.md`](./PRODUCTION_INFRASTRUCTURE_PLAN.md)
@@ -333,6 +339,10 @@ flagged by `check_deploy_hygiene.py`.
 
 - [ ] `curl -sf https://musicapi.<env>.camxora.com/health` returns `{"ok":true,...}` with the expected account count
 - [ ] `python scripts/deploy/verify_musicapi_captcha_guard.py --solve` -> solve gate live and 2Captcha accepts a token (spends ~$0.003 of 2Captcha balance, no user credits)
+- [ ] `python scripts/studio_release_checks.py` against the environment passes; add
+      `CAMXORA_EXPECT_STATE_SYNC=1` where the Suno Studio mirror must be live — the run
+      then blocks if `GET /studio/projects/{id}/sync` is missing or reports
+      `state_sync: false`. The check is read-only and never pushes to Suno.
 
 ### Billing (if enabled)
 
@@ -371,6 +381,29 @@ Also use [`SANDBOX_DEPLOYMENT_GUIDE.md` Â§18](./SANDBOX_DEPLOYMENT_GUIDE.md#18
 ```bash
 python scripts/deploy/fix_audit_log_timezone_sandbox.py
 ```
+
+---
+
+## 11. Local `platform_db` migration stamp (known drift, 2026-11-13)
+
+`platform_db` on this workstation is stamped `174_studio_project_suno_id`, a revision id
+that exists in **neither** the current tree nor the in-flight feature branch (both heads
+are `199`), and it is missing later tables such as `studio_editor_presence` (198) and
+`studio_sync_links`. Consequences:
+
+- `alembic upgrade head` cannot run against it: `Can't locate revision ...`. Nothing was
+  applied while investigating, so the DB is unchanged.
+- Studio presence and mirror routes answer 500 with `relation ... does not exist` when an
+  API runs against this DB, which is what the share-presence bug initially looked like.
+
+Recovery is deliberate, never automatic: find the revision whose schema actually matches,
+`alembic stamp <revision>`, then `alembic upgrade head`, and confirm with
+`SELECT to_regclass('public.studio_editor_presence')`. Only do this on a DB you own;
+production and sandbox are separate and unaffected.
+
+To verify the presence fix without touching the stamp, the 198 `CREATE TABLE` was applied
+by hand, the endpoint answered `200` with `playhead_seconds` intact, and the table was
+dropped again.
 
 ---
 

@@ -25,9 +25,12 @@ export const MIDI_PITCHES = MIDI_MAX_PITCH - MIDI_MIN_PITCH + 1;
 
 export type MidiChordMode = "off" | "major" | "minor";
 export type MidiArpMode = "off" | "up" | "down";
-export type MidiInstrument = "triangle" | "sine" | "sawtooth";
+export type MidiInstrument = "triangle" | "sine" | "sawtooth" | `wavetable:${string}`;
 
 export function normalizeMidiInstrument(value: unknown): MidiInstrument {
+  if (typeof value === "string" && value.startsWith("wavetable:") && value.length > 10) {
+    return value as MidiInstrument;
+  }
   return value === "sine" || value === "sawtooth" ? value : "triangle";
 }
 
@@ -199,11 +202,19 @@ export function scheduleMidiNote(
   when: number,
   rate = 1,
   automation?: { bend?: number; mod?: number },
-  instrument: MidiInstrument = "triangle"
+  instrument: MidiInstrument = "triangle",
+  /** N-14: a designed wavetable replaces the built-in oscillator shape. */
+  wave?: PeriodicWave | null
 ): AudioScheduledSourceNode[] {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
-  oscillator.type = instrument;
+  if (wave) {
+    oscillator.setPeriodicWave(wave);
+  } else if (!instrument.startsWith("wavetable:")) {
+    oscillator.type = instrument as OscillatorType;
+  } else {
+    oscillator.type = "sine";
+  }
   oscillator.frequency.value = midiToFreq(note.pitch);
   // Pitch bend is applied as detune at the note's start (captured lane, simplified).
   oscillator.detune.value = (automation?.bend ?? 0) * 200;
@@ -239,4 +250,37 @@ export function scheduleMidiNote(
   oscillator.start(when);
   oscillator.stop(when + length + 0.02);
   return sources;
+}
+
+/**
+ * The reference's playable keyboard (S14): the `A`–`;` row plays a chromatic octave
+ * and a half, `Z`/`X` move the octave and `C`/`V` change velocity. Keyed by
+ * `KeyboardEvent.key.toLowerCase()`, so shift does not change the note.
+ */
+export const PLAYABLE_KEYS: Record<string, number> = {
+  a: 0,
+  w: 1,
+  s: 2,
+  e: 3,
+  d: 4,
+  f: 5,
+  t: 6,
+  g: 7,
+  y: 8,
+  h: 9,
+  u: 10,
+  j: 11,
+  k: 12,
+  o: 13,
+  l: 14,
+  p: 15,
+  ";": 16,
+};
+
+/** MIDI pitch for one playable key at an octave (C4 = 60 with octave 4). */
+export function playablePitch(key: string, octave: number): number | null {
+  const offset = PLAYABLE_KEYS[key.toLowerCase()];
+  if (offset === undefined) return null;
+  const pitch = (Math.trunc(octave) + 1) * 12 + offset;
+  return Math.max(MIDI_MIN_PITCH, Math.min(MIDI_MAX_PITCH, pitch));
 }

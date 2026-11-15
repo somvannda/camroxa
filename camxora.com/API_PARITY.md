@@ -99,3 +99,62 @@ lyrics drafts, playlist style import, credit packs.
   - `Wink Voice` (`provider_persona_id 735f11c4-df0c-44ed-ab55-b38113285c06`) was
     inserted manually to verify the pipeline. Remove or replace it with a
     UI-created persona before deploy.
+
+## 4. Remaining feature gaps (2026-11-14)
+
+Production is on hold: `camxora.com/` is built and verified locally only, and
+`music.camxora.com` must stay unchanged. Every control that looked finished but
+did nothing is tracked here; a gap is either implemented or removed — never left
+as a stub.
+
+**No remaining gaps.** The last two were closed by removal: the plugin
+"unverified" badge (nothing is unverified after the live registry check) and the
+Learn menu's YouTube Tutorials row (no channel exists and the product does not do
+tutorials — a permanently disabled row is not a feature).
+
+Closed in this pass (2026-11-14):
+
+- Learn → **Learning Center** now opens a real in-app tour (five steps) instead
+  of a disabled row; the settings dialog no longer ships empty "Window
+  management"/"Content" stubs.
+- Library → **Audio + → Upload/Record** deep-links into the working Create
+  uploader/recorder (`/create?attach=upload|record`) instead of a "not enabled"
+  panel.
+- Song menu → **Open in Editor / Open in Studio / Replace Section / Crop Song**
+  now deep-link `?clip=<generation>&variant=&intent=`. The editor materialises
+  that version as a one-track project (`lib/studio-from-clip.ts`) and shows the
+  relevant hint, instead of opening an unrelated project or staying disabled.
+- Create → **Sounds** is wired end to end: `POST /api/v3/web-music/sounds`
+  charges through the music price, queues a `kind='sounds'` task on the shared
+  queue, submits `POST /v1/sounds` in musicapi, and the existing poll/library
+  surface renders the result. Migration `200_suno_task_kind` adds the discriminator.
+  The price is intentionally the music price until the pricing table gets a
+  dedicated `sounds` row (a product/pricing decision, not code).
+- Song menu → **Use as Inspiration** now opens Create in advanced mode with the
+  song's style filled in and empty lyrics, so the user writes their own song in
+  that style (`/create?inspire=<id>`).
+- **Speech** tab and **Hooks / Liked Hooks** library tabs were removed: no
+  provider or backend exists for either, and leaving "coming soon"/"not enabled"
+  surfaces in the app is the stub D-034 forbids. Re-add them when a provider is
+  wired; the Library now lists Songs, Playlists, Albums, Workspaces, Studio
+  Projects, Cover Art, Uploads, History and Trash.
+- The Create model menu no longer offers the disabled "Create Custom Model"
+  (Beta, 100 credits) row: there is no custom-model backend, so the menu lists
+  only usable models. The Studio prompt bar's model menu drops the same row.
+  "Sample this song" keeps its disabled row but now states the real blocker
+  (clip-reference provider) instead of "coming soon".
+- The Studio **master chain** no longer suggests Reverb: Suno's
+  `masterSignalChain` carries only limiter/EQ/compressor, so a master reverb
+  would be a local-only effect (D-034). The dock offers EQ and Compressor, both
+  rendered by the master bus.
+- Song menu → **Sample this song** is wired end to end: it opens Create with the
+  source clip attached (`/create?sample=<id>&variant=`), the form shows a
+  removable “Sampling …” chip, and submitting sends `sample_task_id` +
+  `sample_variant`. The server resolves the owned clip's durable audio URL,
+  stores it on the task (migration `201`), and forwards it as `audio_urls` to
+  musicapi's agentic audio-reference path. No raw provider URL comes from the
+  browser.
+- Studio clip inspector → **Comments and notes** (S55): anonymous plain-text
+  notes scoped to one clip (`studio_project_comments.clip_id`, migration `202`),
+  with Enter-to-post and persistence across reloads. Project-level/share
+  threads are unchanged.

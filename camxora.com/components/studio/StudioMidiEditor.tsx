@@ -12,6 +12,8 @@ import {
   MIDI_ROW,
   isBlackKey,
   noteName,
+  playablePitch,
+  scheduleMidiNote,
   type MidiArpMode,
   type MidiChordMode,
   type MidiInstrument,
@@ -47,6 +49,10 @@ export type StudioMidiEditorProps = {
   onScaleChange: (scale: string) => void;
   instrument: MidiInstrument;
   onInstrumentChange: (instrument: MidiInstrument) => void;
+  /** N-14: designed wavetables available to this project. */
+  wavetables?: Array<{ id: string; name: string }>;
+  /** Opens the Wavetable Designer; hidden when advanced content is off. */
+  onDesignWavetable?: () => void;
   onImportMidi: (file: File) => void;
   onToggleLoop: () => void;
   onChangeNotes: (notes: MidiNote[]) => void;
@@ -101,6 +107,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     onScaleChange,
     instrument,
     onInstrumentChange,
+    wavetables = [],
+    onDesignWavetable,
     onImportMidi,
     onToggleLoop,
     onChangeNotes,
@@ -124,6 +132,15 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const [velocityPreview, setVelocityPreview] = useState<number | null>(null);
   /** Notes targeted by the keyboard actions (Ctrl A / arrows / Q / 0 / Delete). */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  /**
+   * CTRL K: musical typing. While on, the `A`–`;` row auditions notes and `Z`/`X`,
+   * `C`/`V` move the octave and velocity. Off by default so the zoom and clipboard
+   * letters keep working.
+   */
+  const [keysMode, setKeysMode] = useState(false);
+  const [keysOctave, setKeysOctave] = useState(4);
+  const [keysVelocity, setKeysVelocity] = useState(100);
+  const auditionRef = useRef<AudioContext | null>(null);
   const rollRef = useRef<HTMLDivElement | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
   const midiFileRef = useRef<HTMLInputElement | null>(null);
@@ -334,6 +351,31 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     });
   }
 
+  /** Audition one pitch through the same synth voice the transport uses. */
+  function auditionPitch(pitch: number) {
+    const Context =
+      typeof window !== "undefined"
+        ? window.AudioContext ??
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        : undefined;
+    if (!Context) return;
+    auditionRef.current ??= new Context();
+    const context = auditionRef.current;
+    void context.resume();
+    scheduleMidiNote(
+      context,
+      context.destination,
+      {
+        id: `audition-${pitch}`,
+        pitch,
+        start: 0,
+        length: 0.35,
+        velocity: keysVelocity,
+      },
+      context.currentTime
+    );
+  }
+
   /**
    * Reference shortcut map (S14, CLIP EDITOR – MIDI): Ctrl A selects every note,
    * Shift Q quantizes, 0 toggles the disabled state, arrows nudge/transpose,
@@ -344,6 +386,38 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
 
     const mod = event.metaKey || event.ctrlKey;
+    if (mod && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      event.stopPropagation();
+      setKeysMode((on) => !on);
+      return;
+    }
+    if (keysMode && !mod && !event.altKey) {
+      const letter = event.key.toLowerCase();
+      if (letter === "z" || letter === "x") {
+        event.preventDefault();
+        event.stopPropagation();
+        setKeysOctave((octave) =>
+          Math.max(0, Math.min(8, octave + (letter === "x" ? 1 : -1)))
+        );
+        return;
+      }
+      if (letter === "c" || letter === "v") {
+        event.preventDefault();
+        event.stopPropagation();
+        setKeysVelocity((velocity) =>
+          Math.max(1, Math.min(127, velocity + (letter === "v" ? 10 : -10)))
+        );
+        return;
+      }
+      const pitch = playablePitch(letter, keysOctave);
+      if (pitch !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        auditionPitch(pitch);
+        return;
+      }
+    }
     if (mod && (event.key === "=" || event.key === "+")) {
       event.preventDefault();
       event.stopPropagation();
@@ -746,8 +820,23 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
             <option value="triangle">Triangle</option>
             <option value="sine">Sine</option>
             <option value="sawtooth">Saw</option>
+            {wavetables.map((table) => (
+              <option key={table.id} value={`wavetable:${table.id}`}>
+                {table.name}
+              </option>
+            ))}
           </select>
         </label>
+        {onDesignWavetable ? (
+          <button
+            type="button"
+            className="se-pill se-midi-design"
+            aria-label="Design a wavetable"
+            onClick={onDesignWavetable}
+          >
+            <Icon name="fa-wave-square" /> Design wavetable
+          </button>
+        ) : null}
         <label className="se-midi-control">
           Chord
           <select
@@ -830,6 +919,15 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
           onClick={() => midiFileRef.current?.click()}
         >
           Import MIDI
+        </button>
+        <button
+          type="button"
+          className={`se-pill${keysMode ? " on" : ""}`}
+          aria-pressed={keysMode}
+          title="Play notes with A–;, Z/X octave, C/V velocity (Ctrl K)"
+          onClick={() => setKeysMode((on) => !on)}
+        >
+          Keys {keysMode ? "On" : "Off"}
         </button>
         <span className="se-midi-control">View All</span>
       </div>

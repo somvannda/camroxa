@@ -26,6 +26,7 @@ class SunoRequest:
     audio_weight: float | None = None
     image_urls: list[str] = field(default_factory=list)
     video_urls: list[str] = field(default_factory=list)
+    audio_urls: list[str] = field(default_factory=list)
     persona_id: str | None = None
     persona_model: str | None = None
 

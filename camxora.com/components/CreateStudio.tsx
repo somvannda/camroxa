@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -78,6 +78,7 @@ import {
   type WebMusicStudioUpload,
   generateWebMusic,
   generateWebMusicDraft,
+  generateWebMusicSounds,
   generateWebMusicStyles,
   getWebMusicGeneration,
   listWebMusicGenerations,
@@ -335,6 +336,12 @@ export function CreateStudio() {
   const [lyricsSaving, setLyricsSaving] = useState(false);
   const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
+  const [soundPrompt, setSoundPrompt] = useState("");
+  const [soundBusy, setSoundBusy] = useState(false);
+  const [soundError, setSoundError] = useState("");
+  const [sampleSource, setSampleSource] = useState<
+    { id: string; variant: "ok" | "alt"; title: string } | null
+  >(null);
   const [audioHistory, setAudioHistory] = useState<WebMusicStudioOperation[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -391,7 +398,7 @@ export function CreateStudio() {
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
 
-  const [createTab, setCreateTab] = useState<"songs" | "speech" | "sounds">("songs");
+  const [createTab, setCreateTab] = useState<"songs" | "sounds">("songs");
   const [feedSearch, setFeedSearch] = useState("");
   const [feedSort, setFeedSort] = useState<FeedSort>("new");
   const [feedFilters, setFeedFilters] = useState<FeedFilter[]>([]);
@@ -514,7 +521,6 @@ export function CreateStudio() {
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
-  const [stylePresetsOpen, setStylePresetsOpen] = useState(false);
   const [stylesModalOpen, setStylesModalOpen] = useState(false);
   const [stylesModalMode, setStylesModalMode] = useState<"write" | "existing">("write");
   const [dragging, setDragging] = useState(false);
@@ -598,7 +604,6 @@ export function CreateStudio() {
         setWorkspaceMenuOpen(false);
         setSaveMenuOpen(false);
         setRowMenuKey(null);
-        setStylePresetsOpen(false);
         setAddMenuOpen(false);
         setAddSubmenu(null);
       }
@@ -613,7 +618,6 @@ export function CreateStudio() {
         setWorkspaceMenuOpen(false);
         setSaveMenuOpen(false);
         setRowMenuKey(null);
-        setStylePresetsOpen(false);
         setAddMenuOpen(false);
         setAddSubmenu(null);
         setAttachModal(null);
@@ -791,6 +795,63 @@ export function CreateStudio() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const attach = params.get("attach");
+    if (attach !== "upload" && attach !== "record") return;
+    window.history.replaceState(null, "", "/create");
+    // Deep link from the Library's attach menu: land in the working upload /
+    // record flow instead of a dead "not enabled" panel.
+    openAudioModal(attach);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inspireId = params.get("inspire");
+    if (!inspireId) return;
+    window.history.replaceState(null, "", "/create");
+    const apply = (song: WebMusicGeneration) => {
+      if (mounted.current) inspireFrom(song);
+    };
+    const existing = songs.find((song) => song.id === inspireId);
+    if (existing) {
+      apply(existing);
+      return;
+    }
+    getWebMusicGeneration(inspireId)
+      .then(apply)
+      .catch(() => {
+        if (mounted.current) setToast("Could not load that song");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sampleId = params.get("sample");
+    if (!sampleId) return;
+    window.history.replaceState(null, "", "/create");
+    const variant: "ok" | "alt" = params.get("variant") === "alt" ? "alt" : "ok";
+    const apply = (song: WebMusicGeneration) => {
+      if (!mounted.current) return;
+      setSampleSource({ id: song.id, variant, title: song.title || "song" });
+      inspireFrom(song);
+      setToast(`Sampling ${song.title || "this song"} — describe the new song`);
+    };
+    const existing = songs.find((song) => song.id === sampleId);
+    if (existing) {
+      apply(existing);
+      return;
+    }
+    getWebMusicGeneration(sampleId)
+      .then(apply)
+      .catch(() => {
+        if (mounted.current) setToast("Could not load that song");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const taskId = params.get("mashup");
     if (!taskId) return;
     const variant = params.get("variant") === "alt" ? "alt" : "ok";
@@ -919,6 +980,43 @@ export function CreateStudio() {
   const hasPending = songs.some((song) =>
     ["pending", "queued", "running"].includes(String(song.status).toLowerCase())
   );
+
+  async function submitSounds() {
+    const prompt = soundPrompt.trim();
+    if (prompt.length < 3 || soundBusy) return;
+    setSoundBusy(true);
+    setSoundError("");
+    try {
+      const created = await generateWebMusicSounds({
+        prompt,
+        workspace_id: activeWorkspaceId ?? undefined,
+      });
+      setQuota(created.quota);
+      const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
+      const pending: WebMusicGeneration =
+        loaded ?? {
+          id: created.task_id,
+          title: created.title || prompt.slice(0, 60),
+          style: created.style || prompt,
+          model: created.model,
+          model_label: created.model_label,
+          status: created.status || "pending",
+          created_at: new Date().toISOString(),
+          clips: [],
+        };
+      setSongs((current) => [
+        pending,
+        ...current.filter((item) => item.id !== pending.id),
+      ]);
+      setSoundPrompt("");
+    } catch (cause) {
+      setSoundError(
+        cause instanceof Error ? cause.message : "Could not create this sound."
+      );
+    } finally {
+      setSoundBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!hasPending) return;
@@ -1358,7 +1456,6 @@ export function CreateStudio() {
       setStyle((current) => [current.trim(), ...tags].filter(Boolean).join(", ").slice(0, 1000));
       setMode("custom");
       setAdvancedOpen(false);
-      setStylePresetsOpen(false);
       setAttachModal(null);
       setToast(`Styles from ${playlist.name} added`);
     } catch (cause) {
@@ -1683,6 +1780,23 @@ export function CreateStudio() {
     setPrompt(text);
     document.getElementById("create-prompt")?.focus();
     setToast("Prompt reused");
+  }
+
+  /** Start a new song from this one's style (the captured "Use as Inspiration"). */
+  function inspireFrom(song: WebMusicGeneration) {
+    const style = (song.style || "").trim();
+    if (!style) {
+      setToast("This song has no style to inspire a new one");
+      return;
+    }
+    if (mode !== "custom") setMode("custom");
+    setStyle(style.slice(0, 1000));
+    setLyrics("");
+    setLyricsMode("write");
+    setInstrumental(Boolean(song.instrumental));
+    setStylesOpen(true);
+    setToast(`Inspired by ${song.title || "this song"} — write your own lyrics`);
+    window.setTimeout(() => document.getElementById("create-style")?.focus(), 0);
   }
 
   async function coverFromRow(song: WebMusicGeneration, clip: WebMusicClip) {
@@ -2184,6 +2298,9 @@ export function CreateStudio() {
       video_urls: referenceVideo ? [referenceVideo.url] : undefined,
       persona_id: selectedPersona?.provider_persona_id || undefined,
       workspace_id: activeWorkspaceId ?? undefined,
+      ...(sampleSource
+        ? { sample_task_id: sampleSource.id, sample_variant: sampleSource.variant }
+        : {}),
     };
     setBatchProgress(count > 1 ? { done: 0, total: count } : null);
     let createdCount = 0;
@@ -2238,6 +2355,7 @@ export function CreateStudio() {
           : "Generation started. Your song will appear here."
       );
       setCooldownSeconds(5);
+      setSampleSource(null);
       void refreshSongs();
       void refresh();
     } catch (cause) {
@@ -2727,7 +2845,7 @@ export function CreateStudio() {
             <div className="s-feed-scroll">
             {audioResultRows.length ? (
               <div>
-                <h3 className="s-day">Audio results</h3>
+                <h2 className="s-day">Audio results</h2>
                 {audioResultRows.map((operation) => {
                   const clip = operation.result?.clips?.[0];
                   if (!clip?.audioUrl) return null;
@@ -3096,6 +3214,13 @@ export function CreateStudio() {
                         onCopyLink={() => void copyClipLink(song, clip)}
                         onCover={() => void coverFromRow(song, clip)}
                         onReusePrompt={() => reusePromptFrom(song)}
+                      onInspire={() => inspireFrom(song)}
+                        onSample={() => {
+                          const variant = clip.variant === "alt" ? "alt" : "ok";
+                          setSampleSource({ id: song.id, variant, title: song.title || "song" });
+                          inspireFrom(song);
+                          setToast(`Sampling ${song.title || "this song"} — describe the new song`);
+                        }}
                         onMashup={() =>
                           setMashupSource({
                             song,
@@ -3308,7 +3433,6 @@ export function CreateStudio() {
             {(
               [
                 { id: "songs", label: "Songs" },
-                { id: "speech", label: "Speech" },
                 { id: "sounds", label: "Sounds" },
               ] as const
             ).map((item, index) => (
@@ -3324,31 +3448,73 @@ export function CreateStudio() {
                 {createTab === item.id ? (
                   <span
                     className="s-tab-indicator"
-                    style={{ left: `${(index * 100) / 3}%`, width: `${100 / 3}%` }}
+                    style={{ left: `${(index * 100) / 2}%`, width: `${100 / 2}%` }}
                   />
                 ) : null}
               </button>
             ))}
           </div>
 
-          {createTab !== "songs" ? (
-            <div className="s-empty" style={{ flex: 1 }}>
-              <span className="ico">
-                <Icon name={createTab === "speech" ? "fa-microphone-lines" : "fa-wave-square"} />
-              </span>
-              <b>{createTab === "speech" ? "Speech" : "Sounds"} is coming soon</b>
-              <p>
-                {createTab === "speech"
-                  ? "Turn a script into narrated audio with cloned voices. This workspace is not enabled yet."
-                  : "Generate sound effects and one-shot samples. This workspace is not enabled yet."}
-              </p>
-              <button type="button" className="s-btn s-btn-secondary" onClick={() => setCreateTab("songs")}>
-                Create a song instead
-              </button>
+          {createTab === "sounds" ? (
+            <div className="s-form-scroll">
+              <div
+                className="s-card"
+                style={{ maxWidth: 640, margin: "24px auto", padding: 20, cursor: "default" }}
+              >
+                <div className="s-field">
+                  <label className="s-field-label" htmlFor="create-sound-prompt">
+                    Describe the sound
+                  </label>
+                  <div className="s-style-box">
+                    <textarea
+                      id="create-sound-prompt"
+                      aria-label="Sound description"
+                      value={soundPrompt}
+                      onChange={(event) => setSoundPrompt(event.target.value)}
+                      placeholder="e.g. a warm tape hiss with a soft tail"
+                      maxLength={500}
+                      rows={4}
+                    />
+                  </div>
+                </div>
+                <p className="s-note">
+                  One sound effect per creation. It appears in your library like a song and can be
+                  placed in the Studio timeline.
+                </p>
+                {soundError ? (
+                  <p className="s-error" role="alert">
+                    {soundError}
+                  </p>
+                ) : null}
+                <div className="s-rowline" style={{ marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className="s-btn s-btn-primary"
+                    disabled={soundBusy || soundPrompt.trim().length < 3}
+                    onClick={() => void submitSounds()}
+                  >
+                    <Icon name="fa-wave-square" />{" "}
+                    {soundBusy ? "Creating sound..." : "Create sound"}
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <>
               <div className="s-form-scroll">
+                {sampleSource ? (
+                  <div className="s-rowline" style={{ marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className="s-chip on"
+                      aria-label={`Remove sample ${sampleSource.title}`}
+                      onClick={() => setSampleSource(null)}
+                    >
+                      <Icon name="fa-waveform" /> Sampling {sampleSource.title}{" "}
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : null}
                 <div className="s-form-topline">
                   <div className="s-segment" role="tablist" aria-label="Create form mode">
                     <button
@@ -3431,13 +3597,6 @@ export function CreateStudio() {
                       }
                     >
                       <div className="s-menu-label">Model</div>
-                      <SMenuItem disabled>
-                        <Icon name="fa-wand-magic-sparkles" /> Create Custom Model
-                        <span className="check">Beta</span>
-                      </SMenuItem>
-                      <div className="s-menu-item" style={{ cursor: "default", height: "auto", padding: "4px 10px 8px" }}>
-                        <span className="s-note">Create a model based on your uploads (100 Credits)</span>
-                      </div>
                       <SMenuSeparator />
                       <div className="s-menu-label">All Models</div>
                       <SMenuRadioGroup
@@ -3789,40 +3948,6 @@ export function CreateStudio() {
                           >
                             <Icon name="fa-bookmark" />
                           </button>
-                          {stylePresetsOpen ? (
-                            <div className="s-menu" role="menu" style={{ top: 40, right: 0, width: 260 }}>
-                              <div className="s-menu-label">Saved styles</div>
-                              {savedStylePrompts.length ? (
-                                savedStylePrompts.map((value) => (
-                                  <button
-                                    key={value}
-                                    type="button"
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    onClick={() => {
-                                      setStyle(value);
-                                      setStylePresetsOpen(false);
-                                    }}
-                                  >
-                                    <Icon name="fa-bookmark" />
-                                    <span
-                                      style={{
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {value}
-                                    </span>
-                                  </button>
-                                ))
-                              ) : (
-                                <div className="s-note" style={{ padding: 10 }}>
-                                  Styles you generate are saved here.
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
                         </div>
 
                           <button
@@ -4582,7 +4707,7 @@ export function CreateStudio() {
           <div className="s-feed-scroll">
             {audioResultRows.length ? (
               <div>
-                <h3 className="s-day">Audio results</h3>
+                <h2 className="s-day">Audio results</h2>
                 {audioResultRows.map((operation) => {
                   const clip = operation.result?.clips?.[0];
                   if (!clip?.audioUrl) return null;
@@ -4823,14 +4948,14 @@ export function CreateStudio() {
             ) : viewMode === "list" ? (
               groupedRows.map((group) => (
                 <div key={group.label}>
-                  <h3 className="s-day">{group.label}</h3>
+                  <h2 className="s-day">{group.label}</h2>
                   {group.rows.map(renderRow)}
                 </div>
               ))
             ) : (
               groupedRows.map((group) => (
                 <div key={group.label}>
-                  <h3 className="s-day">{group.label}</h3>
+                  <h2 className="s-day">{group.label}</h2>
                   <div className="s-grid">
                     {group.rows.map((row) => (
                       <div

@@ -25,6 +25,11 @@ import {
 } from "@/lib/studio-clip-audio";
 import { normaliseChannels } from "@/lib/studio-normalise";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
+import { createPluginAudio } from "@/lib/studio-plugin-audio";
+import { sanitizeChain } from "@/lib/studio-plugin-chain";
+import { groupGain, type GroupMix } from "@/lib/studio-groups";
+import { DELAY_BUS_PARAMS, REVERB_BUS_PARAMS, sanitizeSends, sendsActive, type TrackSends } from "@/lib/studio-sends";
+import type { TrackGroupId } from "@/lib/studio-tracks";
 import {
   normalizeMidiInstrument,
   sanitizePoints,
@@ -34,6 +39,11 @@ import {
   type MidiNote,
 } from "@/lib/studio-midi";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
+import {
+  wavetableIdFromInstrument,
+  wavetablePeriodicWave,
+  type CustomWavetable,
+} from "@/lib/studio-wavetable";
 
 export type ExportClip = {
   id: string;
@@ -55,11 +65,15 @@ export type ExportClip = {
   };
   /** MIDI synth voice (S31); triangle when absent. */
   instrument?: MidiInstrument;
+  /** Clip-level insert chain (§34 "Remove FX"). */
+  fx?: unknown;
 };
 
 export type ExportTrack = {
   id: string;
   name?: string;
+  /** ARR-027: group membership drives the submix multiplier. */
+  groupId?: TrackGroupId | null;
   volume?: number;
   pan?: number;
   muted?: boolean;
@@ -131,6 +145,19 @@ export type RenderOptions = {
    * omitted, so a plain render stays byte-identical to what the mix produced.
    */
   normalise?: number | null;
+  /** N-14: designed wavetables, so a MIDI clip using one renders the same as playback. */
+  wavetables?: CustomWavetable[];
+  /**
+   * Output container. WAV is the default and stays byte-identical to before; MP3 is
+   * encoded after the render with the bundled LAME encoder.
+   */
+  format?: "wav" | "mp3";
+  /** MP3 bitrate in kbps (ignored for WAV). */
+  mp3Bitrate?: number;
+  /** ARR-027: group levels, applied as a submix multiplier before the track fader. */
+  groups?: GroupMix;
+  /** Per-track shared-bus sends, keyed by track id. */
+  sends?: Record<string, TrackSends>;
 };
 
 /**
@@ -153,11 +180,44 @@ export async function renderMix(
   const seconds = to - from;
 
   const context = new OfflineAudioContext(2, Math.ceil(seconds * sampleRate), sampleRate);
+  const waveCache = new Map<string, PeriodicWave>();
+  function waveFor(instrument: string | undefined): PeriodicWave | null {
+    const id = wavetableIdFromInstrument(instrument ?? "");
+    if (!id) return null;
+    const cached = waveCache.get(id);
+    if (cached) return cached;
+    const table = (options.wavetables ?? []).find((candidate) => candidate.id === id);
+    if (!table) return null;
+    const wave = wavetablePeriodicWave(context, table.harmonics);
+    waveCache.set(id, wave);
+    return wave;
+  }
   const master = context.createGain();
   master.gain.value = Math.max(0, Math.min(1, options.masterGain ?? 0.85));
   const bus = buildMasterBus(context, options.chain ?? []);
   master.connect(bus.input);
   bus.output.connect(context.destination);
+
+  // FX sends: shared Delay/Reverb buses, built only when a track actually sends.
+  const sendsInUse = tracks.some((track) =>
+    sendsActive(sanitizeSends(options.sends?.[track.id]))
+  );
+  const delayBus = sendsInUse
+    ? createPluginAudio(context, {
+        entryId: "send-delay",
+        pluginId: "delay",
+        params: { ...DELAY_BUS_PARAMS },
+      } as unknown as Parameters<typeof createPluginAudio>[1])
+    : null;
+  const reverbBus = sendsInUse
+    ? createPluginAudio(context, {
+        entryId: "send-reverb",
+        pluginId: "reverb",
+        params: { ...REVERB_BUS_PARAMS },
+      } as unknown as Parameters<typeof createPluginAudio>[1])
+    : null;
+  delayBus?.output.connect(master);
+  reverbBus?.output.connect(master);
 
   // One gain + optional plugin chain per track, shared by that track's clips so an
   // effect is heard once rather than duplicated per clip.
@@ -169,7 +229,10 @@ export async function renderMix(
     const existing = trackNodes.get(trackId);
     if (existing) return existing;
     const gain = context.createGain();
-    gain.gain.value = Math.max(0, volume) / 100;
+    // ARR-027: the group is a submix stage ahead of the track fader.
+    const ownerTrack = tracks.find((track) => track.id === trackId);
+    const groupLevel = ownerTrack ? groupGain(options.groups ?? {}, ownerTrack) : 1;
+    gain.gain.value = (Math.max(0, volume) / 100) * groupLevel;
     const panner = context.createStereoPanner();
     panner.pan.value = Math.max(-1, Math.min(1, pan / 100));
     trackGains.set(trackId, gain);
@@ -177,14 +240,27 @@ export async function renderMix(
     gain.connect(panner);
     panner.connect(master);
     const entries = options.chains?.[trackId] ?? [];
+    let inputNode: AudioNode = gain;
     if (entries.length > 0) {
       const chain = buildPluginChain(context, entries);
       chain.output.connect(gain);
-      trackNodes.set(trackId, chain.input);
-      return chain.input;
+      inputNode = chain.input;
     }
-    trackNodes.set(trackId, gain);
-    return gain;
+    // FX sends tap the pre-fader input node.
+    const trackSends = sanitizeSends(options.sends?.[trackId]);
+    for (const [kind, sendBus] of [
+      ["delay", delayBus],
+      ["reverb", reverbBus],
+    ] as const) {
+      const level = trackSends[kind];
+      if (!sendBus || level <= 0) continue;
+      const sendGain = context.createGain();
+      sendGain.gain.value = level / 100;
+      inputNode.connect(sendGain);
+      sendGain.connect(sendBus.input);
+    }
+    trackNodes.set(trackId, inputNode);
+    return inputNode;
   }
 
   for (const track of tracks) {
@@ -266,6 +342,14 @@ export async function renderMix(
       volume.connect(trackInputNode);
       nodeInput = volume;
     }
+    // Clip-level inserts (§34) sit before clip gain/fade, matching playback.
+    const clipFx = sanitizeChain((clip as { fx?: unknown }).fx);
+    let clipInput: AudioNode = nodeInput;
+    if (clipFx.length > 0) {
+      const chain = buildPluginChain(context, clipFx);
+      chain.output.connect(nodeInput);
+      clipInput = chain.input;
+    }
     if (fadeIn > 0 || fadeOut > 0) {
       const clipGain = context.createGain();
       const intoClip = Math.max(0, from - start);
@@ -279,10 +363,10 @@ export async function renderMix(
         clipGain.gain.setValueAtTime(1, when + fadeStart);
         clipGain.gain.linearRampToValueAtTime(0, when + playable);
       }
-      clipGain.connect(nodeInput);
+      clipGain.connect(clipInput);
       source.connect(clipGain);
     } else {
-      source.connect(nodeInput);
+      source.connect(clipInput);
     }
     const node = source as AudioBufferSourceNode & { start: (w: number, o?: number, d?: number) => void };
     if (plan.loop) {
@@ -307,6 +391,13 @@ export async function renderMix(
       track?.volume ?? 80,
       track?.pan ?? 0
     );
+    const clipFx = sanitizeChain((clip as { fx?: unknown }).fx);
+    let clipInput: AudioNode = destination;
+    if (clipFx.length > 0) {
+      const chain = buildPluginChain(context, clipFx);
+      chain.output.connect(destination);
+      clipInput = chain.input;
+    }
     const bend = sanitizePoints(clip.midi?.bend, -1, 1);
     const mod = sanitizePoints(clip.midi?.mod, 0, 1);
     for (const note of notes) {
@@ -314,7 +405,7 @@ export async function renderMix(
       if (absolute < from - 0.001 || absolute >= to) continue;
       scheduleMidiNote(
         context,
-        destination,
+        clipInput,
         note,
         Math.max(0, absolute - from),
         1,
@@ -323,11 +414,17 @@ export async function renderMix(
           mod: valueAt(mod, note.start, 0),
         },
         normalizeMidiInstrument(clip.instrument),
+        waveFor(clip.instrument)
       );
     }
   }
 
   const rendered = await context.startRendering();
+  if (options.format === "mp3") {
+    // Dynamic import: the encoder only loads for an MP3 export.
+    const { encodeMp3 } = await import("@/lib/studio-mp3");
+    return encodeMp3(rendered, options.mp3Bitrate ?? 192);
+  }
   const raw = Array.from({ length: rendered.numberOfChannels }, (_, index) =>
     rendered.getChannelData(index)
   );

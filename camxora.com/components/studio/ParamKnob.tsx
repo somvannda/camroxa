@@ -22,7 +22,8 @@ export type ParamKnobProps = {
   onChange: (value: number) => void;
 };
 
-function formatValue(value: number, unit?: string): string {
+function formatValue(value: number, unit?: string, percent01 = false): string {
+  if (percent01) return `${Math.round(value * 100)}%`;
   if (unit === "hz") {
     return value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}khz` : `${Math.round(value)}hz`;
   }
@@ -35,6 +36,8 @@ function formatValue(value: number, unit?: string): string {
 
 export function ParamKnob(props: ParamKnobProps) {
   const { label, value, min, max, step, unit, log, disabled, display, onChange } = props;
+  // Suno-authored percent controls store 0–1 but read as 0–100 %.
+  const percent01 = unit === "%" && min === 0 && max === 1;
   const pct = log
     ? Math.min(
         1,
@@ -44,7 +47,7 @@ export function ParamKnob(props: ParamKnobProps) {
         )
       )
     : Math.min(1, Math.max(0, (value - min) / (max - min)));
-  const text = display ?? formatValue(value, unit);
+  const text = display ?? formatValue(value, unit, percent01);
   return (
     <label className="sp-knob">
       <span
@@ -62,7 +65,7 @@ export function ParamKnob(props: ParamKnobProps) {
         type="range"
         min={min}
         max={max}
-        step={step}
+        step={percent01 ? 0.01 : step}
         value={value}
         aria-label={label}
         aria-valuetext={text}

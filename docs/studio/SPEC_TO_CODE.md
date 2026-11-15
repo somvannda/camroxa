@@ -67,18 +67,23 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Audio clip editor steps the warp quantize grid with `SHIFT 1` / `SHIFT 2` | §36 / gap G44 | keydown handler in `components/studio/StudioAudioEditor.tsx` |
 | `0` toggles the arrangement (master) mute | §36 / gap G44 | `toggleMasterMute` + `Mute main` in the track panel |
 | Back to Start alternates the song start and beat 1 | S14 hint / gap G44 | `backToStart` + `backToStartAnchorRef` in `StudioEditorShell` |
+| `SHIFT 1` / `SHIFT 2` double or halve the arrangement grid | S14 overlay / gap G44 | `scaleGrid` in `lib/studio-snap.ts` + `gridDivisions` in the shell |
+| Project menu sends the project to Suno on demand | S14 overlay "Send to Suno Sync" | `syncStudioProject` in `lib/studio-api.ts` + the menu's sync dialog |
+| Library `↓`/`↑` audition the next/previous song and `→` replays the current one | S14 library panel / gap G44 | `onAudition` + `handleAuditionKeys` in `StudioLibrary` (cursor follows visible, expanded rows) |
+| Split Arrangement cuts every clip crossing the playhead | S14 overlay | time-selection menu → `splitClips` with every clip id |
+| Split on Transients cuts a clip at the onsets in its audio | S14 overlay | clip menu → `computePeaks` + `detectOnsets` + `splitClipAtTimes` |
+| Make Beat 1 snaps a clip's start onto its bar line | S14 overlay | clip menu → `makeClipBeatOne` |
+| `SHIFT TAB` swaps the take-lanes and automation bands | S14 overlay | shell keydown; the two bands are the bottom panels this build has |
+| `2` toggles the bottom plugin/master panel | S14 overlay | `bottomPanelOpen`; clip editors still open on their own |
+| `ENTER` promotes the focused take | S14 overlay "Promote Take Lane Selection" | take rows are buttons, so native activation promotes; asserted in the takes e2e |
+| `CTRL K` turns on musical typing | S14 overlay | MIDI panel only: `A`–`;` audition, `Z`/`X` octave, `C`/`V` velocity; the control bar's **Keys** pill does the same when a browser swallows the accelerator |
+| `SHIFT L` collapses the track panel | S14 overlay "Toggle Arrangement Panel" | the track rail is this build's arrangement panel; `tracksCollapsed` |
 
 ### S14 shortcut coverage still open
 
 | Binding | Why it is not wired yet |
 |---|---|
-| `2` bottom panel | this build has no persistent bottom panel; Plugins and Clip editor open on demand |
-| `SHIFT L` arrangement panel | there is no collapsible arrangement panel to toggle |
-| `CTRL S` save | saving is automatic and already reports through the save-status chip |
-| `CTRL K` toggle keyboard | there is no musical typing keyboard to show; `SHIFT ?` already opens this list |
-| `CTRL SHIFT ,` Studio settings | settings are a stored preference object, not a dialog |
-| `ENTER` Ask Studio / promote take lane | `ENTER` already commits inline renames and prompt edits |
-| Playable keyboard and library audition keys | musical typing and row audition need their own focus model; listed so the gap stays visible |
+| `CTRL SHIFT ,` Studio settings | already wired: the project menu owns the dialog and the accelerator (covered by the project-menu e2e) |
 
 ## Not copied — by rule, not by accident
 
@@ -104,6 +109,21 @@ which we cannot honour).
 | S54/S56 sharing | project-level view+copy only; no public page |
 | S59 conflict UI | no banner; silent overwrite |
 | S62 offline | browser error page on cold load |
+
+## Resolved: `src=""` browser warning
+
+Two `An empty string ("") was passed to the src attribute` lines appeared in the dev log
+during the full Playwright suite. Attribution method that finally worked: run each spec
+on its own and measure the dev-log delta. Only `tests/e2e/library-uploads.spec.ts`
+produced them (2), because playing an upload hands it to the shared `Player`, and an
+upload has no artwork — `Player` rendered `src={current.cover}` with an empty value. Both
+player images now fall back to `/hero.png`, and the uploads spec asserts no `[src=""]`
+element exists after playback.
+
+Dead ends worth not repeating: console patching from an init script never fires (the
+message does not pass through the page console), walking every route individually shows
+nothing, and the `discover`/`community` creator images were a separate, already-fixed
+cause.
 
 ## How to check this yourself
 

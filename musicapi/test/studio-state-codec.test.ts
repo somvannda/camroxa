@@ -10,6 +10,7 @@ import {
   secondsFromBeats,
   stableSunoId,
   SUNO_SYNTH_PLUGIN_ID,
+  sunoPluginToLocalCustom,
   sunoStateToProjectData,
   timeSignatureFromState,
   timeSignatureParts,
@@ -590,7 +591,7 @@ test("MidI tracks get a synth instance with our waveform", () => {
   assert.equal(projected.lanes[0].midi?.instrument, "triangle");
 });
 
-test("distortion and chorus translate their enum and division params", () => {
+test("distortion and Rhythm Gate translate their enum and division params", () => {
   const data = localDocument();
   data.chains = {
     "track-1": [
@@ -602,9 +603,9 @@ test("distortion and chorus translate their enum and division params", () => {
         presetName: "Custom",
       },
       {
-        entryId: "fx-chorus",
-        pluginId: "chorus",
-        params: { rate: 1, depth: 40, mix: 30 },
+        entryId: "fx-gate",
+        pluginId: "rhythmGate",
+        params: { rate: 2, depth: 0.75, mix: 0.65, attack: 0.12, release: 0.22 },
         presetName: "Custom",
       },
     ],
@@ -629,14 +630,21 @@ test("distortion and chorus translate their enum and division params", () => {
   assert.equal(distParams["Pre Tilt"], -20);
   assert.equal(distParams["Post Cutoff"], 2000);
 
-  const chorus = chain.find(
+  const gate = chain.find(
     (entry) => entry.pluginVersionId === "537ba288-f700-4c96-b103-c84e2b62fab6"
   );
-  const chorusParams = chorus?.params as Record<string, unknown>;
-  // 1 Hz at 120 BPM = 2 cycles/beat → 1/2 note.
-  assert.equal(chorusParams["rate (1/16, 1/8, 1/4)"], "1/2");
-  assert.equal(chorusParams.depth, 0.4);
-  assert.equal(chorusParams.mix, 0.3);
+  const gateParams = gate?.params as Record<string, unknown>;
+  // Index 2 is the 1/4 division; percentages stay 0–1.
+  assert.equal(gateParams["rate (1/16, 1/8, 1/4)"], "1/4");
+  assert.equal(gateParams.depth, 0.75);
+  assert.equal(gateParams.mix, 0.65);
+  assert.equal(gateParams.attack, 0.12);
+  assert.equal(gateParams.release, 0.22);
+
+  const projected = sunoStateToProjectData(state);
+  const pulled = projected.chains[stableSunoId("track-1")] ?? [];
+  const pulledGate = pulled.find((entry) => entry.pluginId === "rhythmGate");
+  assert.equal((pulledGate?.params as Record<string, number>).rate, 2);
 });
 
 test("alternate takes become take-lane clips when they have a Suno asset", () => {
@@ -860,6 +868,107 @@ test("loading adds Suno tracks and clips that the local project lacks", () => {
   assert.deepEqual(added?.clipIds, [clip?.id]);
 });
 
+test("loading re-keys a pulled chain to local track ids and keeps custom effects", () => {
+  const sunoTrackId = "11111111-1111-5111-a111-111111111111";
+  const local: LocalDocument = {
+    tracks: [{ id: "track-1", sunoId: sunoTrackId, index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      "track-1": [
+        { entryId: "fx-reverb", pluginId: "reverb", params: { mix: 30 } },
+        { entryId: "fx-designed", pluginId: "designed-abc", params: { amount: 50 } },
+      ],
+    },
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [
+      { id: sunoTrackId, sunoId: sunoTrackId, name: "Keys", index: 0, clipIds: [] },
+    ],
+    lanes: [],
+    chains: {
+      [sunoTrackId]: [
+        {
+          entryId: "entry-dec400a6",
+          pluginId: "reverb",
+          presetId: null,
+          presetName: "Custom",
+          mode: undefined,
+          params: { time: 2, mix: 45 },
+          sunoId: "22222222-2222-5222-a222-222222222222",
+        },
+      ],
+    },
+  });
+  // A chain keyed by the Suno id is not something the editor can read.
+  assert.equal(merged.data.chains?.[sunoTrackId], undefined);
+  const chain = merged.data.chains?.["track-1"] ?? [];
+  assert.equal(chain.length, 2);
+  // The representable effect comes from Suno in Suno's order...
+  assert.equal(chain[0].pluginId, "reverb");
+  assert.equal((chain[0].params as Record<string, number>).mix, 45);
+  // ...and the effect Suno cannot express is kept rather than wiped.
+  assert.equal(chain[1].pluginId, "designed-abc");
+  assert.deepEqual(merged.keptLocalEffects, ["fx-designed"]);
+});
+
+test("a save/pull round trip leaves the chain on the local track", () => {
+  const data = localDocument();
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "fx-reverb",
+        pluginId: "reverb",
+        presetName: "Custom",
+        params: { time: 2, mix: 30, width: 100, damping: 40, predelay: 20, lowCut: 120, highCut: 14000 },
+      },
+      { entryId: "fx-designed", pluginId: "designed-abc", params: { amount: 50 } },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "Chain round trip",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const merged = mergeSunoProjectIntoLocal(data, sunoStateToProjectData(state));
+  const sunoTrackId = stableSunoId("track-1");
+  // The editor only reads chains keyed by the local track id.
+  assert.equal(merged.data.chains?.[sunoTrackId], undefined);
+  const chain = merged.data.chains?.["track-1"] ?? [];
+  assert.deepEqual(
+    chain.map((entry) => entry.pluginId),
+    ["reverb", "designed-abc"]
+  );
+  assert.equal((chain[0].params as Record<string, number>).mix, 30);
+  assert.deepEqual(merged.keptLocalEffects, ["fx-designed"]);
+});
+
+test("loading drops a local effect that Suno deleted", () => {
+  const sunoTrackId = "33333333-3333-5333-a333-333333333333";
+  const local: LocalDocument = {
+    tracks: [{ id: "track-1", sunoId: sunoTrackId, index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      "track-1": [{ entryId: "fx-reverb", pluginId: "reverb", params: { mix: 30 } }],
+    },
+  };
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [
+      { id: sunoTrackId, sunoId: sunoTrackId, name: "Keys", index: 0, clipIds: [] },
+    ],
+    lanes: [],
+    chains: { [sunoTrackId]: [] },
+  });
+  assert.deepEqual(merged.data.chains?.["track-1"], []);
+  assert.deepEqual(merged.keptLocalEffects, []);
+});
+
 test("an empty local-only track is dropped when Suno no longer has it", () => {
   const local: LocalDocument = {
     tracks: [
@@ -867,6 +976,10 @@ test("an empty local-only track is dropped when Suno no longer has it", () => {
       { id: "track-2", index: 1, clipIds: [] },
     ],
     lanes: [],
+    chains: {
+      "track-1": [{ entryId: "fx-1", pluginId: "reverb", params: {} }],
+      "track-2": [{ entryId: "fx-2", pluginId: "reverb", params: {} }],
+    },
   };
   const merged = mergeSunoProjectIntoLocal(local, {
     bpm: 120,
@@ -893,4 +1006,168 @@ test("an empty local-only track is dropped when Suno no longer has it", () => {
     ["track-1"]
   );
   assert.deepEqual(merged.droppedTracks, ["track-2"]);
+  // A dropped track's chain must not be left behind as an orphan.
+  assert.deepEqual(Object.keys(merged.data.chains ?? {}), ["track-1"]);
+  assert.deepEqual(merged.keptLocalEffects, []);
+});
+
+test("a designed plugin mirrors through its Suno library ids", () => {
+  const data = localDocument();
+  const sunoPluginId = "10c35bed-09ff-4bfe-86a8-f386bc281934";
+  const sunoPluginVersionId = "53004c03-2451-47d2-957a-3acac99a626a";
+  data.chains = {
+    "track-1": [
+      {
+        entryId: "custom-entry",
+        pluginId: "custom",
+        presetName: "Custom",
+        params: { Cutoff: 300, Mix: 0.6 },
+        custom: {
+          name: "Gentle High-Pass",
+          sunoPluginId,
+          sunoPluginVersionId,
+        },
+      },
+    ],
+  };
+  const { state } = projectDocumentToSunoState({
+    title: "Designed plugin",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data,
+    baseline: null,
+  });
+  const chain = (state.tracks as Array<Record<string, unknown>>)[0].signalChain as Array<
+    Record<string, unknown>
+  >;
+  const authored = chain.find((entry) => entry.catalogPluginId === sunoPluginId);
+  assert.ok(authored);
+  assert.equal(authored.pluginVersionId, sunoPluginVersionId);
+  assert.deepEqual(authored.params, { Cutoff: 300, Mix: 0.6 });
+
+  const snapshot = sunoPluginToLocalCustom({
+    plugin: { id: sunoPluginId, name: "Gentle High-Pass" },
+    version: {
+      plugin_version_id: sunoPluginVersionId,
+      payload: {
+        displayName: "Gentle High-Pass",
+        description: "A smooth stereo high-pass filter.",
+        parameters: [
+          { name: "Cutoff", label: "Cutoff", default: 120, range: { min: 20, max: 2000 }, unit: "hz" },
+          { name: "Mix", label: "Mix", default: 0.5, range: { min: 0, max: 1 }, unit: "percent" },
+        ],
+      },
+    },
+    prompt: "a gentle high-pass filter",
+  });
+  assert.ok(snapshot);
+  const projected = sunoStateToProjectData(state, {
+    customPlugins: { [sunoPluginId]: snapshot },
+  });
+  const pulled = projected.chains[stableSunoId("track-1")]?.[0];
+  assert.ok(pulled);
+  assert.equal(pulled.pluginId, "custom");
+  assert.equal(pulled.sunoPluginId, sunoPluginId);
+  assert.equal(pulled.sunoPluginVersionId, sunoPluginVersionId);
+  assert.equal((pulled.params as Record<string, number>).Mix, 0.6);
+  assert.equal((pulled.custom as Record<string, unknown>)?.sunoPluginId, sunoPluginId);
+});
+
+test("a pull does not duplicate a designed plugin Suno already carries", () => {
+  const sunoTrackId = "11111111-1111-5111-a111-111111111111";
+  const sunoPluginId = "10c35bed-09ff-4bfe-86a8-f386bc281934";
+  const sunoPluginVersionId = "53004c03-2451-47d2-957a-3acac99a626a";
+  const local: LocalDocument = {
+    tracks: [{ id: "track-1", sunoId: sunoTrackId, index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      "track-1": [
+        {
+          entryId: "custom-entry",
+          pluginId: "custom",
+          presetName: "Custom",
+          params: { Cutoff: 300 },
+          sunoPluginId,
+          sunoPluginVersionId,
+        },
+      ],
+    },
+  };
+  const pulledEntryId = stableSunoId("custom-entry");
+  const merged = mergeSunoProjectIntoLocal(local, {
+    bpm: 120,
+    timeSignature: "4/4",
+    tracks: [{ id: sunoTrackId, sunoId: sunoTrackId, name: "Keys", index: 0, clipIds: [] }],
+    lanes: [],
+    chains: {
+      [sunoTrackId]: [
+        {
+          entryId: "entry-22222222",
+          pluginId: "custom",
+          presetName: "Custom",
+          params: { Cutoff: 300 },
+          sunoPluginId,
+          sunoPluginVersionId,
+          sunoId: pulledEntryId,
+        },
+      ],
+    },
+  });
+  const chain = merged.data.chains?.["track-1"] ?? [];
+  assert.equal(chain.length, 1);
+  assert.deepEqual(merged.keptLocalEffects, []);
+});
+
+test("a disabled note rides on isDisabled in both directions", () => {
+  const input = {
+    title: "Flags",
+    majorVersion: 2,
+    bpm: 120,
+    timeSignature: "4/4",
+    data: {
+      lanes: [
+        {
+          id: "clip-1",
+          title: "Flags",
+          start: 0,
+          duration: 4,
+          midi: {
+            notes: [
+              { id: "n1", pitch: 60, start: 0, length: 1, velocity: 100, disabled: true },
+              { id: "n2", pitch: 62, start: 1, length: 1, velocity: 100 },
+            ],
+          },
+        },
+      ],
+      tracks: [
+        {
+          id: "track-1",
+          name: "Synth",
+          color: "#7c5cf0",
+          index: 0,
+          volume: 80,
+          pan: 0,
+          muted: false,
+          solo: false,
+          hidden: false,
+          collapsed: false,
+          chain: [],
+          clipIds: ["clip-1"],
+        },
+      ],
+    },
+  };
+  const { state } = projectDocumentToSunoState(input as never);
+  const tracks = state.tracks as Array<Record<string, unknown>>;
+  const clips = tracks[0].clips as Array<Record<string, unknown>>;
+  const notes = (clips[0].midi as { notes: Array<Record<string, unknown>> }).notes;
+
+  assert.equal(notes[0].isDisabled, true);
+  assert.equal(notes[1].isDisabled, undefined);
+
+  const back = sunoStateToProjectData(state as never);
+  const lanes = back.lanes as Array<{ midi?: { notes: Array<Record<string, unknown>> } }>;
+  assert.equal(lanes[0].midi?.notes[0].disabled, true);
+  assert.equal(lanes[0].midi?.notes[1].disabled, undefined);
 });

@@ -29,7 +29,7 @@ function renderLearn(overrides: Partial<Parameters<typeof StudioLearn>[0]> = {})
 }
 
 describe("StudioLearn menu", () => {
-  it("opens the popover with the four captured rows in order", async () => {
+  it("opens the popover with the supported rows in order", async () => {
     const user = userEvent.setup();
     renderLearn();
 
@@ -37,7 +37,6 @@ describe("StudioLearn menu", () => {
     const items = screen.getAllByRole("menuitem");
     expect(items.map((node) => node.textContent?.replace(/\s+/g, " ").trim())).toEqual([
       "Keyboard Shortcuts shift ?",
-      "YouTube Tutorials",
       "Learning Center",
     ]);
 
@@ -45,9 +44,11 @@ describe("StudioLearn menu", () => {
     expect(toggle.textContent?.replace(/\s+/g, " ").trim()).toBe("What's This? On");
     expect(toggle.getAttribute("aria-checked")).toBe("true");
 
-    // Destinations this build does not have stay visible but disabled.
-    expect((items[1] as HTMLButtonElement).disabled).toBe(true);
-    expect((items[2] as HTMLButtonElement).disabled).toBe(true);
+    // YouTube Tutorials was dropped (no channel); the Learning Center is an in-app dialog.
+    expect((items[1] as HTMLButtonElement).disabled).toBe(false);
+    await user.click(items[1]);
+    expect(await screen.findByRole("dialog", { name: "Learning Center" })).toBeTruthy();
+    expect(screen.getByText("Start an arrangement")).toBeTruthy();
   });
 
   it("toggles What's This? through the callback", async () => {

@@ -72,3 +72,25 @@ automation. Still pending: audio assets, clip trim/fades, effects chains, master
 chain, section markers, groups, pan automation. `STUDIO_STATE_COVERAGE` in
 `musicapi/src/sunoStudio.ts` is the list the health endpoint reports, so this
 section cannot drift from the code.
+
+## Designed plugins: rebuilt on Suno's agent (decided 2026-11-13)
+
+**Decision: option 1.** The designer's "Build it" asks Suno's authoring agent for
+a plugin, saves the descriptor into the account's plugin library, and the chain
+entry references it with `catalogPluginId` + `pluginVersionId`. The local
+deterministic designer is gone.
+
+The alternatives were dropping the designer (deletes capability Suno has) or
+keeping it local (a documented divergence, against D-034). The live contract,
+payloads, probe evidence and implementation map are in
+`SUNO_STUDIO_AGENT_PLUGINS.md`.
+
+Consequences:
+
+- A build spends Suno credits and is generative (the agent decides the DSP).
+- The local audio engine still approximates the authored effect by family; it
+  cannot execute Suno's plugin code (recorded as the remaining audio gap).
+- The codec maps designed entries in both directions, and a pull hydrates the
+  control snapshot from `/api/plugins/{id}` so the plugin renders on any device.
+
+

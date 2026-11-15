@@ -22,6 +22,7 @@ import {
   type CustomPlugin,
   type ParamDef,
   type PluginChainEntry,
+  type PluginDef,
   type PluginId,
   type UserPreset,
 } from "@/lib/studio-plugins";
@@ -48,6 +49,8 @@ import {
   type ImpulseResponse,
 } from "@/lib/studio-ir";
 import { StudioIRDesigner } from "@/components/studio/StudioIRDesigner";
+import type { StudioWindowMode } from "@/lib/studio-settings";
+import { DEFAULT_SENDS, type TrackSends } from "@/lib/studio-sends";
 
 type Props = {
   chain: PluginChainEntry[];
@@ -68,6 +71,13 @@ type Props = {
     params: Record<string, number>,
     mode?: string
   ) => void;
+  /** S10: whether cards open docked, floating, or with a per-card toggle. */
+  windowMode?: StudioWindowMode;
+  /** Shared-bus sends for the selected track. */
+  sends?: TrackSends;
+  onSendsChange?: (kind: "delay" | "reverb", value: number) => void;
+  /** S11: sound-design tools are hidden when this is off. */
+  advancedContent?: boolean;
 };
 
 /**
@@ -180,6 +190,7 @@ function ConvolutionCard({
   disabled,
   onAsset,
   onChange,
+  advancedContent,
 }: {
   assetId: string | null;
   params: ParamDef[];
@@ -187,6 +198,7 @@ function ConvolutionCard({
   disabled: boolean;
   onAsset: (id: string | null) => void;
   onChange: (key: string, value: number) => void;
+  advancedContent: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
@@ -241,14 +253,26 @@ function ConvolutionCard({
           aria-label={response ? `Impulse response ${response.name}` : "No impulse response"}
         >
           <line x1={0} x2={width} y1={height / 2} y2={height / 2} className="sp-ir-axis" />
+          {[0, 1, 2, 3].map((second) => {
+            const x = (second / 3) * width;
+            return (
+              <g key={second}>
+                <line
+                  x1={x}
+                  x2={x}
+                  y1={0}
+                  y2={height}
+                  className="sp-ir-tick"
+                  aria-hidden="true"
+                />
+                <text x={Math.min(x + 4, width - 20)} y={height - 3} className="sp-ir-label">
+                  {second}s
+                </text>
+              </g>
+            );
+          })}
           {wave ? <path d={wave} className="sp-ir-wave" /> : null}
           <circle cx={width - 12} cy={12} r={6} className="sp-ir-dot" />
-          <text x={4} y={height - 3} className="sp-ir-label">
-            0s
-          </text>
-          <text x={width - 20} y={height - 3} className="sp-ir-label">
-            2s
-          </text>
         </svg>
         <div className="sp-ir-picker" ref={wrapRef}>
           <button
@@ -337,34 +361,55 @@ function ConvolutionCard({
                     : null}
                 </div>
               ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  setDesignOpen(true);
-                }}
-              >
-                <Icon name="fa-plus" /> Design response.
-              </button>
+              {advancedContent ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    setDesignOpen(true);
+                  }}
+                >
+                  <Icon name="fa-plus" /> Design response.
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
       </div>
       <div className="sp-knobs sp-knob-grid">
-        {params.map((param) => (
-          <ParamKnob
-            key={param.key}
-            label={param.label}
-            unit={param.unit}
-            min={param.min}
-            max={param.max}
-            step={param.max - param.min > 100 ? 1 : 0.1}
-            value={values[param.key] ?? param.default}
-            disabled={disabled}
-            onChange={(value) => onChange(param.key, value)}
-          />
-        ))}
+        {params.map((param) =>
+          param.choices ? (
+            <label key={param.key} className="sp-knob">
+              <select
+                className="sp-choice"
+                aria-label={param.label}
+                value={values[param.key] ?? param.default}
+                disabled={disabled}
+                onChange={(event) => onChange(param.key, Number(event.target.value))}
+              >
+                {param.choices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+              <span className="sp-knob-label">{param.label}</span>
+            </label>
+          ) : (
+            <ParamKnob
+              key={param.key}
+              label={param.label}
+              unit={param.unit}
+              min={param.min}
+              max={param.max}
+              step={param.max - param.min > 100 ? 1 : 0.1}
+              value={values[param.key] ?? param.default}
+              disabled={disabled}
+              onChange={(value) => onChange(param.key, value)}
+            />
+          )
+        )}
       </div>
     </div>
     {designOpen ? (
@@ -580,7 +625,7 @@ const PREVIEW_PATHS: Record<string, string> = {
   gate: "M0 8 H70 L80 46 H200",
   delay: "M0 30 H40 L50 12 L60 30 H80 L90 18 L100 30 H120 L130 22 L140 30 H200",
   reverb: "M0 12 Q40 12 60 30 Q90 52 200 44",
-  chorus: "M0 30 Q25 6 50 30 T100 30 T150 30 T200 30",
+  rhythmGate: "M0 10 H30 V44 H50 V10 H80 V44 H100 V10 H130 V44 H150 V10 H180 V44 H200",
   distortion: "M0 42 L20 18 L40 42 L60 18 L80 42 L100 18 L120 42 L140 18 L160 42 L180 18 L200 42",
   convolution: "M0 46 L30 44 L60 10 L70 40 L90 34 L120 42 L150 40 L200 46",
 };
@@ -614,6 +659,10 @@ export function StudioPluginDock({
   tracks = [],
   userPresets = [],
   onSavePreset,
+  windowMode = "toggle",
+  advancedContent = false,
+  sends = DEFAULT_SENDS,
+  onSendsChange,
 }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -656,6 +705,55 @@ export function StudioPluginDock({
     );
   }, [customPlugins, query]);
 
+  /**
+   * S10 Window management: "Panels" docks every card, "Windows" floats them all, and
+   * "Show toggle" leaves the decision to each card's Pop out control (remembered in the
+   * chain, so it survives a reload).
+   */
+  /**
+   * S46: the `‹ Default ›` stepper auditions presets without opening the menu. It walks
+   * the same list the menu shows (Default, starter presets, saved presets).
+   */
+  function stepPreset(
+    entry: PluginChainEntry,
+    plugin: PluginDef,
+    direction: -1 | 1
+  ) {
+    const builtIn = presetsFor(plugin.id).map((preset) => ({
+      id: preset.id as string | null,
+      name: preset.name,
+      params: preset.params,
+      mode: preset.mode,
+    }));
+    const saved = userPresetsFor(userPresets, plugin.id).map((preset) => ({
+      id: preset.id as string | null,
+      name: preset.name,
+      params: preset.params,
+      mode: preset.mode,
+    }));
+    const list = [
+      {
+        id: null as string | null,
+        name: "Default",
+        params: defaultParams(plugin.id),
+        mode: undefined as string | undefined,
+      },
+      ...builtIn,
+      ...saved,
+    ];
+    const current = list.findIndex((preset) => preset.id === entry.presetId);
+    const index =
+      current === -1
+        ? direction > 0
+          ? 0
+          : list.length - 1
+        : (current + direction + list.length) % list.length;
+    onChange(applyPreset(chain, entry.entryId, list[index]));
+  }
+
+  const isPopped = (entry: PluginChainEntry): boolean =>
+    windowMode === "windows" ? true : windowMode === "panels" ? false : Boolean(entry.poppedOut);
+
   return (
     <section className="sp-dock" aria-label={trackName ? `Plugins for ${trackName}` : "Plugin chain"}>
       <div className="sp-rail">
@@ -679,13 +777,23 @@ export function StudioPluginDock({
               key={entry.entryId}
               className={`sp-slot${entry.bypassed ? " is-bypassed" : ""}${
                 plugin.id === "eq" ? " sp-slot-eq" : ""
-              }${entry.poppedOut ? " is-popped" : ""}`}
+              }${isPopped(entry) ? " is-popped" : ""}`}
               aria-label={`${plugin.name} slot ${index + 1}`}
             >
               <header className="sp-slot-head">
                 <span className="sp-dot" aria-hidden="true" />
                 <strong>{plugin.name}</strong>
                 <span className="sp-preset-wrap">
+                  {!isDesigned ? (
+                    <button
+                      type="button"
+                      className="sp-preset-step"
+                      aria-label={`Previous ${plugin.name} preset`}
+                      onClick={() => stepPreset(entry, plugin, -1)}
+                    >
+                      <Icon name="fa-chevron-left" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="sp-preset"
@@ -701,6 +809,16 @@ export function StudioPluginDock({
                   >
                     {entry.dirty ? "Custom" : entry.presetName}
                   </button>
+                  {!isDesigned ? (
+                    <button
+                      type="button"
+                      className="sp-preset-step"
+                      aria-label={`Next ${plugin.name} preset`}
+                      onClick={() => stepPreset(entry, plugin, 1)}
+                    >
+                      <Icon name="fa-chevron-right" />
+                    </button>
+                  ) : null}
                   {presetMenu === entry.entryId ? (
                     <div
                       className="sp-preset-menu"
@@ -876,14 +994,16 @@ export function StudioPluginDock({
                   >
                     <Icon name="fa-chevron-right" />
                   </button>
-                  <button
-                    type="button"
-                    aria-label={`${entry.poppedOut ? "Dock" : "Pop out"} ${plugin.name}`}
-                    aria-pressed={entry.poppedOut}
-                    onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
-                  >
-                    <Icon name="fa-up-right-from-square" />
-                  </button>
+                  {windowMode === "toggle" ? (
+                    <button
+                      type="button"
+                      aria-label={`${isPopped(entry) ? "Dock" : "Pop out"} ${plugin.name}`}
+                      aria-pressed={isPopped(entry)}
+                      onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
+                    >
+                      <Icon name="fa-up-right-from-square" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     aria-label={`Remove ${plugin.name}`}
@@ -923,6 +1043,7 @@ export function StudioPluginDock({
                   params={plugin.params}
                   values={entry.params}
                   disabled={Boolean(entry.bypassed)}
+                  advancedContent={advancedContent}
                   onAsset={(id) => onChange(setAsset(chain, entry.entryId, id))}
                   onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
                 />
@@ -930,20 +1051,45 @@ export function StudioPluginDock({
                 <div className={plugin.id === "compressor" ? "sp-comp-body" : undefined}>
                   {plugin.id === "compressor" ? <CompressorCurve params={entry.params} /> : null}
                   <div className="sp-knobs sp-knob-grid">
-                    {[...primary, ...secondary].map((param) => (
-                      <ParamKnob
-                        key={param.key}
-                        label={param.label}
-                        unit={param.unit}
-                        min={param.min}
-                        max={param.max}
-                        step={param.max - param.min > 100 ? 1 : 0.1}
-                        log={param.unit === "hz"}
-                        value={entry.params[param.key] ?? param.default}
-                        disabled={entry.bypassed}
-                        onChange={(value) => onChange(setParam(chain, entry.entryId, param.key, value))}
-                      />
-                    ))}
+                    {[...primary, ...secondary].map((param) =>
+                      param.choices ? (
+                        <label key={param.key} className="sp-knob">
+                          <select
+                            className="sp-choice"
+                            aria-label={param.label}
+                            value={entry.params[param.key] ?? param.default}
+                            disabled={entry.bypassed}
+                            onChange={(event) =>
+                              onChange(
+                                setParam(chain, entry.entryId, param.key, Number(event.target.value))
+                              )
+                            }
+                          >
+                            {param.choices.map((choice) => (
+                              <option key={choice.value} value={choice.value}>
+                                {choice.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="sp-knob-label">{param.label}</span>
+                        </label>
+                      ) : (
+                        <ParamKnob
+                          key={param.key}
+                          label={param.label}
+                          unit={param.unit}
+                          min={param.min}
+                          max={param.max}
+                          step={param.max - param.min > 100 ? 1 : 0.1}
+                          log={param.unit === "hz"}
+                          value={entry.params[param.key] ?? param.default}
+                          disabled={entry.bypassed}
+                          onChange={(value) =>
+                            onChange(setParam(chain, entry.entryId, param.key, value))
+                          }
+                        />
+                      )
+                    )}
                   </div>
                 </div>
               )}
@@ -1152,12 +1298,9 @@ export function StudioPluginDock({
                   <PluginPreview id={plugin.id} />
                   <span className="sp-card-name">
                     {plugin.name}
-                    {plugin.unverified ? (
-                      <em title="Not yet confirmed against the reference">unverified</em>
-                    ) : null}
                     <span
                       className="sp-card-learn"
-                      data-help={`plugin-${plugin.id}`}
+                      data-help={`plugin-${plugin.id.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`}
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -1174,6 +1317,26 @@ export function StudioPluginDock({
               ) : null}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {onSendsChange ? (
+        <div className="sp-sends" role="group" aria-label="Sends">
+          <span className="sp-sends-label">Sends</span>
+          {(["delay", "reverb"] as const).map((kind) => (
+            <label key={kind} className="sp-send">
+              <span>{kind === "delay" ? "Delay" : "Reverb"}</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={sends[kind]}
+                aria-label={`${kind === "delay" ? "Delay" : "Reverb"} send`}
+                onChange={(event) => onSendsChange(kind, Number(event.target.value))}
+              />
+            </label>
+          ))}
         </div>
       ) : null}
     </section>

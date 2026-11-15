@@ -292,24 +292,27 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
 
   // Importing needs streaming storage. When the API has a bucket the new file appears
   // in the Uploads list; without one the backend refuses and the panel must surface the
-  // reason. Both outcomes are accepted so the spec runs on either stack.
-  const imported = library.getByText("demo-loop.wav").first();
+  // reason. Both outcomes are accepted so the spec runs on either stack. The sandbox DB
+  // keeps uploads between runs, so wait for the outcome rather than for "a row exists".
   const refused = library.getByRole("alert").first();
+  const readOutcome = async () => {
+    if ((await library.getByRole("alert").count()) > 0) return "refused";
+    const adds = library.getByLabel("Add demo-loop.wav");
+    const count = await adds.count();
+    for (let index = 0; index < count; index += 1) {
+      if (await adds.nth(index).isEnabled()) return "imported";
+    }
+    return "pending";
+  };
   await expect
-    .poll(
-      async () =>
-        (await library.getByRole("alert").count()) +
-        (await library.getByText("demo-loop.wav").count()),
-      { timeout: 15_000, intervals: [250] }
-    )
-    .toBeGreaterThan(0);
+    .poll(readOutcome, { timeout: 20_000, intervals: [250] })
+    .not.toBe("pending");
 
-  if ((await library.getByRole("alert").count()) > 0) {
+  const outcome = await readOutcome();
+  if (outcome === "refused") {
     await expect(refused).toContainText(/not configured|Upload failed/i);
   } else {
-    await expect(imported).toBeVisible();
     await expect(library.getByLabel("Back to library")).toBeVisible();
-    await expect(library.getByLabel("Add demo-loop.wav").first()).toBeEnabled();
   }
 });
 

@@ -7,6 +7,14 @@
 - Never remove a worktree that has uncommitted or unpushed work. Check `git status` and `git log origin/main..HEAD` first.
 - Do not leave stale `*-apex`, `*-dev`, or temporary worktrees behind after their branch is merged.
 
+## Production hold (mandatory, 2026-11-14)
+- **Do not deploy to production `camxora.com` yet.** The app in `camxora.com/` is still being
+  built and verified locally; deployment is a later, explicit decision.
+- **Do not replace `camxora.com` with `music.camxora.com`.** Keep `music.camxora.com` exactly
+  as it is and keep it working; it is not the target of this build.
+- Continue building, testing and fixing every feature in `camxora.com/` locally. Only deploy
+  or swap domains when the user explicitly asks for it in a later session.
+
 ## Shipping / multi-agent (mandatory)
 - One task → one git branch (prefer worktrees when parallel agents share this repo).
 - Commit / push / merge / production deploy only when the user explicitly asks.

@@ -27,6 +27,16 @@ export type StudioProject = {
   updated_at?: string | null;
   /** Mirror state for list surfaces; absent when the mirror is unreachable. */
   sync?: { status: "pending" | "linked" | "synced" | "conflict" | "error" } | null;
+  /** S04: compact arrangement preview computed by the list endpoint. */
+  thumb?: StudioProjectThumb | null;
+  /** S04: set while the project sits in "Recently Deleted". */
+  deleted_at?: string | null;
+};
+
+/** One row of a project-card mini-timeline. */
+export type StudioProjectThumb = {
+  tracks: Array<{ c: string; clips: Array<{ s: number; d: number }> }>;
+  end: number;
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -66,10 +76,22 @@ export class StudioConflictError extends Error {
 export async function listStudioProjects(
   limit = 20,
   offset = 0,
-  includeArchived = false
+  includeArchived = false,
+  /** S04 "Recently Deleted": list soft-deleted projects instead of active ones. */
+  deleted = false
 ): Promise<{ items: StudioProject[]; total: number }> {
   return studioJson(
-    `/api/v3/web-music/studio/projects?limit=${limit}&offset=${offset}&include_archived=${includeArchived ? "true" : "false"}`
+    `/api/v3/web-music/studio/projects?limit=${limit}&offset=${offset}&include_archived=${
+      includeArchived ? "true" : "false"
+    }&deleted=${deleted ? "true" : "false"}`
+  );
+}
+
+/** S04: restore a project from "Recently Deleted". */
+export async function restoreStudioProject(id: string): Promise<StudioProject> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/restore`,
+    { method: "POST" }
   );
 }
 
@@ -98,6 +120,17 @@ export async function getStudioProjectSync(id: string): Promise<StudioProjectSyn
 }
 
 /**
+ * Push this project to Suno now instead of waiting for the background outbox.
+ * The captured "Send to Suno Sync" action; harmless when the mirror is off, since
+ * the server answers with the current status.
+ */
+export async function syncStudioProject(id: string): Promise<StudioProjectSync> {
+  return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/sync`, {
+    method: "POST",
+  });
+}
+
+/**
  * Ask Suno whether the project moved ahead. Read-only for the local document:
  * a newer remote version only flips the chip to `conflict`.
  */
@@ -122,6 +155,58 @@ export async function keepStudioLocalVersion(id: string): Promise<StudioProjectS
   return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/keep-mine`, {
     method: "POST",
   });
+}
+
+export type StudioPluginAuthoringJob = {
+  job_id: string;
+  status: "pending" | "saving" | "ready" | "error";
+  phase: string | null;
+  progress: Array<{ message?: string; stage?: string }>;
+  plugin_id: string | null;
+  plugin_version_id: string | null;
+  display_name: string | null;
+  descriptor: import("@/lib/studio-designer").AuthoredPluginDescriptor | null;
+  last_error: string | null;
+};
+
+/**
+ * Ask Suno's agent to author a plugin (S45). This starts an asynchronous,
+ * credit-spending job; poll `getStudioPluginAuthoringJob` until it is `ready`.
+ */
+export async function authorStudioPlugin(
+  id: string,
+  input: { instruction: string; required_controls?: string[] }
+): Promise<StudioPluginAuthoringJob> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/plugins/author`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: input.instruction,
+        required_controls: input.required_controls ?? [],
+      }),
+    }
+  );
+}
+
+/** Read one plugin-authoring job; `ready` carries the descriptor and ids. */
+export async function getStudioPluginAuthoringJob(
+  id: string,
+  jobId: string
+): Promise<StudioPluginAuthoringJob> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}/plugins/author/${encodeURIComponent(jobId)}`
+  );
+}
+
+/** The Studio project that already contains a generated song, if one exists. */
+export async function findStudioProjectForSong(
+  songId: string
+): Promise<{ id: string | null }> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/for-song/${encodeURIComponent(songId)}`
+  );
 }
 
 export async function createStudioProject(input: {
@@ -533,6 +618,7 @@ export async function getStudioSharedProject(token: string): Promise<StudioProje
 
 export type StudioShareComment = {
   id: string;
+  clip_id?: string | null;
   parent_id?: string | null;
   author_name: string;
   body: string;
@@ -628,16 +714,19 @@ export async function listProjectPresence(
 
 export async function listStudioProjectComments(
   projectId: string,
-  limit = 100
+  limit = 100,
+  clipId?: string
 ): Promise<{ items: StudioShareComment[] }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (clipId) params.set("clip_id", clipId);
   return studioJson(
-    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments?limit=${limit}`
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments?${params.toString()}`
   );
 }
 
 export async function addStudioProjectComment(
   projectId: string,
-  input: { authorName: string; body: string; parentId?: string | null }
+  input: { authorName: string; body: string; parentId?: string | null; clipId?: string }
 ): Promise<StudioShareComment> {
   return studioJson(
     `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments`,
@@ -648,6 +737,7 @@ export async function addStudioProjectComment(
         author_name: input.authorName || "You",
         body: input.body,
         parent_id: input.parentId || undefined,
+        clip_id: input.clipId || undefined,
       }),
     }
   );

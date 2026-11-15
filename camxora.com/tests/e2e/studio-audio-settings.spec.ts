@@ -104,7 +104,7 @@ test("a volume trim reaches the exported mix", async ({ page }) => {
   async function exportMix(): Promise<Buffer> {
     await page.getByLabel("Export menu").click();
     const download = page.waitForEvent("download");
-    await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+    await page.getByRole("menuitem", { name: "Full Song" }).click();
     const file = await download;
     const path = await file.path();
     if (!path) throw new Error("export has no path");

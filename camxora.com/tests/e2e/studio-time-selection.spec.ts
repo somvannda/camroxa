@@ -128,6 +128,75 @@ test("the range menu loops the selection and the export scope unlocks", async ({
 
   await page.getByRole("button", { name: "Export menu" }).click();
   await expect(
-    page.getByRole("menuitem", { name: /Selected time range/ })
+    page.getByRole("menuitem", { name: /Selected Time Range/ })
   ).toBeEnabled();
+});
+
+test("Shift 1 and Shift 2 double and halve the arrangement grid", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, {
+    title: `Grid density ${Math.random().toString(36).slice(2, 8)}`,
+  });
+
+  const ruler = page.locator(".se-ruler-bars");
+  const box = await ruler.boundingBox();
+  if (!box) throw new Error("ruler has no box");
+  const x = box.x + 200;
+  const y = box.y + box.height / 2;
+
+  // Shift-clicking the ruler selects exactly one grid step.
+  const selectStep = async () => {
+    await page.keyboard.press("Escape");
+    await page.keyboard.down("Shift");
+    await page.mouse.click(x, y);
+    await page.keyboard.up("Shift");
+  };
+  const stepWidth = async () => {
+    const range = page.getByTestId("se-range");
+    await expect(range).toBeVisible();
+    return Number.parseFloat(
+      await range.evaluate((element) => (element as HTMLElement).style.width)
+    );
+  };
+
+  await selectStep();
+  const beats = await stepWidth();
+
+  // SHIFT 1 halves the step, so the same click selects half the width.
+  await page.keyboard.press("Shift+1");
+  await selectStep();
+  const eighths = await stepWidth();
+  expect(eighths).toBeCloseTo(beats / 2, 0);
+
+  // SHIFT 2 puts it back.
+  await page.keyboard.press("Shift+2");
+  await selectStep();
+  expect(await stepWidth()).toBeCloseTo(beats, 0);
+});
+
+test("split arrangement cuts every clip at the playhead", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Split arrangement ${Math.random().toString(36).slice(2, 8)}` });
+  await expect(page.locator(".se-clip")).toHaveCount(1);
+
+  // A time selection is what opens the arrangement menu that owns this verb. Build it
+  // first: dragging the ruler parks the playhead at the drag anchor.
+  await selectRange(page, 0, 1);
+
+  // Roll the transport so the playhead sits inside the fixture clip (0-4s).
+  await page.getByLabel("Play", { exact: true }).click();
+  await page.waitForTimeout(700);
+  await page.getByLabel("Stop", { exact: true }).click();
+
+  const ruler = page.locator(".se-ruler-bars");
+  const box = await ruler.boundingBox();
+  if (!box) throw new Error("ruler has no box");
+  await page.mouse.click(box.x + 40, box.y + box.height / 2, { button: "right" });
+
+  const menu = page.getByRole("menu", { name: "Time selection options" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Split Arrangement" }).click();
+
+  await expect(page.locator(".se-clip")).toHaveCount(2);
+  await expect(page.getByText("Arrangement split at the playhead.", { exact: true })).toBeVisible();
 });

@@ -1473,6 +1473,8 @@ class WebMusicService:
         video_urls: list[str] | None = None,
         persona_id: str | None = None,
         workspace_id: UUID | None = None,
+        sample_task_id: UUID | None = None,
+        sample_variant: str = "ok",
     ) -> dict[str, Any]:
         logger.info(
             "service.generate enter user=%s mode=%r instr=%s model=%r title_len=%s lyrics_len=%s style_len=%s prompt_len=%s workspace=%s",
@@ -1522,6 +1524,43 @@ class WebMusicService:
                     "The selected voice is not available.",
                     details={"field": "persona_id"},
                 )
+
+        reference_audio_urls: list[str] = []
+        if sample_task_id is not None:
+            # "Sample this song": the source clip's durable audio becomes the
+            # generation's reference. Ownership and readiness are checked here,
+            # so the browser never passes a raw provider URL.
+            reference_row = await self._pool.fetchrow(
+                """
+                SELECT status, audio_url_ok, audio_url_alt
+                FROM suno_tasks
+                WHERE id = $1 AND user_id = $2
+                """,
+                sample_task_id,
+                user_id,
+            )
+            if reference_row is None:
+                raise ValidationError(
+                    "The reference song was not found.",
+                    details={"field": "sample_task_id"},
+                )
+            if str(reference_row["status"] or "").lower() != "success":
+                raise ValidationError(
+                    "The reference song is not ready yet.",
+                    details={"field": "sample_task_id"},
+                )
+            raw_reference_url = (
+                reference_row["audio_url_alt"]
+                if str(sample_variant).lower() == "alt"
+                else reference_row["audio_url_ok"]
+            )
+            reference_url = str(raw_reference_url or "").strip()
+            if not reference_url:
+                raise ValidationError(
+                    "The reference song has no playable audio yet.",
+                    details={"field": "sample_task_id"},
+                )
+            reference_audio_urls = [reference_url]
 
         if mode_key == "simple":
             if not safe_prompt:
@@ -1715,6 +1754,7 @@ class WebMusicService:
                 workspace_id=workspace_id,
                 is_preview=is_preview,
                 preview_seconds=preview_seconds,
+                reference_audio_urls=reference_audio_urls,
             )
             logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
         except BaseException:
@@ -1733,6 +1773,97 @@ class WebMusicService:
             "model": normalized_model,
             "is_preview": is_preview,
             "preview_seconds": preview_seconds,
+            "quota": await self._with_queue_fields(user_id, quota),
+            "workspace_id": str(resolved_workspace_id),
+        }
+
+    async def generate_sounds(
+        self,
+        user_id: UUID,
+        *,
+        prompt: str,
+        model: str | None = None,
+        workspace_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """Queue one sound-effect generation.
+
+        Sounds share the music queue, charge and poll loop; only the submit call
+        differs (`POST /v1/sounds`). The prompt is stored as the row's `style` so
+        the library row and the retry path have everything they need.
+        """
+        safe_prompt = str(prompt or "").strip()
+        if len(safe_prompt) < 3:
+            raise ValidationError(
+                "Describe the sound you want to create.",
+                details={"field": "prompt"},
+            )
+        safe_prompt = safe_prompt[:500]
+        safe_model = str(model or "").strip()[:32]
+        queue_limit = await self._queue_cap_for_user(user_id)
+        queue_used = await self._active_generate_queue_count(user_id)
+        if queue_used >= queue_limit:
+            raise RateLimitedError(
+                f"You already have {queue_used} sounds waiting. Wait until one starts.",
+                retry_after=5,
+                details={"queue_used": queue_used, "queue_limit": queue_limit},
+            )
+
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.web_music_suno_guard import raise_if_suno_blocklisted
+
+        runtime_config = await get_suno_blocklist_service().get_runtime_config()
+        title = safe_prompt[:60].strip() or "Sound"
+        raise_if_suno_blocklisted(
+            runtime_config,
+            title=title,
+            lyrics="",
+            style=safe_prompt,
+        )
+
+        reservation_id = str(uuid4())
+        try:
+            quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
+        except BaseException:
+            await self._release_daily_slot(user_id, reference_id=reservation_id)
+            raise
+
+        task_id: UUID | None = None
+        try:
+            task_id = await self._enqueue_web_generate(
+                user_id,
+                reservation_id=reservation_id,
+                model=safe_model or DEFAULT_SUNO_MUSIC_MODEL,
+                title=title,
+                lyrics="",
+                style=safe_prompt,
+                instrumental=True,
+                negative_tags=None,
+                vocal_gender=None,
+                style_weight=0,
+                weirdness_constraint=0,
+                audio_weight=0,
+                workspace_id=workspace_id,
+                kind="sounds",
+            )
+        except BaseException:
+            await self._release_daily_slot(
+                user_id,
+                reference_id=reservation_id,
+                task_id=str(task_id) if task_id else None,
+            )
+            raise
+
+        await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
+        self._open_charges.pop(reservation_id, None)
+        resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
+        return {
+            "task_id": str(task_id),
+            "status": "QUEUED",
+            "title": title,
+            "style": safe_prompt,
+            "model": safe_model or DEFAULT_SUNO_MUSIC_MODEL,
+            "is_preview": False,
+            "preview_seconds": None,
             "quota": await self._with_queue_fields(user_id, quota),
             "workspace_id": str(resolved_workspace_id),
         }
@@ -1759,6 +1890,8 @@ class WebMusicService:
         is_preview: bool = False,
         preview_seconds: int | None = None,
         lyrics_brief: dict[str, str] | None = None,
+        kind: str = "music",
+        reference_audio_urls: list[str] | None = None,
     ) -> UUID:
         from platform_api.dependencies import get_job_queue_repo
         from platform_api.services.generation_service import compute_suno_request_hash
@@ -1785,6 +1918,7 @@ class WebMusicService:
                 style=style,
                 instrumental=instrumental,
             )
+        safe_kind = "sounds" if str(kind) == "sounds" else "music"
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
         await self._pool.execute(
             """
@@ -1792,13 +1926,15 @@ class WebMusicService:
                 id, user_id, request_hash, model, title, lyrics, style,
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                audio_weight, reference_image_urls, reference_video_urls, persona_id, is_preview, preview_seconds, created_at, updated_at
+                audio_weight, reference_image_urls, reference_video_urls, reference_audio_urls,
+                persona_id, is_preview, preview_seconds, kind, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
-                $16, $17::jsonb, $18::jsonb, $19, $20, $21, NOW(), NOW()
+                $16, $17::jsonb, $18::jsonb, $19::jsonb,
+                $20, $21, $22, $23, NOW(), NOW()
             )
             """,
             task_id,
@@ -1819,9 +1955,11 @@ class WebMusicService:
             audio_weight,
             json.dumps(list(image_urls or [])),
             json.dumps(list(video_urls or [])),
+            json.dumps(list(reference_audio_urls or [])),
             persona_id,
             is_preview,
             preview_seconds,
+            safe_kind,
         )
         paid = await self._is_paid_queue_user(user_id)
         await get_job_queue_repo().enqueue(
@@ -1850,7 +1988,9 @@ class WebMusicService:
             """
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                   audio_weight, reference_image_urls, reference_video_urls, persona_id,
+                   audio_weight, reference_image_urls, reference_video_urls,
+                   reference_audio_urls, persona_id,
+                   COALESCE(kind, 'music') AS kind,
                    status
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
@@ -1885,6 +2025,19 @@ class WebMusicService:
         else:
             reference_videos = list(raw_videos or [])
 
+        try:
+            raw_audio = row["reference_audio_urls"]
+        except (KeyError, IndexError):
+            # A database that has not run migration 201 yet.
+            raw_audio = []
+        if isinstance(raw_audio, str):
+            try:
+                reference_audio = json.loads(raw_audio) or []
+            except Exception:
+                reference_audio = []
+        else:
+            reference_audio = list(raw_audio or [])
+
         request = SunoRequest(
             model=str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL),
             title=str(row["title"] or ""),
@@ -1898,16 +2051,32 @@ class WebMusicService:
             audio_weight=row["audio_weight"],
             image_urls=reference_images,
             video_urls=reference_videos,
+            audio_urls=reference_audio,
             persona_id=str(row["persona_id"] or "").strip() or None,
         )
         try:
-            external_task_id = await self._generation.submit_suno_external_id(request)
+            kind = str(row["kind"] or "music")
+        except (KeyError, IndexError):
+            # A database that has not run migration 200 yet: every row is a song.
+            kind = "music"
+        try:
+            if kind == "sounds":
+                external_task_id = await self._generation.submit_suno_sounds(
+                    prompt=str(row["style"] or "").strip(),
+                    model=str(row["model"] or "").strip() or None,
+                )
+            else:
+                external_task_id = await self._generation.submit_suno_external_id(request)
         except Exception:
             await self._fail_queued_generate(
                 user_id,
                 task_id,
                 reservation_id=reservation_id,
-                message="Could not start this song at Suno. Credits were refunded.",
+                message=(
+                    "Could not start this sound. Credits were refunded."
+                    if kind == "sounds"
+                    else "Could not start this song. Credits were refunded."
+                ),
             )
             raise
 
@@ -2368,13 +2537,17 @@ class WebMusicService:
         limit: int = 40,
         offset: int = 0,
         include_archived: bool = False,
+        deleted: bool = False,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 100))
         safe_offset = max(0, int(offset))
+        # S04 "Recently Deleted": the tab lists soft-deleted projects, every other list
+        # hides them. One flag keeps both branches in one query.
         rows = await self._pool.fetch(
             """
             SELECT p.id, p.title, p.major_version, p.bpm, p.time_signature,
-                   p.pinned, p.tags, p.archived, p.created_at, p.updated_at,
+                   p.pinned, p.tags, p.archived, p.created_at, p.updated_at, p.data,
+                   p.deleted_at,
                    COALESCE(c.comment_count, 0) AS comment_count,
                    c.last_comment_at
             FROM studio_projects p
@@ -2387,6 +2560,8 @@ class WebMusicService:
             ) c ON c.project_id = p.id
             WHERE p.user_id = $1
               AND ($4::boolean OR p.archived = false)
+              AND (($5::boolean AND p.deleted_at IS NOT NULL)
+                   OR (NOT $5::boolean AND p.deleted_at IS NULL))
             ORDER BY p.pinned DESC, p.updated_at DESC
             LIMIT $2 OFFSET $3
             """,
@@ -2394,14 +2569,18 @@ class WebMusicService:
             safe_limit,
             safe_offset,
             bool(include_archived),
+            bool(deleted),
         )
         total = await self._pool.fetchval(
             """
             SELECT count(*) FROM studio_projects
             WHERE user_id = $1 AND ($2::boolean OR archived = false)
+              AND (($3::boolean AND deleted_at IS NOT NULL)
+                   OR (NOT $3::boolean AND deleted_at IS NULL))
             """,
             user_id,
             bool(include_archived),
+            bool(deleted),
         )
         items = [self._studio_project_payload(row, include_data=False) for row in rows]
         statuses = await self._studio_batch_sync_statuses(
@@ -2431,6 +2610,7 @@ class WebMusicService:
             """
             SELECT id, user_id, title, major_version, bpm, time_signature, data
             FROM studio_projects
+            WHERE deleted_at IS NULL
             ORDER BY updated_at ASC
             LIMIT $1
             """,
@@ -2507,10 +2687,53 @@ class WebMusicService:
             ),
             "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
             "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+            "deleted_at": row["deleted_at"].isoformat() if row.get("deleted_at") else None,
         }
         if include_data:
             payload["data"] = data if isinstance(data, dict) else {}
+        else:
+            payload["thumb"] = WebMusicService._studio_thumb(
+                data if isinstance(data, dict) else {}
+            )
         return payload
+
+    @staticmethod
+    def _studio_thumb(data: dict[str, Any]) -> dict[str, Any]:
+        """Compact arrangement preview for the project cards (S04).
+
+        Only what a thumbnail needs: per-track colour and clip spans, capped so a large
+        project cannot bloat the list response. The card scales bars to `end`.
+        """
+        lanes_raw = data.get("lanes")
+        tracks_raw = data.get("tracks")
+        lanes = lanes_raw if isinstance(lanes_raw, list) else []
+        tracks = tracks_raw if isinstance(tracks_raw, list) else []
+        by_id = {
+            str(clip.get("id")): clip
+            for clip in lanes
+            if isinstance(clip, dict) and clip.get("id") is not None
+        }
+        rows: list[dict[str, Any]] = []
+        end = 0.0
+        for track in tracks[:12]:
+            if not isinstance(track, dict):
+                continue
+            spans: list[dict[str, float]] = []
+            for clip_id in (track.get("clipIds") or [])[:24]:
+                clip = by_id.get(str(clip_id))
+                if not isinstance(clip, dict):
+                    continue
+                try:
+                    start = max(0.0, float(clip.get("start") or 0))
+                    duration = max(0.0, float(clip.get("duration") or 0))
+                except (TypeError, ValueError):
+                    continue
+                if duration <= 0:
+                    continue
+                spans.append({"s": round(start, 3), "d": round(duration, 3)})
+                end = max(end, start + duration)
+            rows.append({"c": str(track.get("color") or "#6b7280"), "clips": spans})
+        return {"tracks": rows, "end": round(end, 3)}
 
     async def create_studio_project(
         self,
@@ -2544,13 +2767,42 @@ class WebMusicService:
 
     async def get_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
         row = await self._pool.fetchrow(
-            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
             project_id,
             user_id,
         )
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         return self._studio_project_payload(row)
+
+    async def studio_project_for_song(self, user_id: UUID, song_id: str) -> dict[str, Any]:
+        """Find the existing Studio project that already contains this song.
+
+        "Open in Studio" must load the project it created before, not create a
+        duplicate on every click (the reference's create-or-load behavior).
+        """
+        safe_song = str(song_id or "").strip()[:128]
+        if not safe_song:
+            raise ValidationError("A song id is required.", details={"field": "song_id"})
+        row = await self._pool.fetchrow(
+            """
+            SELECT id
+            FROM studio_projects
+            WHERE user_id = $1
+              AND deleted_at IS NULL
+              AND data ? 'lanes'
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(data->'lanes') AS lane
+                WHERE lane->>'songId' = $2
+              )
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            safe_song,
+        )
+        return {"id": str(row["id"]) if row else None}
 
     # --- Suno Studio mirror -------------------------------------------------
     # The mirror itself lives in musicapi (it owns the Suno accounts and the
@@ -2812,11 +3064,20 @@ class WebMusicService:
         # A status read backs the editor chip and must fail fast; a push may wait
         # for a slow provider save.
         timeout = 10 if action in ("status", "refresh") else 90
+        if action == "plugins/author/job":
+            timeout = 60
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if action == "status":
                     response = await client.get(
                         f"{base}/internal/studio/projects/{project_id}/status",
+                        headers={"x-internal-token": token},
+                        params={"user_id": user_id},
+                    )
+                elif action == "plugins/author/job":
+                    job_id = str((document or {}).get("job_id") or "")
+                    response = await client.get(
+                        f"{base}/internal/studio/projects/{project_id}/plugins/author/{job_id}",
                         headers={"x-internal-token": token},
                         params={"user_id": user_id},
                     )
@@ -2933,6 +3194,80 @@ class WebMusicService:
             "skipped_clips": [],
             "state_sync": True,
         }
+
+    async def author_studio_plugin(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        instruction: str,
+        required_controls: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Start a Suno agent plugin-authoring job for this project.
+
+        The plugin library and the authoring agent live behind the pinned Suno
+        account, so the work happens in musicapi; this method only forwards the
+        instruction and returns the job the editor polls.
+        """
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        document = self._studio_sync_document(row)
+        if document is None:
+            raise ValidationError("This project cannot be mirrored.")
+        if self._studio_sync_endpoint() is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror is not configured.", is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        result = await self._studio_sync_request(
+            str(user_id),
+            str(project_id),
+            "plugins/author",
+            {
+                **document,
+                "instruction": instruction.strip()[:2000],
+                "required_controls": [
+                    str(control).strip()[:80]
+                    for control in (required_controls or [])
+                    if str(control).strip()
+                ][:32],
+            },
+        )
+        if not result or not result.get("job_id"):
+            raise ExternalServiceError(
+                "The plugin authoring agent could not start.", is_retryable=True
+            )
+        return result
+
+    async def studio_plugin_authoring_job(
+        self, user_id: UUID, project_id: UUID, job_id: str
+    ) -> dict[str, Any]:
+        """Read one plugin-authoring job; the editor polls this until ready."""
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        if self._studio_sync_endpoint() is None:
+            raise ExternalServiceError(
+                "The Suno Studio mirror is not configured.", is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        result = await self._studio_sync_request(
+            str(user_id), str(project_id), "plugins/author/job", {"job_id": job_id}
+        )
+        if not result:
+            raise ExternalServiceError(
+                "The plugin authoring job is unavailable.", is_retryable=True
+            )
+        return result
 
     async def studio_sync_status(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
         project = await self._pool.fetchrow(
@@ -3153,7 +3488,7 @@ class WebMusicService:
                 tags = COALESCE($9::text[], tags),
                 archived = COALESCE($10, archived),
                 updated_at = now()
-            WHERE id = $1 AND user_id = $2
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
             RETURNING *
             """,
             project_id,
@@ -3173,8 +3508,13 @@ class WebMusicService:
         return self._studio_project_payload(row)
 
     async def delete_studio_project(self, user_id: UUID, project_id: UUID) -> None:
+        """Soft delete (S04): the row stays so "Recently Deleted" can restore it."""
         row = await self._pool.fetchrow(
-            "DELETE FROM studio_projects WHERE id = $1 AND user_id = $2 RETURNING id, user_id",
+            """
+            UPDATE studio_projects SET deleted_at = now(), updated_at = now()
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+            RETURNING id, user_id, data
+            """,
             project_id,
             user_id,
         )
@@ -3191,6 +3531,24 @@ class WebMusicService:
                 {"user_id": str(row["user_id"]), "archived": True},
             )
 
+    async def restore_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        """S04: put a soft-deleted project back in the Projects tab."""
+        row = await self._pool.fetchrow(
+            """
+            UPDATE studio_projects SET deleted_at = NULL, updated_at = now()
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError(
+                "Deleted Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        return self._studio_project_payload(row, include_data=False)
+
     async def fork_studio_project(
         self,
         user_id: UUID,
@@ -3203,7 +3561,7 @@ class WebMusicService:
             INSERT INTO studio_projects
                 (user_id, title, major_version, bpm, time_signature, data)
             SELECT $2, COALESCE($3, title || ' copy'), major_version, bpm, time_signature, data
-            FROM studio_projects WHERE id = $1 AND user_id = $2
+            FROM studio_projects WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
             RETURNING *
             """,
             project_id,
@@ -3608,8 +3966,13 @@ class WebMusicService:
 
     @staticmethod
     def _studio_comment_payload(row: Any) -> dict[str, Any]:
+        try:
+            clip_id = row["clip_id"]
+        except (KeyError, IndexError):
+            clip_id = None
         return {
             "id": str(row["id"]),
+            "clip_id": str(clip_id) if clip_id else None,
             "parent_id": str(row["parent_id"]) if row["parent_id"] else None,
             "author_name": str(row["author_name"]),
             "body": str(row["body"]),
@@ -3697,6 +4060,7 @@ class WebMusicService:
         display_name: str,
         playhead_seconds: float | None = None,
         selected_lane_id: str | None = None,
+        client_id: str | None = None,
     ) -> dict[str, Any]:
         share = await self._pool.fetchrow(
             """
@@ -3714,36 +4078,39 @@ class WebMusicService:
             raise ForbiddenError("This share link is view-only.")
         project_id = UUID(str(share["project_id"]))
         name = str(display_name or "").strip()[:80] or "Collaborator"
+        # One row per editor session; without an explicit client id the share page keeps
+        # one row per user, which is what the previous (pre-client-id) contract implied.
+        client = str(client_id or "").strip()[:120] or f"share-{user_id}"
+        playhead = max(0.0, float(playhead_seconds)) if playhead_seconds is not None else 0.0
         await self._pool.execute(
             """
             INSERT INTO studio_editor_presence
-                (project_id, user_id, display_name, last_seen, playhead_seconds, selected_lane_id)
-            VALUES ($1, $2, $3, now(), $4, $5)
-            ON CONFLICT (project_id, user_id)
+                (project_id, client_id, user_id, display_name, cursor_time, playhead, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, now())
+            ON CONFLICT (project_id, client_id)
             DO UPDATE SET
                 display_name = EXCLUDED.display_name,
-                last_seen = now(),
-                playhead_seconds = EXCLUDED.playhead_seconds,
-                selected_lane_id = EXCLUDED.selected_lane_id
+                user_id = EXCLUDED.user_id,
+                playhead = EXCLUDED.playhead,
+                updated_at = now()
             """,
             project_id,
+            client,
             user_id,
             name,
-            max(0.0, float(playhead_seconds))
-            if playhead_seconds is not None
-            else None,
-            str(selected_lane_id)[:120] if selected_lane_id else None,
+            0.0,
+            playhead,
         )
         await self._pool.execute(
-            "DELETE FROM studio_editor_presence WHERE project_id = $1 AND last_seen < now() - interval '90 seconds'",
+            "DELETE FROM studio_editor_presence WHERE project_id = $1 AND updated_at < now() - interval '90 seconds'",
             project_id,
         )
         rows = await self._pool.fetch(
             """
-            SELECT user_id, display_name, last_seen, playhead_seconds, selected_lane_id
+            SELECT user_id, display_name, playhead, updated_at
             FROM studio_editor_presence
-            WHERE project_id = $1 AND last_seen >= now() - interval '90 seconds'
-            ORDER BY last_seen DESC
+            WHERE project_id = $1 AND updated_at >= now() - interval '90 seconds'
+            ORDER BY updated_at DESC
             """,
             project_id,
         )
@@ -3752,14 +4119,13 @@ class WebMusicService:
                 {
                     "user_id": str(row["user_id"]),
                     "display_name": str(row["display_name"]),
-                    "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
+                    "last_seen": row["updated_at"].isoformat() if row["updated_at"] else None,
                     "playhead_seconds": (
-                        float(row["playhead_seconds"])
-                        if row["playhead_seconds"] is not None
-                        else None
+                        float(row["playhead"]) if row["playhead"] is not None else None
                     ),
-                    "selected_lane_id": row["selected_lane_id"],
+                    "selected_lane_id": None,
                 }
+
                 for row in rows
             ]
         }
@@ -3836,6 +4202,7 @@ class WebMusicService:
         project_id: UUID,
         *,
         limit: int = 100,
+        clip_id: str | None = None,
     ) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -3848,15 +4215,18 @@ class WebMusicService:
                 details={"project_id": str(project_id)},
             )
         safe_limit = max(1, min(int(limit), 100))
+        safe_clip = str(clip_id or "").strip()[:128] or None
         rows = await self._pool.fetch(
             """
             SELECT * FROM studio_project_comments
             WHERE project_id = $1
+              AND ($3::text IS NULL OR clip_id = $3)
             ORDER BY created_at DESC
             LIMIT $2
             """,
             project_id,
             safe_limit,
+            safe_clip,
         )
         return {"items": [self._studio_comment_payload(row) for row in rows]}
 
@@ -3868,6 +4238,7 @@ class WebMusicService:
         author_name: str,
         body: str,
         parent_id: UUID | None = None,
+        clip_id: str | None = None,
     ) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -3902,8 +4273,8 @@ class WebMusicService:
         row = await self._pool.fetchrow(
             """
             INSERT INTO studio_project_comments
-                (project_id, user_id, author_name, body, parent_id)
-            VALUES ($1, $2, $3, $4, $5)
+                (project_id, user_id, author_name, body, parent_id, clip_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             """,
             project_id,
@@ -3911,6 +4282,7 @@ class WebMusicService:
             safe_name,
             safe_body,
             parent_id,
+            str(clip_id or "").strip()[:128] or None,
         )
         return self._studio_comment_payload(row)
 

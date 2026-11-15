@@ -44,6 +44,8 @@ test("the uploads tab lists imported audio and plays it", async ({ page }) => {
   // Playing hands the upload to the shared player.
   await card.click();
   await expect(page.getByText("demo-loop", { exact: true }).first()).toBeVisible();
+  // An upload without artwork must not reach the player as an empty src.
+  expect(await page.evaluate(() => document.querySelectorAll("[src='']").length)).toBe(0);
 });
 
 test("the uploads tab explains an empty library", async ({ page }) => {

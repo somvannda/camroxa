@@ -2,6 +2,54 @@
 
 Reverse-chronological. Newest session first.
 
+## Session 2026-11-14 — Web completion pass
+
+Everything visible in `camxora.com` now works or is disabled for a stated external
+reason; nothing is left as a "coming soon" stub.
+
+| Area | What landed |
+|---|---|
+| **Create → Sounds** | real job type (`suno_tasks.kind = 'sounds'`), `POST /v1/sounds`, priced via the music price until a dedicated row exists, library/poll reuse |
+| **Song → Use as Inspiration** | Create opens in advanced mode with the source style and empty lyrics |
+| **Song → Sample this song** | audio-reference path end to end: ownership/readiness check, `reference_audio_urls` (migration `201`), `audioUrls` → musicapi agentic submit |
+| **Song → Studio** | `?clip=` deep links create-or-load a one-track project; Replace Section / Crop open it with a hint |
+| **Rhythm Gate** | the "Chorus" version id is Rhythm Gate in the live registry: renamed, real rate select, codec enum, legacy entry migration |
+| **Dead controls removed** | Speech tab, Hooks tabs, custom-model rows (Create + Studio), master Reverb ghost, unreachable saved-styles popover, `unverified` badge |
+| **Library attach** | Audio + opens the working Create uploader/recorder |
+
+### Verified
+
+web typecheck + `check:ui` clean · Vitest **339** · Playwright **162 passed / 2 skipped**
+· platform pytest **3402** (2 pre-existing media failures) · musicapi codec **33** ·
+signed-in sweep of 29 routes with zero console/page/API errors. Production hold
+respected; branch is local only.
+
+## Session 2026-11-13 — Designed plugins on the Suno agent; pull chains fixed
+
+The last open parity item (designed plugins) is implemented on Suno's authoring
+agent, and a pull no longer corrupts or drops plugin chains.
+
+| Area | What landed |
+|---|---|
+| **Agent authoring** | `POST /api/agent/author-plugin` → poll → save descriptor to `/api/plugins/` + `/save` → chain entry with `catalogPluginId`/`pluginVersionId`; job ledger in musicapi migration `0045` |
+| **Web designer** | "Build it" starts the job, shows progress, saves a `CustomPlugin` carrying the Suno ids; percent controls stay 0–1 and read as 0–100 % |
+| **Pull merge** | chains re-keyed to local track ids; representable effects follow Suno (deletes propagate), unrepresentable entries kept as `kept_local_effects`, orphan chains pruned |
+| **Hydration** | a pulled designed plugin fetches its descriptor from the library so it renders on any device |
+| **Docs** | `SUNO_STUDIO_AGENT_PLUGINS.md` records the live contract, probe ids and implementation map; parity decision marked resolved |
+
+### Verified
+
+musicapi **198**, platform pytest **3386** (2 pre-existing `test_media_router`
+filesystem failures), vitest **334**, Playwright **156 passed / 2 skipped**,
+`check:ui` clean, both typechecks clean, migration `0045` applied locally. The
+internal authoring route was exercised live against the already-ready probe job:
+401/400 guards, ready path in ~1.8 s, idempotent second poll in <1 ms; the created
+library plugin was archived.
+
+Deployed to production the same day (`985ccf00`), platform + musicapi; migrations
+`0043`–`0045` applied and the shared Studio internal token written to both envs.
+`DEPLOY_VERIFY_OK 988 files`; site/API/musicapi health 200.
+
 ## Session 2026-11-12 — Product chrome on every page
 
 `/studio` and the shared-project viewer rendered bare (no left nav, no top bar, no footer)

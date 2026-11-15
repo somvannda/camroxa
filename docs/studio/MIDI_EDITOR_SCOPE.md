@@ -35,8 +35,9 @@ velocity lane, clicking selects the nearest note and `←/→` moves the selecti
 changes its velocity (`SHIFT ↑/↓` by ten). The panel takes focus when it opens, so those keys
 never fall through to the arrangement bindings. Still open: MIDI file import/export.
 
-A disabled note has no verified counterpart in the Suno document yet, so the flag is local until
-the probe in `SUNO_STUDIO_SYNC.md` §7 runs.
+A disabled note travels to Suno as `notes[].isDisabled` and comes back the same way, so the
+flag now round-trips through the mirror; the key name comes from the harvested bundle and a
+live save/read probe confirmed it (`SUNO_STUDIO_SYNC.md` §7).
 
 ## What the capture shows
 

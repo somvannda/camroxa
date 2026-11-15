@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 
 import { Icon } from "@/components/Icon";
+import { StudioProjectThumbView } from "@/components/studio/StudioProjectThumb";
 import {
   createStudioProject,
   createStudioProjectShare,
@@ -10,10 +11,14 @@ import {
   listStudioProjectShares,
   listStudioProjects,
   listStudioProjectVersions,
+  restoreStudioProject,
   restoreStudioProjectVersion,
+  syncStudioProject,
   updateStudioProject,
   type StudioProject,
+  type StudioProjectData,
   type StudioProjectShare,
+  type StudioProjectSync,
   type StudioProjectVersion,
 } from "@/lib/studio-api";
 import type { StudioSettings } from "@/lib/studio-settings";
@@ -39,6 +44,7 @@ type Dialog =
   | "share"
   | "name-to-share"
   | "settings"
+  | "sync"
   | null;
 
 export type StudioProjectMenuProps = {
@@ -57,6 +63,29 @@ const initialOf = (value: string) => (value.trim()[0] || "P").toUpperCase();
 function isUnnamed(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.length === 0 || trimmed.toLowerCase() === UNTITLED.toLowerCase();
+}
+
+/** One sentence the "Send to Suno Sync" dialog can show for a push result. */
+function syncSentence(status: StudioProjectSync): string {
+  if (!status.state_sync) {
+    return "Suno state sync is off in this environment, so the arrangement stays local.";
+  }
+  switch (status.status) {
+    case "synced":
+      return status.synced_at
+        ? `Pushed to Suno at ${new Date(status.synced_at).toLocaleTimeString()}.`
+        : "Pushed to Suno.";
+    case "linked":
+      return "Linked to Suno; the push is queued.";
+    case "pending":
+      return "Queued — Suno picks it up in the background.";
+    case "conflict":
+      return "Suno moved ahead. Resolve the conflict from the sync chip before pushing again.";
+    case "error":
+      return status.last_error
+        ? `Suno rejected the push: ${status.last_error}`
+        : "Suno rejected the push.";
+  }
 }
 
 /** Prefer an existing live link over minting a second one for the same project. */
@@ -83,19 +112,29 @@ export function StudioProjectMenu({
 }: StudioProjectMenuProps) {
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  /** S09-S11: which Studio Settings pane is showing. */
+  const [settingsPane, setSettingsPane] = useState<"performance" | "windows" | "content">(
+    "performance"
+  );
   const [projectTab, setProjectTab] = useState<"projects" | "deleted">("projects");
   const [projectQuery, setProjectQuery] = useState("");
   const [projectSort, setProjectSort] = useState<"newest" | "oldest">("newest");
   const [projects, setProjects] = useState<StudioProject[] | null>(null);
+  /** S04 "Recently Deleted": loaded when that tab opens, null until then. */
+  const [deletedProjects, setDeletedProjects] = useState<StudioProject[] | null>(null);
   const [versions, setVersions] = useState<StudioProjectVersion[] | null>(null);
   const [renameValue, setRenameValue] = useState(title);
   const [gateValue, setGateValue] = useState(title);
   const [share, setShare] = useState<StudioProjectShare | null>(null);
   const [shareName, setShareName] = useState(title);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  /** Result of the last "Send to Suno Sync" push, shown in its dialog. */
+  const [syncResult, setSyncResult] = useState<StudioProjectSync | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  /** Hidden file input behind "Import project…" (JSON round-trip of the export). */
+  const importRef = useRef<HTMLInputElement | null>(null);
 
   const label = title || UNTITLED;
   const shareUrl =
@@ -117,6 +156,16 @@ export function StudioProjectMenu({
       document.removeEventListener("pointerdown", onPointer);
     };
   }, [open]);
+
+  /** A dialog opened from the menu closes on Escape (composition rule 6). */
+  useEffect(() => {
+    if (dialog === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDialog(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dialog]);
 
   useEffect(() => {
     setRenameValue(title);
@@ -160,15 +209,87 @@ export function StudioProjectMenu({
     }
   }
 
+  /**
+   * S04: the Projects tab and the Recently Deleted tab are two lists from one endpoint.
+   * Loading is lazy per tab and never blocks the dialog shell.
+   */
+  function loadProjects(deleted: boolean) {
+    if (deleted) {
+      setDeletedProjects(null);
+      listStudioProjects(50, 0, true, true)
+        .then((result) => setDeletedProjects(result.items ?? []))
+        .catch(() => setDeletedProjects([]));
+      return;
+    }
+    setProjects(null);
+    listStudioProjects(20, 0, false)
+      .then((result) => setProjects(result.items ?? []))
+      .catch(() => setProjects([]));
+  }
+
+  function selectProjectTab(tab: "projects" | "deleted") {
+    setProjectTab(tab);
+    if (tab === "deleted" && deletedProjects === null) loadProjects(true);
+  }
+
+  /** S04: restore a soft-deleted project and put it back at the top of Projects. */
+  async function restoreProject(id: string) {
+    setError("");
+    try {
+      const restored = await restoreStudioProject(id);
+      setDeletedProjects((current) => (current ?? []).filter((item) => item.id !== id));
+      setProjects((current) => [restored, ...(current ?? []).filter((item) => item.id !== id)]);
+      setProjectTab("projects");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not restore that project.");
+    }
+  }
+
+  /**
+   * Import a Studio JSON document (the shape Export → Project (JSON) writes). Validated
+   * before any write; the import always becomes a new project so it cannot clobber one.
+   */
+  async function importProject(file: File) {
+    setError("");
+    try {
+      const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
+      const source =
+        parsed.data && typeof parsed.data === "object"
+          ? (parsed.data as Record<string, unknown>)
+          : parsed;
+      if (!Array.isArray(source.lanes)) throw new Error("That JSON has no lanes array.");
+      const tracks = source.tracks;
+      if (!Array.isArray(tracks) || tracks.length === 0) {
+        throw new Error("That JSON has no tracks.");
+      }
+      const base =
+        typeof parsed.title === "string" && parsed.title.trim()
+          ? parsed.title.trim()
+          : file.name.replace(/\.json$/i, "");
+      const created = await createStudioProject({
+        title: `${base} (imported)`.slice(0, 120),
+        bpm: typeof parsed.bpm === "number" ? parsed.bpm : 120,
+        time_signature:
+          typeof parsed.time_signature === "string" ? parsed.time_signature : "4/4",
+        data: {
+          ...(parsed.data && typeof parsed.data === "object" ? parsed.data : {}),
+          lanes: source.lanes,
+          tracks,
+        } as StudioProjectData,
+      });
+      setOpen(false);
+      navigate(created.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not import that project.");
+    }
+  }
+
   function openDialog(next: Exclude<Dialog, null>) {
     setOpen(false);
     setError("");
-    setDialog(next);
-    if (next === "open") {
-      setProjects(null);
-      listStudioProjects(20, 0, false)
-        .then((result) => setProjects(result.items ?? []))
-        .catch(() => setProjects([]));
+    setDialog(next);    if (next === "open") {
+      setProjectTab("projects");
+      loadProjects(false);
     }
     if (next === "versions") {
       setVersions(null);
@@ -197,6 +318,19 @@ export function StudioProjectMenu({
     void run(async () => {
       const copy = await forkStudioProject(projectId, `${label} copy`);
       navigate(copy.id);
+    });
+  }
+
+  /**
+   * Captured "Send to Suno Sync": push now instead of waiting for the background
+   * outbox, and report what the server answered.
+   */
+  function sendToSuno() {
+    setOpen(false);
+    setSyncResult(null);
+    setDialog("sync");
+    void run(async () => {
+      setSyncResult(await syncStudioProject(projectId));
     });
   }
 
@@ -308,6 +442,7 @@ export function StudioProjectMenu({
 
       {open ? (
         <div className="se-project-menu" role="menu" aria-label="Project options">
+          {error ? <p className="se-dialog-error">{error}</p> : null}
           <button type="button" role="menuitem" onClick={startNewProject} disabled={busy}>
             <Icon name="fa-plus" /> New Project
           </button>
@@ -323,6 +458,15 @@ export function StudioProjectMenu({
           <button
             type="button"
             role="menuitem"
+            onClick={() => importRef.current?.click()}
+            disabled={busy}
+            title="Create a project from a Studio JSON document (the export format)"
+          >
+            <Icon name="fa-file-import" /> Import project…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => openDialog("versions")}
             disabled={busy}
           >
@@ -330,6 +474,9 @@ export function StudioProjectMenu({
           </button>
           <button type="button" role="menuitem" onClick={startSharing} disabled={busy}>
             <Icon name="fa-arrow-up-from-bracket" /> Share Project
+          </button>
+          <button type="button" role="menuitem" onClick={sendToSuno} disabled={busy}>
+            <Icon name="fa-cloud-arrow-up" /> Send to Suno Sync
           </button>
           <button
             type="button"
@@ -360,6 +507,20 @@ export function StudioProjectMenu({
           </button>
         </div>
       ) : null}
+
+      {/* Hidden picker behind "Import project…": JSON only, validated before any write. */}
+      <input
+        ref={importRef}
+        type="file"
+        accept="application/json,.json"
+        className="se-import-input"
+        aria-label="Import Studio project JSON"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void importProject(file);
+        }}
+      />
 
       {dialog === "versions" ? (
         <aside
@@ -458,10 +619,16 @@ export function StudioProjectMenu({
                   ? "Share project"
                   : dialog === "name-to-share"
                     ? "Name project before sharing"
-                    : "Studio settings"
+                    : dialog === "sync"
+                      ? "Suno sync"
+                      : "Studio settings"
           }
         >
-          <div className={`se-dialog${dialog === "open" ? " se-projects-dialog" : ""}`}>
+          <div
+            className={`se-dialog${dialog === "open" ? " se-projects-dialog" : ""}${
+              dialog === "settings" ? " se-settings-dialog" : ""
+            }`}
+          >
             {dialog === "open" ? (
               <>
                 <header className="se-projects-head">
@@ -484,109 +651,118 @@ export function StudioProjectMenu({
                       role="tab"
                       aria-selected={projectTab === tab}
                       className={projectTab === tab ? "on" : ""}
-                      onClick={() => setProjectTab(tab)}
+                      onClick={() => selectProjectTab(tab)}
                     >
                       {tab === "projects" ? "Projects" : "Recently Deleted"}
                     </button>
                   ))}
                 </div>
 
-                {projectTab === "deleted" ? (
-                  <p className="se-dialog-note">
-                    Deleted projects are not kept in this build, so there is nothing to restore.
-                  </p>
-                ) : (
-                  <>
-                    <div className="se-projects-tools">
-                      <label className="se-projects-search">
-                        <Icon name="fa-magnifying-glass" />
-                        <input
-                          value={projectQuery}
-                          onChange={(event) => setProjectQuery(event.target.value)}
-                          placeholder="Search for Project"
-                          aria-label="Search projects"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="se-projects-sort"
-                        disabled
-                        title="Project filters are not built"
-                      >
-                        <Icon name="fa-filter" /> Filters
-                      </button>
-                      <select
-                        className="se-projects-sort"
-                        aria-label="Sort projects"
-                        value={projectSort}
-                        onChange={(event) =>
-                          setProjectSort(event.target.value === "oldest" ? "oldest" : "newest")
-                        }
-                      >
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>
-                      </select>
-                    </div>
+                <div className="se-projects-tools">
+                  <label className="se-projects-search">
+                    <Icon name="fa-magnifying-glass" />
+                    <input
+                      value={projectQuery}
+                      onChange={(event) => setProjectQuery(event.target.value)}
+                      placeholder="Search for Project"
+                      aria-label="Search projects"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="se-projects-sort"
+                    disabled
+                    title="Project filters are not built"
+                  >
+                    <Icon name="fa-filter" /> Filters
+                  </button>
+                  <select
+                    className="se-projects-sort"
+                    aria-label="Sort projects"
+                    value={projectSort}
+                    onChange={(event) =>
+                      setProjectSort(event.target.value === "oldest" ? "oldest" : "newest")
+                    }
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                  </select>
+                </div>
 
-                    {(() => {
-                      if (projects === null) {
-                        return <p className="se-dialog-note">Loading projects</p>;
-                      }
-                      const needle = projectQuery.trim().toLowerCase();
-                      const visible = projects
-                        .filter((item) => !needle || item.title?.toLowerCase().includes(needle))
-                        .slice()
-                        .sort((a, b) => {
-                          const at = new Date(a.updated_at || a.created_at || 0).getTime();
-                          const bt = new Date(b.updated_at || b.created_at || 0).getTime();
-                          return projectSort === "newest" ? bt - at : at - bt;
-                        });
-                      return (
-                        <div className="se-projects-grid">
-                          <button
-                            type="button"
-                            className="se-project-card is-new"
-                            onClick={startNewProject}
-                            disabled={busy}
-                          >
-                            <Icon name="fa-plus" />
-                            <span>New Project</span>
-                          </button>
-                          {visible.map((item) => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="se-project-card"
-                              onClick={() => navigate(item.id)}
-                              aria-label={`Open ${item.title || UNTITLED}`}
-                            >
-                              <span className="se-project-preview" aria-hidden="true">
-                                <span />
-                              </span>
-                              <span className="se-project-meta">
-                                <span className="se-project-thumb" aria-hidden="true">
-                                  {initialOf(item.title || UNTITLED)}
-                                </span>
-                                <span className="se-project-text">
-                                  <strong>{item.title || UNTITLED}</strong>
-                                  <small>
-                                    {item.updated_at
-                                      ? new Date(item.updated_at).toLocaleDateString()
-                                      : "No date"}
-                                  </small>
-                                </span>
-                              </span>
-                            </button>
-                          ))}
-                          {visible.length === 0 ? (
-                            <p className="se-dialog-note">No projects match that search.</p>
+                {(() => {
+                  const source = projectTab === "deleted" ? deletedProjects : projects;
+                  if (source === null) {
+                    return <p className="se-dialog-note">Loading projects</p>;
+                  }
+                  const needle = projectQuery.trim().toLowerCase();
+                  const visible = source
+                    .filter((item) => !needle || item.title?.toLowerCase().includes(needle))
+                    .slice()
+                    .sort((a, b) => {
+                      const at = new Date(a.updated_at || a.created_at || 0).getTime();
+                      const bt = new Date(b.updated_at || b.created_at || 0).getTime();
+                      return projectSort === "newest" ? bt - at : at - bt;
+                    });
+                  return (
+                    <div className="se-projects-grid">
+                      {projectTab === "projects" ? (
+                        <button
+                          type="button"
+                          className="se-project-card is-new"
+                          onClick={startNewProject}
+                          disabled={busy}
+                        >
+                          <Icon name="fa-plus" />
+                          <span>New Project</span>
+                        </button>
+                      ) : null}
+                      {visible.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="se-project-card"
+                          onClick={() =>
+                            projectTab === "deleted" ? void restoreProject(item.id) : navigate(item.id)
+                          }
+                          aria-label={`${projectTab === "deleted" ? "Restore" : "Open"} ${
+                            item.title || UNTITLED
+                          }`}
+                        >
+                          <StudioProjectThumbView thumb={item.thumb} />
+                          <span className="se-project-meta">
+                            <span className="se-project-thumb" aria-hidden="true">
+                              {initialOf(item.title || UNTITLED)}
+                            </span>
+                            <span className="se-project-text">
+                              <strong>{item.title || UNTITLED}</strong>
+                              <small>
+                                {projectTab === "deleted"
+                                  ? `Deleted ${
+                                      item.deleted_at
+                                        ? new Date(item.deleted_at).toLocaleDateString()
+                                        : "recently"
+                                    }`
+                                  : item.updated_at
+                                    ? new Date(item.updated_at).toLocaleDateString()
+                                    : "No date"}
+                              </small>
+                            </span>
+                          </span>
+                          {projectTab === "deleted" ? (
+                            <span className="se-project-restore">Restore</span>
                           ) : null}
-                        </div>
-                      );
-                    })()}
-                  </>
-                )}
-              </>
+                        </button>
+                      ))}
+                      {visible.length === 0 ? (
+                        <p className="se-dialog-note">
+                          {projectTab === "deleted"
+                            ? "Nothing here. Deleted projects stay restorable."
+                            : "No projects match that search."}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })()}              </>
             ) : dialog === "rename" ? (
               <>
                 <h2>Rename project</h2>
@@ -614,33 +790,180 @@ export function StudioProjectMenu({
               </>
             ) : dialog === "settings" ? (
               <>
+                <button
+                  type="button"
+                  className="se-dialog-x"
+                  aria-label="Close"
+                  onClick={() => setDialog(null)}
+                >
+                  <Icon name="fa-xmark" />
+                </button>
                 <h2>Studio settings</h2>
-                <section className="se-settings-section">
-                  <h3>Performance</h3>
-                  <label className="se-dialog-row">
-                    <input
-                      type="checkbox"
-                      checked={settings.ghostDrag}
-                      onChange={(event) =>
-                        onSettingsChange({ ...settings, ghostDrag: event.target.checked })
-                      }
-                    />
-                    <span className="se-dialog-title">Ghost drag for arrangement moves</span>
-                  </label>
-                  <p className="se-dialog-note">
-                    On, moving a clip keeps playing the pre-drag arrangement and applies the new
-                    position once when you drop it. Off, every move is applied to the engine live.
-                    The setting is read when the drag starts.
+                <div className="se-settings">
+                  <nav className="se-settings-nav" aria-label="Settings sections">
+                    {(
+                      [
+                        ["performance", "Performance"],
+                        ["windows", "Window management"],
+                        ["content", "Content"],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        aria-current={settingsPane === id ? "page" : undefined}
+                        className={settingsPane === id ? "on" : ""}
+                        onClick={() => setSettingsPane(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </nav>
+
+                  <div className="se-settings-pane">
+                    {settingsPane === "performance" ? (
+                      <>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">
+                              Ghost drag for arrangement moves
+                            </span>
+                            <p className="se-dialog-note">
+                              On, a move holds DSP applies for the whole gesture: audio keeps
+                              playing the pre-drag arrangement and one apply lands at drop. Off,
+                              move frames stream to the engine live. Read at gesture start.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Ghost drag for arrangement moves"
+                            checked={settings.ghostDrag}
+                            onChange={(event) =>
+                              onSettingsChange({ ...settings, ghostDrag: event.target.checked })
+                            }
+                          />
+                        </div>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">Count-in before recording</span>
+                            <p className="se-dialog-note">
+                              One bar of clicks before a take starts. Recording is armed from the
+                              track row; the input is chosen next to the record button.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Count-in before recording"
+                            checked={settings.countIn}
+                            onChange={(event) =>
+                              onSettingsChange({ ...settings, countIn: event.target.checked })
+                            }
+                          />
+                        </div>
+                      </>
+                    ) : null}
+
+                    {settingsPane === "windows" ? (
+                      <div className="se-settings-card">
+                        <div className="se-settings-copy">
+                          <span className="se-dialog-title">Keyboard &amp; plugin windows</span>
+                          <p className="se-dialog-note">
+                            Docked, with a Pop out control on each surface&apos;s header. Popping
+                            one out is remembered for next time.
+                          </p>
+                        </div>
+                        <div className="se-segmented" role="radiogroup" aria-label="Plugin windows">
+                          {(
+                            [
+                              ["panels", "Panels"],
+                              ["windows", "Windows"],
+                              ["toggle", "Show toggle"],
+                            ] as const
+                          ).map(([id, label]) => (
+                            <button
+                              key={id}
+                              type="button"
+                              role="radio"
+                              aria-checked={settings.windowMode === id}
+                              className={settings.windowMode === id ? "on" : ""}
+                              onClick={() => onSettingsChange({ ...settings, windowMode: id })}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {settingsPane === "content" ? (
+                      <>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">Auto-stretch added audio</span>
+                            <p className="se-dialog-note">
+                              On: audio that you add from your library or through file uploads is
+                              stretched to the project tempo when it has a steady beat. Clips
+                              without a steady beat keep their original timing. Off: added audio
+                              always keeps its original timing and does not set the project tempo.
+                              Generated clips are not affected.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Auto-stretch added audio"
+                            checked={settings.autoStretch}
+                            onChange={(event) =>
+                              onSettingsChange({ ...settings, autoStretch: event.target.checked })
+                            }
+                          />
+                        </div>
+                        <div className="se-settings-card">
+                          <div className="se-settings-copy">
+                            <span className="se-dialog-title">Advanced content features</span>
+                            <p className="se-dialog-note">
+                              Sound-design tools like the Wavetable Designer and Impulse Response
+                              Designer. Off, the menu items that open them are hidden.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="se-switch"
+                            aria-label="Advanced content features"
+                            checked={settings.advancedContent}
+                            onChange={(event) =>
+                              onSettingsChange({
+                                ...settings,
+                                advancedContent: event.target.checked,
+                              })
+                            }
+                          />
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : dialog === "sync" ? (
+              <>
+                <h2>Suno sync</h2>
+                {busy ? (
+                  <p className="se-dialog-note">Pushing this project to Suno…</p>
+                ) : null}
+                {syncResult ? (
+                  <p className="se-dialog-note" role="status">
+                    {syncSentence(syncResult)}
                   </p>
-                </section>
-                <section className="se-settings-section">
-                  <h3>Window management</h3>
-                  <p className="se-dialog-note">Not captured yet.</p>
-                </section>
-                <section className="se-settings-section">
-                  <h3>Content</h3>
-                  <p className="se-dialog-note">Not captured yet.</p>
-                </section>
+                ) : null}
+                {syncResult && syncResult.skipped_clips.length > 0 ? (
+                  <p className="se-dialog-note">
+                    {syncResult.skipped_clips.length} clip
+                    {syncResult.skipped_clips.length === 1 ? " stays" : "s stay"} local: no Suno
+                    asset yet.
+                  </p>
+                ) : null}
               </>
             ) : (
               <>
@@ -717,8 +1040,16 @@ export function StudioProjectMenu({
                   </button>
                 </>
               ) : null}
-              {dialog === "settings" ? (
-                <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>
+              {dialog === "sync" ? (
+                <button
+                  type="button"
+                  className="se-pill"
+                  onClick={() => {
+                    setDialog(null);
+                    setSyncResult(null);
+                  }}
+                  disabled={busy}
+                >
                   Close
                 </button>
               ) : null}

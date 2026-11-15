@@ -2,6 +2,106 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-15 — clone definition, gate and full capture coverage
+
+- **“1:1” is now a gate, not a claim.** `docs/studio/CLONE_DEFINITION.md` defines the seven
+  rules; `npm run check:clone` enforces coverage, geometry and functional strings.
+  - `reference/PAIRING.json`: every reference screen → paired capture **or** named spec **or**
+    explicit negative marker.
+  - `reference/METRICS.json` must match `public/studio-metrics.json`; the metrics probe and
+    spec must exist.
+  - `reference/FUNCTIONAL_STRINGS.json`: 70 captured control strings must exist in the UI.
+- **Coverage: 73/73** reference screens evidenced — **53 paired captures** in
+  `docs/studio/compare/`, 32 spec-covered, 2 negative (S47 no mixer, S59 no conflict UI).
+- **S53 alignment:** the library tag strip is one `V6 Cover` tag, then key, then BPM; the
+  length moved to the clip info rail. “Liked” was already corpus-level (any liked clip).
+- **Allowed divergence (signed):** brand wordmark/logo, palette, our own prose, and additive
+  features. Functional strings match verbatim; YouTube Tutorials is the only absent row.
+- **Team pass (same day):** the feature ledger/gap analysis were reconciled
+  (`fb555d02`), 24 contract tests pin soft delete/restore/list/thumb (`a9540403`), and
+  platform pytest is **3439**. `CLONE_DEFINITION.md` §6 is signed off.
+
+## Update 2026-11-14 (later) — Studio 1:1 completion pass (merged to `main`)
+
+- **Branch:** `test/studio-e2e-stability`, **merged to `origin/main`** as
+  `90e08ff7` (fast-forward, 12 commits). Production is still on **`985ccf00`** and must
+  not be deployed.
+- **The last captured surfaces are now implemented:** the three-pane Studio Settings
+  (Performance · Window management · Content), advanced-content gating, the **Wavetable
+  Designer**, clip-level inserts (Add FX… / Remove FX), the **Stereo Utility** plugin,
+  auto-stretch on added uploads (tempo detection), the captured export scopes, and
+  My Projects mini-timeline thumbnails.
+- **Correction to the earlier audit:** Suno Studio has **no mixer** (S47 negative capture),
+  no FX sends, no track groups, no master spectrum and no mastering presets in any capture or
+  shipped string. Those rows were removed from the gap list instead of being invented.
+- **Gates:** web typecheck + `check:ui` clean · Vitest **355** · Playwright
+  **171 passed / 2 skipped** · platform pytest **3415** · migrations `203` applied locally.
+- **Docs:** `docs/studio/STUDIO_VS_SUNO_3COL.md` (the three-column audit),
+  `docs/changelog/2026-11-14-studio-1to1-completion.md`.
+
+## Update 2026-11-14 — Web completion pass (local branch, production hold)
+
+- **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`; the
+  completion pass is **merged and pushed to `origin/main` (`cf0dbefe`)** and the worktree is
+  detached at that commit, clean. Production
+  remains on hold: do not deploy `camxora.com`, do not replace it with `music.camxora.com`.
+- **Closed in this pass:** Create → Sounds (full platform job + `POST /v1/sounds`),
+  Song → Use as Inspiration, Song → Sample this song (audio reference end to end,
+  migration `201`), Learning Center, Library upload/record deep links, song → Studio
+  deep links with create-or-load, the "Chorus"/Rhythm Gate correction (live registry),
+  the captured S55 clip **Comments and notes** section, and removal of every dead control
+  (Speech, Hooks, custom model, master Reverb stubs).
+  `SUNO_STUDIO_STATE_SCHEMA.md`, `API_PARITY.md` and the changelog record the details.
+- **Gates at tip:** web typecheck + `check:ui` clean · Vitest 339 · Playwright
+  163 passed / 2 skipped · platform pytest 3407 (all green) · musicapi codec 33.
+  A signed-in sweep of 29 routes found zero console/page/API errors (`UI_AUDIT.md`).
+- **Local stack:** platform API on `:8100` with sandbox DB `camxora_pfm_sandbox`
+  (migrations `200`–`203` applied); web `:3103`; musicapi `:4003`; **moto S3 on `:9000`**
+  with `PLATFORM_STREAMING_B2_*` env so record uploads and render-in-place work. Run the
+  storage-dependent specs with `STUDIO_EXPECT_UPLOADS=1` (and
+  `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100` for the in-place bounce check).
+- **Provider legs:** a working Suno session exists for the sandbox user, so generation,
+  stems and persona creation were **verified live on 2026-11-14** (changelog has the ids).
+  For the **e2e gate**, restart the platform API without that provider env (DB only):
+  the provider-configured stack makes `/api/v3/health` probe external services and the
+  mirror status call wait on musicapi, which slows every list/save by seconds.
+  To repeat the live calls, the platform needs `PLATFORM_ENCRYPTION_MASTER_KEY` (canonical
+  `platform_api/.env`), `PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003`,
+  `PLATFORM_SUNO_CALLBACK_BASE_URL` (a non-local host), `PLATFORM_STUDIO_INTERNAL_TOKEN`,
+  the `PLATFORM_STREAMING_B2_*` values, the `platform_api.worker` process, and
+  `system_settings.credits_only_v3_charge=true` in the sandbox DB. The provider API key in
+  `api_key_entries` must exist in musicapi's `api_keys` (same sha256 hash).
+- **No open items.** YouTube Tutorials was dropped by product decision (no channel,
+  and tutorials are not part of this product); the Learn menu now offers Keyboard
+  Shortcuts and the Learning Center only.
+
+## Update 2026-11-13 (later) — Designed plugins on Suno's authoring agent
+
+- **Worktree:** `...\.local\share\opencode\worktree\d16337\studio-arrangement-grid`, **merged and pushed**
+  to `origin/main` (`8b3f116f`); the worktree is detached at that commit, clean.
+- **The last open parity item is closed.** "Build it" now asks Suno's authoring agent
+  (`POST /api/agent/author-plugin`), polls, saves the descriptor into the pinned account's
+  plugin library and mirrors the chain entry as `catalogPluginId` + `pluginVersionId`.
+  Contract, payloads and probe evidence: `SUNO_STUDIO_AGENT_PLUGINS.md`.
+- **Pull is safe now:** chains merge per entry against the local track id (they used to be
+  stored under Suno's id and replaced wholesale), representable effects follow Suno, and
+  entries Suno cannot carry are kept and reported (`kept_local_effects`).
+- **Ledger:** musicapi migration `0045_studio_plugin_authoring.sql` (applied locally) makes
+  polling idempotent and retries reuse the created library plugin.
+- **Verified:** musicapi 198 · platform pytest 3386 (2 pre-existing `test_media_router`
+  filesystem failures) · vitest 334 · Playwright **156 passed / 2 skipped** · `check:ui`
+  clean · internal authoring route exercised live (401/400 guards, ready path, idempotent
+  second poll) without spending credits.
+- **Deployed 2026-11-13** (`origin/main` = `985ccf00`): web + platform first, then the
+  musicapi stack; migrations `0043`–`0045` applied and the shared
+  `STUDIO_INTERNAL_TOKEN` / `PLATFORM_STUDIO_INTERNAL_TOKEN` written to both service
+  envs (internal health 401 without it, 200 with it). Local audio still approximates
+  authored DSP by family.
+- **PRODUCTION HOLD (2026-11-14, mandatory):** do not deploy to production `camxora.com`
+  yet, and do not replace `camxora.com` with `music.camxora.com`. `music.camxora.com`
+  must stay as is and keep working. Keep building/verifying `camxora.com/` locally;
+  deployment and the domain replacement need an explicit later approval.
+
 ## Update 2026-11-13 — Suno Studio project mirror
 
 - **Worktree:** `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-midi-modes`, branch `feat/studio-midi-modes` (clean, **not merged**).
@@ -9,7 +109,7 @@ State as of **2026-11-12**. Start here; the long plans live beside this file.
   projects: create → edit → Suno-side change → conflict → load → delete. Details
   in `SUNO_STUDIO_SYNC.md` and `SUNO_STUDIO_STATE_SCHEMA.md`.
 - **Every document field** is mapped or deliberately removed (`groups`,
-  `wavetableId`); the coverage registry has 31 mapped, 0 pending, 2 removed.
+  `wavetableId`); the coverage registry has 32 mapped, 0 pending, 2 removed.
 - **Strict parity (D-034):** track groups and the wavetable designer were removed
   because no Suno document field represents them.
 - **Local run:** musicapi `:4003` with a seeded `suno_accounts` row and a matching

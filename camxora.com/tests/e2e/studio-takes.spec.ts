@@ -73,4 +73,11 @@ test("take lanes show the empty copy and stack regenerated takes", async ({ page
   await takeOne.click();
   await expect(takeOne).toHaveAttribute("aria-pressed", "true");
   await expect(takeTwo).toHaveAttribute("aria-pressed", "false");
+
+  // ENTER promotes the focused take — the captured "Promote Take Lane Selection".
+  // The take row is a button, so native activation is the whole implementation.
+  await takeTwo.focus();
+  await page.keyboard.press("Enter");
+  await expect(takeTwo).toHaveAttribute("aria-pressed", "true");
+  await expect(takeOne).toHaveAttribute("aria-pressed", "false");
 });

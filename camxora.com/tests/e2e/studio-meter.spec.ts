@@ -9,6 +9,27 @@ import { createStudioProject } from "./studio-fixture";
  * lands at 4.5 s in 3/4 (bar 4 beat 1) rather than 6 s.
  */
 
+test("the header spectrum draws from the master analyser while playing", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: "Spectrum probe" });
+
+  const spectrum = page.getByRole("img", { name: "Master spectrum" });
+  await expect(spectrum).toBeVisible();
+
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.waitForTimeout(700);
+  const painted = await spectrum.evaluate((canvas: HTMLCanvasElement) => {
+    const context = canvas.getContext("2d");
+    if (!context) return 0;
+    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let opaque = 0;
+    for (let index = 3; index < data.length; index += 4) if (data[index] > 0) opaque += 1;
+    return opaque;
+  });
+  expect(painted).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Pause" }).click();
+});
+
 test("changing the meter rescales bars and persists", async ({ page }) => {
   test.setTimeout(120_000);
 

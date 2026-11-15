@@ -105,19 +105,67 @@ test("the captured shortcuts drive their actions", async ({ page }) => {
   await page.keyboard.press("Control+ArrowDown");
   await expect(page.locator(".se-track-name")).toHaveText(["Lead", "Track 1"]);
 
-  // 1 and 3 toggle the assistant and take-lanes panels.
+  // 1 toggles the assistant, 3 the take lanes, 2 the bottom plugin panel.
   await page.keyboard.press("1");
   await expect(page.getByRole("complementary", { name: "Studio assistant" })).toBeVisible();
   await page.keyboard.press("1");
   await expect(page.getByRole("complementary", { name: "Studio assistant" })).toHaveCount(0);
+
   await page.keyboard.press("3");
   await expect(page.getByRole("region", { name: "Take lanes" })).toBeVisible();
   await page.keyboard.press("3");
   await expect(page.getByRole("region", { name: "Take lanes" })).toHaveCount(0);
+
+  const dock = page.locator(".sp-dock");
+  await expect(dock).toHaveCount(1);
+  await page.keyboard.press("2");
+  await expect(dock).toHaveCount(0);
+  await page.keyboard.press("2");
+  await expect(dock).toHaveCount(1);
+
+  // SHIFT L collapses the arrangement (track) panel.
+  const tracks = page.getByRole("complementary", { name: "Tracks" });
+  await expect(tracks).not.toHaveClass(/is-collapsed/);
+  await page.keyboard.press("Shift+L");
+  await expect(tracks).toHaveClass(/is-collapsed/);
+  await page.keyboard.press("Shift+L");
+  await expect(tracks).not.toHaveClass(/is-collapsed/);
+
+  // SHIFT TAB swaps the two bottom bands.
+  const takeLanes = page.getByRole("region", { name: "Take lanes" });
+  const automation = page.getByRole("region", { name: "Track automation" });
+  await page.keyboard.press("3");
+  await expect(takeLanes).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(takeLanes).toHaveCount(0);
+  await expect(automation).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(automation).toHaveCount(0);
+  await expect(takeLanes).toBeVisible();
+  await page.keyboard.press("3");
+  await expect(takeLanes).toHaveCount(0);
 
   // 4 toggles the library drawer.
   await page.keyboard.press("4");
   await expect(library).toBeVisible();
   await page.keyboard.press("4");
   await expect(library).toHaveCount(0);
+});
+
+test("Ctrl S saves immediately through the write queue", async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = await createStudioProject(page, {
+    title: `Write queue ${Math.random().toString(36).slice(2, 8)}`,
+  });
+
+  await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });
+  const patch = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" &&
+      request.url().includes(`/studio/projects/${projectId}`),
+    { timeout: 15_000 }
+  );
+  await page.keyboard.press("Control+s");
+  await patch;
+  await expect(page.locator(".se-save")).toHaveText("Saved", { timeout: 20_000 });
 });

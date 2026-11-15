@@ -7,6 +7,7 @@ import {
   normalizeMidiInstrument,
   noteName,
   quantizeNotes,
+  playablePitch,
   sanitizeNotes,
   sanitizePoints,
   valueAt,
@@ -47,6 +48,16 @@ describe("studio MIDI model", () => {
       { id: "b", pitch: 62, start: 0.61, length: 0.4, velocity: 100 },
     ];
     expect(quantizeNotes(notes, 0.5).map((note) => note.start)).toEqual([0.5, 0.5]);
+  });
+
+  it("maps the playable keyboard row to pitches and clamps the range", () => {
+    expect(playablePitch("a", 4)).toBe(60); // C4
+    expect(playablePitch("w", 4)).toBe(61);
+    expect(playablePitch("k", 4)).toBe(72);
+    expect(playablePitch(";", 4)).toBe(76);
+    expect(playablePitch("x", 4)).toBeNull();
+    expect(playablePitch("a", 0)).toBe(36); // clamped at C2
+    expect(playablePitch(";", 8)).toBe(84); // clamped at C6
   });
 
   it("builds single notes, chords and arpeggios", () => {

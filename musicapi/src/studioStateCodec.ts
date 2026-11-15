@@ -42,6 +42,8 @@ export interface LocalMidiNote {
   start: number;
   length: number;
   velocity: number;
+  /** Muted note; rides on `isDisabled` in the Suno document. */
+  disabled?: boolean;
 }
 
 export interface LocalClip {
@@ -207,6 +209,9 @@ function midiFromLocal(
       durationBeats: Math.max(0.01, beatsFromSeconds(note.length, bps)),
       pitch: Math.max(0, Math.min(127, Math.round(Number(note.pitch) || 0))),
       velocity: Math.max(1, Math.min(127, Math.round(Number(note.velocity) || 100))),
+      // The captured bundle uses `isDisabled` for the reference's "Toggle Notes
+      // Disabled"; a live save/read probe showed Suno keeps the key verbatim.
+      ...(note.disabled === true ? { isDisabled: true } : {}),
     })),
     // Controller entries group their points; pitch bend is a flat point list.
     controlChanges: mod.length
@@ -494,10 +499,15 @@ export const SUNO_PLUGIN_CATALOG: Record<string, SunoPluginMapping> = {
     // 0–100 % drive → 0–24 dB input gain.
     scales: { drive: 0.24 },
   },
-  chorus: {
+  rhythmGate: {
+    // Live registry name is "Rhythm Gate"; the old local id was a mislabel.
     pluginVersionId: "537ba288-f700-4c96-b103-c84e2b62fab6",
-    params: { depth: "depth", mix: "mix" },
-    scales: { depth: 0.01, mix: 0.01 },
+    params: {
+      attack: "attack",
+      depth: "depth",
+      mix: "mix",
+      release: "release",
+    },
   },
 };
 
@@ -524,29 +534,133 @@ const DISTORTION_SHAPES: Record<string, string> = {
   crush: "Crush",
 };
 
-/** Hz → Suno's division string (`1/4` = one beat). */
-function chorusDivision(hz: number, bpm: number): string {
-  const cyclesPerBeat = (Math.max(0.01, hz) * 60) / Math.max(1, bpm);
-  const raw = 4 * Math.max(0.01, cyclesPerBeat);
-  const denominator = Math.max(1, Math.min(32, 2 ** Math.round(Math.log2(raw))));
-  return `1/${denominator}`;
-}
-
-function chorusHz(division: unknown, bpm: number): number {
-  const match = /^1\/(\d+)$/.exec(String(division ?? ""));
-  const denominator = match ? Number(match[1]) : 8;
-  // A 1/4 division is one beat, so a 1/n division is n/4 beats per cycle.
-  const cyclesPerBeat = denominator / 4;
-  return round((cyclesPerBeat * bpm) / 60);
-}
+/** Rhythm Gate's rate enum, in the order the local index stores it. */
+const RHYTHM_GATE_RATES = ["1/16", "1/8", "1/4"] as const;
 
 const SUNO_PLUGIN_BY_VERSION = new Map(
   Object.entries(SUNO_PLUGIN_CATALOG).map(([pluginId, def]) => [def.pluginVersionId, pluginId])
 );
 
+/** A designed plugin as stored in the local document (`data.customPlugins`). */
+export interface LocalCustomPlugin {
+  id: string;
+  name: string;
+  description: string;
+  family: "saturation" | "space" | "movement" | "dynamics" | "filter";
+  params: Array<{
+    key: string;
+    label: string;
+    min: number;
+    max: number;
+    default: number;
+    unit?: string;
+    tier: "primary" | "secondary";
+  }>;
+  defaults: Record<string, number>;
+  prompt?: string;
+  /** Suno library ids; the chain entry mirrors these. */
+  sunoPluginId: string;
+  sunoPluginVersionId: string;
+}
+
+const CUSTOM_FAMILY_KEYWORDS: Record<LocalCustomPlugin["family"], string[]> = {
+  saturation: ["satur", "tape", "drive", "overdrive", "distort", "grit", "crunch", "warm", "harmon", "console", "analog"],
+  space: ["reverb", "space", "hall", "room", "ambien", "cavern", "echo", "delay", "tail", "wash", "cathedral", "plate"],
+  movement: ["chorus", "movement", "modulat", "wobble", "tremolo", "vibrato", "flanger", "phase", "swirl", "shimmer", "drift"],
+  dynamics: ["compress", "glue", "punch", "limit", "loud", "level", "dynamic", "squash", "control"],
+  filter: ["filter", "cut", "eq", "tone", "pass", "resonance", "sweep", "mud", "hiss", "noise"],
+};
+
+function customFamilyFor(text: string): LocalCustomPlugin["family"] {
+  let best: LocalCustomPlugin["family"] = "filter";
+  let bestScore = 0;
+  for (const [family, keywords] of Object.entries(CUSTOM_FAMILY_KEYWORDS) as Array<
+    [LocalCustomPlugin["family"], string[]]
+  >) {
+    const score = keywords.reduce(
+      (total, keyword) => total + (text.toLowerCase().includes(keyword) ? 1 : 0),
+      0
+    );
+    if (score > bestScore) {
+      best = family;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function customParamUnit(unit: unknown): string | undefined {
+  const value = String(unit ?? "").toLowerCase();
+  if (value === "percent" || value === "percentage" || value === "%") return "%";
+  if (["hz", "db", "ms", "s", "ratio"].includes(value)) return value;
+  return undefined;
+}
+
+/**
+ * Turn a Suno library plugin into the local designed-plugin shape.
+ *
+ * The descriptor is written by Suno's authoring agent and saved through
+ * `/api/plugins/{id}/save`; this conversion is what lets a pulled project render
+ * and edit a designed plugin it has no local snapshot for.
+ */
+export function sunoPluginToLocalCustom(input: {
+  plugin: { id: string; name?: string; description?: string };
+  version: { plugin_version_id: string; payload?: Record<string, unknown> };
+  prompt?: string;
+}): LocalCustomPlugin | null {
+  const payload = input.version.payload;
+  if (!payload || typeof payload !== "object") return null;
+  const rawParams = Array.isArray(payload.parameters)
+    ? (payload.parameters as Array<Record<string, unknown>>)
+    : [];
+  const params: LocalCustomPlugin["params"] = [];
+  for (const raw of rawParams.slice(0, 8)) {
+    const key = typeof raw?.name === "string" ? raw.name : "";
+    const label = typeof raw?.label === "string" ? raw.label : key;
+    const range = (raw?.range ?? {}) as Record<string, unknown>;
+    const min = Number(range.min);
+    const max = Number(range.max);
+    const fallback = Number(raw?.default);
+    if (!key || !label || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) continue;
+    params.push({
+      key,
+      label,
+      min,
+      max,
+      default: Number.isFinite(fallback) ? Math.min(max, Math.max(min, fallback)) : min,
+      unit: customParamUnit(raw?.unit),
+      tier: params.length < 3 ? "primary" : "secondary",
+    });
+  }
+  if (params.length === 0) return null;
+  const name =
+    typeof payload.displayName === "string" && payload.displayName.trim()
+      ? payload.displayName.trim()
+      : input.plugin.name ?? "Designed plugin";
+  const description =
+    typeof payload.description === "string"
+      ? payload.description
+      : input.plugin.description ?? "";
+  return {
+    id: `custom-suno-${input.plugin.id.replace(/-/g, "").slice(0, 8)}`,
+    name: name.slice(0, 48),
+    description: description.slice(0, 200),
+    family: customFamilyFor(`${name} ${description}`),
+    params,
+    defaults: Object.fromEntries(params.map((param) => [param.key, param.default])),
+    ...(input.prompt ? { prompt: input.prompt.slice(0, 400) } : {}),
+    sunoPluginId: input.plugin.id,
+    sunoPluginVersionId: input.version.plugin_version_id,
+  };
+}
+
 /**
  * Map one local chain entry to a Suno plugin instance. Returns null when the
- * plugin has no verified translation (custom plugins, distortion, chorus).
+ * plugin has no verified translation (unmapped custom plugins).
+ *
+ * A designed plugin is representable once Suno's agent authored it: the entry
+ * carries the library ids (`sunoPluginId` / `sunoPluginVersionId`), so Suno gets
+ * a normal instance with `catalogPluginId` plus the control values by name.
  */
 export function chainEntryToSuno(
   entry: Record<string, unknown>,
@@ -554,8 +668,40 @@ export function chainEntryToSuno(
   bpm = 120
 ): Record<string, unknown> | null {
   const pluginId = typeof entry.pluginId === "string" ? entry.pluginId : "";
+  const custom = (entry.custom ?? {}) as Record<string, unknown>;
+  const sunoPluginId =
+    typeof entry.sunoPluginId === "string"
+      ? entry.sunoPluginId
+      : typeof custom.sunoPluginId === "string"
+        ? custom.sunoPluginId
+        : "";
+  const sunoPluginVersionId =
+    typeof entry.sunoPluginVersionId === "string"
+      ? entry.sunoPluginVersionId
+      : typeof custom.sunoPluginVersionId === "string"
+        ? custom.sunoPluginVersionId
+        : "";
   const def = SUNO_PLUGIN_CATALOG[pluginId];
-  if (!def) return null;
+  if (!def) {
+    if (!sunoPluginId || !sunoPluginVersionId) return null;
+    const params: Record<string, number> = {};
+    for (const [key, value] of Object.entries((entry.params ?? {}) as Record<string, unknown>)) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) params[key] = round(numeric);
+    }
+    const entryId =
+      typeof entry.entryId === "string" && entry.entryId
+        ? entry.entryId
+        : `plugin-custom-${fallbackIndex}`;
+    return {
+      id: stableSunoId(entryId),
+      pluginVersionId: sunoPluginVersionId,
+      catalogPluginId: sunoPluginId,
+      bypassed: Boolean(entry.bypassed),
+      params,
+      paramAutomation: {},
+    };
+  }
   const localParams = (entry.params ?? {}) as Record<string, unknown>;
   const params: Record<string, unknown> = {};
   for (const [local, suno] of Object.entries(def.params)) {
@@ -589,9 +735,15 @@ export function chainEntryToSuno(
     params.Crush = 0;
     params["Post Resonance"] = 0.707;
   }
-  if (pluginId === "chorus") {
-    const hz = Number((entry.params as Record<string, unknown> | undefined)?.rate) || 0.8;
-    params["rate (1/16, 1/8, 1/4)"] = chorusDivision(hz, bpm);
+  if (pluginId === "rhythmGate") {
+    const index = Math.max(
+      0,
+      Math.min(
+        RHYTHM_GATE_RATES.length - 1,
+        Math.round(Number((entry.params as Record<string, unknown> | undefined)?.rate) || 0)
+      )
+    );
+    params["rate (1/16, 1/8, 1/4)"] = RHYTHM_GATE_RATES[index];
   }
   const entryId =
     typeof entry.entryId === "string" && entry.entryId
@@ -613,9 +765,32 @@ export function chainEntryToSuno(
 export function chainEntryFromSuno(
   entry: Record<string, unknown>,
   fallbackIndex: number,
-  bpm = 120
+  bpm = 120,
+  customPlugins?: Record<string, LocalCustomPlugin>
 ): Record<string, unknown> | null {
   const versionId = typeof entry.pluginVersionId === "string" ? entry.pluginVersionId : "";
+  const catalogPluginId =
+    typeof entry.catalogPluginId === "string" ? entry.catalogPluginId : "";
+  if (catalogPluginId && versionId) {
+    const params: Record<string, number> = {};
+    for (const [key, value] of Object.entries((entry.params ?? {}) as Record<string, unknown>)) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) params[key] = numeric;
+    }
+    const custom = customPlugins?.[catalogPluginId];
+    return {
+      entryId:
+        typeof entry.id === "string" ? `entry-${entry.id.slice(0, 8)}` : `entry-${fallbackIndex}`,
+      pluginId: "custom",
+      presetId: typeof entry.presetId === "string" ? entry.presetId : null,
+      presetName: "Custom",
+      params,
+      sunoPluginId: catalogPluginId,
+      sunoPluginVersionId: versionId,
+      sunoId: typeof entry.id === "string" ? entry.id : undefined,
+      ...(custom ? { custom } : {}),
+    };
+  }
   const pluginId = SUNO_PLUGIN_BY_VERSION.get(versionId);
   if (!pluginId) return null;
   const def = SUNO_PLUGIN_CATALOG[pluginId];
@@ -640,8 +815,9 @@ export function chainEntryFromSuno(
   if (pluginId === "distortion" && typeof sunoParams.Shape === "string") {
     mode = sunoParams.Shape.toLowerCase();
   }
-  if (pluginId === "chorus") {
-    params.rate = chorusHz(sunoParams["rate (1/16, 1/8, 1/4)"], bpm);
+  if (pluginId === "rhythmGate") {
+    const division = String(sunoParams["rate (1/16, 1/8, 1/4)"] ?? "1/8");
+    params.rate = Math.max(0, RHYTHM_GATE_RATES.indexOf(division as (typeof RHYTHM_GATE_RATES)[number]));
   }
   return {
     entryId: typeof entry.id === "string" ? `entry-${entry.id.slice(0, 8)}` : `entry-${fallbackIndex}`,
@@ -932,7 +1108,10 @@ export function projectDocumentToSunoState(input: CodecInput): CodecResult {
  * Read a Suno document back into local project fields. Used by the pull path and
  * by the round-trip test; only fields with a verified mapping are projected.
  */
-export function sunoStateToProjectData(state: Record<string, unknown>): {
+export function sunoStateToProjectData(
+  state: Record<string, unknown>,
+  options: { customPlugins?: Record<string, LocalCustomPlugin> } = {}
+): {
   bpm: number;
   timeSignature: string;
   tracks: LocalTrack[];
@@ -1007,6 +1186,7 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
                 start: secondsFromBeats(Number(note.startBeats) || 0, bps),
                 length: secondsFromBeats(Number(note.durationBeats) || 0, bps),
                 velocity: Number(note.velocity) || 100,
+                ...(note.isDisabled === true ? { disabled: true } : {}),
               })),
               ...(bend.length ? { bend } : {}),
               ...(mod.length ? { mod } : {}),
@@ -1039,7 +1219,9 @@ export function sunoStateToProjectData(state: Record<string, unknown>): {
       (entry) => entry.pluginVersionId !== SUNO_SYNTH_PLUGIN_ID
     );
     const mappedChain = effectEntries
-      .map((entry, chainIndex) => chainEntryFromSuno(entry, chainIndex, bpm))
+      .map((entry, chainIndex) =>
+        chainEntryFromSuno(entry, chainIndex, bpm, options.customPlugins)
+      )
       .filter((entry): entry is Record<string, unknown> => entry !== null);
     if (mappedChain.length === effectEntries.length) {
       chains[trackId] = mappedChain;
@@ -1107,6 +1289,29 @@ function shortId(value: string): string {
 }
 
 /**
+ * True when a local chain entry cannot ride in `signalChain`: no built-in
+ * translation and no Suno library ids from the authoring agent.
+ */
+function chainEntryIsUnrepresentable(entry: Record<string, unknown>): boolean {
+  const pluginId = String(entry.pluginId ?? "");
+  if (SUNO_PLUGIN_CATALOG[pluginId]) return false;
+  const custom = (entry.custom ?? {}) as Record<string, unknown>;
+  const sunoPluginId =
+    typeof entry.sunoPluginId === "string"
+      ? entry.sunoPluginId
+      : typeof custom.sunoPluginId === "string"
+        ? custom.sunoPluginId
+        : "";
+  const sunoPluginVersionId =
+    typeof entry.sunoPluginVersionId === "string"
+      ? entry.sunoPluginVersionId
+      : typeof custom.sunoPluginVersionId === "string"
+        ? custom.sunoPluginVersionId
+        : "";
+  return !(sunoPluginId && sunoPluginVersionId);
+}
+
+/**
  * Apply a Suno document to a local project ("Load Suno version").
  *
  * This is a merge, not a replace: tracks and clips are matched by the Suno id
@@ -1114,6 +1319,11 @@ function shortId(value: string): string {
  * anything Suno does not know about — a local upload, a clip that has not been
  * uploaded yet — is kept rather than silently deleted. The caller is told what
  * was kept so the UI can explain the result.
+ *
+ * Effects follow the same rule per entry: an effect Suno can represent is
+ * replaced by Suno's copy (so deletes propagate), while an entry with no Suno
+ * translation — a custom/designed plugin — is appended to the pulled chain
+ * instead of being wiped by a pull.
  */
 export function mergeSunoProjectIntoLocal(
   local: LocalDocument,
@@ -1126,7 +1336,12 @@ export function mergeSunoProjectIntoLocal(
     chains?: Record<string, Array<Record<string, unknown>>>;
     masterChain?: Array<Record<string, unknown>>;
   }
-): { data: LocalDocument; keptLocalClips: string[]; droppedTracks: string[] } {
+): {
+  data: LocalDocument;
+  keptLocalClips: string[];
+  keptLocalEffects: string[];
+  droppedTracks: string[];
+} {
   const localTracks = Array.isArray(local.tracks) ? local.tracks : [];
   const localLanes = Array.isArray(local.lanes) ? local.lanes : [];
   const localTrackBySunoId = new Map<string, LocalTrack>();
@@ -1141,13 +1356,38 @@ export function mergeSunoProjectIntoLocal(
   const usedTrackIds = new Set<string>();
   const usedClipIds = new Set<string>();
   const keptLocalClips: string[] = [];
+  const keptLocalEffects: string[] = [];
+  /** Pulled chains keyed by *local* track id (Suno sends them by Suno id). */
+  const pulledChains: Record<string, Array<Record<string, unknown>>> = {};
 
   const tracks: LocalTrack[] = suno.tracks.map((track, index) => {
     const match =
       localTrackBySunoId.get(track.id) ??
       localTracks.find((candidate) => candidate.index === index && !candidate.sunoId);
     const id = match?.id ?? `track-${shortId(track.id)}`;
-    usedTrackIds.add(match?.id ?? id);
+    usedTrackIds.add(id);
+    const sunoChain = suno.chains?.[track.id];
+    if (sunoChain) {
+      const localChain = match ? (local.chains ?? {})[match.id] : undefined;
+      const representedSunoIds = new Set(
+        sunoChain
+          .map((entry) => (typeof entry.sunoId === "string" ? entry.sunoId : ""))
+          .filter(Boolean)
+      );
+      const unrepresentable = (Array.isArray(localChain) ? localChain : []).filter(
+        (entry) => {
+          if (!chainEntryIsUnrepresentable(entry)) return false;
+          // A designed entry Suno already carries comes back with its Suno id;
+          // never append the local copy as a second effect.
+          const entryId = typeof entry.entryId === "string" ? entry.entryId : "";
+          return !entryId || !representedSunoIds.has(stableSunoId(entryId));
+        }
+      );
+      for (const entry of unrepresentable) {
+        keptLocalEffects.push(String(entry.entryId ?? entry.pluginId ?? "effect"));
+      }
+      pulledChains[id] = [...sunoChain, ...unrepresentable];
+    }
     const clipIds: string[] = [];
     for (const sunoClip of suno.lanes.filter((clip) => clipIdsOf(track).includes(clip.id))) {
       const clipMatch = localClipBySunoId.get(sunoClip.id);
@@ -1214,21 +1454,33 @@ export function mergeSunoProjectIntoLocal(
     }
   }
 
+  const trackIds = new Set(tracks.map((track) => track.id));
+  const chains: Record<string, Array<Record<string, unknown>>> = {};
+  for (const [trackId, chain] of Object.entries(local.chains ?? {})) {
+    // Keep chains for tracks that survived; this also drops keys a previous
+    // pull wrote under Suno's ids and chains left behind by dropped tracks.
+    if (trackIds.has(trackId)) chains[trackId] = chain;
+  }
+  for (const [trackId, chain] of Object.entries(pulledChains)) {
+    chains[trackId] = chain;
+  }
+
   return {
     data: {
       ...local,
       tracks,
       lanes: localLanes,
       markers: suno.markers ?? local.markers,
-      // Per-track merge: a Suno chain we could not fully map leaves the local
-      // chain in place rather than dropping effects silently.
-      chains: { ...(local.chains ?? {}), ...(suno.chains ?? {}) },
+      // Per-track, per-entry merge: representable effects come from Suno, an
+      // entry Suno cannot express stays on the track rather than being wiped.
+      chains,
       masterChain:
         suno.masterChain && suno.masterChain.length > 0
           ? suno.masterChain
           : local.masterChain,
     },
     keptLocalClips,
+    keptLocalEffects,
     droppedTracks,
   };
 }

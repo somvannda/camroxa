@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
-import type { StudioTrack } from "@/lib/studio-tracks";
+import { TRACK_GROUPS, type StudioTrack } from "@/lib/studio-tracks";
+import { groupsInUse, type GroupMix } from "@/lib/studio-groups";
 
 /**
  * Track panel: the gutter list — number, name, mute/solo/arm, the per-track options
@@ -57,6 +58,11 @@ export type StudioTrackPanelProps = {
   onSelectMaster?: () => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
+  /** S21 "Unmute all": clears mute on hidden tracks without showing them. */
+  onUnmuteAllHidden: () => void;
+  /** ARR-027: group levels and assignment. */
+  groups?: GroupMix;
+  onGroupMix?: (groupId: string, value: number) => void;
   /** Capture head: one control expands or collapses every visible track. */
   onToggleAllCollapsed: () => void;
 
@@ -142,6 +148,9 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onSelectMaster,
     onToggleHidden,
     onShowAllHidden,
+  onUnmuteAllHidden,
+  groups = {},
+  onGroupMix,
     onToggleAllCollapsed,
     masterVolume,
     masterMuted,
@@ -154,6 +163,17 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
   useEffect(() => {
     if (menuTrackId === null) setColorOpen(false);
   }, [menuTrackId]);
+
+  // Overlays close on Escape (composition rule 6); the hidden-tracks popover sits in
+  // this panel but its open state belongs to the editor.
+  useEffect(() => {
+    if (!hiddenOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onToggleHidden();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [hiddenOpen, onToggleHidden]);
   const allCollapsed =
     visible.length > 0 && visible.every((track) => track.collapsed);
   const hiddenTracks = tracks.filter((track) => track.hidden);
@@ -446,11 +466,65 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     onChange={(value) => onPreviewTrack(track.id, { pan: value })}
                     onCommit={() => onUpdateTrack(track.id, { pan: track.pan })}
                   />
+                  <select
+                    className="se-track-group"
+                    aria-label={`Group for ${track.name}`}
+                    value={track.groupId ?? ""}
+                    onChange={(event) =>
+                      onUpdateTrack(track.id, {
+                        groupId: (event.target.value || null) as StudioTrack["groupId"],
+                      })
+                    }
+                  >
+                    <option value="">–</option>
+                    {TRACK_GROUPS.map((group) => (
+                      <option key={group} value={group}>
+                        {group}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
             </div>
           );
         })}
+
+        {groupsInUse(visible).length > 0 ? (
+          <div className="se-groups" role="group" aria-label="Track groups">
+            {groupsInUse(visible).map((group) => (
+              <div key={group.id} className="se-group-row">
+                <button
+                  type="button"
+                  className="se-group-chip"
+                  aria-label={`Collapse group ${group.id}`}
+                  aria-pressed={visible
+                    .filter((track) => track.groupId === group.id)
+                    .every((track) => track.collapsed)}
+                  onClick={() => {
+                    const members = visible.filter((track) => track.groupId === group.id);
+                    const next = !members.every((track) => track.collapsed);
+                    members.forEach((track) =>
+                      onUpdateTrack(track.id, { collapsed: next })
+                    );
+                  }}
+                >
+                  {group.id}
+                </button>
+                <input
+                  type="range"
+                  className="se-track-slider"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={groups[group.id] ?? 100}
+                  aria-label={`Group ${group.id} level`}
+                  onChange={(event) => onGroupMix?.(group.id, Number(event.target.value))}
+                />
+                <span className="se-group-count">{group.count}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="se-add-wrap" ref={addRef}>
           <button
@@ -574,6 +648,9 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     </button>
                   </div>
                 ))}
+                <button type="button" className="se-pill" onClick={onUnmuteAllHidden}>
+                  Unmute all
+                </button>
                 <button type="button" className="se-pill on" onClick={onShowAllHidden}>
                   Show All Hidden Tracks
                 </button>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DRAG_THRESHOLD_PX, dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
+import { DRAG_THRESHOLD_PX, dragToStart, isDrag, scaleGrid, snapToGrid } from "@/lib/studio-snap";
 
 describe("snapToGrid", () => {
   it("snaps to beats when a bar is 2s and the grid is 4", () => {
@@ -49,5 +49,24 @@ describe("isDrag", () => {
   it("treats movement past the threshold as a drag in either direction", () => {
     expect(isDrag(DRAG_THRESHOLD_PX + 1)).toBe(true);
     expect(isDrag(-(DRAG_THRESHOLD_PX + 1))).toBe(true);
+  });
+});
+
+describe("scaleGrid", () => {
+  it("doubles and halves the subdivisions per bar", () => {
+    expect(scaleGrid(4, 1)).toBe(8);
+    expect(scaleGrid(8, 1)).toBe(16);
+    expect(scaleGrid(8, -1)).toBe(4);
+    expect(scaleGrid(4, -1)).toBe(2);
+  });
+
+  it("clamps to 1..32 so the grid cannot vanish or turn into pixels", () => {
+    expect(scaleGrid(32, 1)).toBe(32);
+    expect(scaleGrid(1, -1)).toBe(1);
+  });
+
+  it("falls back to beats for a bad value", () => {
+    expect(scaleGrid(0, 1)).toBe(8);
+    expect(scaleGrid(Number.NaN, -1)).toBe(2);
   });
 });

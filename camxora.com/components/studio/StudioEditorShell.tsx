@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent 
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
-import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
+import { getStudioProject, createStudioProject, findStudioProjectForSong, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import {
@@ -31,6 +31,9 @@ import {
   keepStudioLocalVersion,
   loadStudioSunoVersion,
   forkStudioProject,
+  authorStudioPlugin,
+  getStudioPluginAuthoringJob,
+  type StudioPluginAuthoringJob,
 } from "@/lib/studio-api";
 import {
   extendedClipStart,
@@ -51,6 +54,7 @@ import {
   createWebMusicWorkspace,
   dislikeWebMusicGeneration,
   downloadWebMusicClipWav,
+  getWebMusicGeneration,
   setWebMusicTrash,
   fetchWebMusicDislikedKeys,
   fetchWebMusicLikedKeys,
@@ -58,6 +62,7 @@ import {
   listWebMusicWorkspaces,
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
+import { projectFromSong } from "@/lib/studio-from-clip";
 import {
   SONG_DRAG_TYPE,
   StudioLibrary,
@@ -69,7 +74,7 @@ import { StudioSongDetail } from "@/components/studio/StudioSongDetail";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { fetchGeneration, generateSong } from "@/lib/create-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
-import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
+import { dragToStart, isDrag, scaleGrid, snapToGrid } from "@/lib/studio-snap";
 import {
   clipRate,
   dbToGain,
@@ -82,9 +87,12 @@ import {
   deleteTimeRange,
   duplicateTimeRange,
   normaliseRange,
+  splitClipAtTimes,
   type TimeRange,
 } from "@/lib/studio-time";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
+import { computePeaks, detectOnsets } from "@/lib/studio-peaks";
+import { autoStretchSpeed } from "@/lib/studio-tempo";
 import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
 import { EXPORT_TARGET_PEAK_DB } from "@/lib/studio-normalise";
 import {
@@ -101,12 +109,14 @@ import {
   parseBeatsPerBar,
   secondsPerBar as secondsPerBarFor,
 } from "@/lib/studio-signature";
-import { buildPluginChain } from "@/lib/studio-plugin-audio";
-import { addCustomPlugin } from "@/lib/studio-plugin-chain";
+import { buildPluginChain, createPluginAudio } from "@/lib/studio-plugin-audio";
+import { DELAY_BUS_PARAMS, REVERB_BUS_PARAMS, sanitizeSends, sendsActive, type TrackSends } from "@/lib/studio-sends";
+import { addCustomPlugin, addPlugin, sanitizeChain } from "@/lib/studio-plugin-chain";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import {
   makeUserPreset,
   sanitizeCustomPlugin,
+  STUDIO_PLUGINS,
   type CustomPlugin,
   type PluginChainEntry,
   type UserPreset,
@@ -114,10 +124,14 @@ import {
 import {
   DESIGN_CARD_SUBTITLE,
   DESIGN_PROMPT,
-  designPlugin,
-  type DesignResult,
+  pluginFromAuthoring,
+  restateDesign,
 } from "@/lib/studio-designer";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
+import { StudioWavetableDesigner } from "@/components/studio/StudioWavetableDesigner";
+import { StudioSpectrum } from "@/components/studio/StudioSpectrum";
+import { groupGain, groupsInUse, sanitizeGroups, type GroupMix } from "@/lib/studio-groups";
+import type { TrackGroupId } from "@/lib/studio-tracks";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
 import { StudioTakeLanes } from "@/components/studio/StudioTakeLanes";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
@@ -137,6 +151,13 @@ import {
   type MidiInstrument,
   type MidiNote,
 } from "@/lib/studio-midi";
+import {
+  sanitizeWavetables,
+  wavetableIdFromInstrument,
+  wavetableInstrumentId,
+  wavetablePeriodicWave,
+  type CustomWavetable,
+} from "@/lib/studio-wavetable";
 import { buildMidiFile } from "@/lib/studio-midi-file";
 import { parseMidiFile } from "@/lib/studio-midi-import";
 import { classifyStudioError } from "@/lib/studio-errors";
@@ -200,6 +221,8 @@ type ClipLike = {
   warp?: unknown;
   /** Clip Settings audio state (S30/§81); parsed by `sanitizeClipAudio`. */
   audio?: unknown;
+  /** Clip-level insert chain (§34 "Remove FX"); parsed by `sanitizeChain`. */
+  fx?: unknown;
   midi?: { notes?: MidiNote[]; bend?: { at: number; value: number }[]; mod?: { at: number; value: number }[] };
   /** MIDI synth voice (S31); triangle when absent. */
   instrument?: MidiInstrument;
@@ -392,6 +415,11 @@ export function StudioEditorShell() {
   } | null>(null);
   /** Clip context menu (S26/§47): anchored at the click point, built from clip state. */
   const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);  const [clipColorOpen, setClipColorOpen] = useState(false);
+  /** §34: clip whose own insert chain is being edited (null = picker closed). */
+  const [clipFxTarget, setClipFxTarget] = useState<string | null>(null);
+  /** N-14: Wavetable Designer, and the MIDI clip that will use the saved table. */
+  const [wavetableOpen, setWavetableOpen] = useState(false);
+  const [wavetableClipId, setWavetableClipId] = useState<string | null>(null);
   /** Clip rename dialog (clip menu ▸ Rename). */
   const [clipRename, setClipRename] = useState<{ id: string; value: string } | null>(null);
   /** Copy/paste buffer for Clip Settings (gain, loop, reverse, pitch, speed, fade). */
@@ -621,6 +649,16 @@ export function StudioEditorShell() {
     );
   }
 
+  /** §34: replace a clip's own insert chain (empty array removes it). */
+  function setClipFx(clipId: string, fx: unknown) {
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      { ...data, lanes: lanes.map((clip) => (clip.id === clipId ? { ...clip, fx } : clip)) },
+      "the clip effects"
+    );
+  }
+
   const [exporting, setExporting] = useState(false);
   /** N-06: the track whose bounce is rendering right now. */
   const [bouncingTrack, setBouncingTrack] = useState<string | null>(null);
@@ -640,9 +678,18 @@ export function StudioEditorShell() {
   const [designMode, setDesignMode] = useState(false);
   const [designContext, setDesignContext] = useState<string | null>(null);
   /** Restate message awaiting "Build it" / "Change something…". */
-  const [designRequest, setDesignRequest] = useState<DesignResult | null>(null);
+  const [designRequest, setDesignRequest] = useState<
+    { instruction: string; restate: string } | null
+  >(null);
   /** Built plugin shown as a draggable card; saved to the library, never inserted. */
-  const [designBuilt, setDesignBuilt] = useState<DesignResult | null>(null);
+  const [designBuilt, setDesignBuilt] = useState<CustomPlugin | null>(null);
+  /** Suno's authoring agent runs in the background; this is the progress state. */
+  const [designJob, setDesignJob] = useState<
+    { status: StudioPluginAuthoringJob["status"]; message: string } | null
+  >(null);
+  const [designError, setDesignError] = useState<string | null>(null);
+  /** Bumped on exit so a poll that lands later cannot write into a closed designer. */
+  const designRunRef = useRef(0);
   const [pendingSong, setPendingSong] = useState<WebMusicGeneration | null>(null);
   /** Refusal state for the assistant (own addition; S60/S61 have no capture). */
   const [promptNotice, setPromptNotice] = useState<
@@ -691,6 +738,10 @@ export function StudioEditorShell() {
   const [remixingSongId, setRemixingSongId] = useState<string | null>(null);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
   const [exportNormalise, setExportNormalise] = useState(false);
+  /** Export container: WAV (default) or MP3, encoded after the offline render. */
+  const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
+  /** Analyser on the master bus, for the header spectrum. */
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   /** Undo/redo: documents, newest last. */
   const historyRef = useRef<{ undo: { data: unknown; label: string }[]; redo: { data: unknown; label: string }[] }>(
@@ -713,6 +764,8 @@ export function StudioEditorShell() {
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [masterSelected, setMasterSelected] = useState(false);
   const [takeLanesOpen, setTakeLanesOpen] = useState(false);
+  /** Bottom plugin/master panel; `2` toggles it (captured "Toggle Bottom Panel"). */
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(true);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
   /** A clip explicitly attached with the prompt bar's + menu (not just selected). */
   const [attachedClipId, setAttachedClipId] = useState<string | null>(null);
@@ -756,6 +809,17 @@ export function StudioEditorShell() {
   const [timeSignature, setTimeSignature] = useState("4/4");
   const beatsPerBar = parseBeatsPerBar(timeSignature);
   const secondsPerBar = secondsPerBarFor(bpm, timeSignature);
+  /**
+   * Arrangement snap grid, in subdivisions per bar. Defaults to the meter's beats
+   * and SHIFT 1 / SHIFT 2 double or halve it (captured "Grid Density").
+   */
+  const [gridDivisions, setGridDivisions] = useState(beatsPerBar);
+  const gridDivisionsRef = useRef(gridDivisions);
+  gridDivisionsRef.current = gridDivisions;
+  // A new meter resets the grid to its beats, like a fresh bar.
+  useEffect(() => {
+    setGridDivisions(beatsPerBar);
+  }, [beatsPerBar]);
   /** Master level (reference F-01/F-02), persisted in the document. */
   const [masterVolume, setMasterVolume] = useState(85);
   const [masterMuted, setMasterMuted] = useState(false);
@@ -768,12 +832,83 @@ export function StudioEditorShell() {
   /** Audition speed (G17): 0.5x / 1x / 2x. */
   const [playbackRate, setPlaybackRate] = useState(1);
   const [projectId, setProjectId] = useState<string | null>(null);
+  /** `?clip=<generation>` deep link: create a project from the song, then load it. */
+  const [clipImport, setClipImport] = useState<{
+    id: string;
+    variant: "ok" | "alt";
+    intent: string | null;
+  } | null>(null);
+  const clipImportRef = useRef("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const clip = params.get("clip");
     setProjectId(params.get("project"));
+    setClipImport(
+      clip
+        ? {
+            id: clip,
+            variant: params.get("variant") === "alt" ? "alt" : "ok",
+            intent: params.get("intent"),
+          }
+        : null
+    );
     setSettings(readStudioSettings());
   }, []);
+
+  // "Open in Studio" / Replace Section / Crop from a song row: materialise the
+  // song as a one-track project once, then stay on the normal project flow.
+  useEffect(() => {
+    if (authLoading || !user || !clipImport || projectId) return;
+    if (clipImportRef.current === clipImport.id) return;
+    clipImportRef.current = clipImport.id;
+    let active = true;
+    void (async () => {
+      try {
+        const existing = await findStudioProjectForSong(clipImport.id).catch(() => ({
+          id: null as string | null,
+        }));
+        if (existing.id) {
+          if (!active) return;
+          window.history.replaceState(
+            null,
+            "",
+            `/studio/editor?project=${encodeURIComponent(existing.id)}`
+          );
+          setClipImport(null);
+          setProjectId(existing.id);
+          return;
+        }
+        const song = await getWebMusicGeneration(clipImport.id);
+        const draft = projectFromSong(song, clipImport.variant);
+        if (!draft) {
+          if (active) setError("This song has no playable audio yet.");
+          return;
+        }
+        const created = await createStudioProject(draft);
+        if (!active) return;
+        window.history.replaceState(
+          null,
+          "",
+          `/studio/editor?project=${encodeURIComponent(created.id)}`
+        );
+        setClipImport(null);
+        setProjectId(created.id);
+        if (clipImport.intent === "replace-section") {
+          setExportToast("Select a range on the ruler, then choose Replace Section.");
+        } else if (clipImport.intent === "crop") {
+          setExportToast("Drag the clip handles to crop this song.");
+        }
+      } catch (cause) {
+        if (active) {
+          setError(cause instanceof Error ? cause.message : "Could not open this song in Studio.");
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user, clipImport, projectId]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -1010,6 +1145,10 @@ export function StudioEditorShell() {
   function currentData(): Record<string, unknown> {
     return (projectRef.current?.data || {}) as Record<string, unknown>;
   }
+  /** N-14: wavetables saved in this project's document. */
+  const wavetables = sanitizeWavetables((currentData() as { wavetables?: unknown }).wavetables);
+  /** ARR-027: group A–D levels, a submix multiplier over member tracks. */
+  const groupMix = sanitizeGroups((currentData() as { groups?: unknown }).groups);
   /** Load the library panel's lists the first time it opens (G12). */
   useEffect(() => {
     if (!libraryOpen || !user) return;
@@ -1329,7 +1468,7 @@ export function StudioEditorShell() {
           clip: {
             id: `clip-take-${upload.id}`,
             title: `Take ${take}`,
-            start: snapToGrid(active.start, secondsPerBar, beatsPerBar),
+            start: snapToGrid(active.start, secondsPerBar, gridDivisions),
             duration,
             volume: 1,
             pan: 0,
@@ -1347,13 +1486,8 @@ export function StudioEditorShell() {
     if (recording) stopRecording();
     else void startRecording();
   }
-  function toggleSongPreview(song: WebMusicGeneration) {
-    if (playingSongId === song.id) {
-      previewRef.current?.pause();
-      previewRef.current = null;
-      setPlayingSongId(null);
-      return;
-    }
+  /** Start a library audition, replacing whatever was previewing. */
+  function startSongPreview(song: WebMusicGeneration) {
     const clip = song.clips?.find((candidate) => candidate.audio_url);
     if (!clip?.audio_url) return;
     previewRef.current?.pause();
@@ -1367,6 +1501,32 @@ export function StudioEditorShell() {
     void audio.play().catch(() => {
       setPlayingSongId((current) => (current === song.id ? null : current));
     });
+  }
+
+  function toggleSongPreview(song: WebMusicGeneration) {
+    if (playingSongId === song.id) {
+      previewRef.current?.pause();
+      previewRef.current = null;
+      setPlayingSongId(null);
+      return;
+    }
+    startSongPreview(song);
+  }
+
+  /**
+   * S14 library keys: ↓/↑ audition the next/previous row and → replays the current
+   * one, so audition always starts at the top rather than toggling off.
+   */
+  function auditionSong(song: WebMusicGeneration) {
+    if (playingSongId === song.id) {
+      const audio = previewRef.current;
+      if (audio) {
+        audio.currentTime = 0;
+        void audio.play().catch(() => setPlayingSongId(null));
+        return;
+      }
+    }
+    startSongPreview(song);
   }
 
   /** Audition an imported upload; shares the single preview element with songs. */
@@ -1425,7 +1585,7 @@ export function StudioEditorShell() {
         clip: {
           id: `stem-${stem.clip_id}-${Date.now().toString(36)}`,
           title: label,
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
           duration: stem.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -1611,7 +1771,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-${song.id}-${Date.now().toString(36)}`,
           title: clip.title || song.title || "Song",
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
           duration: clip.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -1624,25 +1784,49 @@ export function StudioEditorShell() {
   }
 
   /** Drop an imported upload onto the selected (or first) track at the playhead. */
-  function addUploadToTimeline(upload: StudioUpload) {
+  async function addUploadToTimeline(upload: StudioUpload) {
     const trackId = selectedTrack ?? tracks[0]?.id;
     if (!trackId || !upload.url) return;
     const title = upload.filename.replace(/\.[^.]+$/, "") || "Audio";
+    const duration = upload.duration_seconds ?? 8;
+    // Content → Auto-stretch added audio (S11): only uploads, never generated clips.
+    const stretch = autoStretchSpeed(
+      await computePeaks(upload.url),
+      duration,
+      bpm,
+      settingsRef.current.autoStretch
+    );
     insertClips([
       {
         trackId,
         clip: {
           id: `clip-upload-${upload.id}-${Date.now().toString(36)}`,
           title,
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
-          duration: upload.duration_seconds ?? 8,
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
+          duration,
           volume: 1,
           pan: 0,
           audioUrl: upload.url,
           uploadId: upload.id,
+          ...(stretch
+            ? {
+                audio: {
+                  gainDb: 0,
+                  loop: false,
+                  reverse: false,
+                  pitch: 0,
+                  speed: stretch.speed,
+                },
+              }
+            : {}),
         } as ClipLike & { audioUrl?: string | null; uploadId?: string },
       },
     ]);
+    if (stretch) {
+      setExportToast(
+        `Stretched “${title}” from ${stretch.sourceBpm} to ${bpm} BPM.`
+      );
+    }
   }
 
   /** Drop a library song on a lane: insert where the pointer landed, snapped. */
@@ -1661,7 +1845,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-${song.id}-${Date.now().toString(36)}`,
           title: clip.title || song.title || "Song",
-          start: snapToGrid(seconds, secondsPerBar, beatsPerBar),
+          start: snapToGrid(seconds, secondsPerBar, gridDivisions),
           duration: clip.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -1745,6 +1929,16 @@ export function StudioEditorShell() {
   function undo() {
     const entry = historyRef.current.undo.pop();
     if (entry) applyHistoryEntry(entry, "undo");
+  }
+
+  /** CTRL S: save now instead of waiting for the next edit; the studio also autosaves. */
+  function saveNow() {
+    if (!projectId) return;
+    const data = currentData() as Record<string, unknown>;
+    persist(
+      (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
+      "Could not save the project."
+    );
   }
 
   function redo() {
@@ -1868,6 +2062,14 @@ export function StudioEditorShell() {
           (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
           "Could not save your offline changes."
         );
+        // A reconnect can reach the event before the network stack is usable, which
+        // fails the replay with a transport error. If the burst is still unsaved a
+        // moment later, retry once (no version check: the burst is authoritative).
+        window.setTimeout(() => {
+          if (!unsavedDataRef.current) return;
+          if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+          forceRetryRef.current?.();
+        }, 1200);
         return;
       }
       setSaveStatus((current) => (current === "offline" ? "saved" : current));
@@ -1974,7 +2176,7 @@ export function StudioEditorShell() {
       if (!lanes) return;
       const rect = lanes.getBoundingClientRect();
       const seconds = ((event.clientX - rect.left) / barWidth) * secondsPerBar;
-      setLoopEnd(Math.max(loopStart + secondsPerBar / beatsPerBar, snapToGrid(seconds, secondsPerBar, beatsPerBar)));
+      setLoopEnd(Math.max(loopStart + secondsPerBar / beatsPerBar, snapToGrid(seconds, secondsPerBar, gridDivisions)));
     };
     const up = () => {
       if (!loopDragRef.current) return;
@@ -2001,7 +2203,7 @@ export function StudioEditorShell() {
 
   /** Snap a time to the project grid and keep it inside the arrangement. */
   function snapProjectTime(seconds: number): number {
-    return Math.max(0, Math.min(duration, snapToGrid(seconds, secondsPerBar, beatsPerBar)));
+    return Math.max(0, Math.min(duration, snapToGrid(seconds, secondsPerBar, gridDivisions)));
   }
 
   /**
@@ -2016,7 +2218,7 @@ export function StudioEditorShell() {
     setSelectedIds([]);
     setSelectedClip(null);
     if (event.shiftKey) {
-      const step = secondsPerBar / beatsPerBar;
+      const step = secondsPerBar / gridDivisions;
       setTimeSelection((current) => {
         if (!current) return normaliseRange(snapped, snapped + step);
         // The far edge stays put; the clicked end moves to the pointer.
@@ -2081,7 +2283,7 @@ export function StudioEditorShell() {
 
   /** Shift+arrow grows the selection one grid step at a time (spec §36). */
   function extendTimeSelection(direction: "left" | "right") {
-    const step = secondsPerBar / beatsPerBar;
+    const step = secondsPerBar / gridDivisions;
     setSelectedIds([]);
     setSelectedClip(null);
     setTimeSelection((current) => {
@@ -2278,6 +2480,46 @@ export function StudioEditorShell() {
   function showAllHidden() {
     setHiddenOpen(false);
     commitTracks(tracks.map((track) => (track.hidden ? { ...track, hidden: false } : track)));
+  }
+
+  /**
+   * ARR-027: a group level is a submix multiplier, so the running graph has to rebuild to
+   * hear it (the group node is created per playback start).
+   */
+  function setGroupMix(groupId: TrackGroupId, value: number) {
+    const data = currentData();
+    const next = { ...groupMix, [groupId]: Math.max(0, Math.min(100, value)) };
+    writeProjectData({ ...data, groups: next }, "the group level");
+    if (playingRef.current) restartAudio(playheadRef.current, clips);
+  }
+
+  /** Send levels are part of the graph, so a change while playing restarts playback. */
+  function setTrackSend(trackId: string, kind: "delay" | "reverb", value: number) {
+    const next = tracks.map((track) =>
+      track.id === trackId
+        ? {
+            ...track,
+            sends: {
+              ...sanitizeSends(track.sends),
+              [kind]: Math.max(0, Math.min(100, value)),
+            },
+          }
+        : track
+    );
+    commitTracks(next);
+    if (playingRef.current) {
+      window.setTimeout(() => {
+        if (playingRef.current) restartAudio(playheadRef.current, clips);
+      }, 0);
+    }
+  }
+
+  /** S21 "Unmute all": un-mutes every hidden track without showing them. */
+  function unmuteAllHidden() {    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
+    if (!hiddenMuted) return;
+    commitTracks(
+      tracks.map((track) => (track.hidden && track.muted ? { ...track, muted: false } : track))
+    );
   }
 
   function deleteTrack(trackId: string) {
@@ -2926,6 +3168,21 @@ export function StudioEditorShell() {
     );
   }
 
+  /** N-14: save a designed wavetable and point the open MIDI clip at it. */
+  function saveWavetable(table: CustomWavetable) {
+    const data = currentData();
+    const existing = sanitizeWavetables((data as { wavetables?: unknown }).wavetables);
+    writeProjectData(
+      { ...data, wavetables: [...existing.filter((entry) => entry.id !== table.id), table] },
+      "the wavetable"
+    );
+    if (wavetableClipId) {
+      setMidiInstrument(wavetableClipId, wavetableInstrumentId(table.id) as MidiInstrument);
+    }
+    setWavetableOpen(false);
+    setExportToast(`Wavetable “${table.name}” saved.`);
+  }
+
   const derivedChains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
     return (data.chains as Record<string, PluginChainEntry[]>) || {};
@@ -3090,7 +3347,7 @@ export function StudioEditorShell() {
     const entries = clipboardRef.current;
     if (entries.length === 0) return;
     const earliest = Math.min(...entries.map((entry) => entry.clip.start ?? 0));
-    const target = snapToGrid(playhead, secondsPerBar, beatsPerBar);
+    const target = snapToGrid(playhead, secondsPerBar, gridDivisions);
     insertClips(duplicateEntries(entries, target - earliest));
   }
 
@@ -3252,6 +3509,71 @@ export function StudioEditorShell() {
     );
   }
 
+  /**
+   * Clip menu ▸ Split on Transients: cut the clip at the onsets found in its own
+   * audio. The capture names the verb but not its key, so it lives in the clip menu.
+   */
+  async function splitOnTransients(clip: ClipLike) {
+    const url = clip.audioUrl ?? clip.sourceAudioUrl;
+    if (!url) {
+      setExportToast("This clip has no audio to analyse.");
+      return;
+    }
+    setClipMenu(null);
+    setExportToast("Finding transients…");
+    const peaks = await computePeaks(url).catch(() => null);
+    const onsets = detectOnsets(peaks);
+    const start = clip.start ?? 0;
+    const duration = clip.duration ?? 4;
+    const times = onsets
+      .map((fraction) => start + fraction * duration)
+      .filter((time) => time > start + 0.02 && time < start + duration - 0.02);
+    if (times.length === 0) {
+      setExportToast("No transients found in this clip.");
+      return;
+    }
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const segments = splitClipAtTimes(clip, times);
+    const segmentIds = segments.map((segment) => segment.id);
+    const nextLanes = lanes.flatMap((lane) => (lane.id === clip.id ? segments : [lane]));
+    const nextTracks = tracks.map((track) => ({
+      ...track,
+      clipIds: track.clipIds.flatMap((id) => (id === clip.id ? segmentIds : [id])),
+    }));
+    writeProjectData(
+      { ...data, lanes: nextLanes, tracks: nextTracks },
+      "splitting the clip on transients",
+      nextTracks
+    );
+    setExportToast(
+      `Split into ${segments.length} clips at ${times.length} transient${times.length === 1 ? "" : "s"}.`
+    );
+  }
+
+  /** Clip menu ▸ Make Beat 1: park the clip's start on the bar line it belongs to. */
+  function makeClipBeatOne(clip: ClipLike) {
+    const start = clip.start ?? 0;
+    const snapped = Math.round(start / secondsPerBar) * secondsPerBar;
+    setClipMenu(null);
+    if (Math.abs(snapped - start) < 0.001) {
+      setExportToast("This clip already starts on a bar line.");
+      return;
+    }
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      {
+        ...data,
+        lanes: lanes.map((lane) =>
+          lane.id === clip.id ? { ...lane, start: Number(snapped.toFixed(6)) } : lane
+        ),
+      },
+      "moving the clip to beat 1"
+    );
+    setExportToast(`Clip moved to the bar line at ${snapped.toFixed(2)}s.`);
+  }
+
   function commitClipRename() {
     if (!clipRename) return;
     const title = clipRename.value.trim();
@@ -3380,6 +3702,7 @@ export function StudioEditorShell() {
       const wav = await renderMix(buffers, exportClips, exportTracks, {
         chain,
         chains,
+        wavetables,
         clipIds: new Set([clipId]),
         honourSolo: false,
         masterGain: 1,
@@ -3544,6 +3867,17 @@ export function StudioEditorShell() {
             extendTimeSelection(event.key === "ArrowRight" ? "right" : "left");
             return;
           }
+          // S14 "Double / Halve Grid Density" (SHIFT 1 / SHIFT 2).
+          if (event.key === "1" || event.key === "!") {
+            event.preventDefault();
+            setGridDivisions((current) => scaleGrid(current, 1));
+            return;
+          }
+          if (event.key === "2" || event.key === "@") {
+            event.preventDefault();
+            setGridDivisions((current) => scaleGrid(current, -1));
+            return;
+          }
           if (letter === "c") {
             event.preventDefault();
             setMetronome((value) => {
@@ -3582,11 +3916,33 @@ export function StudioEditorShell() {
             hideTrack(selectedTrack);
             return;
           }
+          // SHIFT L toggles the arrangement/track panel (the reference's "Toggle
+          // Arrangement Panel"); this build's arrangement panel is the track rail.
+          if (letter === "l") {
+            event.preventDefault();
+            setTracksCollapsed((collapsed) => !collapsed);
+            return;
+          }
           // SHIFT A toggles the automation band (spec §36).
           if (letter === "a") {
             if (!selectedTrack) return;
             event.preventDefault();
             setAutomationOpen((open) => !open);
+            return;
+          }
+          // SHIFT TAB swaps the two bottom bands: take lanes and automation.
+          if (event.key === "Tab") {
+            event.preventDefault();
+            if (takeLanesOpen && selectedTrack) {
+              setTakeLanesOpen(false);
+              setAutomationOpen(true);
+            } else if (automationOpen) {
+              setAutomationOpen(false);
+              setTakeLanesOpen(true);
+            } else {
+              setAutomationOpen(false);
+              setTakeLanesOpen(true);
+            }
             return;
           }
           if (letter === "f") {
@@ -3627,11 +3983,15 @@ export function StudioEditorShell() {
           openUploadLibrary();
           return;
         }
-        // Panel toggles (spec §36): 1 chat, 3 take lanes, 4 library. The captured
-        // "2 bottom panel" has no persistent state in this build yet.
+        // Panel toggles (spec §36): 1 chat, 2 bottom panel, 3 take lanes, 4 library.
         if (event.key === "1") {
           event.preventDefault();
           setAssistantOpen((open) => !open);
+          return;
+        }
+        if (event.key === "2") {
+          event.preventDefault();
+          setBottomPanelOpen((open) => !open);
           return;
         }
         if (event.key === "3") {
@@ -3661,6 +4021,12 @@ export function StudioEditorShell() {
 
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // CTRL S saves now; the capture's hint says the studio also autosaves.
+      if (key === "s") {
+        event.preventDefault();
+        saveNow();
+        return;
+      }
       // CTRL ↑ / ↓ move the focused track (spec §36).
       if (selectedTrack && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault();
@@ -3749,7 +4115,7 @@ export function StudioEditorShell() {
     return lanes.map((clip) => {
       const origin = current.origins[clip.id];
       if (origin === undefined) return clip;
-      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, beatsPerBar);
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, gridDivisions);
       return Math.abs(start - origin) > 0.0001 ? { ...clip, start } : clip;
     });
   }
@@ -3759,7 +4125,7 @@ export function StudioEditorShell() {
     for (const id of current.ids) {
       const origin = current.origins[id];
       if (origin === undefined) continue;
-      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, beatsPerBar);
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, gridDivisions);
       if (Math.abs(start - origin) > 0.0001) next[id] = start;
     }
     if (Object.keys(next).length > 0) commitClipStarts(next);
@@ -3875,6 +4241,7 @@ export function StudioEditorShell() {
       }
     });
     engine.disposeChains = [];
+    setAnalyser(null);
   }
 
   /** Stop and re-schedule from `from` with a specific arrangement (drag apply, §22). */
@@ -3983,6 +4350,20 @@ export function StudioEditorShell() {
     const context = audioRef.current?.ctx ?? new AudioContext();
     await context.resume();
 
+    // N-14: build each designed wavetable once per playback start.
+    const waveCache = new Map<string, PeriodicWave>();
+    function waveFor(instrument: string | undefined): PeriodicWave | null {
+      const id = wavetableIdFromInstrument(instrument ?? "");
+      if (!id) return null;
+      const cached = waveCache.get(id);
+      if (cached) return cached;
+      const table = wavetables.find((candidate) => candidate.id === id);
+      if (!table) return null;
+      const wave = wavetablePeriodicWave(context, table.harmonics);
+      waveCache.set(id, wave);
+      return wave;
+    }
+
     const cache = bufferCacheRef.current;
     await Promise.all(
       arrangement.map(async (clip) => {
@@ -4018,7 +4399,23 @@ export function StudioEditorShell() {
     analyser.fftSize = 2048;
     bus.output.connect(analyser);
     analyser.connect(context.destination);
+    // FX sends: two shared buses, built only when some track actually sends into them.
+    const sendsInUse = tracksRef.current.some((track) => sendsActive(sanitizeSends(track.sends)));
+    const makeSendBus = (kind: "delay" | "reverb") => {
+      const node = createPluginAudio(context, {
+        entryId: `send-${kind}`,
+        pluginId: kind,
+        params: kind === "delay" ? { ...DELAY_BUS_PARAMS } : { ...REVERB_BUS_PARAMS },
+      } as unknown as Parameters<typeof createPluginAudio>[1]);
+      node.output.connect(master);
+      return node;
+    };
+    const delayBus = sendsInUse ? makeSendBus("delay") : null;
+    const reverbBus = sendsInUse ? makeSendBus("reverb") : null;
+    if (delayBus) audioRef.current?.disposeChains?.push(delayBus.dispose);
+    if (reverbBus) audioRef.current?.disposeChains?.push(reverbBus.dispose);
     audioRef.current = { ctx: context, sources: [], analyser, disposeChains: [] };
+    setAnalyser(analyser);
 
     // Per-track input: gain plus the track's plugin chain, shared by its clips so an
     // effect is heard once instead of being duplicated per clip.
@@ -4060,7 +4457,29 @@ export function StudioEditorShell() {
         }
       }
       const pre = context.createGain();
-      pre.connect(input);
+      // ARR-027: the group is a submix stage, so automation on the fader still applies
+      // on top of the group level instead of replacing it. Read from the document so a
+      // restart triggered by a group change sees the new level.
+      const groupsAtStart = sanitizeGroups((currentData() as { groups?: unknown }).groups);
+      const groupNode = context.createGain();
+      const owner = tracksRef.current.find((track) => track.id === trackId);
+      groupNode.gain.value = owner ? groupGain(groupsAtStart, owner) : 1;
+      pre.connect(groupNode);
+      groupNode.connect(input);
+      // FX sends tap the pre-fader group stage so each track contributes to the shared
+      // Delay/Reverb buses at its own level.
+      const trackSends = sanitizeSends(owner?.sends);
+      for (const [kind, sendBus] of [
+        ["delay", delayBus],
+        ["reverb", reverbBus],
+      ] as const) {
+        const level = trackSends[kind];
+        if (!sendBus || level <= 0) continue;
+        const sendGain = context.createGain();
+        sendGain.gain.value = level / 100;
+        pre.connect(sendGain);
+        sendGain.connect(sendBus.input);
+      }
       preTaps.set(trackId, pre);
       duckGains.set(trackId, duckGain);
       trackInputs.set(trackId, pre);
@@ -4156,6 +4575,15 @@ export function StudioEditorShell() {
         volumeNode.connect(destination);
         nodeInput = volumeNode;
       }
+      // Clip-level inserts (§34): clip → clip FX → clip gain/fade → track chain.
+      const clipFx = sanitizeChain((clip as { fx?: unknown }).fx);
+      let clipInput: AudioNode = nodeInput;
+      if (clipFx.length > 0) {
+        const chain = buildPluginChain(context, clipFx);
+        chain.output.connect(nodeInput);
+        audioRef.current?.disposeChains?.push(chain.dispose);
+        clipInput = chain.input;
+      }
       const fadeIn = Math.min(
         (clip as { fadeIn?: number }).fadeIn ?? 0,
         duration
@@ -4177,10 +4605,10 @@ export function StudioEditorShell() {
           clipGain.gain.setValueAtTime(1, when + fadeStart);
           clipGain.gain.linearRampToValueAtTime(0, when + remaining);
         }
-        clipGain.connect(nodeInput);
+        clipGain.connect(clipInput);
         source.connect(clipGain);
       } else {
-        source.connect(nodeInput);
+        source.connect(clipInput);
       }
       if (plan.loop) {
         source.start(when, plan.bufferStart);
@@ -4209,6 +4637,15 @@ export function StudioEditorShell() {
       const audible = !mix.muted;
       const volume = audible ? mix.volume : 0;
       const destination = trackInput(track?.id ?? clip.id, volume, track?.pan ?? 0);
+      // Clip-level inserts apply to MIDI clips too (clip → clip FX → track chain).
+      const clipFx = sanitizeChain((clip as { fx?: unknown }).fx);
+      let clipInput: AudioNode = destination;
+      if (clipFx.length > 0) {
+        const chain = buildPluginChain(context, clipFx);
+        chain.output.connect(destination);
+        audioRef.current?.disposeChains?.push(chain.dispose);
+        clipInput = chain.input;
+      }
       for (const note of notes) {
         const absolute = start + note.start;
         if (absolute + note.length <= from) continue;
@@ -4219,12 +4656,13 @@ export function StudioEditorShell() {
         audioRef.current?.sources.push(
           ...scheduleMidiNote(
             context,
-            destination,
+            clipInput,
             note,
             when,
             playbackRate,
             { bend, mod },
-            normalizeMidiInstrument((clip as ClipLike).instrument)
+            normalizeMidiInstrument((clip as ClipLike).instrument),
+            waveFor((clip as ClipLike).instrument)
           )
         );
       }
@@ -4329,48 +4767,67 @@ export function StudioEditorShell() {
         solo: track.solo,
         volumeAutomation: track.volumeAutomation,
         panAutomation: track.panAutomation,
+        groupId: track.groupId ?? null,
         clipIds: track.clipIds,
       }));
       const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
+      const sendsByTrack = Object.fromEntries(
+        tracks.map((track) => [track.id, sanitizeSends(track.sends)])
+      );
       // Mix/range only: per-track files must keep their relative balance (G11).
       const normalise = exportNormalise ? EXPORT_TARGET_PEAK_DB : null;
       const trackChains = chains;
       const masterGain = masterMuted ? 0 : masterVolume / 100;
+      const format = exportFormat;
+      const extension = format === "mp3" ? "mp3" : "wav";
+      const mime = format === "mp3" ? "audio/mpeg" : "audio/wav";
 
       if (scope === "mix") {
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
           chains: trackChains,
+          wavetables,
           normalise,
           masterGain,
+          format,
+          groups: groupMix,
+        sends: sendsByTrack,
         });
-        download(wav, `${project.title || "mix"}.wav`, "audio/wav");
-        setExportToast("Full mix download started!");
+        download(wav, `${project.title || "mix"}.${extension}`, mime);
+        setExportToast("Full Song download started!");
       } else if (scope === "range") {
         // Exports the time selection, or the loop range as the reference fallback (§87).
         const bounds = timeSelection ?? { start: loopStart, end: loopEnd };
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
           chains: trackChains,
+          wavetables,
           normalise,
           masterGain,
+          format,
+          groups: groupMix,
+        sends: sendsByTrack,
           from: bounds.start,
           to: bounds.end,
         });
-        download(wav, `${project.title || "mix"} - selection.wav`, "audio/wav");
-        setExportToast("Selection download started!");
+        download(wav, `${project.title || "mix"} - selection.${extension}`, mime);
+        setExportToast("Selected time range download started!");
       } else {
         for (const track of exportTracks) {
           const wav = await renderMix(buffers, exportClips, exportTracks, {
             chain,
             chains: trackChains,
+            wavetables,
+            format,
+            groups: groupMix,
+        sends: sendsByTrack,
             clipIds: new Set(track.clipIds),
             honourSolo: false,
           });
           const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
-          download(wav, `${project.title || "project"} - ${label}.wav`, "audio/wav");
+          download(wav, `${project.title || "project"} - ${label}.${extension}`, mime);
         }
-        setExportToast("One file per track download started!");
+        setExportToast("Multitrack download started!");
       }
     } catch {
       setError("Export failed. Check that the clips still have audio.");
@@ -4437,6 +4894,9 @@ export function StudioEditorShell() {
       const wav = await renderMix(buffers, exportClips, exportTracks, {
         chain: (currentData() as { masterChain?: MasterChainEntry[] }).masterChain,
         chains,
+        wavetables,
+        groups: groupMix,
+        // A bounce is the track alone: sends would pull in the shared buses' tails.
         clipIds: new Set(track.clipIds),
         honourSolo: false,
         // A bounce is the track alone: no master fader, no master mute.
@@ -4614,7 +5074,7 @@ export function StudioEditorShell() {
         0,
         Math.min(
           ceiling,
-          snapToGrid(raw, secondsPerBarRef.current, beatsPerBarRef.current)
+          snapToGrid(raw, secondsPerBarRef.current, gridDivisionsRef.current)
         )
       );
       return session.edge === "in"
@@ -4627,12 +5087,12 @@ export function StudioEditorShell() {
       clientX: number
     ) => {
       const deltaSec = ((clientX - session.startX) / barWidthRef.current) * secondsPerBarRef.current;
-      const step = secondsPerBarRef.current / beatsPerBarRef.current;
+      const step = secondsPerBarRef.current / gridDivisionsRef.current;
       const end = session.start + session.duration;
       if (session.edge === "end") {
         const newEnd = Math.max(
           session.start + step,
-          snapToGrid(end + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+          snapToGrid(end + deltaSec, secondsPerBarRef.current, gridDivisionsRef.current)
         );
         return {
           id: session.id,
@@ -4647,7 +5107,7 @@ export function StudioEditorShell() {
         0,
         Math.min(
           end - step,
-          snapToGrid(session.start + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+          snapToGrid(session.start + deltaSec, secondsPerBarRef.current, gridDivisionsRef.current)
         )
       );
       return {
@@ -4895,43 +5355,118 @@ export function StudioEditorShell() {
   }
 
   function exitPluginDesigner() {
+    designRunRef.current += 1;
     setDesignMode(false);
     setDesignContext(null);
     setDesignRequest(null);
     setDesignBuilt(null);
+    setDesignJob(null);
+    setDesignError(null);
     setPromptValue("");
   }
 
-  /** Design mode's send: restate the request and ask before building anything. */
+  /** Design mode's send: restate the request and ask before spending credits. */
   function startPluginDesign(prompt: string) {
-    const result = designPlugin(prompt, customPlugins.map((plugin) => plugin.name));
+    const restate = restateDesign(prompt);
     setAssistantOpen(true);
     setPendingSong(null);
     setDesignBuilt(null);
-    setDesignRequest(result);
+    setDesignError(null);
+    setDesignJob(null);
+    setDesignRequest({ instruction: prompt, restate });
     setAssistantMessages([
       { id: `u-${Date.now()}`, role: "user", text: prompt },
-      { id: `d-${Date.now()}`, role: "design", text: result.restate },
+      { id: `d-${Date.now()}`, role: "design", text: restate },
     ]);
     setPromptValue("");
   }
 
-  /** Save the designed plugin to MY PLUGINS; it is never auto-inserted. */
-  function buildDesignedPlugin() {
-    if (!designRequest) return;
-    const result = designRequest;
-    const data = currentData() as Record<string, unknown>;
-    const existing = Array.isArray(data.customPlugins) ? data.customPlugins : [];
-    writeProjectData(
-      { ...data, customPlugins: [...existing, result.plugin] },
-      "a designed plugin"
-    );
-    setDesignRequest(null);
-    setDesignBuilt(result);
+  /**
+   * "Build it" hands the prompt to Suno's authoring agent. The job is
+   * asynchronous (usually a few minutes) and spends credits; the editor polls
+   * and then saves the finished plugin to MY PLUGINS — never auto-inserted.
+   */
+  async function buildDesignedPlugin() {
+    if (!designRequest || designJob) return;
+    const request = designRequest;
+    const projectId = project?.id;
+    if (!projectId) {
+      setDesignError("Open a saved project before building a plugin.");
+      return;
+    }
+    const run = designRunRef.current + 1;
+    designRunRef.current = run;
+    setDesignError(null);
+    setDesignJob({ status: "pending", message: "Starting the plugin authoring agent…" });
     setAssistantMessages((current) => [
       ...current,
-      { id: `r-${Date.now()}`, role: "result", text: result.completion },
+      {
+        id: `b-${Date.now()}`,
+        role: "status",
+        text: "Authoring the plugin - this usually takes a few minutes.",
+      },
     ]);
+    try {
+      let job = await authorStudioPlugin(projectId, {
+        instruction: request.instruction,
+      });
+      const deadline = Date.now() + 5 * 60_000;
+      while (job.status !== "ready" && job.status !== "error") {
+        if (designRunRef.current !== run) return;
+        if (Date.now() > deadline) {
+          throw new Error("The plugin agent is still working; try again in a moment.");
+        }
+        setDesignJob({
+          status: job.status,
+          message:
+            job.progress?.find((item) => item.message)?.message ??
+            "Authoring the plugin - this usually takes a few minutes.",
+        });
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        if (designRunRef.current !== run) return;
+        job = await getStudioPluginAuthoringJob(projectId, job.job_id);
+      }
+      if (job.status === "error") {
+        throw new Error(job.last_error ?? "The plugin agent could not finish.");
+      }
+      const plugin =
+        job.plugin_id && job.plugin_version_id && job.descriptor
+          ? pluginFromAuthoring(job.descriptor, {
+              instruction: request.instruction,
+              pluginId: job.plugin_id,
+              pluginVersionId: job.plugin_version_id,
+              existingNames: customPlugins.map((item) => item.name),
+            })
+          : null;
+      if (!plugin) throw new Error("The plugin agent did not return a usable plugin.");
+      const data = currentData() as Record<string, unknown>;
+      const existing = Array.isArray(data.customPlugins) ? data.customPlugins : [];
+      writeProjectData(
+        { ...data, customPlugins: [...existing, plugin] },
+        "a designed plugin"
+      );
+      if (designRunRef.current !== run) return;
+      setDesignRequest(null);
+      setDesignBuilt(plugin);
+      setDesignJob(null);
+      setAssistantMessages((current) => [
+        ...current,
+        {
+          id: `r-${Date.now()}`,
+          role: "result",
+          text: `${plugin.name} is ready with ${plugin.params.length} controls. Add it to a track to use it.`,
+        },
+      ]);
+    } catch (cause) {
+      if (designRunRef.current !== run) return;
+      const message = cause instanceof Error ? cause.message : "The plugin agent failed.";
+      setDesignError(message);
+      setDesignJob(null);
+      setAssistantMessages((current) => [
+        ...current,
+        { id: `e-${Date.now()}`, role: "status", text: message },
+      ]);
+    }
   }
 
   /** Return to the prompt with the original wording so the user can edit it. */
@@ -5084,7 +5619,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-${song.id}-${take.variant}-${Date.now().toString(36)}`,
           title: take.title || song.title || "Song",
-          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
+          start: snapToGrid(playhead, secondsPerBar, gridDivisions),
           duration: take.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -5228,6 +5763,9 @@ export function StudioEditorShell() {
         onExport={(scope) => void runExport(scope)}
         normalise={exportNormalise}
         onToggleNormalise={() => setExportNormalise((value) => !value)}
+        exportFormat={exportFormat}
+        onExportFormat={setExportFormat}
+        spectrum={<StudioSpectrum analyser={analyser} />}
         libraryOpen={libraryOpen}
         onToggleLibrary={() => toggleLibrary()}
         onBackToStart={backToStart}
@@ -5314,6 +5852,9 @@ export function StudioEditorShell() {
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
+          onUnmuteAllHidden={unmuteAllHidden}
+          groups={groupMix}
+          onGroupMix={(groupId, value) => setGroupMix(groupId as TrackGroupId, value)}
           onToggleAllCollapsed={toggleAllCollapsed}
           masterVolume={masterVolume}
           masterMuted={masterMuted}
@@ -5405,6 +5946,7 @@ export function StudioEditorShell() {
                 width={LIBRARY_W}
                 clip={inspected}
                 trackName={owner?.name}
+                projectId={project?.id ?? projectId ?? undefined}
                 source={clipSource}
                 stems={stems}
                 onRequestStems={openStemsDialog}
@@ -5480,9 +6022,10 @@ export function StudioEditorShell() {
               onUploadAudio={uploadLibraryAudio}
               onAddSong={addSongToTimeline}
               onTogglePlay={toggleSongPreview}
+              onAudition={auditionSong}
               onToggleLike={(song, nextLiked) => void toggleSongLike(song, nextLiked)}
               onToggleUploadPlay={toggleUploadPreview}
-              onAddUpload={addUploadToTimeline}
+              onAddUpload={(upload) => void addUploadToTimeline(upload)}
               onToggleStemPlay={toggleStemPreview}
               onAddStem={addStemToTimeline}
               onOpenProject={(id) => {
@@ -5620,10 +6163,6 @@ export function StudioEditorShell() {
           </div>
           {modelOpen ? (
             <div className="se-model-menu" role="listbox" aria-label="Generation model">
-              <div className="se-model-custom" aria-disabled="true">
-                <span>Create Custom Model</span>
-                <span className="se-model-credits">100 Credits</span>
-              </div>
               <p className="se-model-label">All models</p>
               {(
                 [
@@ -5664,7 +6203,7 @@ export function StudioEditorShell() {
               type="submit"
               className={`se-prompt-send${designMode && promptValue.trim() ? " is-active" : ""}`}
               aria-label={designMode ? "Design this plugin" : "Generate this part"}
-              title={designMode ? "Builds a plugin, no credits spent" : "Generates with your account credits"}
+              title={designMode ? "Asks the plugin agent to build it (uses credits)" : "Generates with your account credits"}
               disabled={!promptValue.trim() || promptBusy}
             >
               <Icon name="fa-arrow-up" />
@@ -5727,13 +6266,28 @@ export function StudioEditorShell() {
             ))}
             {designRequest ? (
               <div className="se-design-actions">
-                <button type="button" className="se-pill on" onClick={buildDesignedPlugin}>
+                <button
+                  type="button"
+                  className="se-pill on"
+                  onClick={() => void buildDesignedPlugin()}
+                  disabled={designJob !== null}
+                >
                   Build it
                 </button>
-                <button type="button" className="se-pill" onClick={revisePluginDesign}>
+                <button type="button" className="se-pill" onClick={revisePluginDesign} disabled={designJob !== null}>
                   Change something…
                 </button>
               </div>
+            ) : null}
+            {designJob ? (
+              <p className="se-assistant-msg design" role="status">
+                {designJob.message}
+              </p>
+            ) : null}
+            {designError ? (
+              <p className="se-assistant-msg error" role="alert">
+                {designError}
+              </p>
             ) : null}
             {designBuilt ? (
               <div
@@ -5742,23 +6296,23 @@ export function StudioEditorShell() {
                 onDragStart={(event) => {
                   event.dataTransfer.setData(
                     "application/x-camxora-plugin",
-                    JSON.stringify(designBuilt.plugin)
+                    JSON.stringify(designBuilt)
                   );
                   event.dataTransfer.effectAllowed = "copy";
                 }}
-                aria-label={`${designBuilt.plugin.name}, designed plugin`}
+                aria-label={`${designBuilt.name}, designed plugin`}
               >
                 <span className="se-design-grip" aria-hidden="true">
                   <Icon name="fa-grip-vertical" />
                 </span>
                 <span className="se-design-body">
-                  <strong>{designBuilt.plugin.name}</strong>
+                  <strong>{designBuilt.name}</strong>
                   <span className="se-design-sub">{DESIGN_CARD_SUBTITLE}</span>
                 </span>
                 <button
                   type="button"
                   className="se-pill on"
-                  onClick={() => addDesignedToTrack(designBuilt.plugin)}
+                  onClick={() => addDesignedToTrack(designBuilt)}
                   disabled={tracks.length === 0}
                 >
                   Add to track
@@ -5935,6 +6489,27 @@ export function StudioEditorShell() {
                   }}
                 >
                   <Icon name="fa-scissors" /> Split <span>Ctrl E</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.audioUrl && !clip.sourceAudioUrl}
+                  title={
+                    clip.audioUrl || clip.sourceAudioUrl
+                      ? "Cut this clip at the onsets found in its audio"
+                      : "This clip has no audio to analyse"
+                  }
+                  onClick={() => void splitOnTransients(clip)}
+                >
+                  <Icon name="fa-wave-square" /> Split on Transients
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => makeClipBeatOne(clip)}
+                  title="Move this clip onto the bar line its start belongs to"
+                >
+                  <Icon name="fa-arrows-left-right-to-line" /> Make Beat 1
                 </button>
                 <button
                   type="button"
@@ -6179,16 +6754,25 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!owner || (chains[owner.id] ?? []).length === 0}
+                  onClick={() => {
+                    setClipFxTarget(clip.id);
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-plus" /> Add FX…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={sanitizeChain((clip as { fx?: unknown }).fx).length === 0}
                   title={
-                    owner
-                      ? "Remove every plugin from this clip's track"
-                      : "No track owns this clip"
+                    sanitizeChain((clip as { fx?: unknown }).fx).length === 0
+                      ? "This clip has no effects"
+                      : "Remove this clip's own effects"
                   }
                   onClick={() => {
-                    if (!owner) return;
-                    commitChain(owner.id, []);
-                    setExportToast("Track effects removed.");
+                    setClipFx(clip.id, []);
+                    setExportToast("Clip effects removed.");
                     setClipMenu(null);
                   }}
                 >
@@ -6218,6 +6802,18 @@ export function StudioEditorShell() {
                 </div>
                 <button type="button" role="menuitem" onClick={loopTimeSelection}>
                   <Icon name="fa-repeat" /> Loop selection
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  title="Split every clip that crosses the playhead"
+                  onClick={() => {
+                    splitClips(clipsRef.current.map((clip) => clip.id), playhead);
+                    setRangeMenu(null);
+                    setExportToast("Arrangement split at the playhead.");
+                  }}
+                >
+                  <Icon name="fa-scissors" /> Split Arrangement
                 </button>
                 <button
                   type="button"
@@ -6263,6 +6859,58 @@ export function StudioEditorShell() {
           })()
         : null}
       </div>
+
+      {wavetableOpen ? (
+        <StudioWavetableDesigner
+          onSave={saveWavetable}
+          onClose={() => {
+            setWavetableOpen(false);
+            setWavetableClipId(null);
+          }}
+        />
+      ) : null}
+
+      {clipFxTarget ? (
+        <div
+          className="se-dialog-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add clip effect"
+        >
+          <div className="se-dialog">
+            <h2>Add a clip effect</h2>
+            <p className="se-dialog-note">
+              Clip effects run before the clip&apos;s gain, fades and the track chain, so they stay
+              with the clip when it moves.
+            </p>
+            <ul className="se-dialog-list">
+              {STUDIO_PLUGINS.map((plugin) => (
+                <li key={plugin.id}>
+                  <button
+                    type="button"
+                    className="se-dialog-row"
+                    onClick={() => {
+                      const clip = clips.find((item) => item.id === clipFxTarget);
+                      const existing = sanitizeChain((clip as { fx?: unknown } | undefined)?.fx);
+                      setClipFx(clipFxTarget, addPlugin(existing, plugin.id));
+                      setClipFxTarget(null);
+                      setExportToast(`${plugin.name} added to the clip.`);
+                    }}
+                  >
+                    <Icon name="fa-plus" />
+                    <span className="se-dialog-title">{plugin.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="se-dialog-foot">
+              <button type="button" className="se-pill" onClick={() => setClipFxTarget(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {sunoSync?.status === "conflict" && !sunoPromptDismissed ? (
         <div
@@ -6615,6 +7263,15 @@ export function StudioEditorShell() {
           }}
           instrument={normalizeMidiInstrument(midiClip.instrument)}
           onInstrumentChange={(instrument) => setMidiInstrument(midiClip.id, instrument)}
+          wavetables={wavetables.map((table) => ({ id: table.id, name: table.name }))}
+          onDesignWavetable={
+            settings.advancedContent
+              ? () => {
+                  setWavetableClipId(midiClip.id);
+                  setWavetableOpen(true);
+                }
+              : undefined
+          }
           onImportMidi={(file) => void importMidiFile(file)}
           onToggleLoop={() => setLoop((value) => !value)}
           onChangeNotes={(notes) => setMidiNotes(midiClip.id, notes)}
@@ -6631,9 +7288,9 @@ export function StudioEditorShell() {
           onAudio={(next) => commitClipAudio(audioClip.id, next)}
           onClose={() => setAudioClipId(null)}
         />
-      ) : masterSelected ? (
+      ) : bottomPanelOpen && masterSelected ? (
         <StudioMasterDock chain={masterChain} onChange={commitMasterChain} />
-      ) : selectedTrack ? (
+      ) : bottomPanelOpen && selectedTrack ? (
         <StudioPluginDock
           chain={chains[selectedTrack] ?? []}
           trackName={tracks.find((track) => track.id === selectedTrack)?.name}
@@ -6646,6 +7303,10 @@ export function StudioEditorShell() {
           }
           onSavePreset={savePluginPreset}
           onDesignPlugin={openPluginDesigner}
+          windowMode={settings.windowMode}
+          advancedContent={settings.advancedContent}
+          sends={sanitizeSends(tracks.find((track) => track.id === selectedTrack)?.sends)}
+          onSendsChange={(kind, value) => setTrackSend(selectedTrack, kind, value)}
           onChange={(next) => commitChain(selectedTrack, next)}
         />
       ) : null}
@@ -6668,6 +7329,7 @@ export function StudioEditorShell() {
         }}
         onToggleLibrary={() => toggleLibrary()}
         whatsThis={settings.whatsThis}
+        helpPaused={Boolean(clipMenu || menuTrackId)}
         takeLanesOpen={takeLanesOpen}
         onToggleTakeLanes={() => {
           setTakeLanesOpen((open) => !open);
@@ -6687,6 +7349,7 @@ export function StudioEditorShell() {
           setTakeLanesOpen(false);
           setAutomationOpen(false);
           setMasterSelected(false);
+          setBottomPanelOpen(true);
           if (!selectedTrack) setSelectedTrack(tracks[0]?.id ?? null);
         }}
         onShowClipEditor={() => {

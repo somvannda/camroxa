@@ -60,6 +60,15 @@ class WebMusicGenerateRequest(BaseModel):
     video_urls: list[str] = Field(default_factory=list, max_length=1)
     persona_id: str | None = Field(default=None, max_length=128)
     workspace_id: UUID | None = None
+    # "Sample this song": source generation whose audio becomes a reference.
+    sample_task_id: UUID | None = None
+    sample_variant: Literal["ok", "alt"] = "ok"
+
+
+class WebMusicSoundsRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=500)
+    model: str | None = Field(default=None, max_length=32)
+    workspace_id: UUID | None = None
 
 
 class TrashClipsRequest(BaseModel):
@@ -499,6 +508,11 @@ class StudioProjectForkRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
 
 
+class StudioPluginAuthorRequest(BaseModel):
+    instruction: str = Field(min_length=4, max_length=2000)
+    required_controls: list[str] = Field(default_factory=list, max_length=32)
+
+
 @router.get("/studio/projects")
 async def list_studio_projects(
     ctx: CurrentUserDep,
@@ -506,12 +520,14 @@ async def list_studio_projects(
     limit: int = Query(40, ge=1, le=100),
     offset: int = Query(0, ge=0),
     include_archived: bool = Query(False),
+    deleted: bool = Query(False),
 ) -> dict:
     return await service.list_studio_projects(
         UUID(ctx.user_id),
         limit=limit,
         offset=offset,
         include_archived=include_archived,
+        deleted=deleted,
     )
 
 
@@ -538,6 +554,15 @@ async def get_studio_project(
     service: WebMusicServiceDep,
 ) -> dict:
     return await service.get_studio_project(UUID(ctx.user_id), project_id)
+
+
+@router.get("/studio/projects/for-song/{song_id}")
+async def get_studio_project_for_song(
+    song_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.studio_project_for_song(UUID(ctx.user_id), song_id)
 
 
 @router.get("/studio/projects/{project_id}/sync")
@@ -585,6 +610,31 @@ async def keep_studio_local_version(
     return await service.keep_studio_local_version(UUID(ctx.user_id), project_id)
 
 
+@router.post("/studio/projects/{project_id}/plugins/author")
+async def author_studio_plugin(
+    project_id: UUID,
+    body: StudioPluginAuthorRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.author_studio_plugin(
+        UUID(ctx.user_id),
+        project_id,
+        instruction=body.instruction,
+        required_controls=body.required_controls,
+    )
+
+
+@router.get("/studio/projects/{project_id}/plugins/author/{job_id}")
+async def get_studio_plugin_authoring_job(
+    project_id: UUID,
+    job_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.studio_plugin_authoring_job(UUID(ctx.user_id), project_id, job_id)
+
+
 @router.patch("/studio/projects/{project_id}")
 async def update_studio_project(
     project_id: UUID,
@@ -615,6 +665,15 @@ async def delete_studio_project(
 ) -> Response:
     await service.delete_studio_project(UUID(ctx.user_id), project_id)
     return Response(status_code=204)
+
+
+@router.post("/studio/projects/{project_id}/restore")
+async def restore_studio_project(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.restore_studio_project(UUID(ctx.user_id), project_id)
 
 
 @router.post("/studio/projects/{project_id}/fork", status_code=201)
@@ -725,6 +784,7 @@ class StudioCommentCreateRequest(BaseModel):
     author_name: str = Field(default="Guest", max_length=80)
     body: str = Field(min_length=1, max_length=2000)
     parent_id: UUID | None = None
+    clip_id: str | None = Field(default=None, max_length=128)
 
 
 class StudioPresenceTouchRequest(BaseModel):
@@ -775,11 +835,13 @@ async def list_studio_project_comments(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
     limit: int = Query(100, ge=1, le=100),
+    clip_id: str | None = Query(default=None, max_length=128),
 ) -> dict:
     return await service.list_studio_project_comments(
         UUID(ctx.user_id),
         project_id,
         limit=limit,
+        clip_id=clip_id,
     )
 
 
@@ -796,6 +858,7 @@ async def add_studio_project_comment(
         author_name=body.author_name,
         body=body.body,
         parent_id=body.parent_id,
+        clip_id=body.clip_id,
     )
 
 
@@ -1744,6 +1807,8 @@ async def generate(
             video_urls=body.video_urls,
             persona_id=body.persona_id,
             workspace_id=body.workspace_id,
+            sample_task_id=body.sample_task_id,
+            sample_variant=body.sample_variant,
         )
     except QuotaExceededError:
         # A paying user hitting a preview/plan limit is not farm abuse.
@@ -1764,6 +1829,45 @@ async def generate(
             if payload.get("preview_seconds") is not None
             else None
         ),
+        quota=WebMusicQuotaResponse(**payload["quota"]),
+    )
+
+
+@router.post("/sounds", response_model=WebMusicGenerateResponse, status_code=202)
+async def generate_sounds(
+    body: WebMusicSoundsRequest,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicGenerateResponse:
+    await enforce_generation_freeze(http_request, ctx.user_id)
+    await reject_probe_payload(
+        http_request,
+        ctx.user_id,
+        "",
+        body.prompt,
+        body.prompt[:120],
+        body.prompt,
+        None,
+    )
+    await enforce_rate_limit(http_request, ctx.user_id)
+    credited = await service.has_generation_credits(UUID(ctx.user_id))
+    await track_generation_attempt(http_request, ctx.user_id, credited=credited)
+    payload = await service.generate_sounds(
+        UUID(ctx.user_id),
+        prompt=body.prompt,
+        model=body.model,
+        workspace_id=body.workspace_id,
+    )
+    return WebMusicGenerateResponse(
+        task_id=str(payload["task_id"]),
+        status=str(payload["status"]),
+        title=str(payload["title"]),
+        style=str(payload["style"]),
+        model=str(payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        model_label=str(payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        is_preview=False,
+        preview_seconds=None,
         quota=WebMusicQuotaResponse(**payload["quota"]),
     )
 

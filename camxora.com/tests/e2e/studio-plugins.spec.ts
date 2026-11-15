@@ -53,7 +53,7 @@ test("an EQ on the track changes the exported mix", async ({ page }) => {
   // Dry export first.
   await page.getByLabel("Export menu").click();
   const dryDownload = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+  await page.getByRole("menuitem", { name: "Full Song" }).click();
   const dry = await wavRms(await dryDownload);
   expect(dry).toBeGreaterThan(0);
 
@@ -88,7 +88,7 @@ test("an EQ on the track changes the exported mix", async ({ page }) => {
   // …and the wet export is audibly louder.
   await page.getByLabel("Export menu").click();
   const wetDownload = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+  await page.getByRole("menuitem", { name: "Full Song" }).click();
   const wet = await wavRms(await wetDownload);
 
   expect(wet / dry).toBeGreaterThan(1.2);

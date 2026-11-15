@@ -18,8 +18,9 @@ import {
  *
  * Clicking Main swaps the plugin dock for the master chain: the captured Limiter card
  * (Lookahead / Pre Gain / Attack / Release / Link) plus the capture's Add effect rail
- * with EQ / Compressor / Reverb suggestions. EQ and Compressor are real master links
- * (one Amount knob); Reverb is disabled because the master bus does not render it.
+ * with EQ / Compressor suggestions. EQ and Compressor are real master links
+ * (one Amount knob). Reverb is not offered: Suno's master signal chain only
+ * carries limiter/EQ/compressor (D-034), so a master reverb would be local-only.
  */
 
 function nextId(type: string) {
@@ -192,21 +193,17 @@ export function StudioMasterDock({
             <Icon name="fa-plus" /> Add effect
           </button>
           <div className="sp-ghosts">
-            {[
-              { type: "eq", label: "EQ", available: true },
-              { type: "compressor", label: "Compressor", available: true },
-              { type: "reverb", label: "Reverb", available: false },
-            ].map((ghost) => (
+            {([
+              { type: "eq", label: "EQ" },
+              { type: "compressor", label: "Compressor" },
+            ] as const).map((ghost) => (
               <button
                 key={ghost.type}
                 type="button"
                 className="sp-ghost"
-                disabled={!ghost.available}
-                title={ghost.available ? `Add ${ghost.label} to the master` : "The master bus does not render Reverb yet"}
-                aria-label={ghost.available ? `Add ${ghost.label}` : `${ghost.label} unavailable on the master`}
-                onClick={() => {
-                  if (ghost.type === "eq" || ghost.type === "compressor") add(ghost.type);
-                }}
+                title={`Add ${ghost.label} to the master`}
+                aria-label={`Add ${ghost.label}`}
+                onClick={() => add(ghost.type)}
               >
                 <span className="sp-ghost-label">{ghost.label}</span>
               </button>

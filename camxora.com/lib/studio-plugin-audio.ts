@@ -302,6 +302,73 @@ export function createPluginAudio(
     };
   }
 
+  if (id === "stereoUtility") {
+    // Mid/side image (S21): Level → width on the side path (with a mono-bass low cut) → pan.
+    const level = ctx.createGain();
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const leftMid = ctx.createGain();
+    const rightMid = ctx.createGain();
+    const leftSide = ctx.createGain();
+    const rightSide = ctx.createGain();
+    const mid = ctx.createGain();
+    const side = ctx.createGain();
+    const sideCut = ctx.createBiquadFilter();
+    const sidePositive = ctx.createGain();
+    const sideNegative = ctx.createGain();
+    const panner = ctx.createStereoPanner();
+
+    leftMid.gain.value = 0.5;
+    rightMid.gain.value = 0.5;
+    leftSide.gain.value = 0.5;
+    rightSide.gain.value = -0.5;
+    sideCut.type = "highpass";
+
+    level.connect(splitter);
+    splitter.connect(leftMid, 0);
+    splitter.connect(rightMid, 1);
+    splitter.connect(leftSide, 0);
+    splitter.connect(rightSide, 1);
+    leftMid.connect(mid);
+    rightMid.connect(mid);
+    leftSide.connect(side);
+    rightSide.connect(side);
+    side.connect(sideCut);
+    sideCut.connect(sidePositive);
+    sideCut.connect(sideNegative);
+    mid.connect(merger, 0, 0);
+    mid.connect(merger, 0, 1);
+    sidePositive.connect(merger, 0, 0);
+    sideNegative.connect(merger, 0, 1);
+    merger.connect(panner);
+
+    const apply = (p: Record<string, number>) => {
+      level.gain.value = Math.pow(10, clamp(p.level ?? 0, -24, 24) / 20);
+      const width = clamp((p.width ?? 150) / 100, 0, 2);
+      sidePositive.gain.value = width;
+      sideNegative.gain.value = -width;
+      sideCut.frequency.value = clamp(p.bassMono ?? 120, 20, 300);
+      panner.pan.value = clamp((p.pan ?? 0) / 100, -1, 1);
+    };
+    apply(params);
+    return {
+      input: level,
+      output: panner,
+      update: apply,
+      dispose: () => {
+        level.disconnect();
+        splitter.disconnect();
+        mid.disconnect();
+        side.disconnect();
+        sideCut.disconnect();
+        sidePositive.disconnect();
+        sideNegative.disconnect();
+        merger.disconnect();
+        panner.disconnect();
+      },
+    };
+  }
+
   if (id === "distortion") {
     const shaper = ctx.createWaveShaper();
     const tone = ctx.createBiquadFilter();
@@ -420,26 +487,32 @@ export function createPluginAudio(
     };
   }
 
-  if (id === "chorus") {
-    const mix = wetDry(ctx, params.mix ?? 30);
-    const delay = ctx.createDelay(0.1);
+  if (id === "rhythmGate") {
+    // Approximation: a square-LFO gain gate at 120 BPM (1/4 = 2 Hz, 1/8 = 4 Hz,
+    // 1/16 = 8 Hz). Attack/release shape Suno's envelope; WebAudio's tremolo
+    // approximation ignores them, so the card states it is approximate.
+    const mix = wetDry(ctx, (params.mix ?? 0.65) * 100);
+    const gate = ctx.createGain();
     const lfo = ctx.createOscillator();
     const depth = ctx.createGain();
-    lfo.type = "sine";
-    lfo.connect(depth).connect(delay.delayTime);
-    mix.input.connect(delay).connect(mix.wet).connect(mix.output);
+    lfo.type = "square";
+    lfo.connect(depth).connect(gate.gain);
+    mix.input.connect(gate).connect(mix.wet).connect(mix.output);
     lfo.start();
 
     const apply = (p: Record<string, number>) => {
-      lfo.frequency.value = clamp(p.rate ?? 0.8, 0.05, 10);
-      depth.gain.value = (clamp(p.depth ?? 40, 0, 100) / 100) * 0.005;
-      delay.delayTime.value = 0.02;
-      mix.setMix(p.mix ?? 30);
+      const index = clamp(Math.round(p.rate ?? 1), 0, 2);
+      lfo.frequency.value = [8, 4, 2][index];
+      const amount = clamp(p.depth ?? 0.75, 0, 1);
+      gate.gain.value = 1 - amount / 2;
+      depth.gain.value = amount / 2;
+      mix.setMix(clamp((p.mix ?? 0.65) * 100, 0, 100));
     };
     apply(params);
     return {
       input: mix.input,
       output: mix.output,
+      approximate: true,
       update: apply,
       dispose: () => {
         try {
@@ -447,7 +520,7 @@ export function createPluginAudio(
         } catch {
           /* already stopped */
         }
-        [delay, depth, mix.input, mix.output].forEach((n) => n.disconnect());
+        [gate, depth, mix.input, mix.output].forEach((n) => n.disconnect());
       },
     };
   }

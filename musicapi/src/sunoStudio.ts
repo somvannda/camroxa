@@ -6,6 +6,7 @@ import {
   StudioProjectMissingError,
   StudioProjectRateLimitedError,
   SunoClient,
+  type SunoPluginDescriptor,
 } from "./client.js";
 import { withTransaction, query, queryOne } from "./db.js";
 import type { AccountPool } from "./pool.js";
@@ -13,8 +14,10 @@ import {
   mergeSunoProjectIntoLocal,
   projectDocumentToSunoState,
   stableSunoId,
+  sunoPluginToLocalCustom,
   sunoStateToProjectData,
   type LocalClip,
+  type LocalCustomPlugin,
   type LocalDocument,
 } from "./studioStateCodec.js";
 
@@ -83,6 +86,40 @@ export interface StudioSyncStatusView {
   skipped_clips: string[];
   /** True when arrangement writes are enabled; metadata-only otherwise. */
   state_sync: boolean;
+}
+
+export type StudioPluginJobStatus = "pending" | "saving" | "ready" | "error";
+
+/** State of one agent plugin-authoring job, safe to send to the web app. */
+export interface StudioPluginJobView {
+  job_id: string;
+  status: StudioPluginJobStatus;
+  phase: string | null;
+  progress: Array<{ message?: string; stage?: string }>;
+  /** Set once `status` is ready: the Suno library plugin/version. */
+  plugin_id: string | null;
+  plugin_version_id: string | null;
+  display_name: string | null;
+  descriptor: SunoPluginDescriptor | null;
+  last_error: string | null;
+}
+
+interface StudioPluginJobRow {
+  job_id: string;
+  local_project_id: string;
+  user_id: string;
+  instruction: string;
+  required_controls: unknown;
+  status: StudioPluginJobStatus;
+  phase: string | null;
+  progress: unknown;
+  display_name: string | null;
+  suno_plugin_id: string | null;
+  suno_plugin_version_id: string | null;
+  descriptor: unknown;
+  last_error: string | null;
+  created_at: string | Date;
+  updated_at: string | Date;
 }
 
 /**
@@ -249,6 +286,12 @@ export const STUDIO_STATE_COVERAGE: readonly CoverageEntry[] = [
   { key: "lanes[].midi.mod", suno: "clips[].midi.controlChanges (CC1)", status: "mapped" },
   { key: "lanes[].instrument", suno: "tracks[].signalChain synth waveform", status: "mapped" },
   { key: "chains (all built-ins)", suno: "tracks[].signalChain", status: "mapped", note: "custom plugins stay local" },
+  {
+    key: "designed plugins (Suno agent)",
+    suno: "tracks[].signalChain + /api/plugins/{id}",
+    status: "mapped",
+    note: "Suno's authoring agent builds the DSP; the chain entry carries catalogPluginId + pluginVersionId (see SUNO_STUDIO_AGENT_PLUGINS.md)",
+  },
   { key: "masterChain (limiter/eq/compressor)", suno: "masterSignalChain", status: "mapped" },
   { key: "groups", suno: "—", status: "remove", note: "no group/bus field exists in the document (captured 11 projects)" },
   { key: "pluginPresets", suno: "signalChain[].params", status: "mapped", note: "a preset is a param snapshot; the params mirror" },
@@ -690,6 +733,7 @@ export class StudioProjectSync {
     timeSignature: string;
     data: unknown;
     keptLocalClips: string[];
+    keptLocalEffects: string[];
     droppedTracks: string[];
     versionId: string | null;
   } | null> {
@@ -700,6 +744,21 @@ export class StudioProjectSync {
     const state = parseStudioState(fresh?.suno_state);
     if (!state) return null;
     const projection = sunoStateToProjectData(state);
+    const customPlugins = await this.customPluginSnapshots(
+      fresh?.account_label ?? link.account_label,
+      projection.chains
+    );
+    if (Object.keys(customPlugins).length > 0) {
+      for (const chain of Object.values(projection.chains)) {
+        for (const entry of chain) {
+          const sunoPluginId =
+            typeof entry.sunoPluginId === "string" ? entry.sunoPluginId : "";
+          if (sunoPluginId && customPlugins[sunoPluginId]) {
+            entry.custom = customPlugins[sunoPluginId];
+          }
+        }
+      }
+    }
     const merged = mergeSunoProjectIntoLocal(
       (doc.data ?? {}) as LocalDocument,
       projection
@@ -709,6 +768,7 @@ export class StudioProjectSync {
       timeSignature: projection.timeSignature,
       data: merged.data,
       keptLocalClips: merged.keptLocalClips,
+      keptLocalEffects: merged.keptLocalEffects,
       droppedTracks: merged.droppedTracks,
       versionId: fresh?.suno_version_id ?? null,
     };
@@ -880,6 +940,218 @@ export class StudioProjectSync {
     }
     return true;
   }
+
+  /**
+   * Ask Suno's agent to author a plugin for this project.
+   *
+   * The reference designer is not a form: the prompt goes to the authoring
+   * agent, which drafts a real DSP plugin. The job id is persisted so polling
+   * can resume after a reload and two polls cannot create two library plugins.
+   */
+  async authorPlugin(
+    doc: StudioProjectDocument,
+    input: { instruction: string; requiredControls?: string[] }
+  ): Promise<StudioPluginJobView> {
+    const instruction = input.instruction.trim();
+    if (!instruction) throw new Error("A plugin instruction is required.");
+    const link = await this.ensureLink(doc);
+    const client = this.clientFor(link.account_label);
+    const requiredControls = (input.requiredControls ?? [])
+      .map((control) => String(control ?? "").trim().slice(0, 80))
+      .filter(Boolean)
+      .slice(0, 32);
+    const { jobId } = await client.authorPlugin({
+      instruction: instruction.slice(0, 2000),
+      requiredControls,
+      studioAgentSessionId: `studio_agent_project#${link.suno_project_id}`,
+      studioProjectId: link.suno_project_id,
+    });
+    const row = await queryOne<StudioPluginJobRow>(
+      `INSERT INTO studio_plugin_authoring_jobs
+         (job_id, local_project_id, user_id, instruction, required_controls)
+       VALUES ($1, $2, $3, $4, $5::jsonb)
+       ON CONFLICT (job_id) DO UPDATE SET updated_at = now()
+       RETURNING *`,
+      [
+        jobId,
+        doc.localProjectId,
+        doc.userId,
+        instruction.slice(0, 2000),
+        JSON.stringify(requiredControls),
+      ]
+    );
+    if (!row) throw new Error("Could not record the plugin authoring job.");
+    return pluginJobView(row);
+  }
+
+  /**
+   * Poll one authoring job. On `ready`, saves the descriptor into the account's
+   * plugin library exactly once and records the ids the chain entry needs.
+   */
+  async pluginAuthoringJob(
+    jobId: string,
+    userId: string
+  ): Promise<StudioPluginJobView | null> {
+    let row = await queryOne<StudioPluginJobRow>(
+      "SELECT * FROM studio_plugin_authoring_jobs WHERE job_id = $1 AND user_id = $2",
+      [jobId, userId]
+    );
+    if (!row) return null;
+    // `saving` means another poll owns the library write; `ready`/`error` are
+    // terminal. A stale claim (crashed worker) is released after five minutes.
+    if (
+      row.status === "saving" &&
+      Date.now() - new Date(row.updated_at).getTime() > 5 * 60_000
+    ) {
+      row =
+        (await queryOne<StudioPluginJobRow>(
+          `UPDATE studio_plugin_authoring_jobs SET status = 'pending', updated_at = now()
+           WHERE job_id = $1 AND status = 'saving'
+           RETURNING *`,
+          [jobId]
+        )) ?? row;
+    }
+    if (row.status !== "pending") return pluginJobView(row);
+
+    const link = await this.link(row.local_project_id);
+    if (!link || link.user_id !== userId) return null;
+    const client = this.clientFor(link.account_label);
+    const job = await client.getPluginAuthoringJob(jobId);
+    const phase = typeof job.phase === "string" ? job.phase : null;
+    const progress = Array.isArray(job.progress) ? job.progress : [];
+
+    if (job.status === "ready" && job.descriptor) {
+      const claimed = await queryOne<StudioPluginJobRow>(
+        `UPDATE studio_plugin_authoring_jobs
+           SET status = 'saving', phase = $2, progress = $3::jsonb, updated_at = now()
+         WHERE job_id = $1 AND status = 'pending'
+         RETURNING *`,
+        [jobId, phase, JSON.stringify(progress)]
+      );
+      if (!claimed) {
+        row = await queryOne<StudioPluginJobRow>(
+          "SELECT * FROM studio_plugin_authoring_jobs WHERE job_id = $1",
+          [jobId]
+        );
+        return row ? pluginJobView(row) : null;
+      }
+      try {
+        const payload = pluginSavePayload(job.descriptor);
+        // Reuse the plugin created by an earlier attempt: a failed version save
+        // must not leave an orphan library plugin behind on every retry.
+        let pluginId = claimed.suno_plugin_id ?? "";
+        if (!pluginId) {
+          const created = await client.createPlugin(
+            String(payload.displayName ?? "").trim().slice(0, 120) || "Designed plugin"
+          );
+          pluginId = created.id;
+          await query(
+            "UPDATE studio_plugin_authoring_jobs SET suno_plugin_id = $2, updated_at = now() WHERE job_id = $1",
+            [jobId, pluginId]
+          );
+        }
+        const version = await client.savePluginVersion(pluginId, payload);
+        row = await queryOne<StudioPluginJobRow>(
+          `UPDATE studio_plugin_authoring_jobs SET
+             status = 'ready',
+             phase = $2,
+             progress = $3::jsonb,
+             display_name = $4,
+             suno_plugin_id = $5,
+             suno_plugin_version_id = $6,
+             descriptor = $7::jsonb,
+             last_error = NULL,
+             updated_at = now()
+           WHERE job_id = $1
+           RETURNING *`,
+          [
+            jobId,
+            phase,
+            JSON.stringify(progress),
+            String(payload.displayName ?? "").slice(0, 120) || null,
+            pluginId,
+            version.versionId,
+            JSON.stringify(job.descriptor),
+          ]
+        );
+        if (!row) throw new Error("The plugin authoring job disappeared.");
+        return pluginJobView(row);
+      } catch (error) {
+        // Put the job back in `pending` so the next poll retries the library
+        // write; the failed attempt is visible on the view.
+        const message = error instanceof Error ? error.message : String(error);
+        row = await queryOne<StudioPluginJobRow>(
+          `UPDATE studio_plugin_authoring_jobs SET
+             status = 'pending', last_error = $2, updated_at = now()
+           WHERE job_id = $1
+           RETURNING *`,
+          [jobId, message.slice(0, 500)]
+        );
+        throw error;
+      }
+    }
+
+    if (["error", "failed", "cancelled", "canceled"].includes(String(job.status))) {
+      row = await queryOne<StudioPluginJobRow>(
+        `UPDATE studio_plugin_authoring_jobs SET
+           status = 'error', last_error = $2, phase = $3, updated_at = now()
+         WHERE job_id = $1
+         RETURNING *`,
+        [
+          jobId,
+          typeof job.error === "string" ? job.error.slice(0, 500) : "Plugin authoring failed.",
+          phase,
+        ]
+      );
+      return row ? pluginJobView(row) : null;
+    }
+
+    row = await queryOne<StudioPluginJobRow>(
+      `UPDATE studio_plugin_authoring_jobs SET
+         phase = $2, progress = $3::jsonb, last_error = NULL, updated_at = now()
+       WHERE job_id = $1
+       RETURNING *`,
+      [jobId, phase, JSON.stringify(progress)]
+    );
+    return row ? pluginJobView(row) : null;
+  }
+
+  /**
+   * Descriptors for every designed plugin a pulled document references, so a
+   * chain entry can render on a device that has never seen the plugin. Missing
+   * or unreadable plugins are skipped: the entry keeps its ids and params.
+   */
+  private async customPluginSnapshots(
+    accountLabel: string,
+    chains: Record<string, Array<Record<string, unknown>>>
+  ): Promise<Record<string, LocalCustomPlugin>> {
+    const ids = new Set<string>();
+    for (const chain of Object.values(chains)) {
+      for (const entry of chain) {
+        const id = typeof entry.sunoPluginId === "string" ? entry.sunoPluginId : "";
+        if (id) ids.add(id);
+      }
+    }
+    if (ids.size === 0) return {};
+    const client = this.clientFor(accountLabel);
+    const out: Record<string, LocalCustomPlugin> = {};
+    await Promise.all(
+      [...ids].slice(0, 8).map(async (id) => {
+        try {
+          const record = await client.getPlugin(id);
+          if (!record.default_version?.payload) return;
+          const snapshot = sunoPluginToLocalCustom({
+            plugin: record.plugin,
+            version: record.default_version,
+          });
+          if (snapshot) out[id] = snapshot;
+        } catch {
+          /* a plugin we cannot read stays out of the local snapshot */
+        }
+      })
+    );
+    return out;
+  }
 }
 
 /** The outbox payload is the serialized `StudioProjectDocument`. */
@@ -911,6 +1183,48 @@ function statusView(link: StudioSyncLink | null): StudioSyncStatusView {
       ? (link?.skipped_clip_ids as string[])
       : [],
     state_sync: stateSyncEnabled(),
+  };
+}
+
+/**
+ * The authoring descriptor minus the fields Suno manages on save. Verified live:
+ * `/api/plugins/{id}/save` takes exactly `{description, displayName, kind,
+ * parameters, ports, source, ui}` and answers `{plugin_version_id, revision}`.
+ */
+function pluginSavePayload(descriptor: SunoPluginDescriptor): SunoPluginDescriptor {
+  const {
+    id: _id,
+    pluginVersionId: _pluginVersionId,
+    published: _published,
+    revision: _revision,
+    ...payload
+  } = descriptor;
+  return payload;
+}
+
+function pluginJobView(row: StudioPluginJobRow): StudioPluginJobView {
+  const progress = Array.isArray(row.progress)
+    ? (row.progress as Array<Record<string, unknown>>)
+        .map((item) => ({
+          message: typeof item.message === "string" ? item.message : undefined,
+          stage: typeof item.stage === "string" ? item.stage : undefined,
+        }))
+        .filter((item) => item.message || item.stage)
+    : [];
+  const descriptor =
+    row.descriptor && typeof row.descriptor === "object" && !Array.isArray(row.descriptor)
+      ? (row.descriptor as SunoPluginDescriptor)
+      : null;
+  return {
+    job_id: row.job_id,
+    status: row.status,
+    phase: row.phase,
+    progress,
+    plugin_id: row.suno_plugin_id,
+    plugin_version_id: row.suno_plugin_version_id,
+    display_name: row.display_name,
+    descriptor,
+    last_error: row.last_error,
   };
 }
 

@@ -3,6 +3,8 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { SongTempo } from "@/components/studio/StudioSongTempo";
+import { SongKey } from "@/components/studio/StudioSongKey";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import { groupByDay, relativeAge } from "@/lib/studio-library-grouping";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
@@ -72,6 +74,11 @@ export type StudioLibraryProps = {
   onAddSong: (song: WebMusicGeneration) => void;
   /** Audition button (reference rows have Play/Pause). */
   onTogglePlay: (song: WebMusicGeneration) => void;
+  /**
+   * S14 library keys: `↓`/`↑` audition the next/previous row and `→` replays the
+   * current one. Unlike the toggle it always starts from the top of the song.
+   */
+  onAudition: (song: WebMusicGeneration) => void;
   /** Like button (reference rows have Like); nextLiked is the requested state. */
   onToggleLike: (song: WebMusicGeneration, nextLiked: boolean) => void;
   /** Audition an upload (reference uploads rows have Play). */
@@ -104,18 +111,19 @@ export function primaryClip(song: WebMusicGeneration) {
 }
 
 /**
- * Tag strip under a song title (§19.2): version/model, variant, length. Key and tempo
- * are shown by the reference but are not part of our generation payload, so they are
- * absent instead of guessed.
+ * Tag strip under a song title (§19.2). The reference strip reads `V6 COVER · D minor ·
+ * 128 BPM`: one model+variant tag, then key, then tempo. Length is not part of the strip
+ * (it lives on the clip's info rail), and key/tempo are measured client-side because the
+ * generation payload does not carry them.
  */
 export function songTags(song: WebMusicGeneration): string[] {
   const clip = primaryClip(song);
-  const tags: string[] = [];
-  if (song.model_label) tags.push(song.model_label);
-  if (clip?.label && clip.label.length <= 12) tags.push(clip.label);
-  else if (clip?.variant) tags.push(clip.variant);
-  if (clip?.duration_seconds) tags.push(formatUploadLength(clip.duration_seconds));
-  return tags;
+  const model = song.model_label ? song.model_label.toUpperCase() : "";
+  const variant = clip?.label && clip.label.length <= 12 ? clip.label : clip?.variant ?? "";
+  if (model && variant) return [`${model} ${variant}`];
+  if (model) return [model];
+  if (variant) return [variant];
+  return [];
 }
 
 /** First letter of a name, for the artwork fallback. */
@@ -160,6 +168,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       onUploadAudio,
       onAddSong,
       onTogglePlay,
+      onAudition,
       onToggleLike,
       onToggleUploadPlay,
       onAddUpload,
@@ -172,6 +181,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
     const [allProjects, setAllProjects] = useState(false);
     /** Date headings collapse their group, like the reference's heading buttons. */
     const [collapsedDays, setCollapsedDays] = useState<string[]>([]);
+    /** Row the library's ↓/↑ audition cursor sits on (S14 library keys). */
+    const [auditionId, setAuditionId] = useState<string | null>(null);
     const [filterOpen, setFilterOpen] = useState(false);
     const filterRef = useRef<HTMLSpanElement | null>(null);
 
@@ -226,6 +237,49 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
     const visibleWorkspaces = (workspaces ?? []).filter((workspace) =>
       q ? workspace.name.toLowerCase().includes(q) : true
     );
+
+    /**
+     * S14 library audition keys. The cursor follows the visible, expanded rows so
+     * ↓/↑ never land on a collapsed group, and → restarts the current row.
+     */
+    function handleAuditionKeys(event: React.KeyboardEvent<HTMLUListElement>) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+      if (!step && event.key !== "ArrowRight") return;
+
+      const queue = groupByDay(visibleSongs)
+        .filter((group) => !collapsedDays.includes(group.label))
+        .flatMap((group) => group.items);
+      if (queue.length === 0) return;
+
+      event.preventDefault();
+      const currentId = auditionId ?? playingSongId ?? null;
+      const index = queue.findIndex((song) => song.id === currentId);
+      if (event.key === "ArrowRight") {
+        const song = queue[index >= 0 ? index : 0];
+        setAuditionId(song.id);
+        onAudition(song);
+        return;
+      }
+      const nextIndex =
+        index < 0
+          ? step > 0
+            ? 0
+            : queue.length - 1
+          : Math.max(0, Math.min(queue.length - 1, index + step));
+      const song = queue[nextIndex];
+      setAuditionId(song.id);
+      onAudition(song);
+    }
 
     async function importFile(file: File | undefined | null) {
       if (!file) return;
@@ -625,7 +679,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                 </p>
               )
             ) : (
-              <ul className="se-lib-list">
+              <ul className="se-lib-list" onKeyDown={handleAuditionKeys}>
                 {groupByDay(visibleSongs).map((group) => (
                   <li key={group.label} className="se-lib-day" aria-label={group.label}>
                     <button
@@ -682,11 +736,13 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                               <span className="se-lib-meta">
                                 {song.style?.slice(0, 44) || "No style"}
                               </span>
-                              {tags.length > 0 ? (
+                              {tags.length > 0 || clip?.audio_url ? (
                                 <span className="se-lib-tags">
                                   {tags.map((tag) => (
                                     <span key={tag}>{tag}</span>
                                   ))}
+                                  <SongKey url={clip?.audio_url} />
+                                  <SongTempo url={clip?.audio_url} duration={clip?.duration_seconds} />
                                 </span>
                               ) : null}
                             </span>

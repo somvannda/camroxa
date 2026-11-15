@@ -94,7 +94,7 @@ export default function CommunityPage() {
       <div className="creator-grid">
         {creators.map((creator) => (
           <article className="creator-card" key={creator.name}>
-            <img src={creator.image} alt={creator.name} />
+            <img src={creator.image || "/hero.png"} alt={creator.name} />
             <div>
               <strong>{creator.name}</strong>
               <span>{creator.meta}</span>

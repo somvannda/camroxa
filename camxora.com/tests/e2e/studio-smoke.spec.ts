@@ -27,7 +27,7 @@ test("studio smoke: move, undo, export", async ({ page }) => {
 
   // The export menu opens with its scopes (and the G11 normalise toggle).
   await page.getByLabel("Export menu").click();
-  await expect(page.getByRole("menuitem", { name: /Full mix/ })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: /Selected time range/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Full Song/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Selected Time Range/ })).toBeVisible();
   await expect(page.getByRole("menuitemcheckbox", { name: /Normalise mix/ })).toBeVisible();
 });

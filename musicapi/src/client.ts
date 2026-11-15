@@ -73,6 +73,66 @@ export interface SunoStudioProject {
   [key: string]: unknown;
 }
 
+/** One control on a plugin authored by Suno's agent. */
+export interface SunoPluginParameter {
+  name: string;
+  label?: string;
+  default?: number;
+  range?: { min?: number; max?: number; step?: number };
+  scale?: string;
+  unit?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * The self-describing plugin payload: a saved plugin version stores this under
+ * `payload`, and the authoring job returns it as `descriptor`. Verified live on
+ * 2026-11-13 (`SUNO_STUDIO_AGENT_PLUGINS.md`).
+ */
+export interface SunoPluginDescriptor {
+  displayName?: string;
+  description?: string;
+  kind?: string;
+  parameters?: SunoPluginParameter[];
+  ports?: Record<string, unknown>;
+  source?: { code?: string; lang?: string; metadata?: Record<string, unknown> };
+  ui?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** A ready authoring job: the draft descriptor plus progress stages. */
+export interface SunoPluginAuthoringJob {
+  status: string;
+  phase?: string;
+  progress?: Array<{ message?: string; stage?: string }>;
+  descriptor?: SunoPluginDescriptor;
+  [key: string]: unknown;
+}
+
+/** Row from `GET /api/plugins/` and `GET /api/plugins/{id}`. */
+export interface SunoPluginRecord {
+  id: string;
+  name: string;
+  description?: string;
+  published?: boolean;
+  is_owner?: boolean;
+  default_version_id?: string | null;
+  default_revision?: number;
+  [key: string]: unknown;
+}
+
+/** A saved plugin version as returned by `GET /api/plugins/{id}`. */
+export interface SunoPluginVersion {
+  plugin_id: string;
+  plugin_version_id: string;
+  revision: number;
+  published?: boolean;
+  name?: string;
+  description?: string;
+  payload?: SunoPluginDescriptor;
+  [key: string]: unknown;
+}
+
 /** The account cannot read or write this Studio project (expired/foreign). */
 export class StudioAccountError extends Error {
   constructor(message: string) {
@@ -668,6 +728,88 @@ export class SunoClient {
       { method: "POST" },
     );
     if (!res.ok) throw await sunoHttpError(`studio/project/${action}`, res);
+  }
+
+  /**
+   * Ask Suno's agent to author a plugin. A job id comes back immediately; the
+   * work is generative and spends credits, so the caller polls
+   * `getPluginAuthoringJob` rather than holding this request open.
+   *
+   * `studioAgentSessionId` is the studio agent conversation for the mirrored
+   * project (`studio_agent_project#<suno project id>`), verified live.
+   */
+  async authorPlugin(input: {
+    instruction: string;
+    requiredControls?: string[];
+    studioAgentSessionId: string;
+    studioProjectId: string;
+  }): Promise<{ jobId: string }> {
+    const res = await this.request("/api/agent/author-plugin", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        instruction: input.instruction,
+        required_controls: input.requiredControls ?? [],
+        studioAgentSessionId: input.studioAgentSessionId,
+        studioProjectId: input.studioProjectId,
+      }),
+    });
+    if (!res.ok) throw await sunoHttpError("agent/author-plugin", res);
+    const data = (await res.json()) as { job_id?: string };
+    if (!data.job_id) throw new Error("Suno did not return a plugin authoring job id.");
+    return { jobId: data.job_id };
+  }
+
+  /** Poll a plugin authoring job. `status: "ready"` carries the descriptor. */
+  async getPluginAuthoringJob(jobId: string): Promise<SunoPluginAuthoringJob> {
+    const res = await this.request(
+      `/api/agent/author-plugin/${encodeURIComponent(jobId)}`,
+    );
+    if (!res.ok) throw await sunoHttpError("agent/author-plugin/job", res);
+    return (await res.json()) as SunoPluginAuthoringJob;
+  }
+
+  /**
+   * Create a plugin in the account's library. The live route needs a trailing
+   * slash (`/api/plugins/`); without it Suno's web server answers an HTML 404.
+   */
+  async createPlugin(name: string): Promise<SunoPluginRecord> {
+    const res = await this.request("/api/plugins/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw await sunoHttpError("plugins/create", res);
+    const data = (await res.json()) as SunoPluginRecord;
+    if (!data.id) throw new Error("Suno did not return a plugin id.");
+    return data;
+  }
+
+  /** Save a new version of a plugin from the authoring descriptor. */
+  async savePluginVersion(
+    pluginId: string,
+    payload: SunoPluginDescriptor,
+  ): Promise<{ versionId: string; revision: number }> {
+    const res = await this.request(`/api/plugins/${encodeURIComponent(pluginId)}/save`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ payload }),
+    });
+    if (!res.ok) throw await sunoHttpError("plugins/save", res);
+    const data = (await res.json()) as { plugin_version_id?: string; revision?: number };
+    if (!data.plugin_version_id) throw new Error("Suno did not return a plugin version id.");
+    return { versionId: data.plugin_version_id, revision: Number(data.revision) || 1 };
+  }
+
+  /** Read one plugin (with its default version and payload) from the library. */
+  async getPlugin(pluginId: string): Promise<{
+    plugin: SunoPluginRecord;
+    default_version?: SunoPluginVersion;
+  }> {
+    const res = await this.request(`/api/plugins/${encodeURIComponent(pluginId)}`);
+    if (res.status === 404) throw new StudioProjectMissingError(pluginId);
+    if (!res.ok) throw await sunoHttpError("plugins/get", res);
+    return (await res.json()) as { plugin: SunoPluginRecord; default_version?: SunoPluginVersion };
   }
 
   /**

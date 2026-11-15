@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.dependencies import set_db_pool
+from platform_api.utils.upload_paths import project_root
 
 
 USER_ID = uuid4()
@@ -46,7 +47,7 @@ async def client(app) -> AsyncClient:
 class TestMedia:
     async def test_user_can_fetch_own_logo(self, app, client: AsyncClient):
         logo_rel = os.path.join("uploads", "logos", str(USER_ID), "logo.png")
-        logo_abs = Path(logo_rel).resolve()
+        logo_abs = (project_root() / logo_rel).resolve()
         _write_file(logo_abs)
 
         try:
@@ -63,7 +64,7 @@ class TestMedia:
 
     async def test_user_cannot_fetch_other_logo(self, app, client: AsyncClient):
         logo_rel = os.path.join("uploads", "logos", str(OTHER_USER_ID), "logo.png")
-        logo_abs = Path(logo_rel).resolve()
+        logo_abs = (project_root() / logo_rel).resolve()
         _write_file(logo_abs)
 
         try:
@@ -80,7 +81,7 @@ class TestMedia:
 
     async def test_admin_can_fetch_other_logo(self, app, client: AsyncClient):
         logo_rel = os.path.join("uploads", "logos", str(OTHER_USER_ID), "logo.png")
-        logo_abs = Path(logo_rel).resolve()
+        logo_abs = (project_root() / logo_rel).resolve()
         _write_file(logo_abs)
 
         try:
@@ -97,7 +98,7 @@ class TestMedia:
 
     async def test_cover_index_bounds(self, app, client: AsyncClient):
         cover_rel = os.path.join("uploads", "covers", str(USER_ID), "cover-0.png")
-        cover_abs = Path(cover_rel).resolve()
+        cover_abs = (project_root() / cover_rel).resolve()
         _write_file(cover_abs)
 
         try:

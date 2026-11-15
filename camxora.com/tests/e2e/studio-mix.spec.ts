@@ -136,7 +136,7 @@ test("the mix export follows solo, like playback", async ({ page }) => {
   const exportMix = async () => {
     await page.getByLabel("Export menu").click();
     const download = page.waitForEvent("download");
-    await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+    await page.getByRole("menuitem", { name: "Full Song" }).click();
     const file = await download;
     const path = await file.path();
     if (!path) throw new Error("download has no path");

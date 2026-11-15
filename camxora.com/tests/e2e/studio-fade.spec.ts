@@ -49,7 +49,7 @@ test("the fade handle and Shift+F set a fade that is audible in the export", asy
   const exportMix = async () => {
     await page.getByLabel("Export menu").click();
     const download = page.waitForEvent("download");
-    await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+    await page.getByRole("menuitem", { name: "Full Song" }).click();
     return download;
   };
 
@@ -104,7 +104,7 @@ test("the fade-out handle ramps the tail of the export", async ({ page }) => {
   const exportMix = async () => {
     await page.getByLabel("Export menu").click();
     const download = page.waitForEvent("download");
-    await page.getByRole("menuitem", { name: "Full mix (WAV)" }).click();
+    await page.getByRole("menuitem", { name: "Full Song" }).click();
     return download;
   };
 

@@ -5,11 +5,13 @@ import {
   duplicateTimeRange,
   normaliseRange,
   rangeLength,
+  splitClipAtTimes,
+  type TimeClip,
   type TimeEdit,
 } from "@/lib/studio-time";
 
 function clip(id: string, start: number, duration: number, extra: Record<string, unknown> = {}) {
-  return { id, start, duration, ...extra };
+  return { id, start, duration, ...extra } as TimeClip;
 }
 
 function edit(tracks: Record<string, string[]>, lanes: ReturnType<typeof clip>[]): TimeEdit {
@@ -158,5 +160,38 @@ describe("duplicateTimeRange", () => {
     const ids = twice.lanes.map((item) => item.id);
 
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("splitClipAtTimes", () => {
+  it("cuts at each time, keeps the head's id and advances the offset", () => {
+    const segments = splitClipAtTimes(clip("a", 2, 4, { offset: 1 }), [3, 5]);
+
+    expect(segments.map((item) => item.id)).toEqual(["a", "a-split", "a-split-2"]);
+    expect(segments.map((item) => [item.start, item.duration])).toEqual([
+      [2, 1],
+      [3, 2],
+      [5, 1],
+    ]);
+    expect(segments.map((item) => item.offset)).toEqual([1, 2, 4]);
+  });
+
+  it("keeps the fades on the outer segments only", () => {
+    const segments = splitClipAtTimes(clip("a", 0, 4, { fadeIn: 0.5, fadeOut: 0.25 }), [2]);
+
+    expect(segments).toHaveLength(2);
+    expect(segments[0].fadeIn).toBe(0.5);
+    expect(segments[0].fadeOut).toBeUndefined();
+    expect(segments[1].fadeIn).toBeUndefined();
+    expect(segments[1].fadeOut).toBe(0.25);
+  });
+
+  it("ignores cuts at or outside the clip and de-duplicates repeats", () => {
+    const untouched = splitClipAtTimes(clip("a", 2, 4), [2, 6, 1, 9]);
+    expect(untouched).toHaveLength(1);
+    expect(untouched[0].id).toBe("a");
+
+    const once = splitClipAtTimes(clip("a", 2, 4), [3, 3.0000001, 3]);
+    expect(once).toHaveLength(2);
   });
 });

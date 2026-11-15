@@ -16,6 +16,7 @@ import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioMasterDock } from "@/components/studio/StudioMasterDock";
 import { LIMITER_DEFAULTS } from "@/lib/studio-master-bus";
+import { DEFAULT_STUDIO_SETTINGS } from "@/lib/studio-settings";
 import type { StudioTrack } from "@/lib/studio-tracks";
 import type { StudioProject, StudioStem, StudioUpload } from "@/lib/studio-api";
 import { addStudioProjectComment, listStudioProjectComments } from "@/lib/studio-api";
@@ -41,7 +42,7 @@ function headerProps() {
   return {
     title: "Demo",
     projectId: "p1" as string | null,
-    settings: { ghostDrag: true, whatsThis: true, inputDeviceId: null, countIn: false },
+    settings: { ...DEFAULT_STUDIO_SETTINGS },
     onSettingsChange: noop,
     onRenamed: noop,
     onShowQuickStart: noop,
@@ -70,6 +71,8 @@ function headerProps() {
     onExport: noop,
     normalise: false,
     onToggleNormalise: noop,
+    exportFormat: "wav" as const,
+    onExportFormat: noop,
     libraryOpen: false,
     onToggleLibrary: noop,
     onBackToStart: noop,
@@ -149,9 +152,10 @@ describe("StudioHeader", () => {
   it("disables the range export until a range exists", async () => {
     const user = userEvent.setup();
     render(<StudioHeader {...headerProps()} exportOpen />);
-    const range = screen.getByText("Selected time range (WAV)") as HTMLButtonElement;
+    const range = screen.getByText("Selected Time Range") as HTMLButtonElement;
     expect(range.disabled).toBe(true);
-    expect(screen.getByText("Full mix (WAV)")).toBeTruthy();
+    expect(screen.getByText("Full Song")).toBeTruthy();
+    expect(screen.getByText("Multitrack")).toBeTruthy();
     await user.click(screen.getByLabelText("Export menu"));
   });
 
@@ -296,6 +300,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     onUploadAudio: async () => {},
     onAddSong: noop,
     onTogglePlay: noop,
+    onAudition: noop,
     onToggleLike: noop,
     onToggleUploadPlay: noop,
     onAddUpload: noop,
@@ -536,7 +541,7 @@ describe("StudioLibrary", () => {
         })}
       />
     );
-    for (const tag of ["V6", "Cover", "2:07"]) {
+    for (const tag of ["V6 Cover"]) {
       expect(screen.getByText(tag)).toBeTruthy();
     }
   });
@@ -1053,6 +1058,7 @@ describe("StudioTrackPanel", () => {
       onAddUploadTrack: noop,
       onToggleHidden: noop,
       onShowAllHidden: noop,
+      onUnmuteAllHidden: noop,
       onToggleAllCollapsed: noop,
       masterVolume: 85,
       masterMuted: false,
@@ -1165,6 +1171,65 @@ describe("StudioMasterDock", () => {
     });
     expect(next.find((entry) => entry.type === "eq")?.amount).toBe(0.6);
     expect(next.find((entry) => entry.type === "compressor")?.amount).toBe(0.25);
+  });
+});
+
+describe("StudioLibrary audition keys", () => {
+  const first = song({
+    id: "s1",
+    title: "First",
+    clips: [{ variant: "ok", audio_url: "https://example.test/s1.mp3" }],
+  });
+  const second = song({
+    id: "s2",
+    title: "Second",
+    clips: [{ variant: "ok", audio_url: "https://example.test/s2.mp3" }],
+  });
+
+  it("auditions the next and previous row and replays the current one", () => {
+    const onAudition = vi.fn();
+    const { container } = render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [first, second],
+          onAudition,
+        })}
+      />
+    );
+    const list = container.querySelector(".se-lib-list") as HTMLElement;
+
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(onAudition).toHaveBeenLastCalledWith(first);
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(onAudition).toHaveBeenLastCalledWith(second);
+    // The cursor stops at the last row instead of wrapping past it.
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(onAudition).toHaveBeenLastCalledWith(second);
+    fireEvent.keyDown(list, { key: "ArrowUp" });
+    expect(onAudition).toHaveBeenLastCalledWith(first);
+    fireEvent.keyDown(list, { key: "ArrowRight" });
+    expect(onAudition).toHaveBeenLastCalledWith(first);
+    expect(onAudition).toHaveBeenCalledTimes(5);
+  });
+
+  it("ignores the keys outside the song list and inside inputs", () => {
+    const onAudition = vi.fn();
+    const { container } = render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [first],
+          onAudition,
+        })}
+      />
+    );
+    const list = container.querySelector(".se-lib-list") as HTMLElement;
+    const search = container.querySelector("input") as HTMLInputElement;
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(onAudition).not.toHaveBeenCalled();
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(onAudition).not.toHaveBeenCalled();
   });
 });
 

@@ -23,8 +23,6 @@ import {
   type LibraryFilterId,
 } from "@/lib/library-filters";
 import {
-  fetchLikedTracks,
-  type LikedTrack,
   type WebMusicClip,
   type WebMusicGeneration,
 } from "@/lib/library-api";
@@ -97,8 +95,6 @@ const TABS = [
   { id: "workspaces", label: "Workspaces" },
   { id: "projects", label: "Studio Projects" },
   { id: "covers", label: "Cover Art" },
-  { id: "hooks", label: "Hooks" },
-  { id: "likedHooks", label: "Liked Hooks" },
   { id: "uploads", label: "Uploads" },
   { id: "history", label: "History" },
   { id: "trash", label: "Trash" },
@@ -176,7 +172,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const [playlists, setPlaylists] = useState<WebMusicPlaylistSummary[]>([]);
   const [workspaces, setWorkspaces] = useState<WebMusicWorkspace[]>([]);
   const [projects, setProjects] = useState<WebMusicStudioProject[]>([]);
-  const [likedTracks, setLikedTracks] = useState<LikedTrack[]>([]);
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
   /** Audio imported in Studio (B-006/B-007), listed here so it is not Studio-only. */
@@ -248,12 +243,11 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     setLoadingGenerations(true);
     setError("");
     void (async () => {
-      const [gens, pls, wss, prjs, liked, keys, disliked] = await Promise.allSettled([
+      const [gens, pls, wss, prjs, keys, disliked] = await Promise.allSettled([
         listWebMusicGenerations(PAGE_SIZE, 0),
         listWebMusicPlaylists(),
         listWebMusicWorkspaces(),
         listWebMusicStudioProjects(),
-        fetchLikedTracks(50),
         fetchWebMusicLikedKeys(),
         fetchWebMusicDislikedKeys(),
       ] as const);
@@ -272,8 +266,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       else problems.push(errorText(wss, "Could not load your workspaces"));
       if (prjs.status === "fulfilled") setProjects(prjs.value.items);
       else problems.push(errorText(prjs, "Could not load studio projects"));
-      if (liked.status === "fulfilled") setLikedTracks(liked.value);
-      else problems.push(errorText(liked, "Could not load liked tracks"));
       if (keys.status === "fulfilled") setLikedKeys(keys.value);
       else problems.push(errorText(keys, "Could not load your likes"));
       if (disliked.status === "fulfilled") setDislikedKeys(disliked.value);
@@ -489,11 +481,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       ? [...filteredRows].sort((a, b) => b.createdAt - a.createdAt)
       : sortedRows;
 
-  const filteredLiked = likedTracks.filter((track) => {
-    if (!searchTerm) return true;
-    return `${track.title} ${track.artist_name || ""}`.toLowerCase().includes(searchTerm);
-  });
-
   const filteredPlaylists = playlists.filter(
     (playlist) => !searchTerm || playlist.name.toLowerCase().includes(searchTerm)
   );
@@ -505,13 +492,11 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   );
 
   const isRowTab = tab === "songs" || tab === "history" || tab === "covers";
-  const activeCount = tab === "likedHooks" ? filteredLiked.length : isRowTab ? rowSource.length : 0;
+  const activeCount = isRowTab ? rowSource.length : 0;
   const pageCount = Math.max(1, Math.ceil(activeCount / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const pageSlice = [(currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE] as const;
   const pageRows = isRowTab ? rowSource.slice(pageSlice[0], pageSlice[1]) : [];
-  const likedPageRows =
-    tab === "likedHooks" ? filteredLiked.slice(pageSlice[0], pageSlice[1]) : [];
 
   const coverRows = pageRows.filter(
     (row, index, all) =>
@@ -536,7 +521,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const sortLabel = SORT_OPTIONS.find((option) => option.id === sort)?.label ?? "Newest";
   const showPager =
     !bootLoading &&
-    (tab === "songs" || tab === "history" || tab === "covers" || tab === "likedHooks") &&
+    (tab === "songs" || tab === "history" || tab === "covers") &&
     activeCount > 0;
 
   function playUpload(upload: StudioUpload) {
@@ -609,16 +594,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       cover: clip.image_url || "/hero.png",
       duration: Math.max(1, Math.round(clip.duration_seconds || 180)),
       audioUrl,
-    });
-  }
-
-  function playLiked(track: LikedTrack) {
-    playTrack({
-      title: track.title,
-      artist: track.artist_name || "Camxora",
-      cover: track.cover_url || "/hero.png",
-      duration: Math.max(1, Math.round(track.duration_seconds || 180)),
-      audioUrl: `/api/v3/streaming/tracks/${encodeURIComponent(track.id)}/stream`,
     });
   }
 
@@ -1100,7 +1075,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           className="s-cover"
           aria-label={
             ready
-              ? `Play ${title}${duration ? ` (${formatClipDuration(duration)})` : ""}`
+              ? // The visible duration must appear verbatim in the name, or axe's
+                // label-content-name rule fails on the parentheses.
+                `Play ${title}${duration ? ` ${formatClipDuration(duration)}` : ""}`
               : "Song not ready"
           }
           onClick={(event) => {
@@ -1117,7 +1094,13 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
               />
             </span>
           </span>
-          {duration ? <span className="s-dur">{formatClipDuration(duration)}</span> : null}
+          {duration ? (
+            // The label already says the length; repeating it as text would break
+            // the label-content-name match.
+            <span className="s-dur" aria-hidden="true">
+              {formatClipDuration(duration)}
+            </span>
+          ) : null}
         </button>
 
         <div className="s-row-body">
@@ -1248,6 +1231,14 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                         const text = (song.style || song.lyrics || song.title || "").trim();
                         window.location.href = `/create?prompt=${encodeURIComponent(text)}`;
                       }}
+                      onInspire={() => {
+                        window.location.href = `/create?inspire=${encodeURIComponent(song.id)}`;
+                      }}
+                      onSample={() => {
+                        window.location.href = `/create?sample=${encodeURIComponent(
+                          song.id
+                        )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                      }}
                       onMashup={() => {
                         window.location.href = `/create?mashup=${encodeURIComponent(
                           song.id
@@ -1305,54 +1296,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       </div>
       <b>{row.title}</b>
       <small>{row.song.style || "No style tags"}</small>
-    </div>
-  );
-
-  const renderLikedRow = (track: LikedTrack) => (
-    <div
-      className="s-row"
-      key={track.id}
-      role="group"
-      aria-label={track.title}
-      onClick={() => playLiked(track)}
-    >
-      <button
-        type="button"
-        className="s-cover"
-        aria-label={`Play ${track.title}`}
-        onClick={(event) => {
-          event.stopPropagation();
-          playLiked(track);
-        }}
-      >
-        <img src={track.cover_url || "/hero.png"} alt="" loading="lazy" />
-        <span className="s-cover-play">
-          <span>
-            <Icon name="fa-play" />
-          </span>
-        </span>
-      </button>
-      <div className="s-row-body">
-        <div className="s-row-title">
-          <b>{track.title}</b>
-          <span className="s-tag">Hook</span>
-        </div>
-        <div className="s-row-desc">
-          {track.artist_name || "Camxora"}
-          {track.duration_seconds ? ` · ${formatClipDuration(track.duration_seconds)}` : ""}
-          {track.added_at ? ` · ${formatDate(track.added_at)}` : ""}
-        </div>
-        <div className="s-row-actions" onClick={(event) => event.stopPropagation()}>
-          <button
-            type="button"
-            className="s-act"
-            aria-label={`Play ${track.title}`}
-            onClick={() => playLiked(track)}
-          >
-            <Icon name="fa-play" /> Play
-          </button>
-        </div>
-      </div>
     </div>
   );
 
@@ -1738,19 +1681,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       );
     }
 
-    if (tab === "likedHooks") {
-      if (!filteredLiked.length) {
-        return hasSearch
-          ? noResults
-          : renderEmpty(
-              "fa-heart",
-              "No liked hooks yet",
-              "Tracks you like while listening will appear here."
-            );
-      }
-      return <>{likedPageRows.map(renderLikedRow)}</>;
-    }
-
     if (tab === "albums") {
       return renderEmpty(
         "fa-compact-disc",
@@ -1763,9 +1693,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     }
 
     return renderEmpty(
-      "fa-wand-magic-sparkles",
-      "Hooks are not enabled yet",
-      "Short hook generation is not available in this workspace. Create a full song instead.",
+      "fa-music",
+      "Nothing here yet",
+      "Create a song and it will appear in this section.",
       <Link className="s-btn s-btn-secondary" href="/create">
         Create a song
       </Link>
@@ -1997,14 +1927,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           >
             Liked
           </button>
-          <button
-            type="button"
-            className="s-pill"
-            disabled
-            title="Public visibility is not available yet"
-          >
-            Public
-          </button>
             </>
           ) : null}
           <button
@@ -2050,19 +1972,19 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 aria-label="Next page"
                 onClick={() => {
                   if (currentPage < pageCount) setPage(currentPage + 1);
-                  else if (tab !== "likedHooks" && generations.length < totalGenerations) {
+                  else if (generations.length < totalGenerations) {
                     void loadGenerations(generations.length);
                   }
                 }}
                 disabled={
                   currentPage >= pageCount &&
-                  (tab === "likedHooks" || generations.length >= totalGenerations)
+                  generations.length >= totalGenerations
                 }
               >
                 <Icon name="fa-chevron-right" />
               </button>
             </div>
-            {tab !== "likedHooks" && generations.length < totalGenerations ? (
+            {generations.length < totalGenerations ? (
               <button
                 type="button"
                 className="s-chip"
@@ -2320,11 +2242,20 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                   : "Record a take and use it as a reference for a new song."}
               </p>
               <div className="s-box">
-                Uploads and recording are not enabled for this workspace yet. You can still
-                add audio from the Studio editor.
+                {attachNotice === "upload"
+                  ? "The file picker opens in Create, where the audio is attached to the song you build next."
+                  : "The microphone opens in Create, where the take is attached to the song you build next."}
               </div>
             </div>
             <div className="s-modal-foot">
+              <Link
+                className="s-btn s-btn-primary"
+                href={`/create?attach=${attachNotice}`}
+                onClick={() => setAttachNotice(null)}
+              >
+                <Icon name={attachNotice === "upload" ? "fa-arrow-up-from-bracket" : "fa-microphone"} />{" "}
+                {attachNotice === "upload" ? "Open the uploader" : "Open the recorder"}
+              </Link>{" "}
               <Link className="s-btn s-btn-secondary" href="/studio/editor">
                 <Icon name="fa-table-columns" /> Open Studio
               </Link>

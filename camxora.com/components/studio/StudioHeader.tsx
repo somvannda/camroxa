@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
+import { useEffect, type ReactNode } from "react";
 import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
 import { STUDIO_SIGNATURES } from "@/lib/studio-signature";
 import type { StudioSettings } from "@/lib/studio-settings";
@@ -54,6 +55,11 @@ export type StudioHeaderProps = {
   /** Mix/range exports are gain-matched to the menu's target when on (G11). */
   normalise: boolean;
   onToggleNormalise: () => void;
+  /** WAV is the captured default; MP3 is a real encode of the same render. */
+  exportFormat: "wav" | "mp3";
+  onExportFormat: (format: "wav" | "mp3") => void;
+  /** Master spectrum canvas, rendered by the shell beside the peak pill. */
+  spectrum?: ReactNode;
 
   libraryOpen: boolean;
   onToggleLibrary: () => void;
@@ -116,6 +122,9 @@ export function StudioHeader(props: StudioHeaderProps) {
     onExport,
     normalise,
     onToggleNormalise,
+    exportFormat,
+    onExportFormat,
+    spectrum,
     libraryOpen,
     onToggleLibrary,
     onBackToStart,
@@ -138,6 +147,16 @@ export function StudioHeader(props: StudioHeaderProps) {
     onUndo,
     onRedo,
   } = props;
+
+  // Overlays close on Escape (composition rule 6).
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onToggleExport();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [exportOpen, onToggleExport]);
 
   return (
     <header className="se-head">
@@ -323,7 +342,7 @@ export function StudioHeader(props: StudioHeaderProps) {
             ))}
           </select>
         </span>
-        <StudioSaveStatus status={saveStatus} onRetry={onRetrySave} sync={sync} />
+        <StudioSaveStatus status={saveStatus} onRetry={onRetrySave} sync={sync} />{spectrum}
         <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output" data-help="meter">
           {formatMeter(meter)}
         </span>
@@ -349,6 +368,20 @@ export function StudioHeader(props: StudioHeaderProps) {
         </button>
         {exportOpen ? (
           <div className="se-export-menu" role="menu" aria-label="Export options">
+            <div className="se-export-formats" role="group" aria-label="Export format">
+              {(["wav", "mp3"] as const).map((format) => (
+                <button
+                  key={format}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={exportFormat === format}
+                  className={exportFormat === format ? "on" : undefined}
+                  onClick={() => onExportFormat(format)}
+                >
+                  {format.toUpperCase()}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               role="menuitemcheckbox"
@@ -359,13 +392,13 @@ export function StudioHeader(props: StudioHeaderProps) {
               {normalise ? "✓ " : ""}Normalise mix to −1 dBFS
             </button>
             <button type="button" role="menuitem" onClick={() => onExport("mix")}>
-              <Icon name="fa-music" /> Full mix (WAV)
-            </button>
-            <button type="button" role="menuitem" onClick={() => onExport("tracks")}>
-              <Icon name="fa-layer-group" /> One file per track
+              <Icon name="fa-music" /> Full Song
             </button>
             <button type="button" role="menuitem" disabled={!rangeReady} onClick={() => onExport("range")}>
-              <Icon name="fa-clock" /> Selected time range (WAV)
+              <Icon name="fa-clock" /> Selected Time Range
+            </button>
+            <button type="button" role="menuitem" onClick={() => onExport("tracks")}>
+              <Icon name="fa-layer-group" /> Multitrack
             </button>
             <button type="button" role="menuitem" onClick={() => onExport("json")}>
               <Icon name="fa-file-code" /> Project (JSON)

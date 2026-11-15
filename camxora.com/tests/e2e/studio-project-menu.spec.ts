@@ -22,11 +22,13 @@ test("project menu renames the project and the name survives a reload", async ({
   const menu = page.getByRole("menu", { name: "Project options" });
   await expect(menu).toBeVisible();
 
-  // The order matches the capture; the two we cannot honour are disabled.
-  await expect(menu.getByRole("menuitem")).toHaveCount(9);
-  await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Share Project
-  await expect(menu.getByRole("menuitem").nth(6)).toBeDisabled(); // v1 copy
-  await expect(menu.getByRole("menuitem").nth(7)).toBeEnabled(); // Settings
+  // The order matches the capture; the one we cannot honour is disabled.
+  await expect(menu.getByRole("menuitem")).toHaveCount(11);
+  await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Version History
+  await expect(menu.getByRole("menuitem").nth(6)).toBeEnabled(); // Share Project
+  await expect(menu.getByRole("menuitem").nth(7)).toBeEnabled(); // Send to Suno Sync
+  await expect(menu.getByRole("menuitem").nth(8)).toBeDisabled(); // v1 copy
+  await expect(menu.getByRole("menuitem").nth(9)).toBeEnabled(); // Settings
 
   await menu.getByRole("menuitem", { name: "Rename" }).click();
   const dialog = page.getByRole("dialog", { name: "Rename project" });
@@ -48,6 +50,27 @@ test("project menu renames the project and the name survives a reload", async ({
 
   await page.reload();
   await expect(page.locator(".se-project .se-chip")).toHaveText(renamed);
+});
+
+test("send to Suno sync reports the mirror's answer", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, { title: `Suno sync ${tag}` });
+
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Send to Suno Sync" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Suno sync" });
+  await expect(dialog).toBeVisible();
+  // The sandbox API runs with the mirror unconfigured, so the honest answer is the
+  // error; a configured server answers with the push status. Either must appear.
+  await expect(
+    dialog.getByRole("status").or(dialog.locator(".se-dialog-error"))
+  ).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test("share creates a view link that resolves without the editor", async ({ page }) => {  test.setTimeout(120_000);
@@ -162,8 +185,11 @@ test("studio settings open with the captured accelerator and persist", async ({ 
   const dialog = page.getByRole("dialog", { name: "Studio settings" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Performance")).toBeVisible();
-  await expect(dialog.getByText("Window management")).toBeVisible();
-  await expect(dialog.getByText("Content")).toBeVisible();
+  // S09-S11: all three captured panes ship, and no "not captured" stub remains.
+  for (const pane of ["Window management", "Content"]) {
+    await expect(dialog.getByRole("button", { name: pane })).toBeVisible();
+  }
+  await expect(dialog.getByText("Not captured yet.")).toHaveCount(0);
 
   const ghost = dialog.getByRole("checkbox", { name: "Ghost drag for arrangement moves" });
   await expect(ghost).toBeChecked(); // captured default is "On"

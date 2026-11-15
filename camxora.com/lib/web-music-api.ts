@@ -22,6 +22,9 @@ export type WebMusicGenerateInput = {
   video_urls?: string[];
   persona_id?: string;
   workspace_id?: string;
+  /** "Sample this song": source generation whose audio is the reference. */
+  sample_task_id?: string;
+  sample_variant?: "ok" | "alt";
 };
 
 export type WebMusicQuota = {
@@ -314,6 +317,26 @@ export async function generateWebMusic(
   quota: WebMusicQuota;
 }> {
   return musicJson("/api/v3/web-music/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function generateWebMusicSounds(input: {
+  prompt: string;
+  model?: string;
+  workspace_id?: string;
+}): Promise<{
+  task_id: string;
+  status: string;
+  title: string;
+  style: string;
+  model?: string;
+  model_label?: string;
+  quota: WebMusicQuota;
+}> {
+  return musicJson("/api/v3/web-music/sounds", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

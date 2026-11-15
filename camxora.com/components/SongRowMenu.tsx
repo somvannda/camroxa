@@ -34,6 +34,8 @@ export type SongRowMenuProps = {
   onCopyLink: () => void;
   onCover: () => void;
   onReusePrompt: () => void;
+  onInspire: () => void;
+  onSample: () => void;
   onMashup: () => void;
   onVoice: () => void;
   onDetails: () => void;
@@ -65,6 +67,8 @@ export function SongRowMenu({
   onCopyLink,
   onCover,
   onReusePrompt,
+  onInspire,
+  onSample,
   onMashup,
   onVoice,
   onDetails,
@@ -146,10 +150,10 @@ export function SongRowMenu({
           <SMenuItem disabled={!ready} onSelect={onMashup}>
             <Icon name="fa-code-merge" /> Mashup
           </SMenuItem>
-          <SMenuItem disabled title="Coming soon">
+          <SMenuItem disabled={!ready} onSelect={onSample}>
             <Icon name="fa-waveform" /> Sample this song
           </SMenuItem>
-          <SMenuItem disabled title="Coming soon">
+          <SMenuItem onSelect={onInspire}>
             <Icon name="fa-wand-sparkles" /> Use as Inspiration
           </SMenuItem>
           <SMenuItem onSelect={onVoice}>
@@ -167,15 +171,25 @@ export function SongRowMenu({
             <Icon name="fa-circle-info" /> Song Details
           </SMenuItem>
           <SMenuItem asChild>
-            <Link href="/studio/editor">
+            <Link
+              href={`/studio/editor?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(variant)}`}
+            >
               <Icon name="fa-table-columns" /> Open in Editor
             </Link>
           </SMenuItem>
-          <SMenuItem disabled title="Replace Section needs the section editor — coming soon">
-            <Icon name="fa-scissors" /> Replace Section
+          <SMenuItem asChild>
+            <Link
+              href={`/studio/editor?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(variant)}&intent=replace-section`}
+            >
+              <Icon name="fa-scissors" /> Replace Section
+            </Link>
           </SMenuItem>
-          <SMenuItem disabled title="No crop service yet">
-            <Icon name="fa-crop-simple" /> Crop Song
+          <SMenuItem asChild>
+            <Link
+              href={`/studio/editor?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(variant)}&intent=crop`}
+            >
+              <Icon name="fa-crop-simple" /> Crop Song
+            </Link>
           </SMenuItem>
         </SMenuSubContent>
       </SMenuSub>
@@ -236,7 +250,9 @@ export function SongRowMenu({
         <Icon name="fa-arrow-up-from-bracket" /> Publish
       </SMenuItem>
       <SMenuItem asChild>
-        <Link href="/studio/editor">
+        <Link
+          href={`/studio/editor?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(variant)}`}
+        >
           <Icon name="fa-table-columns" /> Open in Studio
         </Link>
       </SMenuItem>

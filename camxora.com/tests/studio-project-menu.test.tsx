@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   restoreStudioProjectVersion: vi.fn(),
   createStudioProject: vi.fn(),
   forkStudioProject: vi.fn(),
+  syncStudioProject: vi.fn(),
 }));
 
 vi.mock("@/lib/studio-api", async (importOriginal) => {
@@ -25,6 +26,7 @@ vi.mock("@/lib/studio-api", async (importOriginal) => {
 });
 
 import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
+import { DEFAULT_STUDIO_SETTINGS } from "@/lib/studio-settings";
 
 afterEach(() => {
   cleanup();
@@ -39,7 +41,7 @@ function renderMenu(overrides: Partial<Parameters<typeof StudioProjectMenu>[0]> 
     <StudioProjectMenu
       projectId="p1"
       title="Demo"
-      settings={{ ghostDrag: true, whatsThis: true, inputDeviceId: null, countIn: false }}
+      settings={{ ...DEFAULT_STUDIO_SETTINGS }}
       onSettingsChange={onSettingsChange}
       onRenamed={onRenamed}
       onShowQuickStart={onShowQuickStart}
@@ -61,8 +63,10 @@ describe("StudioProjectMenu", () => {
       "Open Project",
       "Rename",
       "Duplicate Project",
+      "Import project…",
       "Version History",
       "Share Project",
+      "Send to Suno Sync",
       "Open a copy in v1",
       "Studio Settings ctrl shift ,",
       "Show Quick Start again",
@@ -70,12 +74,54 @@ describe("StudioProjectMenu", () => {
 
     expect((items[0] as HTMLButtonElement).disabled).toBe(false);
     expect((items[5] as HTMLButtonElement).disabled).toBe(false);
-    expect((items[6] as HTMLButtonElement).disabled).toBe(true);
-    expect(items[6].getAttribute("title")).toMatch(/v1/);
+    expect((items[6] as HTMLButtonElement).disabled).toBe(false);
+    // Import project… is wired (hidden file input), then the disabled v1 copy.
     expect((items[7] as HTMLButtonElement).disabled).toBe(false);
+    expect((items[8] as HTMLButtonElement).disabled).toBe(true);
+    expect(items[8].getAttribute("title")).toMatch(/v1/);
+    expect((items[9] as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("shows the captured settings sections and toggles ghost drag", async () => {
+  it("pushes the project to Suno and reports the result", async () => {
+    const user = userEvent.setup();
+    api.syncStudioProject.mockResolvedValue({
+      status: "synced",
+      suno_project_id: "suno-1",
+      suno_version_id: "version-2",
+      last_error: null,
+      synced_at: "2026-11-13T07:00:00Z",
+      skipped_clips: ["clip-b"],
+      state_sync: true,
+    });
+    renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Send to Suno Sync/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Suno sync" });
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent ?? "").toMatch(/Pushed to Suno at/)
+    );
+    expect(dialog.textContent ?? "").toMatch(/1 clip stays local/);
+    expect(api.syncStudioProject).toHaveBeenCalledWith("p1");
+  });
+
+  it("surfaces a rejected push instead of pretending it worked", async () => {
+    const user = userEvent.setup();
+    api.syncStudioProject.mockRejectedValue(new Error("The Suno Studio mirror is not configured."));
+    renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Send to Suno Sync/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Suno sync" });
+    await waitFor(() =>
+      expect(dialog.textContent ?? "").toMatch(/mirror is not configured/)
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("shows the captured settings and toggles ghost drag", async () => {
     const user = userEvent.setup();
     const { onSettingsChange } = renderMenu();
 
@@ -84,14 +130,38 @@ describe("StudioProjectMenu", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Studio settings" });
     expect(dialog).toBeTruthy();
-    for (const section of ["Performance", "Window management", "Content"]) {
-      expect(screen.getByText(section)).toBeTruthy();
+    expect(screen.getByText("Performance")).toBeTruthy();
+    // S09-S11: all three captured panes exist and are reachable.
+    for (const pane of ["Performance", "Window management", "Content"]) {
+      expect(screen.getByRole("button", { name: pane })).toBeTruthy();
     }
 
     const ghost = screen.getByRole("checkbox", { name: "Ghost drag for arrangement moves" }) as HTMLInputElement;
     expect(ghost.checked).toBe(true);
     await user.click(ghost);
-    expect(onSettingsChange).toHaveBeenCalledWith({ ghostDrag: false, whatsThis: true, inputDeviceId: null, countIn: false });
+    expect(onSettingsChange).toHaveBeenCalledWith({ ...DEFAULT_STUDIO_SETTINGS, ghostDrag: false });
+  });
+
+  it("wires the captured Window management and Content panes", async () => {
+    const user = userEvent.setup();
+    const { onSettingsChange } = renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Studio Settings/ }));
+
+    await user.click(screen.getByRole("button", { name: "Window management" }));
+    expect(screen.getByText("Keyboard & plugin windows")).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: "Windows" }));
+    expect(onSettingsChange).toHaveBeenCalledWith({ ...DEFAULT_STUDIO_SETTINGS, windowMode: "windows" });
+
+    await user.click(screen.getByRole("button", { name: "Content" }));
+    expect(screen.getByText("Auto-stretch added audio")).toBeTruthy();
+    expect(screen.getByText("Advanced content features")).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "Advanced content features" }));
+    expect(onSettingsChange).toHaveBeenCalledWith({
+      ...DEFAULT_STUDIO_SETTINGS,
+      advancedContent: true,
+    });
   });
 
   it("opens settings with ctrl shift ,", async () => {

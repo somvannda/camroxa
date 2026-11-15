@@ -8962,9 +8962,57 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       time_signature: merged.timeSignature,
       data: merged.data,
       kept_local_clips: merged.keptLocalClips,
+      kept_local_effects: merged.keptLocalEffects,
       dropped_tracks: merged.droppedTracks,
       suno_version_id: merged.versionId,
     });
+  });
+
+  /**
+   * Plugin authoring (D-034 follow-up): the designer's "Build it" asks Suno's
+   * agent for a real DSP plugin. The job is asynchronous and spends credits, so
+   * platform_api starts it and polls; this route only owns the provider call and
+   * the idempotency ledger.
+   */
+  app.post("/internal/studio/projects/:id/plugins/author", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const doc = studioDocumentFrom(id, body);
+    if (!doc) return reply.code(400).send({ error: "A valid user_id and data are required." });
+    const instruction = typeof body.instruction === "string" ? body.instruction.trim() : "";
+    if (!instruction) return reply.code(400).send({ error: "An instruction is required." });
+    const requiredControls = Array.isArray(body.required_controls)
+      ? body.required_controls.filter((value): value is string => typeof value === "string")
+      : [];
+    try {
+      const view = await studioSync.authorPlugin(doc, {
+        instruction: instruction.slice(0, 2000),
+        requiredControls,
+      });
+      return reply.code(202).send(view);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Plugin authoring failed.";
+      return reply.code(502).send({ error: message, retryable: isRetryableStudioSyncError(error) });
+    }
+  });
+
+  app.get("/internal/studio/projects/:id/plugins/author/:jobId", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id, jobId } = req.params as { id: string; jobId: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const { user_id: userId } = req.query as { user_id?: string };
+    if (!userId || !STUDIO_UUID_RE.test(userId)) {
+      return reply.code(400).send({ error: "user_id is required." });
+    }
+    try {
+      const view = await studioSync.pluginAuthoringJob(jobId, userId);
+      if (!view) return reply.code(404).send({ error: "Authoring job not found." });
+      return reply.send(view);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Plugin authoring failed.";
+      return reply.code(502).send({ error: message, retryable: isRetryableStudioSyncError(error) });
+    }
   });
 
   app.post("/internal/studio/projects/:id/resolve", async (req, reply) => {
@@ -10285,6 +10333,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     in_: Record<string, unknown>,
   ): Record<string, unknown> {
     const prompt = (in_.prompt as string) || "";
+    // sunoapi.org clients (including platform_api) send the free-form idea here.
+    const description = (in_.gpt_description_prompt as string) || "";
     const customMode = Boolean(in_.customMode ?? in_.custom_mode ?? in_.defaultParamFlag);
     const style = ((in_.style as string) || (in_.tags as string)) || "";
     const title = (in_.title as string) || "";
@@ -10342,7 +10392,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (title) parts.push(title);
       if (style) parts.push(`[genre: ${style}]`);
       if (prompt) parts.push(prompt);
-      out.gpt_description_prompt = parts.join(" ") || prompt || undefined;
+      out.gpt_description_prompt =
+        parts.join(" ") || prompt || description || undefined;
     }
     return out;
   }
@@ -10368,7 +10419,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const inBody = (req.body ?? {}) as Record<string, unknown>;
     const body = translateBodyToMusic(inBody);
-    if (!body.gpt_description_prompt && !body.prompt && !hasReferenceMedia(body)) {
+    if (
+      !body.gpt_description_prompt &&
+      !body.prompt &&
+      !(inBody.gpt_description_prompt as string) &&
+      !hasReferenceMedia(body)
+    ) {
       return reply.code(400).send({ error: "prompt is required." });
     }
     const model = (body.model as string) || undefined;

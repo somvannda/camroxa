@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "check:ui": "node scripts/check-ui-system.mjs",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:clone": "node scripts/check-clone-parity.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

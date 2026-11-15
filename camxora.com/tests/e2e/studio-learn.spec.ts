@@ -27,7 +27,7 @@ test("learn explains a control, then stays off after a reload", async ({ page })
   await page.getByRole("button", { name: "Learn", exact: true }).click();
   const menu = page.getByRole("menu", { name: "Learn" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem")).toHaveCount(3); // + the What's This? checkbox
+  await expect(menu.getByRole("menuitem")).toHaveCount(2); // + the What's This? checkbox
   await expect(menu.getByRole("menuitemcheckbox")).toHaveAttribute("aria-checked", "true");
 
   await menu.getByRole("menuitem", { name: /Keyboard Shortcuts/ }).click();
@@ -36,6 +36,19 @@ test("learn explains a control, then stays off after a reload", async ({ page })
   await expect(shortcuts).toContainText("Undo");
   await shortcuts.getByRole("button", { name: "Close" }).click();
   await expect(shortcuts).toHaveCount(0);
+
+  // Learning Center is an in-app tour, not a dead menu row.
+  await page.getByRole("button", { name: "Learn", exact: true }).click();
+  await page
+    .getByRole("menu", { name: "Learn" })
+    .getByRole("menuitem", { name: /Learning Center/ })
+    .click();
+  const center = page.getByRole("dialog", { name: "Learning Center" });
+  await expect(center).toBeVisible();
+  await expect(center).toContainText("Start an arrangement");
+  await expect(center).toContainText("Save and mirror");
+  await center.getByRole("button", { name: "Close" }).click();
+  await expect(center).toHaveCount(0);
 
   // Hovering the tempo field explains it. Move the pointer away first: a pointer that is
   // already over the control fires no new pointerover, so a repeated hover would be a
