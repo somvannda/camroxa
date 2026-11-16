@@ -47,5 +47,7 @@ test("arming a track and recording a take inserts a clip", async ({ page }) => {
   await expect.poll(async () => page.locator(".se-clip").count(), { timeout: 20_000 }).toBe(
     before + 1
   );
+  // The track already had a loop, but this is its first take (QA D3).
+  await expect(page.locator(".se-clip-head", { hasText: "Take 1" })).toHaveCount(1);
   await expect(page.locator(".se-clip", { hasText: /Take \d+/ })).toBeVisible();
 });

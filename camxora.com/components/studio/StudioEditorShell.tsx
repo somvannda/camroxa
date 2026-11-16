@@ -1456,7 +1456,12 @@ export function StudioEditorShell() {
       /* fall back to the elapsed transport time */
     }
     const owner = tracksRef.current.find((track) => track.id === active.trackId);
-    const take = (owner?.clipIds.length ?? 0) + 1;
+    // Takes are the clips this feature created; counting every clip named the first
+    // recording "Take 2" whenever the track already held a loop (QA D3).
+    const takeCount = clipsRef.current.filter(
+      (clip) => clip.id.startsWith("clip-take-") && owner?.clipIds.includes(clip.id)
+    ).length;
+    const take = takeCount + 1;
     try {
       const upload = await uploadStudioAudio(
         new File([blob], `take-${Date.now()}.webm`, { type: "audio/webm" }),

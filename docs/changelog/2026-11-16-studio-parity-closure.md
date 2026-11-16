@@ -101,6 +101,13 @@ Each entry names the ledger row it closes and the test that pins it.
 - Test: the library component test asserts `.se-project-preview.is-thumb` for a project with a
   clip span.
 
+### D3 — the first recording is “Take 1”
+
+- The take number counted every clip on the track, so a loop plus a recording produced
+  **“Take 2”**. It now counts the takes this feature created.
+- Test: `studio-record.spec.ts` records onto a track that already holds a loop and asserts
+  the new clip reads **Take 1**.
+
 ## Open in the ledger
 
 B5 part 2 (clip menu and export ordering) · B6 clip info · B9 plugin catalog · B10 MIDI/clip
