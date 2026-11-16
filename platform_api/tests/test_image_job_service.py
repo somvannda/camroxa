@@ -583,3 +583,57 @@ async def test_run_pending_jobs_background_text_sends_background_as_base_image(t
     generation_request = generation_service.submit_image_outcome.await_args.args[1]
     assert generation_request.base_image == background_output.read_bytes()
     assert generation_request.prompt == "Add the text Night Drive"
+
+@pytest.mark.asyncio
+async def test_background_text_rejects_provider_without_reference_support() -> None:
+    import asyncio
+
+    from platform_api.exceptions import ValidationError
+
+    user_id = uuid4()
+    batch_id = uuid4()
+    job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        batch_id=batch_id,
+        profile_id=uuid4(),
+        kind=ImageKind.THUMBNAIL,
+        channel_role=ChannelRole.OK,
+        prompt="Add text",
+        thumbnail_mode="background_text",
+        status=TaskStatus.RUNNING,
+    )
+    repo = AsyncMock()
+    repo.get_batch_for_user = AsyncMock(return_value=Batch(id=batch_id, user_id=user_id))
+    repo.update_image_job_status = AsyncMock()
+    settings_service = AsyncMock()
+    settings_service.get_merged_settings = AsyncMock(return_value={})
+    routing_service = AsyncMock()
+    routing_service.resolve_image_chain = AsyncMock(
+        return_value=[SimpleNamespace(provider="openai", sub_model="gpt-image-1")]
+    )
+    enforcement_service = AsyncMock()
+    enforcement_service.resolve_max_credits = AsyncMock(return_value=8)
+    enforcement_service.preflight_quotas_and_balance = AsyncMock()
+    enforcement_service.reserve_and_hold_before_provider = AsyncMock()
+    generation_service = AsyncMock()
+
+    service = ImageJobService(
+        repo=repo,
+        settings_service=settings_service,
+        routing_service=routing_service,
+        enforcement_service=enforcement_service,
+        generation_service=generation_service,
+    )
+
+    completed = await service._run_one_job(
+        user_id=user_id,
+        job=job,
+        settings={},
+        semaphore=asyncio.Semaphore(1),
+    )
+
+    assert completed is False
+    enforcement_service.reserve_and_hold_before_provider.assert_not_awaited()
+    generation_service.submit_image_outcome.assert_not_awaited()
+    repo.update_image_job_status.assert_awaited()
