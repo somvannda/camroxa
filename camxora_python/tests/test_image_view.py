@@ -190,6 +190,30 @@ def test_preflight_blocks_prompt_only_empty(qapp: QApplication) -> None:
     assert "Background:" in message
 
 
+def test_prompt_library_source_binds_and_blocks_empty(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = ImageView(PlatformApi())
+    view.show()
+    monkeypatch.setattr(view, "_refresh_prompt_library_counts", lambda: None)
+    view._settings_raw = {
+        "imageBackgroundPromptSource": "admin_library",
+        "imageThumbnailPromptSource": "admin_library",
+        "thumbnailReferenceMode": "background_text",
+    }
+    view._bind_prompt_sources_from_settings()
+    assert view._background_preview.prompt_source() == "admin_library"
+    assert view._thumbnail_preview.prompt_source() == "admin_library"
+
+    view._prompt_library_counts_loaded = True
+    view._prompt_library_counts = {"background": 0, "thumbnail": 2}
+    message = view._admin_library_error("background")
+    assert message is not None
+    assert "No active admin prompt styles" in message
+    assert view._admin_library_error("thumbnail") is None
+
+
 def _png_bytes(width: int, height: int) -> bytes:
     image = QImage(width, height, QImage.Format.Format_RGB32)
     image.fill(0x101F32)
