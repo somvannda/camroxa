@@ -23,6 +23,11 @@ _SOURCE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("Prompt only", "prompt_only"),
 )
 
+_PROMPT_SOURCE_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("My prompt", "custom"),
+    ("Admin prompt library", "admin_library"),
+)
+
 _EMPTY_BY_KIND = {
     "background": "No background generated\nGenerate a background using the current prompt.",
     "thumbnail": "No thumbnail generated\nGenerate a thumbnail using the current prompt.",
@@ -44,6 +49,7 @@ def _status_tone(status: str) -> str:
 
 class PreviewCard(StudioPanel):
     source_mode_changed = Signal(str)
+    prompt_source_changed = Signal(str)
     open_requested = Signal(str, str)
     copy_path_requested = Signal(str)
 
@@ -62,6 +68,7 @@ class PreviewCard(StudioPanel):
         self._path = ""
         self._job_id = ""
         self._placeholder = placeholder or _EMPTY_BY_KIND.get(kind, "No image generated")
+        self._prompt_library_count = 0
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -87,6 +94,21 @@ class PreviewCard(StudioPanel):
         self._source_mode.sync_item_tooltips()
         self._source_mode.currentIndexChanged.connect(self._emit_source_mode)
         root.addWidget(self._source_mode)
+
+        prompt_heading = QLabel("Prompt source")
+        prompt_heading.setObjectName("FieldLabel")
+        root.addWidget(prompt_heading)
+        self._prompt_source = StudioComboBox()
+        for label, value in _PROMPT_SOURCE_OPTIONS:
+            self._prompt_source.addItem(label, value)
+        self._prompt_source.sync_item_tooltips()
+        self._prompt_source.currentIndexChanged.connect(self._emit_prompt_source)
+        root.addWidget(self._prompt_source)
+        self._prompt_source_note = QLabel("")
+        self._prompt_source_note.setObjectName("PageSubtitle")
+        self._prompt_source_note.setWordWrap(True)
+        self._prompt_source_note.hide()
+        root.addWidget(self._prompt_source_note)
 
         self._preview = QLabel()
         self._preview.setMinimumSize(0, 180)
@@ -143,6 +165,43 @@ class PreviewCard(StudioPanel):
 
     def _emit_source_mode(self, *_args: object) -> None:
         self.source_mode_changed.emit(self.source_mode())
+
+    def prompt_source(self) -> str:
+        return str(self._prompt_source.currentData() or "custom")
+
+    def set_prompt_source(self, mode: str) -> None:
+        normalized = str(mode or "custom").strip().lower()
+        if normalized not in {"custom", "admin_library"}:
+            normalized = "custom"
+        index = self._prompt_source.findData(normalized)
+        if index < 0:
+            return
+        self._prompt_source.blockSignals(True)
+        self._prompt_source.setCurrentIndex(index)
+        self._prompt_source.blockSignals(False)
+        self._update_prompt_source_note()
+
+    def set_prompt_library_count(self, count: int) -> None:
+        self._prompt_library_count = max(0, int(count or 0))
+        self._update_prompt_source_note()
+
+    def _update_prompt_source_note(self) -> None:
+        if self.prompt_source() != "admin_library":
+            self._prompt_source_note.hide()
+            return
+        count = int(getattr(self, "_prompt_library_count", 0) or 0)
+        if count <= 0:
+            text = "No active admin prompt styles. Ask an admin to add them in Image Prompts."
+        elif count == 1:
+            text = "1 admin style active. Both channels may reuse the same prompt."
+        else:
+            text = f"{count} admin styles active. A different style is chosen per channel."
+        self._prompt_source_note.setText(text)
+        self._prompt_source_note.show()
+
+    def _emit_prompt_source(self, *_args: object) -> None:
+        self._update_prompt_source_note()
+        self.prompt_source_changed.emit(self.prompt_source())
 
     def bind_job(self, job, *, empty_message: str | None = None) -> None:
         if empty_message:

@@ -1402,6 +1402,15 @@ class SettingsView(QWidget):
         self._pref_thumbnail_source = QComboBox()
         self._pref_thumbnail_source.addItem("Category", "category")
         self._pref_thumbnail_source.addItem("Prompt only", "prompt_only")
+        self._pref_background_prompt_source = QComboBox()
+        self._pref_background_prompt_source.addItem("My prompt", "custom")
+        self._pref_background_prompt_source.addItem("Admin prompt library", "admin_library")
+        self._pref_thumbnail_prompt_source = QComboBox()
+        self._pref_thumbnail_prompt_source.addItem("My prompt", "custom")
+        self._pref_thumbnail_prompt_source.addItem("Admin prompt library", "admin_library")
+        self._pref_thumbnail_mode = QComboBox()
+        self._pref_thumbnail_mode.addItem("AI text on background", "background_text")
+        self._pref_thumbnail_mode.addItem("Composite (legacy)", "composite")
         # Thumbnail overlay stays AI/composite behind the scenes (no UI — locked product decision).
         self._pref_thumbnail_overlay_mode = "ai"
         rendering_panel.add_widget(form_row("Output resolution", self._pref_resolution))
@@ -1412,9 +1421,21 @@ class SettingsView(QWidget):
         rendering_panel.add_widget(self._bg_source_row)
         rendering_panel.add_widget(self._th_source_row)
         rendering_panel.add_widget(
+            form_row("Background prompt", self._pref_background_prompt_source)
+        )
+        rendering_panel.add_widget(
+            form_row("Thumbnail prompt", self._pref_thumbnail_prompt_source)
+        )
+        rendering_panel.add_widget(
+            form_row("Thumbnail generation", self._pref_thumbnail_mode)
+        )
+        rendering_panel.add_widget(
             note_box(
                 "AI Generated uses Background/Thumbnail source: Category (admin samples) "
-                "or Prompt only (text, no sample). "
+                "or Prompt only (text, no sample). Prompt source can use My prompt or the "
+                "Admin prompt library (a different style per channel). "
+                "AI text on background sends the generated background to the image model "
+                "and asks it to render the thumbnail text. "
                 "User Provided skips AI — place final images in the run folder and continue the pipeline. "
                 "Style strength applies when a Category sample is used."
             )
@@ -1510,6 +1531,9 @@ class SettingsView(QWidget):
         self._pref_resolution.currentTextChanged.connect(self._on_system_field_changed)
         self._pref_background_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
         self._pref_thumbnail_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
+        self._pref_background_prompt_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
+        self._pref_thumbnail_prompt_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
+        self._pref_thumbnail_mode.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
         self._update_ai_reference_controls_visibility()
 
         root.addLayout(two_column_row(paths_panel, workers_panel))
@@ -3406,6 +3430,19 @@ class SettingsView(QWidget):
         th_source_index = self._pref_thumbnail_source.findData(draft.image_thumbnail_source_mode)
         if th_source_index >= 0:
             self._pref_thumbnail_source.setCurrentIndex(th_source_index)
+        bg_prompt_index = self._pref_background_prompt_source.findData(
+            draft.image_background_prompt_source
+        )
+        if bg_prompt_index >= 0:
+            self._pref_background_prompt_source.setCurrentIndex(bg_prompt_index)
+        th_prompt_index = self._pref_thumbnail_prompt_source.findData(
+            draft.image_thumbnail_prompt_source
+        )
+        if th_prompt_index >= 0:
+            self._pref_thumbnail_prompt_source.setCurrentIndex(th_prompt_index)
+        thumb_mode_index = self._pref_thumbnail_mode.findData(draft.thumbnail_reference_mode)
+        if thumb_mode_index >= 0:
+            self._pref_thumbnail_mode.setCurrentIndex(thumb_mode_index)
         self._pref_thumbnail_overlay_mode = draft.thumbnail_overlay_mode or "ai"
         self._update_ai_reference_controls_visibility()
         self._pref_resolution.setCurrentText(draft.output_resolution)
@@ -3779,6 +3816,9 @@ class SettingsView(QWidget):
             output_resolution=self._pref_resolution.currentText(),
             image_background_source_mode=self._pref_background_source.currentData() or "category",
             image_thumbnail_source_mode=self._pref_thumbnail_source.currentData() or "category",
+            image_background_prompt_source=self._pref_background_prompt_source.currentData() or "custom",
+            image_thumbnail_prompt_source=self._pref_thumbnail_prompt_source.currentData() or "custom",
+            thumbnail_reference_mode=self._pref_thumbnail_mode.currentData() or "background_text",
             thumbnail_overlay_mode=self._pref_thumbnail_overlay_mode or "ai",
             image_bg_random=self._system_draft.image_bg_random if SERVER_MANAGED_SAMPLE_PACKS else self._pref_bg_random.isChecked(),
             image_thumb_random=self._system_draft.image_thumb_random if SERVER_MANAGED_SAMPLE_PACKS else self._pref_th_random.isChecked(),

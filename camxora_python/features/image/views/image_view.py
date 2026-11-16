@@ -52,6 +52,7 @@ from shared.workers.data_workers import (
     ImageManualGenerateWorker,
     ImageOpenWorker,
     ImagePreviewLoadWorker,
+    ImagePromptSummaryWorker,
     ImageRetryJobsWorker,
     ImageWorkspacePayload,
     ImageWorkspaceWorker,
@@ -125,6 +126,10 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._local_workspace_restored = False
         self._prompts_initialized = False
         self._source_modes_initialized = False
+        self._prompt_sources_initialized = False
+        self._prompt_library_counts: dict[str, int] = {"background": 0, "thumbnail": 0}
+        self._prompt_library_counts_loaded = False
+        self._prompt_summary_worker: ImagePromptSummaryWorker | None = None
         self._refresh_quiet = True
         self._preview_fingerprint = ""
         self._awaiting_regen_job_ids: set[str] = set()
@@ -248,6 +253,14 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._controls_card.job_open_requested.connect(self._on_job_open_requested)
         self._background_preview.source_mode_changed.connect(self._schedule_image_settings_save)
         self._thumbnail_preview.source_mode_changed.connect(self._schedule_image_settings_save)
+        self._background_preview.prompt_source_changed.connect(self._schedule_image_settings_save)
+        self._thumbnail_preview.prompt_source_changed.connect(self._schedule_image_settings_save)
+        self._background_preview.prompt_source_changed.connect(
+            lambda _mode: self._apply_prompt_source_state()
+        )
+        self._thumbnail_preview.prompt_source_changed.connect(
+            lambda _mode: self._apply_prompt_source_state()
+        )
         self._background_preview.open_requested.connect(self._on_job_open_requested)
         self._thumbnail_preview.open_requested.connect(self._on_job_open_requested)
 
@@ -259,6 +272,10 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._local_workspace_restored = False
         self._prompts_initialized = False
         self._source_modes_initialized = False
+        self._prompt_sources_initialized = False
+        self._prompt_library_counts: dict[str, int] = {"background": 0, "thumbnail": 0}
+        self._prompt_library_counts_loaded = False
+        self._prompt_summary_worker: ImagePromptSummaryWorker | None = None
         self._refresh_quiet = True
         self._preview_fingerprint = ""
         self._awaiting_regen_job_ids.clear()
@@ -393,6 +410,8 @@ class ImageView(PollablePageMixin, QScrollArea):
             self._prompts_initialized = True
         if not self._source_modes_initialized:
             self._bind_source_modes_from_settings()
+        if not self._prompt_sources_initialized:
+            self._bind_prompt_sources_from_settings()
 
         self._refresh_presentation(reload_previews=not quiet)
         self._surface_regen_job_failures()
@@ -403,6 +422,73 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._background_preview.set_source_mode(bg_mode)
         self._thumbnail_preview.set_source_mode(th_mode)
         self._source_modes_initialized = True
+
+    def _bind_prompt_sources_from_settings(self) -> None:
+        from shared.lib.image_workspace import (
+            normalize_prompt_source,
+            normalize_thumbnail_reference_mode,
+        )
+
+        bg_source = normalize_prompt_source(self._settings_raw.get("imageBackgroundPromptSource"))
+        th_source = normalize_prompt_source(self._settings_raw.get("imageThumbnailPromptSource"))
+        mode = normalize_thumbnail_reference_mode(
+            self._settings_raw.get("thumbnailReferenceMode")
+        )
+        self._background_preview.set_prompt_source(bg_source)
+        self._thumbnail_preview.set_prompt_source(th_source)
+        self._prompt_sources_initialized = True
+        # The mode is stored for the save patch; it has no dedicated preview control.
+        self._settings_raw["thumbnailReferenceMode"] = mode
+        self._refresh_prompt_library_counts()
+
+    def _refresh_prompt_library_counts(self) -> None:
+        if self._prompt_summary_worker is not None and self._prompt_summary_worker.isRunning():
+            return
+        worker = ImagePromptSummaryWorker(self._api, parent=self)
+        worker.succeeded.connect(self._on_prompt_summary_loaded)
+        worker.failed.connect(lambda _message: None)
+        worker.finished.connect(lambda: setattr(self, "_prompt_summary_worker", None))
+        self._prompt_summary_worker = worker
+        worker.start()
+
+    def _on_prompt_summary_loaded(self, payload: object) -> None:
+        counts = getattr(payload, "counts", None)
+        background = int(getattr(counts, "background", 0) or 0)
+        thumbnail = int(getattr(counts, "thumbnail", 0) or 0)
+        self._prompt_library_counts = {
+            "background": background,
+            "thumbnail": thumbnail,
+        }
+        self._prompt_library_counts_loaded = True
+        self._background_preview.set_prompt_library_count(background)
+        self._thumbnail_preview.set_prompt_library_count(thumbnail)
+        self._apply_prompt_source_state()
+
+    def _apply_prompt_source_state(self) -> None:
+        bg_library = self._background_preview.prompt_source() == "admin_library"
+        th_library = self._thumbnail_preview.prompt_source() == "admin_library"
+        self._controls_card.set_prompt_library_mode(
+            background=bg_library,
+            thumbnail=th_library,
+        )
+
+    def _admin_library_error(self, kind: str) -> str | None:
+        preview = (
+            self._thumbnail_preview if kind == "thumbnail" else self._background_preview
+        )
+        if preview.prompt_source() != "admin_library":
+            return None
+        if not self._prompt_library_counts_loaded:
+            return None
+        count = int(self._prompt_library_counts.get(kind, 0) or 0)
+        if count > 0:
+            return None
+        label = "Thumbnail" if kind == "thumbnail" else "Background"
+        return (
+            f"{label}: No active admin prompt styles are available. "
+            "Ask an admin to add them in Admin → Image Prompts, or switch the prompt "
+            "source back to My prompt."
+        )
 
     def _on_filters_changed(self) -> None:
         from shared.lib.formatting import today_ymd
@@ -442,6 +528,8 @@ class ImageView(PollablePageMixin, QScrollArea):
             self._prompts_initialized = True
         if not self._source_modes_initialized:
             self._bind_source_modes_from_settings()
+        if not self._prompt_sources_initialized:
+            self._bind_prompt_sources_from_settings()
         self._refresh_presentation(reload_previews=True)
         self._loaded_user_id = cached_user_id(self._cache)
         return True
@@ -635,11 +723,18 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._prompt_save_timer.start()
 
     def _current_settings_patch(self) -> dict[str, object]:
+        from shared.lib.image_workspace import normalize_thumbnail_reference_mode
+
         return {
             "imageBackgroundPrompt": self._controls_card.background_prompt(),
             "imageThumbnailPrompt": self._controls_card.thumbnail_prompt(),
             "imageBackgroundSourceMode": self._background_preview.source_mode(),
             "imageThumbnailSourceMode": self._thumbnail_preview.source_mode(),
+            "imageBackgroundPromptSource": self._background_preview.prompt_source(),
+            "imageThumbnailPromptSource": self._thumbnail_preview.prompt_source(),
+            "thumbnailReferenceMode": normalize_thumbnail_reference_mode(
+                self._settings_raw.get("thumbnailReferenceMode")
+            ),
         }
 
     def _persist_image_settings(self) -> None:
@@ -793,12 +888,25 @@ class ImageView(PollablePageMixin, QScrollArea):
             if kind_value == "thumbnail"
             else self._controls_card.background_prompt()
         ).strip()
+        library_error = self._admin_library_error(kind_value)
+        if library_error:
+            self._show_workspace_error(library_error)
+            return
         if len(prompt) > IMAGE_PROMPT_MAX_CHARS:
             self._show_workspace_error(
                 f"Image prompt exceeds maximum length of {IMAGE_PROMPT_MAX_CHARS} characters."
             )
             return
-        if mode == "prompt_only" and not prompt:
+        if (
+            mode == "prompt_only"
+            and not prompt
+            and (
+                self._thumbnail_preview.prompt_source()
+                if kind_value == "thumbnail"
+                else self._background_preview.prompt_source()
+            )
+            != "admin_library"
+        ):
             self._show_workspace_error(
                 _EMPTY_TH_PROMPT if kind_value == "thumbnail" else _EMPTY_BG_PROMPT
             )
@@ -898,14 +1006,28 @@ class ImageView(PollablePageMixin, QScrollArea):
         bg_mode = self._background_preview.source_mode()
         th_mode = self._thumbnail_preview.source_mode()
         if "background" in kinds:
+            library_error = self._admin_library_error("background")
+            if library_error:
+                return library_error
             if bg_mode == "personal_reference":
                 return _PERSONAL_NOT_READY.format(kind="Background")
-            if bg_mode == "prompt_only" and not self._controls_card.background_prompt().strip():
+            if (
+                bg_mode == "prompt_only"
+                and self._background_preview.prompt_source() != "admin_library"
+                and not self._controls_card.background_prompt().strip()
+            ):
                 return _EMPTY_BG_PROMPT
         if "thumbnail" in kinds:
+            library_error = self._admin_library_error("thumbnail")
+            if library_error:
+                return library_error
             if th_mode == "personal_reference":
                 return _PERSONAL_NOT_READY.format(kind="Thumbnail")
-            if th_mode == "prompt_only" and not self._controls_card.thumbnail_prompt().strip():
+            if (
+                th_mode == "prompt_only"
+                and self._thumbnail_preview.prompt_source() != "admin_library"
+                and not self._controls_card.thumbnail_prompt().strip()
+            ):
                 return _EMPTY_TH_PROMPT
 
         if self._me is not None:

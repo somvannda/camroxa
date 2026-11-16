@@ -69,6 +69,7 @@ from shared.models.platform import (
     ImageGenerationRequest,
     ImageGenerationResponse,
     ImageJobsSyncManualResponse,
+    ImagePromptSummaryResponse,
     ImageSamplePackListResponse,
     LyricsPolishRequest,
     LyricsPolishResponse,
@@ -1177,6 +1178,11 @@ class PlatformApi:
     def list_image_sample_packs(self) -> ImageSamplePackListResponse:
         data = self._client.request("/image-sample-packs", auth=True)
         return ImageSamplePackListResponse.model_validate(data)
+
+    def get_image_prompt_summary(self, kind: str | None = None) -> ImagePromptSummaryResponse:
+        params = {"kind": kind} if kind else None
+        data = self._client.request("/image-prompts/summary", auth=True, params=params)
+        return ImagePromptSummaryResponse.model_validate(data)
 
     def download_profile_logo(self, profile_id: str) -> bytes:
         return self._client.request_bytes(f"/media/channel-profiles/{profile_id}/logo", auth=True)
