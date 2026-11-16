@@ -8,8 +8,10 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP = resolve(HERE, "..");
@@ -92,6 +94,36 @@ for (const [id, entry] of Object.entries(pairing)) {
   }
 }
 
+// ---------------------------------------------------------------- 1b. shared evidence
+// One frame can evidence several surfaces that are all visible in it, but it must say
+// so: every group of identical captures needs exactly one anchor (no `sharedWith`) and
+// the rest must declare `sharedWith: "<anchor id>"`. Recycled evidence is then a
+// declaration, never an accident.
+const byDigest = new Map();
+for (const [id, entry] of Object.entries(pairing)) {
+  if (typeof entry.capture !== "string") continue;
+  const capturePath = join(COMPARE, entry.capture);
+  if (!existsSync(capturePath)) continue;
+  const digest = createHash("sha256").update(readFileSync(capturePath)).digest("hex");
+  byDigest.set(digest, [...(byDigest.get(digest) ?? []), id]);
+}
+for (const ids of byDigest.values()) {
+  if (ids.length < 2) continue;
+  const anchors = ids.filter((id) => !pairing[id].sharedWith);
+  if (anchors.length !== 1) {
+    problems.push(
+      `one capture is paired with ${ids.join(", ")}; mark every screen but one sharedWith`
+    );
+    continue;
+  }
+  const [anchor] = anchors;
+  for (const id of ids) {
+    if (id !== anchor && pairing[id].sharedWith !== anchor) {
+      problems.push(`${id} shares a capture with ${anchor} but does not declare sharedWith`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------- 2. metrics
 const metricsReference = readJson(join(REFERENCE, "METRICS.json"));
 const metricsRuntime = readJson(join(APP, "public", "studio-metrics.json"));
@@ -113,6 +145,26 @@ if (!pixelSpec.includes("studio-metrics")) {
 
 // ---------------------------------------------------------------- 3. strings
 const functional = readJson(join(REFERENCE, "FUNCTIONAL_STRINGS.json")).strings;
+
+/**
+ * Remove comments with the TypeScript parser rather than a regex. A doc-comment above
+ * the clip menu ("Download .WAV") used to satisfy the captured string while the button
+ * read "Download WAV"; a regex stripper cannot be trusted because files contain glob
+ * patterns and URLs that look like comment delimiters.
+ */
+function stripComments(text, fileName) {
+  if (fileName.endsWith(".css")) return text;
+  return ts.transpileModule(text, {
+    fileName,
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+      jsx: ts.JsxEmit.Preserve,
+      removeComments: true,
+    },
+  }).outputText;
+}
+
 function collectSource(dir, out = []) {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
@@ -123,9 +175,7 @@ function collectSource(dir, out = []) {
       collectSource(path, out);
       continue;
     }
-    // Shipped source only: a string that appears only in a markdown file (an audit,
-    // an inventory, a changelog) is not evidence that the UI ships it.
-    if (/\.(tsx?|css)$/.test(name)) out.push(readFileSync(path, "utf8"));
+    if (/\.(tsx?|css)$/.test(name)) out.push(stripComments(readFileSync(path, "utf8"), name));
   }
   return out;
 }
@@ -139,7 +189,14 @@ const source = [
 
 let missingStrings = 0;
 for (const text of functional) {
-  const candidates = [text, text.replace(/\u2026/g, "..."), text.replace(/&/g, "&amp;")];
+  const candidates = [
+    text,
+    text.replace(/\u2026/g, "..."),
+    text.replace(/&/g, "&amp;"),
+    text.replace(/'/g, "&apos;"),
+    text.replace(/'/g, "&#39;"),
+    text.replace(/"/g, "&quot;"),
+  ];
   if (!candidates.some((candidate) => source.includes(candidate))) {
     problems.push(`functional string missing from the UI: "${text}"`);
     missingStrings += 1;
