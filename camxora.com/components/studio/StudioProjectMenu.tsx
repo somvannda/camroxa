@@ -470,15 +470,6 @@ export function StudioProjectMenu({
           <button
             type="button"
             role="menuitem"
-            onClick={() => importRef.current?.click()}
-            disabled={busy}
-            title="Create a project from a Studio JSON document (the export format)"
-          >
-            <Icon name="fa-file-import" /> Import project…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
             onClick={() => openDialog("versions")}
             disabled={busy}
           >
@@ -486,9 +477,6 @@ export function StudioProjectMenu({
           </button>
           <button type="button" role="menuitem" onClick={startSharing} disabled={busy}>
             <Icon name="fa-arrow-up-from-bracket" /> Share Project
-          </button>
-          <button type="button" role="menuitem" onClick={sendToSuno} disabled={busy}>
-            <Icon name="fa-cloud-arrow-up" /> Send to Suno Sync
           </button>
           <button
             type="button"
@@ -516,6 +504,19 @@ export function StudioProjectMenu({
             }}
           >
             <Icon name="fa-wand-magic-sparkles" /> Show Quick Start again
+          </button>
+          {/* Additive rows live after the captured sequence, never inside it (B5). */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => importRef.current?.click()}
+            disabled={busy}
+            title="Create a project from a Studio JSON document (the export format)"
+          >
+            <Icon name="fa-file-import" /> Import project…
+          </button>
+          <button type="button" role="menuitem" onClick={sendToSuno} disabled={busy}>
+            <Icon name="fa-cloud-arrow-up" /> Send to Suno Sync
           </button>
         </div>
       ) : null}
@@ -633,7 +634,7 @@ export function StudioProjectMenu({
                     ? "Name project before sharing"
                     : dialog === "sync"
                       ? "Suno sync"
-                      : "Studio settings"
+                      : "Studio Settings"
           }
         >
           <div
@@ -647,7 +648,7 @@ export function StudioProjectMenu({
                   <h2>My Projects</h2>
                   <button
                     type="button"
-                    className="se-icon"
+                    className="se-dialog-x"
                     aria-label="Close projects"
                     onClick={() => setDialog(null)}
                   >
@@ -810,7 +811,7 @@ export function StudioProjectMenu({
                 >
                   <Icon name="fa-xmark" />
                 </button>
-                <h2>Studio settings</h2>
+                <h2>Studio Settings</h2>
                 <div className="se-settings">
                   <nav className="se-settings-nav" aria-label="Settings sections">
                     {(

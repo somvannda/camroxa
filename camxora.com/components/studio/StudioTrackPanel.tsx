@@ -59,7 +59,7 @@ export type StudioTrackPanelProps = {
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
   /** S21 "Unmute all": clears mute on hidden tracks without showing them. */
-  onUnmuteAllHidden: () => void;
+  onMuteAllHidden: () => void;
   /** ARR-027: group levels and assignment. */
   groups?: GroupMix;
   onGroupMix?: (groupId: string, value: number) => void;
@@ -148,7 +148,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onSelectMaster,
     onToggleHidden,
     onShowAllHidden,
-  onUnmuteAllHidden,
+  onMuteAllHidden,
   groups = {},
   onGroupMix,
     onToggleAllCollapsed,
@@ -337,6 +337,16 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     <Icon name="fa-thumbtack" />
                     {track.collapsed ? "Expand controls" : "Collapse controls"}
                   </button>
+                  <button type="button" role="menuitem" onClick={() => onDuplicate(track.id)}>
+                    <Icon name="fa-copy" /> Duplicate
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => onHide(track.id)}>
+                    <Icon name="fa-eye-slash" /> Hide &amp; Mute Track
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => onDelete(track.id)}>
+                    <Icon name="fa-trash" /> Delete
+                  </button>
+                  {/* Additive: after the captured rows, never inside them (B5). */}
                   <button
                     type="button"
                     role="menuitem"
@@ -353,20 +363,6 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   >
                     <Icon name="fa-arrow-up-from-bracket" />
                     {bouncingTrackId === track.id ? "Bouncing…" : "Bounce track"}
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => onDuplicate(track.id)}>
-                    <Icon name="fa-copy" /> Duplicate
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => onHide(track.id)}>
-                    <Icon name="fa-eye-slash" /> Hide &amp; Mute Track
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="danger"
-                    onClick={() => onDelete(track.id)}
-                  >
-                    <Icon name="fa-trash" /> Delete
                   </button>
                 </div>
               ) : null}
@@ -648,11 +644,11 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     </button>
                   </div>
                 ))}
-                <button type="button" className="se-pill" onClick={onUnmuteAllHidden}>
-                  Unmute all
+                <button type="button" className="se-pill" onClick={onMuteAllHidden}>
+                  Mute all
                 </button>
                 <button type="button" className="se-pill on" onClick={onShowAllHidden}>
-                  Show All Hidden Tracks
+                  Show All Hidden Tracks <span className="se-project-hint">shift alt H</span>
                 </button>
               </div>
             ) : null}

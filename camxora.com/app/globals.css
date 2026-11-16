@@ -5416,7 +5416,7 @@ html{color-scheme:dark}
 .se-hidden-row .se-track-color{width:8px;height:8px;border-radius:2px}
 
 .se-loop-band{position:absolute;top:0;bottom:0;background:hsl(var(--accent));opacity:.12;pointer-events:none;z-index:1}
-.se-loop-handle{position:absolute;top:0;width:8px;height:16px;margin-left:-4px;border-radius:3px;background:hsl(var(--accent));z-index:5;cursor:ew-resize;padding:0}
+.se-loop-handle{position:absolute;top:0;width:10px;height:18px;margin-left:-5px;border-radius:999px;background:hsl(var(--accent));z-index:5;cursor:ew-resize;padding:0}
 .se-range{position:absolute;top:0;bottom:0;z-index:2;pointer-events:none}
 .se-range-fill{position:absolute;inset:0;background:hsl(var(--accent) / .07);border-left:1px solid hsl(var(--accent) / .55);border-right:1px solid hsl(var(--accent) / .55)}
 .se-range-handle{position:absolute;top:0;bottom:0;width:14px;padding:0;border:0;background:transparent;pointer-events:auto;cursor:ew-resize;z-index:1}
@@ -5491,3 +5491,5 @@ html{color-scheme:dark}
 .se-shortcuts-dialog .se-dialog-x{position:static;margin-left:4px}
 .se-shortcut-groups{display:grid;grid-template-columns:1fr 1fr;gap:4px 32px;max-height:min(58vh,520px);overflow:auto}
 .se-shortcut-group h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.55;margin:10px 0 4px}
+
+.se-projects-dialog h2{font-size:19px}

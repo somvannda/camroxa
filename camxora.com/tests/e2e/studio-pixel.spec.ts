@@ -336,10 +336,10 @@ test("track options menu matches the captured popover", async ({ page }) => {
   expect(info.rows.map((row) => row.text)).toEqual([
     "Rename track",
     "Collapse controls",
-    "Bounce track",
     "Duplicate",
     "Hide & Mute Track",
     "Delete",
+    "Bounce track",
   ]);
   expect(info.rows.every((row) => row.height === 33)).toBe(true);
 });
@@ -407,7 +407,7 @@ test("project menu matches the captured popover", async ({ page }) => {
   expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows).toHaveLength(11);
   expect(info.rows[0]?.text).toBe("New Project");
-  expect(info.rows[9]?.text).toBe("Studio Settings ctrl shift ,");
+  expect(info.rows[7]?.text).toBe("Studio Settings ctrl shift ,");
   expect(info.rows.every((row) => row.height === 34)).toBe(true);
 });
 
@@ -445,14 +445,14 @@ test("clip context menu matches the captured popover", async ({ page }) => {
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows.map((row) => row.text)).toEqual([
-    "Copy Ctrl C",
-    "Paste Ctrl V",
-    "Duplicate Ctrl D",
-    "Delete Backspace",
+    "Copy ctrl C",
+    "Paste ctrl V",
+    "Duplicate ctrl D",
+    "Delete backspace",
     "Copy settings",
     "Paste settings",
     "Heal Edits",
-    "Split Ctrl E",
+    "Split ctrl E",
     "Split on Transients",
     "Make Beat 1",
     "Create Section",

@@ -1106,7 +1106,7 @@ describe("StudioTrackPanel", () => {
       onAddUploadTrack: noop,
       onToggleHidden: noop,
       onShowAllHidden: noop,
-      onUnmuteAllHidden: noop,
+      onMuteAllHidden: noop,
       onToggleAllCollapsed: noop,
       masterVolume: 85,
       masterMuted: false,
@@ -1132,10 +1132,10 @@ describe("StudioTrackPanel", () => {
       "Rename track",
       "Color",
       "Collapse controls",
-      "Bounce track",
       "Duplicate",
       "Hide & Mute Track",
       "Delete",
+      "Bounce track",
     ]);
   });
 

@@ -2521,11 +2521,12 @@ export function StudioEditorShell() {
     }
   }
 
-  /** S21 "Unmute all": un-mutes every hidden track without showing them. */
-  function unmuteAllHidden() {    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
-    if (!hiddenMuted) return;
+  /** S21 "Mute all": mutes every hidden track, leaving it hidden. */
+  function muteAllHidden() {
+    const hiddenUnmuted = tracks.some((track) => track.hidden && !track.muted);
+    if (!hiddenUnmuted) return;
     commitTracks(
-      tracks.map((track) => (track.hidden && track.muted ? { ...track, muted: false } : track))
+      tracks.map((track) => (track.hidden && !track.muted ? { ...track, muted: true } : track))
     );
   }
 
@@ -5868,7 +5869,7 @@ export function StudioEditorShell() {
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
-          onUnmuteAllHidden={unmuteAllHidden}
+          onMuteAllHidden={muteAllHidden}
           groups={groupMix}
           onGroupMix={(groupId, value) => setGroupMix(groupId as TrackGroupId, value)}
           onToggleAllCollapsed={toggleAllCollapsed}
@@ -6432,7 +6433,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-copy" /> Copy <span>Ctrl C</span>
+                  <Icon name="fa-copy" /> Copy <span>ctrl C</span>
                 </button>
                 <button
                   type="button"
@@ -6443,7 +6444,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-paste" /> Paste <span>Ctrl V</span>
+                  <Icon name="fa-paste" /> Paste <span>ctrl V</span>
                 </button>
                 <button
                   type="button"
@@ -6453,7 +6454,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-clone" /> Duplicate <span>Ctrl D</span>
+                  <Icon name="fa-clone" /> Duplicate <span>ctrl D</span>
                 </button>
                 <button
                   type="button"
@@ -6463,7 +6464,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-trash" /> Delete <span>Backspace</span>
+                  <Icon name="fa-trash" /> Delete <span>backspace</span>
                 </button>
                 <button
                   type="button"
@@ -6512,7 +6513,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-scissors" /> Split <span>Ctrl E</span>
+                  <Icon name="fa-scissors" /> Split <span>ctrl E</span>
                 </button>
                 <button
                   type="button"

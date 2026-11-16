@@ -63,23 +63,25 @@ describe("StudioProjectMenu", () => {
       "Open Project",
       "Rename",
       "Duplicate Project",
-      "Import project…",
       "Version History",
       "Share Project",
-      "Send to Suno Sync",
       "Open a copy in v1",
       "Studio Settings ctrl shift ,",
       "Show Quick Start again",
+      "Import project…",
+      "Send to Suno Sync",
     ]);
 
     expect((items[0] as HTMLButtonElement).disabled).toBe(false);
+    expect((items[4] as HTMLButtonElement).disabled).toBe(false);
     expect((items[5] as HTMLButtonElement).disabled).toBe(false);
-    expect((items[6] as HTMLButtonElement).disabled).toBe(false);
-    // Import project… is wired (hidden file input), then the disabled v1 copy.
+    // The disabled v1 copy keeps its position inside the captured sequence.
+    expect((items[6] as HTMLButtonElement).disabled).toBe(true);
+    expect(items[6].getAttribute("title")).toMatch(/v1/);
     expect((items[7] as HTMLButtonElement).disabled).toBe(false);
-    expect((items[8] as HTMLButtonElement).disabled).toBe(true);
-    expect(items[8].getAttribute("title")).toMatch(/v1/);
+    // Additive rows sit after the captured sequence and are wired.
     expect((items[9] as HTMLButtonElement).disabled).toBe(false);
+    expect((items[10] as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("pushes the project to Suno and reports the result", async () => {
@@ -128,7 +130,7 @@ describe("StudioProjectMenu", () => {
     await user.click(screen.getByRole("button", { name: /Demo/ }));
     await user.click(screen.getByRole("menuitem", { name: /Studio Settings/ }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Studio settings" });
+    const dialog = await screen.findByRole("dialog", { name: "Studio Settings" });
     expect(dialog).toBeTruthy();
     expect(screen.getByText("Performance")).toBeTruthy();
     // S09-S11: all three captured panes exist and are reachable.
@@ -168,7 +170,7 @@ describe("StudioProjectMenu", () => {
     const user = userEvent.setup();
     renderMenu();
     await user.keyboard("{Control>}{Shift>},<{/Shift}{/Control}");
-    expect(await screen.findByRole("dialog", { name: "Studio settings" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Studio Settings" })).toBeTruthy();
   });
 
   it("does not stack settings on top of an open dialog", async () => {
@@ -181,7 +183,7 @@ describe("StudioProjectMenu", () => {
 
     await user.keyboard("{Control>}{Shift>},<{/Shift}{/Control}");
     expect(screen.getByRole("dialog", { name: "Rename project" })).toBeTruthy();
-    expect(screen.queryByRole("dialog", { name: "Studio settings" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Studio Settings" })).toBeNull();
   });
 
   it("renames through the API and reports the new title", async () => {

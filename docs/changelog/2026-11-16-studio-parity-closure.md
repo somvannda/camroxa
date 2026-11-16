@@ -67,6 +67,33 @@ Each entry names the ledger row it closes and the test that pins it.
 - `min-width` 206 → 250 px and `white-space: nowrap` on rows, so “Keyboard Shortcuts” and
   “shift ?” sit on one line as captured.
 
+## Batch C — menus, roles and chrome
+
+### B5 (part 1) — additive rows out of captured sequences
+
+- Project menu: **Import project…** and **Send to Suno Sync** now follow the captured nine
+  rows instead of splitting them.
+- Track menu: **Bounce track** follows **Delete**; **Delete** is no longer styled `danger`
+  (the capture's Delete is neutral).
+- Accelerators lower-cased to the capture: `ctrl C`, `ctrl V`, `ctrl D`, `ctrl E`,
+  `backspace`.
+- Exports/menus counted in tests were updated; the captured sequence is asserted as a
+  sequence, additions as additions.
+
+### B7 — hidden-tracks popover tells the truth
+
+- The bulk action is **Mute all** and now actually mutes hidden tracks (it used to unmute
+  them under the wrong captured label).
+- **Show All Hidden Tracks** carries the `shift alt H` hint the binding already used.
+
+### B12 / B13 — chrome
+
+- My Projects uses the shipped circular `.se-dialog-x` close and a 19 px title.
+- **Studio Settings** is capitalised in the menu and the dialog title, as captured.
+- The empty take band no longer shows a stray ✕ (the footer toggle still closes it).
+- The loop handle is round (10×18, radius 999) so the help copy “drag the round handle” is
+  true.
+
 ## Open in the ledger
 
 B1 shortcuts panel · B2 onboarding · B5 menu order/labels · B6 clip info · B7 hidden-tracks
