@@ -1895,6 +1895,13 @@ export function StudioEditorShell() {
     label: string,
     nextTracks?: StudioTrack[] | null
   ) {
+    // Before the first load resolves there is no document to edit. A write here used to
+    // send `{ tracks }` alone; the server replaces `data` wholesale, so every clip in the
+    // real project was deleted (QA D1). Refuse until the document exists.
+    if (!projectRef.current) {
+      setError("This project is still loading. Try again in a moment.");
+      return;
+    }
     const current = (projectRef.current?.data || {}) as Record<string, unknown>;
     const history = historyRef.current;
     history.undo.push({ data: current, label });
@@ -5722,7 +5729,16 @@ export function StudioEditorShell() {
           setSettings(next);
           writeStudioSettings(next);
         }}
-        onRenamed={(next) => setProject((current) => (current ? { ...current, title: next } : current))}
+        onRenamed={(next, updatedAt) => {
+          // Update the version ref synchronously so a save queued right after the rename
+          // sends the new updated_at instead of 409-ing against our own write.
+          if (updatedAt) projectVersionRef.current = updatedAt;
+          setProject((current) =>
+            current
+              ? { ...current, title: next, ...(updatedAt ? { updated_at: updatedAt } : {}) }
+              : current
+          );
+        }}
         onShowQuickStart={() => setQuickStartToken((value) => value + 1)}
         timeSignature={timeSignature}
         onTimeSignature={(next) => {

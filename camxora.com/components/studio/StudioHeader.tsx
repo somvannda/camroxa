@@ -21,7 +21,7 @@ export type StudioHeaderProps = {
   projectId: string | null;
   settings: StudioSettings;
   onSettingsChange: (next: StudioSettings) => void;
-  onRenamed: (title: string) => void;
+  onRenamed: (title: string, updatedAt?: string | null) => void;
   onShowQuickStart: () => void;
   timeSignature: string;
   onTimeSignature: (next: string) => void;

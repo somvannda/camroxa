@@ -52,6 +52,38 @@ test("project menu renames the project and the name survives a reload", async ({
   await expect(page.locator(".se-project .se-chip")).toHaveText(renamed);
 });
 
+test("renaming then editing does not raise a false conflict", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  // QA D2: the rename PATCH bumps updated_at; the editor must keep the fresh version or
+  // the next edit 409s against our own write and claims another tab changed the project.
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, { title: `Rename ${tag}` });
+
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const dialog = page.getByRole("dialog", { name: "Rename project" });
+  await dialog.getByLabel("Project title").fill(`Renamed ${tag}`);
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.keyboard.press("a");
+  await expect(page.getByText(/changed in another tab/i)).toHaveCount(0);
+  await expect(page.locator(".se-tracks").getByText("Track 2", { exact: true })).toBeVisible();
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const body = (await response.json()) as { data?: { tracks?: unknown[] } };
+          return (body.data?.tracks ?? []).length;
+        }, projectId),
+      { timeout: 15_000 }
+    )
+    .toBe(2);
+});
+
 test("send to Suno sync reports the mirror's answer", async ({ page }) => {
   test.setTimeout(120_000);
 

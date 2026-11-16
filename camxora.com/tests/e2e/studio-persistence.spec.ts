@@ -34,3 +34,41 @@ test("a moved clip is saved and still moved after a reload", async ({ page }) =>
   await expect(page.getByText("Saved")).toBeVisible();
   expect(persisted).toBeGreaterThan(0);
 });
+
+test("editing while the project is still loading cannot erase it", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  // QA D1: the editor used to persist `{ tracks }` before the document arrived, and the
+  // server replaces `data` wholesale — every clip was gone for good.
+  const projectId = await createStudioProject(page, {
+    title: "Loading guard",
+    clips: [{ id: "loop", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" }],
+  });
+
+  const projectUrl = `**/api/v3/web-music/studio/projects/${projectId}`;
+  await page.route(projectUrl, async (route) => {
+    if (route.request().method() === "GET") {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+    return route.continue();
+  });
+
+  await page.goto(`/studio/editor?project=${projectId}`);
+  await expect(page.getByText(/Loading project/i)).toBeVisible();
+  // The shortcut that used to wipe the document while the skeleton was showing.
+  await page.keyboard.press("a");
+  // Let the delayed load finish before removing the route, or the pending request is
+  // cancelled mid-flight and the reload asserts on a page that never loaded.
+  await page.waitForTimeout(3500);
+  await page.unroute(projectUrl);
+
+  const stored = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    const body = (await response.json()) as { data?: { lanes?: unknown[] } };
+    return (body.data?.lanes ?? []).length;
+  }, projectId);
+  expect(stored).toBe(1);
+
+  await page.reload();
+  await expect(page.locator(".se-clip")).toHaveCount(1);
+});

@@ -52,7 +52,7 @@ export type StudioProjectMenuProps = {
   title: string;
   settings: StudioSettings;
   onSettingsChange: (next: StudioSettings) => void;
-  onRenamed: (title: string) => void;
+  onRenamed: (title: string, updatedAt?: string | null) => void;
   onShowQuickStart: () => void;
 };
 
@@ -342,7 +342,9 @@ export function StudioProjectMenu({
     }
     void run(async () => {
       const updated = await updateStudioProject(projectId, { title: next });
-      onRenamed(updated.title || next);
+      // Carry the fresh version back: the PATCH bumped updated_at, so the next write
+      // would otherwise send the old value and 409 against our own rename (QA D2).
+      onRenamed(updated.title || next, updated.updated_at);
       setDialog(null);
     });
   }
@@ -392,7 +394,7 @@ export function StudioProjectMenu({
     void run(async () => {
       const updated = await updateStudioProject(projectId, { title: next });
       const name = updated.title || next;
-      onRenamed(name);
+      onRenamed(name, updated.updated_at);
       await openShare(name);
     });
   }

@@ -327,7 +327,7 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
 
   const outcome = await readOutcome();
   if (outcome === "refused") {
-    await expect(refused).toContainText(/not configured|Upload failed/i);
+    await expect(refused).toContainText(/not configured|Upload failed|Could not store/i);
   } else {
     await expect(library.getByLabel("Back to library")).toBeVisible();
   }

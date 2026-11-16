@@ -186,7 +186,7 @@ describe("StudioProjectMenu", () => {
 
   it("renames through the API and reports the new title", async () => {
     const user = userEvent.setup();
-    api.updateStudioProject.mockResolvedValue({ id: "p1", title: "Renamed" });
+    api.updateStudioProject.mockResolvedValue({ id: "p1", title: "Renamed", updated_at: "2026-11-16T10:00:00Z" });
     const { onRenamed } = renderMenu();
 
     await user.click(screen.getByRole("button", { name: /Demo/ }));
@@ -199,7 +199,7 @@ describe("StudioProjectMenu", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(api.updateStudioProject).toHaveBeenCalledWith("p1", { title: "Renamed" }));
-    expect(onRenamed).toHaveBeenCalledWith("Renamed");
+    expect(onRenamed).toHaveBeenCalledWith("Renamed", "2026-11-16T10:00:00Z");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
@@ -380,7 +380,7 @@ describe("StudioProjectMenu sharing", () => {
 
   it("renames before sharing when the name is saved", async () => {
     const user = userEvent.setup();
-    api.updateStudioProject.mockResolvedValue({ id: "p1", title: "Night drive" });
+    api.updateStudioProject.mockResolvedValue({ id: "p1", title: "Night drive", updated_at: "2026-11-16T10:05:00Z" });
     api.listStudioProjectShares.mockResolvedValue({ items: [] });
     api.createStudioProjectShare.mockResolvedValue({
       id: "s1",
@@ -401,7 +401,7 @@ describe("StudioProjectMenu sharing", () => {
     await waitFor(() =>
       expect(api.updateStudioProject).toHaveBeenCalledWith("p1", { title: "Night drive" })
     );
-    expect(onRenamed).toHaveBeenCalledWith("Night drive");
+    expect(onRenamed).toHaveBeenCalledWith("Night drive", "2026-11-16T10:05:00Z");
     expect(await screen.findByRole("dialog", { name: "Share project" })).toBeTruthy();
     expect(screen.getByText(/Share “Night drive”/)).toBeTruthy();
   });
