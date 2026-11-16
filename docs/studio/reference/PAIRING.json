@@ -12,7 +12,7 @@
     },
     "S03": {
       "title": "Signed-in entry reopened",
-      "capture": "ours-entry-reopened.png"
+      "capture": "ours-entry-overlay.png"
     },
     "S04": {
       "title": "My Projects chooser",
@@ -24,7 +24,7 @@
     },
     "S06": {
       "title": "Onboarding overlay",
-      "capture": "ours-onboarding.png",
+      "capture": "ours-entry-overlay.png",
       "sharedWith": "S03"
     },
     "S07": {
@@ -67,7 +67,8 @@
     },
     "S16": {
       "title": "Empty editor",
-      "capture": "ours-empty-editor.png"
+      "capture": "ours-empty-project-clean.png",
+      "sharedWith": "S05"
     },
     "S17": {
       "title": "Loaded editor",
