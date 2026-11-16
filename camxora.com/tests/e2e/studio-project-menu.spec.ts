@@ -55,6 +55,27 @@ test("project menu renames the project and the name survives a reload", async ({
 test("send to Suno sync reports the mirror's answer", async ({ page }) => {
   test.setTimeout(120_000);
 
+  // The dialog's job is to render whatever the server answers; the live mirror is
+  // verified separately (a first push creates the remote project and takes 18-32 s).
+  // Stub the answer so this spec stays a UI check rather than a provider-latency check.
+  await page.route("**/api/v3/web-music/studio/projects/*/sync", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "synced",
+            suno_project_id: "suno-test-project",
+            suno_version_id: "suno-test-version",
+            last_error: null,
+            synced_at: new Date().toISOString(),
+            skipped_clips: [],
+            state_sync: true,
+          }),
+        })
+      : route.continue()
+  );
+
   const tag = Math.random().toString(36).slice(2, 8);
   await createStudioProject(page, { title: `Suno sync ${tag}` });
 
@@ -63,12 +84,7 @@ test("send to Suno sync reports the mirror's answer", async ({ page }) => {
 
   const dialog = page.getByRole("dialog", { name: "Suno sync" });
   await expect(dialog).toBeVisible();
-  // With the mirror unconfigured the server answers immediately with the honest
-  // error; with a configured mirror the first push creates the remote Suno project,
-  // which takes tens of seconds — the dialog shows "Pushing…" until it lands.
-  await expect(
-    dialog.getByRole("status").or(dialog.locator(".se-dialog-error"))
-  ).toBeVisible({ timeout: 60_000 });
+  await expect(dialog.getByRole("status")).toContainText("Pushed to Suno");
 
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);

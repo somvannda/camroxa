@@ -1303,8 +1303,9 @@ test("My Projects modal matches the captured layout", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Open Project" }).click();
   const dialog = page.getByRole("dialog", { name: "Open project" });
   await expect(dialog).toBeVisible();
-  // The list loads after the dialog shell; wait for the New Project card.
-  await expect(dialog.locator(".se-project-card.is-new")).toBeVisible();
+  // The list loads after the dialog shell; wait for the New Project card. The sandbox
+  // project list can answer slowly under load, so allow more than the default window.
+  await expect(dialog.locator(".se-project-card.is-new")).toBeVisible({ timeout: 30_000 });
   const info = await dialog.locator(".se-dialog").evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);

@@ -38,7 +38,9 @@ test("the uploads tab lists imported audio and plays it", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Uploads" }).click();
   const card = page.getByRole("button", { name: /demo-loop\.wav/ });
-  await expect(card).toBeVisible();
+  // /library compiles on first hit and the tab fetches after hydration; the default
+  // 10 s expect window is tight when the dev server is also serving other workers.
+  await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card).toContainText("Play");
 
   // Playing hands the upload to the shared player.
@@ -65,7 +67,7 @@ test("the uploads tab explains an empty library", async ({ page }) => {
   });
 
   await page.getByRole("tab", { name: "Uploads" }).click();
-  await expect(page.getByText("No uploads yet")).toBeVisible();
+  await expect(page.getByText("No uploads yet")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("link", { name: "Open Studio" })).toBeVisible();
 });
 
