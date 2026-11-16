@@ -194,6 +194,9 @@ CREATE TABLE IF NOT EXISTS image_jobs (
     input_image_path TEXT,
     style_reference_path TEXT,
     source_job_id UUID,
+    prompt_style_id UUID,
+    source_mode TEXT,
+    thumbnail_mode TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     attempt_count INTEGER NOT NULL DEFAULT 0,
     output_image_path VARCHAR(500),
@@ -211,6 +214,19 @@ CREATE TABLE IF NOT EXISTS image_sample_packs (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     sort_order INTEGER NOT NULL DEFAULT 0,
     version_label TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS image_prompt_styles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    prompt_text TEXT NOT NULL,
+    text_template TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

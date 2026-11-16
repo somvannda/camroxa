@@ -16,6 +16,7 @@ class ModelSpec:
     api_id: str
     aliases: tuple[str, ...] = ()
     supports_json_mode: bool = False
+    supports_reference_image: bool = False
     extra_payload: dict[str, Any] = field(default_factory=dict)
     cost_tier: str = ""
     request_timeout_seconds: float | None = None

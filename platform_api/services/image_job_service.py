@@ -418,9 +418,42 @@ class ImageJobService:
                     channel_role=str(getattr(job.channel_role, "value", job.channel_role)),
                     attempt=max(1, attempt_count + 1),
                 )
+                kind = getattr(job, "kind", None)
+                thumbnail_mode = normalize_thumbnail_reference_mode(
+                    str(
+                        getattr(job, "thumbnail_mode", "")
+                        or settings.get("thumbnailReferenceMode", "background_text")
+                        or "background_text"
+                    )
+                )
                 routing_chain = await self._routing_service.resolve_image_chain(
                     operation_type
                 )
+                if (
+                    kind == ImageKind.THUMBNAIL
+                    and thumbnail_mode == "background_text"
+                ):
+                    from platform_api.ai.registry import image_model_supports_reference
+
+                    routing_chain = [
+                        item
+                        for item in routing_chain
+                        if image_model_supports_reference(
+                            str(getattr(item, "provider", "") or ""),
+                            getattr(item, "sub_model", None),
+                        )
+                    ]
+                    if not routing_chain:
+                        raise ValidationError(
+                            "Thumbnail: AI text on background needs an image provider that "
+                            "accepts a reference image. Ask an admin to route thumbnail_image "
+                            "to SLAI, FAL, or CALA, or switch Thumbnail generation to Composite.",
+                            details={
+                                "job_id": str(job.id),
+                                "operation": operation_type,
+                                "thumbnail_mode": thumbnail_mode,
+                            },
+                        )
                 primary_routing = routing_chain[0]
                 routed_provider = str(
                     getattr(primary_routing, "provider", "") or ""
@@ -432,7 +465,6 @@ class ImageJobService:
                 resolved_provider = routed_provider
                 model_id = routed_model
 
-                kind = getattr(job, "kind", None)
                 if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_personal_reference_source(
                     settings, kind
                 ):
@@ -504,9 +536,7 @@ class ImageJobService:
                     charged_credit_units = int(hold.held_units or 0)
                     billing_finalized = bool(hold.held_units > 0)
 
-                reference_mode = normalize_thumbnail_reference_mode(
-                    str(settings.get("thumbnailReferenceMode", "composite") or "composite")
-                )
+                reference_mode = thumbnail_mode
                 if (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
                     and reference_mode == "dual_reference"
@@ -523,6 +553,27 @@ class ImageJobService:
                     and is_prompt_only_source(settings, ImageKind.THUMBNAIL)
                 )
                 if (
+                    getattr(job, "kind", None) == ImageKind.THUMBNAIL
+                    and reference_mode == "background_text"
+                ):
+                    image_bytes, resolved_provider, resolved_sub_model = (
+                        await self._generate_thumbnail_background_text(
+                            user_id=user_id,
+                            job=job,
+                            prompt=prompt,
+                            resolved_provider=resolved_provider,
+                            model_id=model_id,
+                            operation_type=operation_type,
+                            slai_retry_attempts=slai_retry_attempts,
+                        )
+                    )
+                    executed_provider = str(resolved_provider or "").strip() or None
+                    executed_model = (
+                        str(resolved_sub_model or "").strip() or None
+                        if resolved_sub_model is not None
+                        else None
+                    )
+                elif (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
                     and reference_mode == "composite"
                 ):
@@ -888,6 +939,58 @@ class ImageJobService:
             "Upload admin sample packs, or switch source to Prompt only.",
             details={"kind": str(getattr(kind, "value", kind)), "source": "category"},
         )
+
+    async def _generate_thumbnail_background_text(
+        self,
+        *,
+        user_id: UUID,
+        job: ImageJob,
+        prompt: str,
+        resolved_provider: str,
+        model_id: str | None,
+        operation_type: str,
+        slai_retry_attempts: int = 5,
+    ) -> tuple[bytes, str, str | None]:
+        """Send the generated background to the provider and ask it to add text."""
+        source_job = await self._wait_for_source_job_output(
+            user_id=user_id,
+            source_job_id=job.source_job_id,
+        )
+        background_path = await self._resolve_source_background_path(user_id, source_job)
+        try:
+            background_bytes = Path(background_path).read_bytes()
+        except OSError as exc:
+            raise ValidationError(
+                "Thumbnail: The background image could not be read for AI text rendering. "
+                "Retry the background, then retry the thumbnail.",
+                details={"job_id": str(job.id), "source_job_id": str(job.source_job_id)},
+            ) from exc
+        if not background_bytes:
+            raise ValidationError(
+                "Thumbnail: The background image is empty. Retry the background, then retry "
+                "the thumbnail.",
+                details={"job_id": str(job.id), "source_job_id": str(job.source_job_id)},
+            )
+
+        resolution = str(job.resolution or "1920x1080")
+        style_strength = max(0.1, min(0.4, float(job.style_strength or 0.6)))
+        outcome = await self._generation_service.submit_image_outcome(
+            str(user_id),
+            ImageRequest(
+                prompt=prompt,
+                provider=resolved_provider,
+                model_id=model_id,
+                resolution=resolution,
+                style_strength=style_strength,
+                base_image=background_bytes,
+            ),
+            operation=operation_type,
+            skip_pricing=True,
+            job_id=str(job.id),
+            slai_retry_attempts=slai_retry_attempts,
+        )
+        final_bytes = to_cover_png_bytes(outcome.image_bytes, resolution)
+        return final_bytes, outcome.provider, outcome.sub_model
 
     async def _generate_thumbnail_composite(
         self,

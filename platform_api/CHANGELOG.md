@@ -6,6 +6,21 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-16] - Admin image prompt library and AI thumbnail text
+
+### Added
+
+- `image_prompt_styles` + admin CRUD at `/api/v3/admin/image-prompts`.
+- Desktop prompt source (`custom` / `admin_library`) with per-channel random
+  selection from the admin library, least-used rotation, and `last_batch_id`
+  avoidance.
+- Thumbnail `background_text` mode: the image model receives the generated
+  background and renders the exact stored text; the composite path remains as a
+  legacy option.
+- Migration `205` persists `prompt_style_id`, `source_mode`, and
+  `thumbnail_mode` on image jobs. See
+  [`docs/changelog/2026-11-16-image-prompt-library-ai-thumbnail.md`](../docs/changelog/2026-11-16-image-prompt-library-ai-thumbnail.md).
+
 ## [2026-11-15] - Web Create: retry a failed song instead of only deleting it
 
 ### Added

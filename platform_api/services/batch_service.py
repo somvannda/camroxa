@@ -49,6 +49,11 @@ from platform_api.services.credit_units import format_credit_log_amount
 from platform_api.services import draft_progress_log as draft_log
 from platform_api.services import credit_progress_log as credit_log
 from platform_api.services.image_sample_rotation import ImageSampleRotationService
+from platform_api.services.image_prompt_library import ImagePromptLibraryService
+from platform_api.services.image_source_mode import (
+    is_admin_prompt_source,
+    normalize_image_kind_source_mode,
+)
 from platform_api.services.run_directory_planner import (
     build_run_folder_label,
     list_run_folder_entries,
@@ -304,6 +309,7 @@ class BatchService:
         enforcement_service: Any | None = None,
         image_job_service: ImageJobService | None = None,
         image_sample_rotation: ImageSampleRotationService | None = None,
+        image_prompt_library: ImagePromptLibraryService | None = None,
     ) -> None:
         self._batch_repo = batch_repo
         self._credit_service = credit_service
@@ -316,6 +322,7 @@ class BatchService:
         self._enforcement_service = enforcement_service
         self._image_job_service = image_job_service
         self._image_sample_rotation = image_sample_rotation
+        self._image_prompt_library = image_prompt_library
         # Background Suno-download health probe (per-user debounce/inflight).
         self._dead_download_probe_last: dict[str, float] = {}
         self._dead_download_probe_inflight: set[str] = set()
@@ -417,6 +424,19 @@ class BatchService:
                 include_sensitive=False,
             )
         billable_auto_gen_image = auto_gen_image and self._normalize_image_source_mode(settings) != "manual"
+
+        if billable_auto_gen_image:
+            profile_ids = [
+                profile_id
+                for pair in profile_pairs
+                for profile_id in pair
+            ]
+            prompt_issue = await self._image_prompt_preflight_reason(
+                settings=settings,
+                profile_ids=profile_ids,
+            )
+            if prompt_issue:
+                return {"can_generate": False, "reason": prompt_issue}
 
         batch_count = len(run_dates) * len(profile_pairs)
         total_songs = batch_count * song_count
@@ -711,6 +731,71 @@ class BatchService:
             "publish_wallet_cost": publish_wallet_cost,
         }
 
+    async def _image_prompt_preflight_reason(
+        self,
+        *,
+        settings: dict[str, Any],
+        profile_ids: list[UUID],
+    ) -> str | None:
+        """Return a user-facing reason when the prompt library/mode cannot run."""
+        from platform_api.services.image_source_mode import (
+            empty_prompt_library_message,
+            is_admin_prompt_source,
+        )
+
+        if self._normalize_image_source_mode(settings) == "manual":
+            return None
+
+        kinds: set[ImageKind] = set()
+        for profile_id in profile_ids:
+            profile = await self._profile_repo.get_by_id(profile_id)
+            if profile is None:
+                continue
+            image_config = getattr(profile, "image_config", None) or {}
+            kinds.update(self._resolve_profile_image_kinds(image_config))
+        if not kinds:
+            return None
+
+        if self._image_prompt_library is not None:
+            counts = await self._image_prompt_library.active_counts()
+            for kind in sorted(kinds, key=lambda item: item.value):
+                if (
+                    is_admin_prompt_source(settings, kind)
+                    and int(counts.get(kind.value, 0)) <= 0
+                ):
+                    return empty_prompt_library_message(kind)
+
+        thumbnail_mode = normalize_thumbnail_reference_mode(
+            str(settings.get("thumbnailReferenceMode", "background_text") or "background_text")
+        )
+        if (
+            ImageKind.THUMBNAIL in kinds
+            and thumbnail_mode == "background_text"
+            and self._ai_routing_service is not None
+        ):
+            try:
+                chain = await self._ai_routing_service.resolve_image_chain("thumbnail_image")
+            except Exception:
+                chain = []
+            if isinstance(chain, (list, tuple)) and chain:
+                from platform_api.ai.registry import image_model_supports_reference
+
+                capable = [
+                    item
+                    for item in chain
+                    if image_model_supports_reference(
+                        str(getattr(item, "provider", "") or ""),
+                        getattr(item, "sub_model", None),
+                    )
+                ]
+                if not capable:
+                    return (
+                        "Thumbnail: AI text on background needs an image provider that "
+                        "accepts a reference image. Ask an admin to route thumbnail_image "
+                        "to SLAI, FAL, or CALA, or switch Thumbnail generation to Composite."
+                    )
+        return None
+
     async def create_batch(
         self,
         user_id: str,
@@ -838,6 +923,14 @@ class BatchService:
                 include_sensitive=False,
             )
         billable_auto_gen_image = auto_gen_image and self._normalize_image_source_mode(settings) != "manual"
+
+        if billable_auto_gen_image:
+            prompt_issue = await self._image_prompt_preflight_reason(
+                settings=settings,
+                profile_ids=[UUID(ok_profile_id), UUID(alt_profile_id)],
+            )
+            if prompt_issue:
+                raise ValidationError(prompt_issue)
 
         # Run folders are planned after the first successful draft album exists.
         # Store portable relative keys only (channel\date_album) — never a PC path.
@@ -2700,6 +2793,26 @@ class BatchService:
             )
 
         used_samples = await self._batch_used_sample_paths(batch.id)
+        existing = await self._batch_repo.get_image_jobs_by_batch(batch.id)
+        existing_by_key = {
+            self._album_image_job_key(item.profile_id, item.kind, item.channel_role): item
+            for item in existing
+        }
+        existing_keys = set(existing_by_key)
+        used_prompt_ids = self._batch_used_prompt_ids(existing)
+        previous_batch_id = None
+        get_previous = getattr(self._batch_repo, "get_previous_batch_id", None)
+        if get_previous is not None:
+            try:
+                previous_batch_id = await get_previous(batch.user_id, batch.id)
+            except Exception:
+                logger.warning(
+                    "Could not resolve previous batch for prompt rotation (batch %s).",
+                    batch.id,
+                    exc_info=True,
+                )
+            if not isinstance(previous_batch_id, UUID):
+                previous_batch_id = None
         if batch.ok_profile_id:
             jobs.extend(
                 await self._create_jobs_for_profile(
@@ -2709,6 +2822,9 @@ class BatchService:
                     channel_role=ChannelRole.OK,
                     settings=settings,
                     used_samples=used_samples,
+                    used_prompt_ids=used_prompt_ids,
+                    previous_batch_id=previous_batch_id,
+                    existing_by_key=existing_by_key,
                 )
             )
         if batch.alt_profile_id:
@@ -2720,15 +2836,13 @@ class BatchService:
                     channel_role=ChannelRole.ALT,
                     settings=settings,
                     used_samples=used_samples,
+                    used_prompt_ids=used_prompt_ids,
+                    previous_batch_id=previous_batch_id,
+                    existing_by_key=existing_by_key,
                 )
             )
 
         if jobs:
-            existing = await self._batch_repo.get_image_jobs_by_batch(batch.id)
-            existing_keys = {
-                self._album_image_job_key(item.profile_id, item.kind, item.channel_role)
-                for item in existing
-            }
             jobs = [
                 job
                 for job in jobs
@@ -2771,6 +2885,25 @@ class BatchService:
             style_path = str(job.style_reference_path or "").strip()
             if style_path and style_path not in used[ImageKind.THUMBNAIL]:
                 used[ImageKind.THUMBNAIL].append(style_path)
+        return used
+
+    @staticmethod
+    def _batch_used_prompt_ids(jobs: list[ImageJob]) -> dict[ImageKind, list[str]]:
+        used: dict[ImageKind, list[str]] = {
+            ImageKind.BACKGROUND: [],
+            ImageKind.THUMBNAIL: [],
+        }
+        for job in jobs:
+            style_id = str(getattr(job, "prompt_style_id", "") or "").strip()
+            if not style_id:
+                continue
+            kind = (
+                job.kind
+                if isinstance(job.kind, ImageKind)
+                else ImageKind(str(job.kind).strip().lower())
+            )
+            if style_id not in used[kind]:
+                used[kind].append(style_id)
         return used
 
     async def enqueue_image_jobs_for_batches(
@@ -2914,14 +3047,18 @@ class BatchService:
 
         jobs: list[ImageJob] = []
         background_job_id = uuid4()
+        thumbnail_mode = normalize_thumbnail_reference_mode(
+            str(settings.get("thumbnailReferenceMode", "background_text") or "background_text")
+        )
+        used_prompt_ids: dict[ImageKind, list[str]] = {
+            ImageKind.BACKGROUND: [],
+            ImageKind.THUMBNAIL: [],
+        }
         for job_kind in (ImageKind.BACKGROUND, ImageKind.THUMBNAIL):
+            prompt_style = None
+            thumbnail_text = ""
             if job_kind == ImageKind.BACKGROUND:
                 profile_prompt = image_config.get("background_prompt", "")
-                user_prompt = (
-                    effective_user_prompt
-                    if job_kind == target_kind
-                    else self._get_user_image_prompt(settings, job_kind)
-                )
                 input_image_path = await self._resolve_sample_reference_path(
                     settings=settings,
                     kind=job_kind,
@@ -2931,18 +3068,44 @@ class BatchService:
                 job_id = background_job_id
             else:
                 profile_prompt = image_config.get("thumbnail_prompt", "")
+                input_image_path = None
+                if thumbnail_mode == "background_text":
+                    style_reference_path = None
+                else:
+                    style_reference_path = await self._resolve_sample_reference_path(
+                        settings=settings,
+                        kind=job_kind,
+                    )
+                source_job_id = background_job_id
+                job_id = uuid4()
+
+            target_override = job_kind == target_kind and bool(override_prompt)
+            if target_override:
+                user_prompt = override_prompt
+            elif is_admin_prompt_source(settings, job_kind):
+                prompt_style = await self._pick_admin_prompt_style(
+                    kind=job_kind,
+                    batch=batch,
+                    used_prompt_ids=used_prompt_ids,
+                    previous_batch_id=None,
+                )
+                user_prompt = prompt_style.prompt_text
+                if job_kind == ImageKind.THUMBNAIL:
+                    thumbnail_text = self._resolve_style_text(
+                        prompt_style,
+                        song=placeholder_song,
+                        album="Not available",
+                        channel=str(getattr(profile, "name", "") or ""),
+                    )
+            else:
                 user_prompt = (
                     effective_user_prompt
                     if job_kind == target_kind
                     else self._get_user_image_prompt(settings, job_kind)
                 )
-                input_image_path = None
-                style_reference_path = await self._resolve_sample_reference_path(
-                    settings=settings,
-                    kind=job_kind,
-                )
-                source_job_id = background_job_id
-                job_id = uuid4()
+
+            if job_kind == ImageKind.THUMBNAIL and not thumbnail_text:
+                thumbnail_text = "NEW MUSIC"
 
             composed = self._compose_image_prompt(
                 song=placeholder_song,
@@ -2953,13 +3116,18 @@ class BatchService:
             )
             if job_kind == ImageKind.BACKGROUND:
                 composed = enrich_background_prompt(composed)
-            elif normalize_thumbnail_reference_mode(
-                str(settings.get("thumbnailReferenceMode", "composite") or "composite")
-            ) == "composite":
+            elif thumbnail_mode == "background_text":
+                from platform_api.services.thumbnail_composite import (
+                    enrich_thumbnail_background_text_prompt,
+                )
+
+                composed = enrich_thumbnail_background_text_prompt(composed, thumbnail_text)
+            elif thumbnail_mode == "composite":
                 composed = enrich_thumbnail_prompt(
                     composed,
                     prompt_only=is_prompt_only_source(settings, ImageKind.THUMBNAIL),
                 )
+            composed = self._validate_image_prompt(composed, job_kind)
             if job_kind == target_kind and not composed.strip():
                 raise ValidationError(empty_prompt_error_message(job_kind))
 
@@ -2983,6 +3151,13 @@ class BatchService:
                     input_image_path=input_image_path,
                     style_reference_path=style_reference_path,
                     source_job_id=source_job_id,
+                    prompt_style_id=(
+                        UUID(prompt_style.id) if prompt_style is not None else None
+                    ),
+                    source_mode=normalize_image_kind_source_mode(settings, job_kind),
+                    thumbnail_mode=(
+                        thumbnail_mode if job_kind == ImageKind.THUMBNAIL else None
+                    ),
                     status=TaskStatus.PENDING,
                     attempt_count=0,
                     error=None,
@@ -3947,8 +4122,14 @@ class BatchService:
         user_id: str,
         job_ids: list[str] | None = None,
         batch_id: str | None = None,
+        force: bool = False,
     ) -> int:
-        """Re-compose prompts from current profile + Image page settings before retry."""
+        """Re-compose prompts from current profile + Image page settings before retry.
+
+        Normal retry keeps a prompt that came from the admin prompt library so the
+        same style is not randomly swapped on a failure. Force regenerate picks a
+        new style (and bills a fresh image job as before).
+        """
         user_uuid = UUID(user_id)
         parsed_job_ids = [UUID(value) for value in (job_ids or []) if str(value or "").strip()]
         parsed_batch_id = UUID(batch_id) if batch_id else None
@@ -3970,8 +4151,19 @@ class BatchService:
 
         refreshed = 0
         batch_cache: dict[UUID, Batch | None] = {}
+        used_prompt_ids: dict[ImageKind, list[str]] = {
+            ImageKind.BACKGROUND: [],
+            ImageKind.THUMBNAIL: [],
+        }
         for job in jobs:
             if job.song_id is None or job.profile_id is None or job.batch_id is None:
+                continue
+            if (
+                not force
+                and str(job.prompt or "").strip()
+                and getattr(job, "prompt_style_id", None) is not None
+            ):
+                # Keep the library selection stable across ordinary retries.
                 continue
             if job.batch_id not in batch_cache:
                 batch_cache[job.batch_id] = await self._batch_repo.get_batch_by_id(job.batch_id)
@@ -3987,7 +4179,34 @@ class BatchService:
                 profile_prompt = image_config.get("background_prompt", "")
             else:
                 profile_prompt = image_config.get("thumbnail_prompt", "")
-            ui_prompt = self._get_user_image_prompt(settings, job.kind)
+
+            style = None
+            thumbnail_text = ""
+            if is_admin_prompt_source(settings, job.kind):
+                style = await self._pick_admin_prompt_style(
+                    kind=job.kind,
+                    batch=batch,
+                    used_prompt_ids=used_prompt_ids,
+                    previous_batch_id=None,
+                )
+                ui_prompt = style.prompt_text
+                if job.kind == ImageKind.THUMBNAIL:
+                    thumbnail_text = self._resolve_style_text(
+                        style,
+                        song=song,
+                        album=self._channel_album_label(batch, job.channel_role),
+                        channel=str(getattr(profile, "name", "") or ""),
+                    )
+            else:
+                ui_prompt = self._get_user_image_prompt(settings, job.kind)
+
+            if job.kind == ImageKind.THUMBNAIL and not thumbnail_text:
+                thumbnail_text = (
+                    str(song.title or "").strip()
+                    or self._channel_album_label(batch, job.channel_role)
+                    or "NEW MUSIC"
+                )
+
             prompt = self._compose_image_prompt(
                 song=song,
                 batch=batch,
@@ -3995,18 +4214,42 @@ class BatchService:
                 profile_prompt=profile_prompt,
                 user_prompt=ui_prompt,
             )
+            thumbnail_mode = normalize_thumbnail_reference_mode(
+                str(
+                    getattr(job, "thumbnail_mode", "")
+                    or settings.get("thumbnailReferenceMode", "background_text")
+                    or "background_text"
+                )
+            )
             if job.kind == ImageKind.BACKGROUND:
                 prompt = enrich_background_prompt(prompt)
-            elif normalize_thumbnail_reference_mode(
-                str(settings.get("thumbnailReferenceMode", "composite") or "composite")
-            ) == "composite":
-                prompt = enrich_thumbnail_prompt(prompt)
+            elif thumbnail_mode == "background_text":
+                from platform_api.services.thumbnail_composite import (
+                    enrich_thumbnail_background_text_prompt,
+                )
+
+                prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
+            elif thumbnail_mode == "composite":
+                from platform_api.services.image_source_mode import is_prompt_only_source
+
+                prompt = enrich_thumbnail_prompt(
+                    prompt,
+                    prompt_only=is_prompt_only_source(settings, ImageKind.THUMBNAIL),
+                )
+            prompt = self._validate_image_prompt(prompt, job.kind)
             if not prompt.strip():
                 continue
             await self._batch_repo.update_image_job_prompt(
                 job.id,
                 user_uuid,
                 prompt=prompt,
+                prompt_style_id=(
+                    UUID(style.id) if style is not None else None
+                ),
+                source_mode=normalize_image_kind_source_mode(settings, job.kind),
+                thumbnail_mode=(
+                    thumbnail_mode if job.kind == ImageKind.THUMBNAIL else None
+                ),
             )
             refreshed += 1
         return refreshed
@@ -5620,6 +5863,9 @@ class BatchService:
         channel_role: ChannelRole,
         settings: dict[str, Any],
         used_samples: dict[ImageKind, list[str]] | None = None,
+        used_prompt_ids: dict[ImageKind, list[str]] | None = None,
+        previous_batch_id: UUID | None = None,
+        existing_by_key: dict[Any, ImageJob] | None = None,
     ) -> list[ImageJob]:
         """Create image jobs for a specific profile based on its image_config.
 
@@ -5628,6 +5874,10 @@ class BatchService:
             batch: The parent batch.
             profile_id: The UUID of the channel profile.
             channel_role: Primary (OK) or Secondary (ALT) role code.
+            used_samples: Sample paths already used in this batch.
+            used_prompt_ids: Admin prompt style ids already used in this batch.
+            previous_batch_id: Previous batch id, for rotation avoidance.
+            existing_by_key: Already-persisted jobs for this batch/profile/role.
 
         Returns:
             List of ImageJob domain objects (not yet persisted).
@@ -5660,14 +5910,33 @@ class BatchService:
             ImageKind.BACKGROUND: [],
             ImageKind.THUMBNAIL: [],
         }
+        prompt_usage = used_prompt_ids if used_prompt_ids is not None else {
+            ImageKind.BACKGROUND: [],
+            ImageKind.THUMBNAIL: [],
+        }
+        existing = existing_by_key or {}
+        thumbnail_mode = normalize_thumbnail_reference_mode(
+            str(settings.get("thumbnailReferenceMode", "background_text") or "background_text")
+        )
+        album_label = self._channel_album_label(batch, channel_role)
+        channel_name = str(getattr(profile, "name", "") or "").strip()
+
         jobs: list[ImageJob] = []
         background_job_id: UUID | None = None
         routed_bg_provider = await self._routed_image_provider("background_image")
         routed_thumb_provider = await self._routed_image_provider("thumbnail_image")
         for kind in kinds:
+            slot_key = self._album_image_job_key(profile_id, kind, channel_role)
+            existing_job = existing.get(slot_key)
+            if existing_job is not None:
+                if kind == ImageKind.BACKGROUND:
+                    background_job_id = existing_job.id
+                continue
+
+            style = None
+            thumbnail_text = ""
             if kind == ImageKind.BACKGROUND:
                 profile_prompt = image_config.get("background_prompt", "")
-                ui_prompt = self._get_user_image_prompt(settings, kind)
                 input_image_path = await self._resolve_sample_reference_path(
                     settings=settings,
                     kind=kind,
@@ -5679,18 +5948,45 @@ class BatchService:
                 source_job_id = None
             else:
                 profile_prompt = image_config.get("thumbnail_prompt", "")
-                ui_prompt = self._get_user_image_prompt(settings, kind)
                 input_image_path = None
-                style_reference_path = await self._resolve_sample_reference_path(
-                    settings=settings,
-                    kind=kind,
-                    exclude=sample_usage.get(kind, []),
-                )
-                if style_reference_path:
-                    sample_usage.setdefault(kind, []).append(style_reference_path)
+                if thumbnail_mode == "background_text":
+                    style_reference_path = None
+                else:
+                    style_reference_path = await self._resolve_sample_reference_path(
+                        settings=settings,
+                        kind=kind,
+                        exclude=sample_usage.get(kind, []),
+                    )
+                    if style_reference_path:
+                        sample_usage.setdefault(kind, []).append(style_reference_path)
                 source_job_id = background_job_id
                 if source_job_id is None:
                     input_image_path = style_reference_path
+
+            if is_admin_prompt_source(settings, kind):
+                style = await self._pick_admin_prompt_style(
+                    kind=kind,
+                    batch=batch,
+                    used_prompt_ids=prompt_usage,
+                    previous_batch_id=previous_batch_id,
+                )
+                ui_prompt = style.prompt_text
+                if kind == ImageKind.THUMBNAIL:
+                    thumbnail_text = self._resolve_style_text(
+                        style,
+                        song=song,
+                        album=album_label,
+                        channel=channel_name,
+                    )
+            else:
+                ui_prompt = self._get_user_image_prompt(settings, kind)
+
+            if kind == ImageKind.THUMBNAIL and not thumbnail_text:
+                thumbnail_text = (
+                    str(song.title or "").strip()
+                    or album_label
+                    or "NEW MUSIC"
+                )
 
             prompt = self._compose_image_prompt(
                 song=song,
@@ -5701,15 +5997,20 @@ class BatchService:
             )
             if kind == ImageKind.BACKGROUND:
                 prompt = enrich_background_prompt(prompt)
-            elif normalize_thumbnail_reference_mode(
-                str(settings.get("thumbnailReferenceMode", "composite") or "composite")
-            ) == "composite":
+            elif thumbnail_mode == "background_text":
+                from platform_api.services.thumbnail_composite import (
+                    enrich_thumbnail_background_text_prompt,
+                )
+
+                prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
+            elif thumbnail_mode == "composite":
                 from platform_api.services.image_source_mode import is_prompt_only_source
 
                 prompt = enrich_thumbnail_prompt(
                     prompt,
                     prompt_only=is_prompt_only_source(settings, ImageKind.THUMBNAIL),
                 )
+            prompt = self._validate_image_prompt(prompt, kind)
 
             job = ImageJob(
                 id=uuid4(),
@@ -5730,6 +6031,11 @@ class BatchService:
                 input_image_path=input_image_path,
                 style_reference_path=style_reference_path,
                 source_job_id=source_job_id,
+                prompt_style_id=UUID(style.id) if style is not None else None,
+                source_mode=normalize_image_kind_source_mode(settings, kind),
+                thumbnail_mode=(
+                    thumbnail_mode if kind == ImageKind.THUMBNAIL else None
+                ),
                 status=TaskStatus.PENDING,
                 attempt_count=0,
             )
@@ -5738,6 +6044,68 @@ class BatchService:
                 background_job_id = job.id
 
         return jobs
+
+    async def _pick_admin_prompt_style(
+        self,
+        *,
+        kind: ImageKind,
+        batch: Batch,
+        used_prompt_ids: dict[ImageKind, list[str]],
+        previous_batch_id: UUID | None,
+    ) -> Any:
+        from platform_api.exceptions import ValidationError
+        from platform_api.services.image_source_mode import empty_prompt_library_message
+
+        if self._image_prompt_library is None:
+            raise ValidationError(
+                empty_prompt_library_message(kind),
+                details={"kind": kind.value, "source": "admin_library"},
+            )
+        style = await self._image_prompt_library.pick_style(
+            kind=kind,
+            batch_id=batch.id,
+            exclude_ids=used_prompt_ids.get(kind, []),
+            previous_batch_id=previous_batch_id,
+        )
+        used_prompt_ids.setdefault(kind, []).append(style.id)
+        return style
+
+    def _resolve_style_text(
+        self,
+        style: Any,
+        *,
+        song: Song,
+        album: str,
+        channel: str,
+    ) -> str:
+        if self._image_prompt_library is None:
+            return ""
+        return self._image_prompt_library.resolve_text_template(
+            style,
+            title=str(song.title or ""),
+            album=album,
+            channel=channel,
+        )
+
+    @staticmethod
+    def _validate_image_prompt(prompt: str, kind: ImageKind) -> str:
+        from platform_api.exceptions import ValidationError
+        from platform_api.services.generation_service import IMAGE_MAX_PROMPT_LENGTH
+
+        value = str(prompt or "").strip()
+        if len(value) > IMAGE_MAX_PROMPT_LENGTH:
+            kind_label = "Background" if kind == ImageKind.BACKGROUND else "Thumbnail"
+            raise ValidationError(
+                f"{kind_label}: Image prompt exceeds maximum length of "
+                f"{IMAGE_MAX_PROMPT_LENGTH} characters. Shorten the admin prompt or "
+                "switch the prompt source to My prompt.",
+                details={
+                    "kind": kind.value,
+                    "prompt_length": len(value),
+                    "max_length": IMAGE_MAX_PROMPT_LENGTH,
+                },
+            )
+        return value
 
     @staticmethod
     def _normalize_image_source_mode(settings: dict[str, Any]) -> str:

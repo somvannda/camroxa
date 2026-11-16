@@ -130,18 +130,36 @@ OPENAI_IMAGE_MODELS: dict[str, ModelSpec] = {
 }
 
 FAL_IMAGE_MODELS: dict[str, ModelSpec] = {
-    "flux-schnell": ModelSpec(api_id="fal-ai/flux/schnell", cost_tier="~$0.003/img"),
-    "flux-dev": ModelSpec(api_id="fal-ai/flux/dev", cost_tier="~$0.025/img"),
-    "flux-pro": ModelSpec(api_id="fal-ai/flux-pro/v1.1", cost_tier="~$0.05/img"),
+    "flux-schnell": ModelSpec(
+        api_id="fal-ai/flux/schnell",
+        cost_tier="~$0.003/img",
+        supports_reference_image=True,
+    ),
+    "flux-dev": ModelSpec(
+        api_id="fal-ai/flux/dev",
+        cost_tier="~$0.025/img",
+        supports_reference_image=True,
+    ),
+    "flux-pro": ModelSpec(
+        api_id="fal-ai/flux-pro/v1.1",
+        cost_tier="~$0.05/img",
+        supports_reference_image=True,
+    ),
 }
 
 SLAI_IMAGE_MODELS: dict[str, ModelSpec] = {
     # Provider charge: ~150 images / $1 ⇒ ~$0.0067 per image
-    "cx/gpt-image-2.5": ModelSpec(api_id="cx/gpt-image-2.5", cost_tier="~$0.0067/img"),
+    "cx/gpt-image-2.5": ModelSpec(
+        api_id="cx/gpt-image-2.5",
+        cost_tier="~$0.0067/img",
+        supports_reference_image=True,
+    ),
     # GPT-6 "sol" image model on the same SLAI image endpoint. Cost tier mirrors
     # the sibling SLAI image rate until the provider publishes a separate price.
     "cx/gpt-6-sol-image": ModelSpec(
-        api_id="cx/gpt-6-sol-image", cost_tier="~$0.0067/img"
+        api_id="cx/gpt-6-sol-image",
+        cost_tier="~$0.0067/img",
+        supports_reference_image=True,
     ),
 }
 
@@ -338,6 +356,19 @@ def get_image_model_spec(provider: str, model: str | None) -> ModelSpec | None:
     if provider_models is None:
         return None
     return provider_models.get(canonical)
+
+
+def image_model_supports_reference(provider: str, model: str | None) -> bool:
+    """True when the provider/model can accept a source image for image editing."""
+    provider_key = str(provider or "").strip().lower()
+    if provider_key == "cala":
+        return True
+    spec = get_image_model_spec(provider_key, model)
+    if spec is not None:
+        return bool(spec.supports_reference_image)
+    # Unknown legacy sub-model ids for a provider that supports image editing
+    # (e.g. stored routing rows with ``fal/flux`` instead of ``fal/flux-pro``).
+    return provider_key in {"fal", "slai"}
 
 
 def get_music_model_spec(provider: str, model: str | None) -> ModelSpec | None:

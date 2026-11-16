@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 
@@ -20,8 +21,15 @@ class ImageSampleRepository:
         kind: str,
         values: list[str],
         exclude: list[str] | None = None,
+        batch_id: UUID | None = None,
+        previous_batch_id: UUID | None = None,
     ) -> str:
-        """Return the least-used candidate and increment its counter."""
+        """Return the least-used candidate and increment its counter.
+
+        ``batch_id`` records which batch consumed the value. ``previous_batch_id``
+        lets callers avoid repeating the immediately previous batch when another
+        candidate exists.
+        """
         kind_key = str(kind or "").strip()
         candidates = [str(value).strip() for value in values if str(value).strip()]
         excluded = {str(value).strip() for value in (exclude or []) if str(value).strip()}
@@ -32,7 +40,7 @@ class ImageSampleRepository:
 
         rows = await self._pool.fetch(
             """
-            SELECT value, used_count, used_at
+            SELECT value, used_count, used_at, last_batch_id
             FROM image_random_history
             WHERE kind = $1
               AND value = ANY($2::text[])
@@ -44,9 +52,20 @@ class ImageSampleRepository:
             str(row["value"]): {
                 "used": int(row["used_count"] or 0),
                 "at": row["used_at"],
+                "batch": row.get("last_batch_id"),
             }
             for row in rows
         }
+
+        if previous_batch_id is not None:
+            previous_key = str(previous_batch_id)
+            fresh = [
+                candidate
+                for candidate in candidates
+                if str(stats.get(candidate, {}).get("batch") or "") != previous_key
+            ]
+            if fresh:
+                candidates = fresh
 
         best: str | None = None
         best_used: int | None = None
@@ -73,13 +92,16 @@ class ImageSampleRepository:
         chosen = str(best or candidates[0]).strip()
         await self._pool.execute(
             """
-            INSERT INTO image_random_history (kind, value, used_count, used_at)
-            VALUES ($1, $2, 1, NOW())
+            INSERT INTO image_random_history
+                (kind, value, used_count, used_at, last_batch_id)
+            VALUES ($1, $2, 1, NOW(), $3)
             ON CONFLICT (kind, value) DO UPDATE SET
                 used_count = image_random_history.used_count + 1,
-                used_at = NOW()
+                used_at = NOW(),
+                last_batch_id = COALESCE($3, image_random_history.last_batch_id)
             """,
             kind_key,
             chosen,
+            batch_id,
         )
         return chosen

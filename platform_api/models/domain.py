@@ -324,6 +324,9 @@ class ImageJob:
     input_image_path: str | None = None
     style_reference_path: str | None = None
     source_job_id: UUID | None = None
+    prompt_style_id: UUID | None = None
+    source_mode: str | None = None
+    thumbnail_mode: str | None = None
     status: TaskStatus = TaskStatus.PENDING
     attempt_count: int = 0
     output_image_path: str | None = None

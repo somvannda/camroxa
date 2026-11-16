@@ -139,7 +139,7 @@ Algorithm:
 6. Return the style.
 7. If no active styles exist at all, raise `ValidationError` with a clear message. If exclusion emptied the list, reuse the full active list and log a warning.
 
-Use a short transaction/advisory lock per kind to keep concurrent batch creation from picking the same style twice.
+Use the existing least-used upsert, which is atomic per `(kind, value)` row. If multiple API workers can create batches concurrently, add a short `pg_advisory_xact_lock` per kind to keep two workers from picking the same style in the same instant.
 
 ### 4.2 Per-batch uniqueness
 
