@@ -61,6 +61,8 @@ project JSON import, clip comments, presence, supersaw audition speed.
 | Learn has **YouTube Tutorials** | Dropped by product decision - the only sanctioned missing row |
 | Start overlay has **Drum & Bass Demo** (S03/S06) | No bundled demo arrangement ships, so the tile would open nothing; recorded absence |
 | Start overlay has **Video Tutorial** (S03/S06) | Same content as the dropped YouTube row; recorded absence |
+| Clip rail header sits **inside the floating card** (S27) | The captured controls are all present (back, title, like/dislike, art, Remix, player, tabs); the card layout is ours, not a replacement |
+| MIDI editor has **no overview strip** | The grid zooms 1–12× instead of scrolling a mini-map; an overview with no scroll position to reflect would be decorative |
 
 The start overlay ships **Edit Your Song, Upload Audio, Create a song, Open a project and
 Empty Project**, plus the captured ✕ and "Browse Studio projects ›" pill.

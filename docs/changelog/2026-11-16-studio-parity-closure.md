@@ -146,6 +146,13 @@ Each entry names the ledger row it closes and the test that pins it.
   reports the pending state; healing belongs to saves and the explicit Send to Suno Sync.
 - Test: `test_refresh_does_not_enqueue_an_unlinked_project` asserts exactly one `refresh` call.
 
-## Open in the ledger
+## Ledger closed
 
-B6 remainder (like/overflow cluster, header in the top bar) · B10 remainder (MIDI overview strip).
+All 19 rows are resolved: 17 fixed, 1 retired as a measurement artefact (A-O1), and 1
+sub-claim withdrawn with the capture as the tie-breaker (B7 "Mute all").
+Two sub-items are **recorded absences** in `CLONE_DEFINITION.md` §5 rather than fakes: the
+clip rail keeps its floating-card header (all captured controls are present), and the MIDI
+editor has no overview strip because it zooms rather than scrolls a mini-map.
+
+Final gates: Vitest **382** · Playwright **185 passed / 2 skipped** · platform contracts
+green · typecheck, `check:ui`, `check:clone` clean (73/73 screens, 70/70 strings).
