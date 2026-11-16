@@ -66,13 +66,13 @@ describe("StudioLearn menu", () => {
 
     await user.click(screen.getByRole("button", { name: /Learn/ }));
     await user.click(screen.getByRole("menuitem", { name: /Keyboard Shortcuts/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
     expect(dialog.textContent).toContain("Undo");
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
     await user.keyboard("?");
-    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Keyboard Shortcuts" })).toBeTruthy();
   });
 });
 

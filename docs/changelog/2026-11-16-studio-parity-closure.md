@@ -38,6 +38,35 @@ Each entry names the ledger row it closes and the test that pins it.
 - The Stop control is **kept**: it is an addition, not a capture replacement, and removing it
   would take working behaviour away. Recorded here as a deliberate divergence.
 
+## Batch B — shortcuts overlay and the start overlay
+
+### B1 — shortcuts overlay rebuilt to the capture
+
+- Header **“Keyboard Shortcuts”** (capitalised), a **search field** that filters rows, a
+  header **✕**, and the list split into **five sections** (Playback · Tracks · Editing · View ·
+  Project) laid out in two columns.
+- `shortcutGroups()` in `lib/studio-help.ts` buckets the real 57 bindings by action, so the
+  groups stay correct as bindings change.
+- Tests: `studio-learn.spec.ts` asserts five groups, that searching “zoom” leaves
+  search results (no group headers), and that clearing restores the groups; the unit test
+  follows the renamed dialog.
+
+### B2 — start overlay offers real starting points
+
+- **Edit Your Song** opens the library on songs, **Upload Audio** opens it on uploads, and
+  **Empty Project**, **Create a song**, **Open a project** remain. The captured **✕** closes the
+  overlay and the **“Browse Studio projects ›”** pill links to `/studio`.
+- Two captured tiles are recorded absences in `CLONE_DEFINITION.md` §5: **Drum & Bass Demo**
+  (no bundled demo arrangement — the tile would open nothing) and **Video Tutorial** (the
+  dropped YouTube row). No dead tiles are shipped.
+- Tests: `studio-onboarding.spec.ts` — real tiles + browse link, Edit Your Song opens the
+  library, and ✕ dismissal survives a reload.
+
+### B8 — Learn menu no longer wraps
+
+- `min-width` 206 → 250 px and `white-space: nowrap` on rows, so “Keyboard Shortcuts” and
+  “shift ?” sit on one line as captured.
+
 ## Open in the ledger
 
 B1 shortcuts panel · B2 onboarding · B5 menu order/labels · B6 clip info · B7 hidden-tracks

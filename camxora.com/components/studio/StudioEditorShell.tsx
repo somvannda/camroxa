@@ -6367,6 +6367,14 @@ export function StudioEditorShell() {
         projectId={projectId}
         isEmpty={!loading && tracks.length === 0 && clips.length === 0}
         reopenToken={quickStartToken}
+        onOpenLibrary={(tab) => {
+          setLibraryOpen(true);
+          setLibraryView(
+            tab === "uploads"
+              ? { kind: "uploads" }
+              : { kind: "songs", title: "All Songs", filter: "all" }
+          );
+        }}
       />
 
       <StudioMetricsProbe />

@@ -58,7 +58,12 @@ project JSON import, clip comments, presence, supersaw audition speed.
 | There is **no mixer surface** (S47) | We do not ship one |
 | There is **no conflict UI** (S59) | Our 409 UI is additive |
 | Deletion is **soft with recovery** (S04/§56) | Recently Deleted + restore |
-| Learn has **YouTube Tutorials** | Dropped by product decision — the only sanctioned missing row |
+| Learn has **YouTube Tutorials** | Dropped by product decision - the only sanctioned missing row |
+| Start overlay has **Drum & Bass Demo** (S03/S06) | No bundled demo arrangement ships, so the tile would open nothing; recorded absence |
+| Start overlay has **Video Tutorial** (S03/S06) | Same content as the dropped YouTube row; recorded absence |
+
+The start overlay ships **Edit Your Song, Upload Audio, Create a song, Open a project and
+Empty Project**, plus the captured ✕ and "Browse Studio projects ›" pill.
 
 ## 6. Sign-off checklist
 

@@ -8,10 +8,12 @@ import { Icon } from "@/components/Icon";
 /**
  * First-run onboarding for an empty project (roadmap G18, reference spec §10).
  *
- * The reference opens a centred overlay offering ways to start: open a song from the
- * library, load the demo, upload audio, watch a tutorial, or start empty. We only
- * offer what this build can actually do — a tile that opens nothing would be worse
- * than no tile at all.
+ * The capture offers five ways to start (Edit Your Song · Drum & Bass Demo · Upload Audio ·
+ * Video Tutorial · Empty Project) fanned across the editor, with a close ✕ and a "Browse
+ * Studio projects ›" pill. We ship the four that do something real: edit a song from the
+ * library, upload audio, create a song, and start empty. The demo tile needs a bundled demo
+ * arrangement we do not have, and the video tutorial is the YouTube row dropped by product
+ * decision (CLONE_DEFINITION §5) — both are recorded as sanctioned absences, not silent gaps.
  */
 
 const SEEN_PREFIX = "studio:onboarded:";
@@ -24,11 +26,14 @@ export function StudioOnboarding({
   projectId,
   isEmpty,
   reopenToken = 0,
+  onOpenLibrary,
 }: {
   projectId: string | null;
   isEmpty: boolean;
   /** Increment to re-open the overlay ("Show Quick Start again" in the project menu). */
   reopenToken?: number;
+  /** Open the library drawer on a specific list (songs or uploads). */
+  onOpenLibrary?: (tab: "songs" | "uploads") => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -66,11 +71,29 @@ export function StudioOnboarding({
     setOpen(false);
   }
 
+  function openLibrary(tab: "songs" | "uploads") {
+    dismiss();
+    onOpenLibrary?.(tab);
+  }
+
   if (!open) return null;
 
   return (
-    <div className="se-onboard-backdrop" role="dialog" aria-modal="true" aria-label="How do you want to start?">
+    <div
+      className="se-onboard-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="How do you want to start?"
+    >
       <div className="se-onboard">
+        <button
+          type="button"
+          className="se-dialog-x se-onboard-x"
+          aria-label="Close"
+          onClick={dismiss}
+        >
+          <Icon name="fa-xmark" />
+        </button>
         <h2>How do you want to start?</h2>
         <p className="se-onboard-sub">
           {isEmpty
@@ -79,10 +102,16 @@ export function StudioOnboarding({
         </p>
 
         <div className="se-onboard-tiles">
-          <button type="button" className="se-onboard-tile" onClick={dismiss}>
-            <Icon name="fa-table-columns" />
-            <strong>Empty arrangement</strong>
-            <span>Add a track and build from bar one.</span>
+          <button type="button" className="se-onboard-tile" onClick={() => openLibrary("songs")}>
+            <Icon name="fa-music" />
+            <strong>Edit Your Song</strong>
+            <span>Open a song from your library.</span>
+          </button>
+
+          <button type="button" className="se-onboard-tile" onClick={() => openLibrary("uploads")}>
+            <Icon name="fa-arrow-up-from-bracket" />
+            <strong>Upload Audio</strong>
+            <span>Bring in a file from your computer.</span>
           </button>
 
           <Link className="se-onboard-tile" href="/create">
@@ -96,9 +125,18 @@ export function StudioOnboarding({
             <strong>Open a project</strong>
             <span>Resume something you already started.</span>
           </Link>
+
+          <button type="button" className="se-onboard-tile" onClick={dismiss}>
+            <Icon name="fa-table-columns" />
+            <strong>Empty Project</strong>
+            <span>Add a track and build from bar one.</span>
+          </button>
         </div>
 
         <div className="se-onboard-foot">
+          <Link className="se-pill" href="/studio">
+            Browse Studio projects ›
+          </Link>
           <button type="button" className="se-pill on" onClick={dismiss}>
             Start empty
           </button>

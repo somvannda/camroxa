@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
-import { helpFor, SHORTCUTS, type HelpEntry } from "@/lib/studio-help";
+import { helpFor, SHORTCUTS, shortcutGroups, type HelpEntry } from "@/lib/studio-help";
 
 /**
  * Learn menu + What's This? hover help (reference §7 / §38).
@@ -69,6 +69,10 @@ function hasSeen() {
 export function StudioLearn({ whatsThis, onWhatsThis, paused = false }: StudioLearnProps) {
   const [open, setOpen] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
+  const [shortcutQuery, setShortcutQuery] = useState("");
+  const filteredShortcuts = SHORTCUTS.filter((row) =>
+    `${row.action} ${row.keys}`.toLowerCase().includes(shortcutQuery.trim().toLowerCase())
+  );
   const [learning, setLearning] = useState(false);
   const [card, setCard] = useState<{ entry: HelpEntry; left: number; top: number } | null>(null);
   const [firstRun, setFirstRun] = useState(false);
@@ -292,23 +296,56 @@ export function StudioLearn({ whatsThis, onWhatsThis, paused = false }: StudioLe
           className="se-dialog-backdrop"
           role="dialog"
           aria-modal="true"
-          aria-label="Keyboard shortcuts"
+          aria-label="Keyboard Shortcuts"
         >
-          <div className="se-dialog">
-            <h2>Keyboard shortcuts</h2>
-            <ul className="se-dialog-list">
-              {SHORTCUTS.map((row) => (
-                <li key={row.keys} className="se-dialog-row">
-                  <span className="se-dialog-title">{row.action}</span>
-                  <kbd>{row.keys}</kbd>
-                </li>
-              ))}
-            </ul>
-            <div className="se-dialog-foot">
-              <button type="button" className="se-pill" onClick={() => setShortcuts(false)}>
-                Close
+          <div className="se-dialog se-shortcuts-dialog">
+            <header className="se-shortcuts-head">
+              <h2>Keyboard Shortcuts</h2>
+              <label className="se-shortcuts-search">
+                <Icon name="fa-magnifying-glass" />
+                <input
+                  value={shortcutQuery}
+                  onChange={(event) => setShortcutQuery(event.target.value)}
+                  placeholder="Search shortcuts"
+                  aria-label="Search shortcuts"
+                  autoFocus
+                />
+              </label>
+              <button
+                type="button"
+                className="se-dialog-x"
+                aria-label="Close"
+                onClick={() => setShortcuts(false)}
+              >
+                <Icon name="fa-xmark" />
               </button>
-            </div>
+            </header>
+            {shortcutQuery.trim() ? (
+              <ul className="se-dialog-list">
+                {filteredShortcuts.map((row) => (
+                  <li key={`${row.keys}-${row.action}`} className="se-dialog-row">
+                    <span className="se-dialog-title">{row.action}</span>
+                    <kbd>{row.keys}</kbd>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="se-shortcut-groups">
+                {shortcutGroups().map((group) => (
+                  <section key={group.title} className="se-shortcut-group">
+                    <h3>{group.title}</h3>
+                    <ul className="se-dialog-list">
+                      {group.rows.map((row) => (
+                        <li key={`${group.title}-${row.keys}`} className="se-dialog-row">
+                          <span className="se-dialog-title">{row.action}</span>
+                          <kbd>{row.keys}</kbd>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : null}

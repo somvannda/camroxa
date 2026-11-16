@@ -5482,3 +5482,12 @@ html{color-scheme:dark}
   justify-content:flex-end;overflow:hidden}
 .se-midi-key.black{width:62%;margin-left:auto;background:#14171f;border-bottom:0;
   border-radius:0 0 2px 2px;transform:translateY(-4px);z-index:1}
+
+.se-shortcuts-dialog{width:min(920px,92vw)}
+.se-shortcuts-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.se-shortcuts-head h2{margin:0;flex:none}
+.se-shortcuts-search{display:flex;align-items:center;gap:8px;flex:1;height:36px;padding:0 10px;border-radius:999px;background:#1c1c1e;border:1px solid rgba(255,255,255,.08)}
+.se-shortcuts-search input{flex:1;background:none;border:0;color:inherit;font:inherit;outline:none}
+.se-shortcuts-dialog .se-dialog-x{position:static;margin-left:4px}
+.se-shortcut-groups{display:grid;grid-template-columns:1fr 1fr;gap:4px 32px;max-height:min(58vh,520px);overflow:auto}
+.se-shortcut-group h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.55;margin:10px 0 4px}
