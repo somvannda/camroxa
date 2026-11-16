@@ -94,8 +94,14 @@ Each entry names the ledger row it closes and the test that pins it.
 - The loop handle is round (10×18, radius 999) so the help copy “drag the round handle” is
   true.
 
+### B11 — library project rows show the real arrangement
+
+- Project rows in the Library drawer render `StudioProjectThumbView` (the same mini-timeline
+  as My Projects) instead of a generic bars icon; the list endpoint already returns `thumb`.
+- Test: the library component test asserts `.se-project-preview.is-thumb` for a project with a
+  clip span.
+
 ## Open in the ledger
 
-B1 shortcuts panel · B2 onboarding · B5 menu order/labels · B6 clip info · B7 hidden-tracks
-wording · B8/B12/B13 chrome sweep · B9/B10 plugin/MIDI polish · B11 library truth · the mirror
-enqueue backoff.
+B5 part 2 (clip menu and export ordering) · B6 clip info · B9 plugin catalog · B10 MIDI/clip
+editor polish · the mirror enqueue backoff.

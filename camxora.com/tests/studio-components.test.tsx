@@ -721,6 +721,22 @@ describe("StudioLibrary", () => {
     expect(screen.getByText("4m ago")).toBeTruthy();
   });
 
+  it("draws the arrangement preview in project rows, not a generic icon", () => {
+    const recent = new Date(Date.now() - 4 * 60_000).toISOString();
+    const project = {
+      id: "p2",
+      title: "Other",
+      bpm: 120,
+      time_signature: "4/4",
+      updated_at: recent,
+      thumb: { end: 8, tracks: [{ c: "#38bdf8", clips: [{ s: 0, d: 4 }] }] },
+    } as unknown as StudioProject;
+    const { container } = render(
+      <StudioLibrary {...libraryProps({ projects: [project], currentProjectId: "p1" })} />
+    );
+    expect(container.querySelector(".se-project-preview.is-thumb")).toBeTruthy();
+  });
+
   it("shows uploads with their length and adds one to the timeline", async () => {
     const user = userEvent.setup();
     const onAddUpload = vi.fn();

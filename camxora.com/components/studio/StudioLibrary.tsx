@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { StudioProjectThumbView } from "@/components/studio/StudioProjectThumb";
 import { SongTempo } from "@/components/studio/StudioSongTempo";
 import { SongKey } from "@/components/studio/StudioSongKey";
 import type { WebMusicGeneration } from "@/lib/library-api";
@@ -479,7 +480,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                     <li key={item.id}>
                       <div className="se-lib-row se-lib-row-button">
                         <span className="se-lib-thumb se-lib-thumb-project" aria-hidden="true">
-                          <Icon name="fa-bars-staggered" />
+                          <StudioProjectThumbView thumb={item.thumb} />
                         </span>
                         <span className="se-lib-title">{item.title}</span>
                         <span className="se-lib-meta">
