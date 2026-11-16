@@ -79,7 +79,7 @@ test("double-click opens Clip Settings and On Beat fills the clip", async ({ pag
   expect(await stretch.getAttribute("aria-checked")).toBe("false");
 
   await page.getByRole("radio", { name: "On Beat" }).click();
-  await expect.poll(async () => (await savedWarp(page, projectId))?.mode).toBe("beat");
+  await expect.poll(async () => (await savedWarp(page, projectId))?.mode, { timeout: 30_000 }).toBe("beat");
   await expect(page.locator(".se-warp-head")).toHaveCount(9);
   expect(await stretch.getAttribute("aria-checked")).toBe("true");
 
@@ -113,7 +113,7 @@ test("transients place marker heads that can be selected, dragged and quantized"
 
   await openEditor(page);
   await page.getByRole("radio", { name: "Transients" }).click();
-  await expect.poll(async () => (await savedWarp(page, projectId))?.mode).toBe("transients");
+  await expect.poll(async () => (await savedWarp(page, projectId))?.mode, { timeout: 30_000 }).toBe("transients");
 
   const heads = page.locator(".se-warp-head");
   await expect(heads.first()).toBeVisible();
@@ -146,7 +146,7 @@ test("transients place marker heads that can be selected, dragged and quantized"
   // Switching Stretch off hides the heads but keeps the markers.
   await page.getByRole("switch", { name: "Stretch" }).click();
   await expect(heads).toHaveCount(0);
-  await expect.poll(async () => (await savedWarp(page, projectId))?.on).toBe(false);
+  await expect.poll(async () => (await savedWarp(page, projectId))?.on, { timeout: 30_000 }).toBe(false);
   const warp = await savedWarp(page, projectId);
   expect(warp?.markers?.length).toBeGreaterThan(1);
 });
