@@ -250,7 +250,7 @@ function ConvolutionCard({
           className="sp-ir"
           viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label={response ? `Impulse response ${response.name}` : "No impulse response"}
+          aria-label={response ? `Impulse response ${response.name}` : "No asset loaded"}
         >
           <line x1={0} x2={width} y1={height / 2} y2={height / 2} className="sp-ir-axis" />
           {[0, 1, 2, 3].map((second) => {
@@ -289,7 +289,7 @@ function ConvolutionCard({
               setOpen((value) => !value);
             }}
           >
-            <span>{response ? impulseLabel(assetId) : "No impulse response"}</span>
+            <span>{response ? impulseLabel(assetId) : "NO ASSET LOADED"}</span>
             <Icon name="fa-chevron-down" />
           </button>
           {open ? (
@@ -628,6 +628,7 @@ const PREVIEW_PATHS: Record<string, string> = {
   rhythmGate: "M0 10 H30 V44 H50 V10 H80 V44 H100 V10 H130 V44 H150 V10 H180 V44 H200",
   distortion: "M0 42 L20 18 L40 42 L60 18 L80 42 L100 18 L120 42 L140 18 L160 42 L180 18 L200 42",
   convolution: "M0 46 L30 44 L60 10 L70 40 L90 34 L120 42 L150 40 L200 46",
+  stereoUtility: "M0 20 L60 20 L80 44 L120 44 L140 20 L200 20",
 };
 
 function PluginPreview({ id }: { id: string }) {
@@ -665,6 +666,8 @@ export function StudioPluginDock({
   onSendsChange,
 }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogMenu, setCatalogMenu] = useState(false);
+  
   const [query, setQuery] = useState("");
   const [presetMenu, setPresetMenu] = useState<string | null>(null);
   const [savePresetFor, setSavePresetFor] = useState<string | null>(null);
@@ -1240,6 +1243,32 @@ export function StudioPluginDock({
                   autoFocus
                 />
               </label>
+              <button
+                type="button"
+                className="sp-dialog-close"
+                aria-label="Plugin catalogue options"
+                aria-haspopup="menu"
+                aria-expanded={catalogMenu}
+                onClick={() => setCatalogMenu((open) => !open)}
+              >
+                <Icon name="fa-ellipsis" />
+              </button>
+              {catalogMenu ? (
+                <div className="sp-ir-menu" role="menu" aria-label="Catalogue options">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setCatalogMenu(false);
+                      setCatalogOpen(false);
+                      setQuery("");
+                      onDesignPlugin?.();
+                    }}
+                  >
+                    <Icon name="fa-wand-magic-sparkles" /> Create new plugin
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
                 className="sp-dialog-close"

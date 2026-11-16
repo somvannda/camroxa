@@ -3589,9 +3589,11 @@ class WebMusicService:
     async def refresh_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
         """Ask Suno whether it moved ahead; never touches the local document.
 
-        If the project has no link yet — the first enqueue never reached musicapi
-        because it was down — re-arm the mirror here. The editor calls this on open
-        and periodically, so a missed create heals on its own.
+        An unlinked project used to re-arm its mirror here. The editor calls this on open
+        and every 15 s, and an enqueue may wait up to 90 s on a slow provider — with a
+        mirror that cannot link, every poll became a fresh 40 s push and the API drowned
+        in its own retries (QA follow-up). Healing now belongs to saves (which queue the
+        mirror) and to the explicit Send to Suno Sync action.
         """
         project = await self._pool.fetchrow(
             "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -3601,11 +3603,6 @@ class WebMusicService:
         if project is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         view = await self._studio_sync_request(str(user_id), str(project_id), "refresh")
-        if view is None or not view.get("suno_project_id"):
-            document = self._studio_sync_document(project)
-            if document is not None and self._studio_sync_endpoint() is not None:
-                await self._studio_sync_request(str(user_id), str(project_id), "enqueue", document)
-                view = await self._studio_sync_request(str(user_id), str(project_id), "refresh")
         return view or {
             "status": "pending",
             "suno_project_id": None,

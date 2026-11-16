@@ -854,11 +854,9 @@ test("the convolution card loads an impulse response from the library", async ({
     .click();
 
   const slot = page.locator(".sp-slot").first();
-  await expect(slot.getByRole("button", { name: "Impulse response" })).toContainText(
-    "No impulse response"
-  );
+  await expect(slot.getByRole("button", { name: "Impulse response" })).toContainText("NO ASSET LOADED");
   await expect(slot.getByRole("slider", { name: "Gain" })).toHaveValue("0");
-  await expect(slot.locator(".sp-ir")).toHaveAttribute("aria-label", "No impulse response");
+  await expect(slot.locator(".sp-ir")).toHaveAttribute("aria-label", "No asset loaded");
 
   await slot.getByRole("button", { name: "Impulse response" }).click();
   const menu = page.getByRole("menu", { name: "Impulse responses" });

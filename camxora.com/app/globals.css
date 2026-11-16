@@ -5493,3 +5493,6 @@ html{color-scheme:dark}
 .se-shortcut-group h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.55;margin:10px 0 4px}
 
 .se-projects-dialog h2{font-size:18px}
+
+.se-audio-modes button{justify-content:flex-start;width:100%;height:34px;padding:0 10px;gap:8px}
+.se-audio-body[hidden]{display:none}

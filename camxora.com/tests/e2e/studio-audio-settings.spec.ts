@@ -89,6 +89,12 @@ test("the clip editor persists volume, loop, reverse, pitch and speed", async ({
   // The panel reads its own state back, not just the document.
   await expect(editor.getByText("-6.0 dB")).toBeVisible();
   await expect(editor.getByText("200%")).toBeVisible();
+
+  // S30 header collapse (B10): the body hides and comes back.
+  await editor.getByRole("button", { name: "Collapse clip settings" }).click();
+  await expect(editor.locator(".se-audio-body")).toBeHidden();
+  await editor.getByRole("button", { name: "Expand clip settings" }).click();
+  await expect(editor.locator(".se-audio-body")).toBeVisible();
 });
 
 test("a volume trim reaches the exported mix", async ({ page }) => {

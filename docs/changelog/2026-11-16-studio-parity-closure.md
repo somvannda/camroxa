@@ -126,7 +126,26 @@ Each entry names the ledger row it closes and the test that pins it.
 - Remaining B6 slice: the captured like/dislike/overflow cluster and the rail header sitting
   in the top bar. Both need the like API wired into the rail, so they are separate work.
 
+### B9 — plugin catalogue
+
+- The captured **…** in the catalogue header now opens a **Catalogue options** menu with the one
+  real action it can offer: **Create new plugin** (closes the catalogue, opens the designer).
+- The empty impulse slot reads **NO ASSET LOADED** as captured; the corpus transcription said
+  “No impulse response”, so the list was corrected from S44 (same rule as “Download WAV”).
+- Stereo Utility gets its own preview trace instead of the flat fallback.
+
+### B10 (part 1) — Clip Settings
+
+- The header has the captured **collapse** control: it hides the body and comes back.
+- Stretch modes render as the captured **stacked rows** rather than three inline pills.
+
+### Follow-up — mirror refresh no longer re-arms itself
+
+- `refresh_studio_project` re-enqueued every unlinked project on every poll; with a mirror that
+  cannot link, each editor tick started a 90 s push (seen at 41–43 s per request). Refresh now
+  reports the pending state; healing belongs to saves and the explicit Send to Suno Sync.
+- Test: `test_refresh_does_not_enqueue_an_unlinked_project` asserts exactly one `refresh` call.
+
 ## Open in the ledger
 
-B6 remainder (like/overflow cluster, header in the top bar) · B9 plugin catalog · B10 MIDI/clip
-editor polish · the mirror enqueue backoff.
+B6 remainder (like/overflow cluster, header in the top bar) · B10 remainder (MIDI overview strip).
