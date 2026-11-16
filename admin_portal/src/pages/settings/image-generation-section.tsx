@@ -18,8 +18,14 @@ const SETTING_KEY = 'thumbnailReferenceMode';
 
 const MODE_OPTIONS = [
   {
+    value: 'background_text',
+    label: 'AI text on background (recommended)',
+    description:
+      'Send the generated background to the image model and ask it to add the exact thumbnail text. The background is preserved and the model renders the typography.',
+  },
+  {
     value: 'composite',
-    label: 'Composite (python_app style)',
+    label: 'Composite (legacy)',
     description:
       'Style sample in corner box → AI typography on black → composite onto generated background.',
   },
@@ -45,10 +51,10 @@ export function ImageGenerationSection() {
   const upsertSetting = useUpsertSetting();
   const settings = data?.settings ?? [];
 
-  const [mode, setMode] = useState('composite');
+  const [mode, setMode] = useState('background_text');
 
   useEffect(() => {
-    setMode(readSettingValue(settings, SETTING_KEY, 'composite'));
+    setMode(readSettingValue(settings, SETTING_KEY, 'background_text'));
   }, [settings]);
 
   const handleSave = () => {
