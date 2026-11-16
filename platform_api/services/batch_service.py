@@ -746,13 +746,27 @@ class BatchService:
         if self._normalize_image_source_mode(settings) == "manual":
             return None
 
+        thumbnail_mode = normalize_thumbnail_reference_mode(
+            str(settings.get("thumbnailReferenceMode", "background_text") or "background_text")
+        )
         kinds: set[ImageKind] = set()
         for profile_id in profile_ids:
             profile = await self._profile_repo.get_by_id(profile_id)
             if profile is None:
                 continue
             image_config = getattr(profile, "image_config", None) or {}
-            kinds.update(self._resolve_profile_image_kinds(image_config))
+            profile_kinds = set(self._resolve_profile_image_kinds(image_config))
+            if (
+                ImageKind.THUMBNAIL in profile_kinds
+                and ImageKind.BACKGROUND not in profile_kinds
+                and thumbnail_mode == "background_text"
+            ):
+                return (
+                    "Thumbnail: AI text on background needs a generated background. "
+                    "Switch this channel to Background + Thumbnail, or set Thumbnail "
+                    "generation to Composite / User Provided."
+                )
+            kinds.update(profile_kinds)
         if not kinds:
             return None
 
@@ -765,9 +779,6 @@ class BatchService:
                 ):
                     return empty_prompt_library_message(kind)
 
-        thumbnail_mode = normalize_thumbnail_reference_mode(
-            str(settings.get("thumbnailReferenceMode", "background_text") or "background_text")
-        )
         if (
             ImageKind.THUMBNAIL in kinds
             and thumbnail_mode == "background_text"
@@ -5950,6 +5961,16 @@ class BatchService:
                 profile_prompt = image_config.get("thumbnail_prompt", "")
                 input_image_path = None
                 if thumbnail_mode == "background_text":
+                    if background_job_id is None:
+                        raise ValidationError(
+                            "Thumbnail: AI text on background needs a generated background. "
+                            "Switch this channel to Background + Thumbnail, or set Thumbnail "
+                            "generation to Composite / User Provided.",
+                            details={
+                                "profile_id": str(profile_id),
+                                "channel_role": channel_role.value,
+                            },
+                        )
                     style_reference_path = None
                 else:
                     style_reference_path = await self._resolve_sample_reference_path(
