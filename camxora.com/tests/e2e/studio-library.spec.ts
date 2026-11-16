@@ -139,16 +139,17 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
   const library = page.getByRole("complementary", { name: "Library" });
+  const toolbar = library.getByRole("toolbar", { name: "Song filters" });
   await library.getByRole("button", { name: "All Songs" }).click();
 
   // The captured toolbar: filter / New / thumbs-up / In Project / Stems.
-  await expect(library.getByRole("button", { name: "Filter songs" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Filter songs" })).toBeVisible();
   await expect(library.getByLabel("Liked only")).toBeVisible();
-  await expect(library.getByRole("button", { name: "Stems" })).toBeEnabled();
+  await expect(toolbar.getByRole("button", { name: "Stems", exact: true })).toBeEnabled();
   await expect(library.locator(".se-library-head strong")).toHaveText("Library");
 
-  await library.getByRole("button", { name: "In Project" }).click();
-  await expect(library.getByRole("button", { name: "In Project" })).toHaveAttribute(
+  await toolbar.getByRole("button", { name: "In Project" }).click();
+  await expect(toolbar.getByRole("button", { name: "In Project" })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
@@ -161,14 +162,14 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
     )
     .toBeGreaterThan(0);
 
-  await library.getByRole("button", { name: "In Project" }).click();
-  await expect(library.getByRole("button", { name: "In Project" })).toHaveAttribute(
+  await toolbar.getByRole("button", { name: "In Project" }).click();
+  await expect(toolbar.getByRole("button", { name: "In Project" })).toHaveAttribute(
     "aria-pressed",
     "false"
   );
 
   // The funnel opens the captured filter menu.
-  await library.getByRole("button", { name: "Filter songs" }).click();
+  await toolbar.getByRole("button", { name: "Filter songs" }).click();
   const filterMenu = library.getByRole("menu", { name: "Filter songs" });
   await expect(filterMenu.getByRole("menuitemradio")).toHaveCount(3);
   await filterMenu.getByRole("menuitemradio", { name: "Liked" }).click();
@@ -176,7 +177,7 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
   await library.getByLabel("Liked only").click();
 
   // + New leaves the editor for the generator.
-  await library.getByRole("button", { name: "New" }).click();
+  await toolbar.getByRole("button", { name: "New" }).click();
   await page.waitForURL(/\/create/);
 });
 

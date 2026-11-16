@@ -48,7 +48,10 @@ test("the Stems tab lists a separated result and places a stem", async ({ page }
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
   const library = page.getByRole("complementary", { name: "Library" });
-  await library.getByRole("button", { name: "Stems" }).first().click();
+  await library
+    .getByRole("group", { name: "Library filters" })
+    .getByRole("button", { name: "Stems", exact: true })
+    .click();
 
   await expect(library.getByText(/vocals/i).first()).toBeVisible();
   await expect(library.getByText(/drums/i).first()).toBeVisible();
