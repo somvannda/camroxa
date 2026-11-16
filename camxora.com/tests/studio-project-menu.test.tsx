@@ -331,8 +331,10 @@ describe("StudioProjectMenu sharing", () => {
 
     await user.click(screen.getByRole("button", { name: "Copy Link" }));
     expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
-    // user-event owns the clipboard stub, so read back what the component wrote.
-    expect(await navigator.clipboard.readText()).toBe(link.value);
+    // The field shows the relative path; the clipboard gets the absolute URL.
+    expect(await navigator.clipboard.readText()).toBe(
+      `${window.location.origin}${link.value}`
+    );
 
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("dialog")).toBeNull();

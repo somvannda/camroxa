@@ -14,6 +14,8 @@ import { getPlugin } from "@/lib/studio-plugins";
 export type StudioFooterProps = {
   chain: string[];
   hasTrack: boolean;
+  /** Opens the master chain so the footer plus is never a dead control. */
+  onAddChainEffect?: () => void;
   loop: boolean;
   onLoop: () => void;
   onZoomOut: () => void;
@@ -40,6 +42,7 @@ export function StudioFooter(props: StudioFooterProps) {
   const {
     chain,
     hasTrack,
+  onAddChainEffect,
     loop,
     onLoop,
     onZoomOut,
@@ -119,12 +122,13 @@ export function StudioFooter(props: StudioFooterProps) {
         <button
           type="button"
           className={`se-chain-add${chain.length > 0 ? " compact" : ""}`}
-          disabled
-          aria-label="Add Track Effects (use the dock above)"
-          title="Effects are added in the dock above the footer"
+          disabled={!onAddChainEffect}
+          aria-label="Add master effect"
+          title="Add an effect to the master chain"
+          onClick={() => onAddChainEffect?.()}
         >
           <Icon name="fa-plus" />
-          {chain.length === 0 ? "Add Track Effects" : null}
+          {chain.length === 0 ? "Add master effect" : null}
         </button>
       </div>
 

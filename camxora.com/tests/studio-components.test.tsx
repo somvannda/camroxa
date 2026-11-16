@@ -983,10 +983,33 @@ describe("StudioFooter", () => {
         onWhatsThis={noop}
       />
     );
-    expect(screen.getByRole("button", { name: /Add Track Effects/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Add master effect/ })).toBeTruthy();
     await user.click(screen.getByLabelText("Zoom in"));
     expect(onZoomIn).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("All projects").getAttribute("href")).toBe("/studio");
+  });
+
+  it("shows the master chain and offers a live add control", async () => {
+    const user = userEvent.setup();
+    const onAddChainEffect = vi.fn();
+    render(
+      <StudioFooter
+        chain={["compressor", "eq"]}
+        hasTrack
+        onAddChainEffect={onAddChainEffect}
+        loop={false}
+        onLoop={noop}
+        onZoomOut={noop}
+        onZoomFit={noop}
+        onZoomIn={noop}
+        onSearch={noop}
+        onToggleLibrary={noop}
+        whatsThis={false}
+        onWhatsThis={noop}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Add master effect" }));
+    expect(onAddChainEffect).toHaveBeenCalledOnce();
   });
 
   it("keeps both chips when the same plugin sits in the chain twice", () => {

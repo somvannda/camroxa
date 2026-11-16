@@ -197,7 +197,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           title="Jump the playhead to the song start or beat 1 — press again for the other"
           data-help="back-to-start"
         >
-          <Icon name="fa-backward-step" />
+          <Icon name="fa-backward" />
         </button>
         <div className="se-record-wrap">
           <button

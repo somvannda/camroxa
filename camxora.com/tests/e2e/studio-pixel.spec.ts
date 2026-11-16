@@ -876,7 +876,7 @@ test("the convolution card loads an impulse response from the library", async ({
   );
 });
 
-test("a track can hold the same plugin twice without duplicate React keys", async ({ page }) => {
+test("a chain can hold the same plugin twice without duplicate React keys", async ({ page }) => {
   test.setTimeout(120_000);
   const warnings: string[] = [];
   page.on("console", (message) => {
@@ -886,21 +886,13 @@ test("a track can hold the same plugin twice without duplicate React keys", asyn
   });
   await page.setViewportSize(REFERENCE_VIEWPORT);
   await createStudioProject(page, { title: "Pixel duplicate chain" });
-  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  // The footer strip shows the master chain (S26), so that is the chain to duplicate.
+  await page.getByRole("button", { name: "Main", exact: true }).click();
+  const master = page.getByRole("region", { name: "Master chain" });
+  await master.getByRole("button", { name: "Add EQ" }).click();
+  await master.getByRole("button", { name: "Add EQ" }).click();
 
-  await page.locator(".sp-add-inline").click();
-  await page.getByRole("dialog", { name: "Add a track plugin" })
-    .getByRole("button", { name: /^Convolution/ })
-    .first()
-    .click();
-
-  await page.locator(".sp-dock").getByRole("button", { name: "Add effect" }).click();
-  await page.getByRole("dialog", { name: "Add a track plugin" })
-    .getByRole("button", { name: /^Convolution/ })
-    .first()
-    .click();
-
-  await expect(page.locator(".sp-slot")).toHaveCount(2);
+  await expect(master.locator(".sp-slot")).toHaveCount(2);
   await expect(page.locator(".se-chain-chip")).toHaveCount(2);
   expect(warnings).toEqual([]);
 });

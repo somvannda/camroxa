@@ -132,10 +132,13 @@ test("share creates a view link that resolves without the editor", async ({ page
 
   const dialog = page.getByRole("dialog", { name: "Share project" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(/view this project and make their own editable copy/)).toBeVisible();
+  await expect(dialog.getByText(/view this project and create their own editable copy/)).toBeVisible();
 
   const link = dialog.getByLabel("Share link");
-  await expect(link).toHaveValue(/\/studio\/shared\/.+$/);
+  await expect(link).toHaveValue(/^\/studio\/shared\/.+$/);
+  // The dialog must not print a dev origin; the clipboard action upgrades it to absolute.
+  await expect(dialog).not.toContainText("http://localhost");
+  await expect(dialog).not.toContainText("https://localhost");
 
   // The link is view + fork: the public share endpoint must answer for its token.
   const href = await link.inputValue();

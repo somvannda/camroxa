@@ -72,4 +72,10 @@ describe("buildSeedFromSong", () => {
   it("honours an explicit tempo", () => {
     expect(buildSeedFromSong(song(), { bpm: 140 }).bpm).toBe(140);
   });
+
+  it("seeds the captured master rack instead of an empty dock", () => {
+    const seed = buildSeedFromSong(song());
+    const chain = (seed.data as { masterChain?: Array<{ type?: string }> }).masterChain ?? [];
+    expect(chain.map((entry) => entry.type)).toEqual(["compressor", "eq", "eq"]);
+  });
 });

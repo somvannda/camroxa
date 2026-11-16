@@ -7328,11 +7328,11 @@ export function StudioEditorShell() {
       ) : null}
 
       <StudioFooter
-        chain={
-          masterSelected
-            ? masterChain.map((entry) => entry.type ?? "")
-            : (selectedTrack ? chains[selectedTrack] : [])?.map((entry) => entry.pluginId) ?? []
-        }
+        chain={masterChain.map((entry) => entry.type ?? "")}
+        onAddChainEffect={() => {
+          setMasterSelected(true);
+          setBottomPanelOpen(true);
+        }}
         hasTrack={masterSelected || Boolean(selectedTrack)}
         loop={loop}
         onLoop={() => setLoop((value) => !value)}

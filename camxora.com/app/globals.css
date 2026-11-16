@@ -4613,8 +4613,9 @@ html{color-scheme:dark}
 /* Studio editor shell (reference layout)                              */
 /* ------------------------------------------------------------------ */
 .se-shell{display:flex;flex-direction:column;height:100dvh;background:#111111;color:#f7f4ef;font-size:13px;overflow:hidden}
-.se-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;height:52px;flex:none;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.08);background:#0a0a0a;position:relative;z-index:30}
+.se-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;height:52px;flex:none;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.08);background:#0a0a0a;position:relative;z-index:30}
 .se-head-left,.se-head-center,.se-head-right{display:flex;align-items:center;gap:10px;min-width:0}
+.se-head-center{justify-content:flex-start}
 .se-head-right{justify-content:flex-end}
 .se-head-group{display:flex;align-items:center;height:36px;border-radius:999px;background:#1c1c1e;overflow:hidden;flex:none}
 .se-head .se-icon{width:30px;height:36px;border-radius:0}

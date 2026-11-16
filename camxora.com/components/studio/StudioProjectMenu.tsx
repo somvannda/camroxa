@@ -137,8 +137,18 @@ export function StudioProjectMenu({
   const importRef = useRef<HTMLInputElement | null>(null);
 
   const label = title || UNTITLED;
+  /** The dialog shows the relative path; the clipboard gets the absolute URL. */
+  const sharePath = share?.path ?? "";
   const shareUrl =
     share && typeof window !== "undefined" ? `${window.location.origin}${share.path}` : "";
+  const shareExpiry = (() => {
+    const raw = share?.expires_at;
+    if (!raw) return "";
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime())
+      ? ""
+      : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  })();
 
   useEffect(() => {
     if (!open) return;
@@ -971,23 +981,24 @@ export function StudioProjectMenu({
               <>
                 <h2>Share “{shareName}”</h2>
                 <p className="se-dialog-lead">
-                  Anyone with the link can view this project and make their own editable copy.
+                  Anyone with the link can view this project and create their own editable copy.
                 </p>
                 <p className="se-dialog-note">
-                  Your project stays as it is — they cannot edit or change your version.
+                  Your original project will remain unchanged — others can&apos;t edit or affect
+                  your version.
                 </p>
                 {share ? (
                   <>
                     <input
                       className="se-pill"
-                      value={shareUrl}
+                      value={sharePath}
                       readOnly
                       aria-label="Share link"
                       onFocus={(event) => event.currentTarget.select()}
                     />
                     <p className="se-dialog-note">
-                      The link is view-and-copy only; it is not live collaboration. It expires in 7
-                      days.
+                      The link is view-and-copy only; it is not live collaboration.
+                      {shareExpiry ? ` It expires on ${shareExpiry}.` : ""}
                     </p>
                   </>
                 ) : (
