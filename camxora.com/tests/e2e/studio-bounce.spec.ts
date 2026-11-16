@@ -26,16 +26,19 @@ test("the track menu bounces that track to a RIFF mixdown", async ({ page }) => 
   await page.getByLabel("Options for Track 1").click();
   // The API may accept the render (placed as a track) or refuse and download it; this
   // spec covers both behaviours so it does not depend on storage being configured.
-  const download = page.waitForEvent("download", { timeout: 8000 }).catch(() => null);
+  // Race the two outcomes rather than assuming the download lands within a fixed
+  // window: the offline render plus the upload can be slow under load.
+  const placedTrack = page.locator(".se-tracks").getByText("Track 1 (bounced)", { exact: true });
+  const downloadPromise = page.waitForEvent("download", { timeout: 90_000 }).catch(() => null);
   await page.getByRole("menuitem", { name: "Bounce track" }).click();
+  const { download: wav } = await Promise.race([
+    downloadPromise.then((download) => ({ download })),
+    placedTrack.waitFor({ state: "visible", timeout: 90_000 }).then(() => ({ download: null })),
+  ]);
 
-  const wav = await download;
   if (!wav) {
-    // Storage accepted the render: it lands as a new track (the toast may already have
-    // expired while waiting for the download event).
-    await expect(
-      page.locator(".se-tracks").getByText("Track 1 (bounced)", { exact: true })
-    ).toBeVisible();
+    // Storage accepted the render: it lands as a new track.
+    await expect(placedTrack).toBeVisible();
     return;
   }
 
