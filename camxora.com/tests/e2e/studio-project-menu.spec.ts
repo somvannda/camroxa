@@ -63,11 +63,12 @@ test("send to Suno sync reports the mirror's answer", async ({ page }) => {
 
   const dialog = page.getByRole("dialog", { name: "Suno sync" });
   await expect(dialog).toBeVisible();
-  // The sandbox API runs with the mirror unconfigured, so the honest answer is the
-  // error; a configured server answers with the push status. Either must appear.
+  // With the mirror unconfigured the server answers immediately with the honest
+  // error; with a configured mirror the first push creates the remote Suno project,
+  // which takes tens of seconds — the dialog shows "Pushing…" until it lands.
   await expect(
     dialog.getByRole("status").or(dialog.locator(".se-dialog-error"))
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 60_000 });
 
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);

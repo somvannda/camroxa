@@ -42,7 +42,9 @@ test("a deleted project lands in Recently Deleted and can be restored", async ({
 
   await modal.getByRole("tab", { name: "Recently Deleted" }).click();
   const restore = modal.getByRole("button", { name: `Restore ${title}` });
-  await expect(restore).toBeVisible();
+  // The deleted list is a real query over an ever-growing sandbox; under load it has
+  // answered in 10.5 s, so give the row a window that still catches a hang.
+  await expect(restore).toBeVisible({ timeout: 30_000 });
   await restore.click();
 
   // Restore returns to the Projects tab with the project listed and readable again.
