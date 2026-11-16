@@ -172,11 +172,12 @@ async def update_image_prompt(
     request: ImagePromptStyleUpdateRequest,
 ) -> ImagePromptStyleItem:
     kind = _validate_kind(request.kind) if request.kind else None
-    text_template = (
-        _validate_text_template(kind or "thumbnail", request.text_template)
-        if request.text_template is not None
-        else None
-    )
+    if kind == "background":
+        text_template = ""
+    elif request.text_template is not None:
+        text_template = _validate_text_template(kind or "thumbnail", request.text_template)
+    else:
+        text_template = None
     try:
         style = await repo.update(
             style_id,
