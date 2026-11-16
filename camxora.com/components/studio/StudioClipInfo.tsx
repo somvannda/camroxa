@@ -45,6 +45,11 @@ export type StudioClipInfoProps = {
   /** Generate a variation from the source song's style (S37 Remix). */
   onRemix?: () => void;
   remixing?: boolean;
+  /** The source song's like state for this clip's version (S27 cluster). */
+  liked?: boolean;
+  disliked?: boolean;
+  onToggleLike?: (next: boolean) => void;
+  onToggleDislike?: (next: boolean) => void;
   onClose: () => void;
 };
 
@@ -73,6 +78,10 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
     onRequestStems,
     onRemix,
     remixing = false,
+    liked = false,
+    disliked = false,
+    onToggleLike,
+    onToggleDislike,
     onClose,
   } = props;
   // Ready assets reject the raw stream URL (encrypted-player guard); the download
@@ -137,6 +146,28 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
           <Icon name="fa-chevron-left" />
         </button>
         <strong>{clip.title || "Clip"}</strong>
+        <div className="se-clip-actions">
+          <button
+            type="button"
+            className={`se-icon${liked ? " on" : ""}`}
+            aria-label={liked ? "Unlike song" : "Like song"}
+            aria-pressed={liked}
+            disabled={!onToggleLike}
+            onClick={() => onToggleLike?.(!liked)}
+          >
+            <Icon name="fa-heart" />
+          </button>
+          <button
+            type="button"
+            className={`se-icon${disliked ? " on" : ""}`}
+            aria-label={disliked ? "Remove dislike" : "Dislike song"}
+            aria-pressed={disliked}
+            disabled={!onToggleDislike}
+            onClick={() => onToggleDislike?.(!disliked)}
+          >
+            <Icon name="fa-thumbs-down" />
+          </button>
+        </div>
       </div>
 
       <div className="se-inspector-body">

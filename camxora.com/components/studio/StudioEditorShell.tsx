@@ -1631,6 +1631,12 @@ export function StudioEditorShell() {
   }
 
   /** Like/unlike the row's primary clip, updating the Liked filter optimistically. */
+  /** Likes key the primary playable clip, so the rail must read the same key. */
+  function sourceLikeKey(song: WebMusicGeneration): string {
+    const primary = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
+    return `${song.id}:${primary?.variant ?? ""}`;
+  }
+
   async function toggleSongLike(song: WebMusicGeneration, nextLiked: boolean) {
     const clip = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
     if (!clip) return;

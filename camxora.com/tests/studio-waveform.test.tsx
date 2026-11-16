@@ -10,6 +10,9 @@ vi.mock("@/lib/studio-peaks", async () => {
 
 import { Waveform } from "@/components/studio/Waveform";
 
+// jsdom has no 2d context; stub it so the component takes its no-context path quietly.
+HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+
 /**
  * QA C1: a failed fetch/decode used to leave an invisible canvas, so timeline clips
  * looked like flat colour blocks with no waveform. The canvas must always say which

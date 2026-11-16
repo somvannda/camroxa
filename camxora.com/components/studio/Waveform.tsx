@@ -47,21 +47,15 @@ export function Waveform({ url, width, height, className, label, color = "#52d17
       const ctx = canvas?.getContext("2d");
       const w = canvas?.width ?? width;
       const h = canvas?.height ?? height;
-      if (ctx) {
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = color;
-      }
       if (!peaks || peaks.length === 0) {
-        // Say "the audio is here, its shape is unavailable" rather than rendering nothing.
-        if (ctx) {
-          ctx.globalAlpha = 0.35;
-          ctx.fillRect(0, Math.max(0, Math.round(h / 2)), w, 1);
-          ctx.globalAlpha = 1;
-        }
+        // The baseline is CSS (see [data-waveform="fallback"]); do not touch the canvas,
+        // which also keeps jsdom from logging its not-implemented 2d context.
         setState("fallback");
         return;
       }
       if (ctx) {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = color;
         for (let x = 0; x < w; x += 1) {
           const peak = peaks[Math.min(peaks.length - 1, Math.floor((x / w) * peaks.length))] ?? 0;
           const bar = Math.max(1, peak * h * 0.9);

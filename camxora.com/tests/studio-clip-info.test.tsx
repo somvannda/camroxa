@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import type { WebMusicGeneration } from "@/lib/library-api";
 import { StudioClipInfo } from "@/components/studio/StudioClipInfo";
@@ -46,6 +47,30 @@ describe("StudioClipInfo artwork", () => {
     const img = container.querySelector("img.se-clip-art");
     expect(img?.getAttribute("src")).toBe("/art/cover.png");
     expect(img?.getAttribute("alt")).toBe("");
+  });
+
+  it("offers like and dislike on the source version", async () => {
+    const onToggleLike = vi.fn();
+    const onToggleDislike = vi.fn();
+    const { container } = render(
+      <StudioClipInfo
+        width={360}
+        clip={clip}
+        source={source()}
+        stems={null}
+        onRequestStems={vi.fn()}
+        onClose={vi.fn()}
+        liked
+        onToggleLike={onToggleLike}
+        onToggleDislike={onToggleDislike}
+      />
+    );
+    const unlike = within(container).getByRole("button", { name: "Unlike song" });
+    expect(unlike.getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(unlike);
+    expect(onToggleLike).toHaveBeenCalledWith(false);
+    await userEvent.click(within(container).getByRole("button", { name: "Dislike song" }));
+    expect(onToggleDislike).toHaveBeenCalledWith(true);
   });
 
   it("falls back to the clip colour when the song has no artwork", () => {

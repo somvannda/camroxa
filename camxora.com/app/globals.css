@@ -5496,3 +5496,8 @@ html{color-scheme:dark}
 
 .se-audio-modes button{justify-content:flex-start;width:100%;height:34px;padding:0 10px;gap:8px}
 .se-audio-body[hidden]{display:none}
+
+.se-clip-actions{margin-left:auto;display:flex;align-items:center;gap:2px}
+
+canvas[data-waveform="fallback"]{background:linear-gradient(hsl(var(--border)),hsl(var(--border))) center / 100% 1px no-repeat;opacity:.5}
+canvas[data-waveform="pending"]{background:transparent}
