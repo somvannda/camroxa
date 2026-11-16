@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { createStudioProject } from "./studio-fixture";
 
@@ -14,6 +14,20 @@ import { createStudioProject } from "./studio-fixture";
  * newest *other* project from the same API window the drawer uses (50) instead of
  * assuming a project it created is still inside the first page.
  */
+
+/**
+ * The song list is the signed-in account's generations. A freshly cleaned sandbox has
+ * none, and these two specs are integration checks over real rows, so they say so
+ * instead of failing on an empty corpus.
+ */
+async function hasCorpus(page: Page): Promise<boolean> {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/v3/web-music/generations?limit=1");
+    if (!response.ok) return false;
+    const data = (await response.json()) as { items?: unknown[] };
+    return (data.items ?? []).length > 0;
+  });
+}
 
 test("library is a two-level drawer with tiles, sections and search", async ({ page }) => {
   test.setTimeout(120_000);
@@ -184,6 +198,7 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
 test("adding a library song places a clip on the lane", async ({ page }) => {
   test.setTimeout(120_000);
   await createStudioProject(page, { title: `Add ${Math.random().toString(36).slice(2, 6)}` });
+  test.skip(!(await hasCorpus(page)), "the sandbox corpus has no songs to add");
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
   const library = page.getByRole("complementary", { name: "Library" });
@@ -206,6 +221,7 @@ test("double-clicking a song opens its detail rail and Back returns to the list"
 }) => {
   test.setTimeout(120_000);
   await createStudioProject(page, { title: `Detail ${Math.random().toString(36).slice(2, 6)}` });
+  test.skip(!(await hasCorpus(page)), "the sandbox corpus has no songs to open");
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
   const library = page.getByRole("complementary", { name: "Library" });

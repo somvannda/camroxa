@@ -2,6 +2,35 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-16 — stack rebuilt, storage-backed uploads re-verified
+
+- **Recovery:** a host restart wiped this worktree (it is not durable). Rebuilt from
+  `origin/main` `5e2407d6`; the canonical checkout `G:\Developments\Projects\Camxora` still
+  holds the gitignored env files, so copy them in after every rebuild:
+  `platform_api/.env`, `musicapi/.env`, `camxora.com/.env.local` (then set
+  `PLATFORM_API_URL=http://localhost:8100` and `NEXT_PUBLIC_TURNSTILE_DISABLED=1`).
+- **Full local stack recipe that works today** (all verified):
+  - moto `:9000` (`python -m moto.server -p 9000`) + bucket `camxora-studio`;
+  - platform API `:8100` with `PLATFORM_DATABASE_URL=…camxora_pfm_sandbox`,
+    `PLATFORM_STUDIO_INTERNAL_TOKEN` (the value from `musicapi/.env`),
+    `PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003`, and the five
+    `PLATFORM_STREAMING_B2_*` moto variables from `PROJECT_BLOCKERS.md` B-006;
+  - worker: `python scripts/dev/run-platform-worker.py` with the same env;
+  - musicapi `:4003` (`npm run serve`), web `:3103` (`npm run dev`).
+- **Readiness after that setup:** tables ✓, pricing ✓, storage ✓, internal token ✓,
+  suno API base ✓, musicapi ✓ (1 account). Only `suno_callback_base_url` is ✗ — it needs a
+  public tunnel, so live generation stays unavailable locally, by design.
+- **Storage-backed paths re-verified:** `studio-bounce.spec.ts` (bucket case) and
+  `studio-record.spec.ts` with `STUDIO_EXPECT_UPLOADS=1` and
+  `STUDIO_UPLOAD_PROXY_URL=http://127.0.0.1:8100` → 5/5 passed; moto held the two bounce
+  WAVs and the recorded take.
+- **Test robustness:** the shared sandbox corpus now contains songs whose titles start with
+  “Stems”, which broke a name-only locator in `studio-library.spec.ts` (19 matches). Chips
+  are now resolved inside `role="toolbar"` “Song filters”; commit `89c75be2`.
+- **Watch out:** a `next dev` started from a tool shell can die when that shell's process
+  tree is reaped. `scripts/dev/studio-stack.ps1 -Status` is the quick check; restart web
+  last.
+
 ## Update 2026-11-15 — clone definition, gate and full capture coverage
 
 - **“1:1” is now a gate, not a claim.** `docs/studio/CLONE_DEFINITION.md` defines the seven
