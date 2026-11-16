@@ -143,3 +143,25 @@ def test_build_profile_payload_defaults_folder_from_name() -> None:
     draft.folder_name = ""
     payload = build_profile_payload(draft, profile)
     assert payload["folder_name"] == "beattok-remixes"
+
+def test_build_system_settings_patch_writes_prompt_source_and_thumbnail_mode() -> None:
+    from shared.lib.settings_workspace import SystemSettingsDraft, build_system_settings_draft
+
+    current = {
+        "imageBackgroundPromptSource": "custom",
+        "imageThumbnailPromptSource": "custom",
+        "thumbnailReferenceMode": "composite",
+    }
+    system = build_system_settings_draft(current)
+    updated = SystemSettingsDraft(
+        **{
+            **system.__dict__,
+            "image_background_prompt_source": "admin_library",
+            "image_thumbnail_prompt_source": "admin_library",
+            "thumbnail_reference_mode": "background_text",
+        }
+    )
+    patch = build_system_settings_patch(updated, current)
+    assert patch["imageBackgroundPromptSource"] == "admin_library"
+    assert patch["imageThumbnailPromptSource"] == "admin_library"
+    assert patch["thumbnailReferenceMode"] == "background_text"
