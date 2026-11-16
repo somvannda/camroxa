@@ -146,11 +146,17 @@ async def create_image_prompt(
 ) -> ImagePromptStyleItem:
     kind = _validate_kind(request.kind)
     text_template = _validate_text_template(kind, request.text_template)
+    prompt_text = request.prompt_text.strip()
+    name = request.name.strip()
+    if not prompt_text:
+        raise HTTPException(status_code=422, detail="prompt_text cannot be blank.")
+    if not name:
+        raise HTTPException(status_code=422, detail="name cannot be blank.")
     try:
         style = await repo.create(
             kind=kind,
-            name=request.name.strip(),
-            prompt_text=request.prompt_text.strip(),
+            name=name,
+            prompt_text=prompt_text,
             text_template=text_template,
             is_active=request.is_active,
             sort_order=int(request.sort_order or 0),
@@ -178,11 +184,17 @@ async def update_image_prompt(
         text_template = _validate_text_template(kind or "thumbnail", request.text_template)
     else:
         text_template = None
+    if request.name is not None and not request.name.strip():
+        raise HTTPException(status_code=422, detail="name cannot be blank.")
+    if request.prompt_text is not None and not request.prompt_text.strip():
+        raise HTTPException(status_code=422, detail="prompt_text cannot be blank.")
     try:
         style = await repo.update(
             style_id,
             kind=kind,
-            name=request.name.strip() if request.name is not None else None,
+            name=(
+                request.name.strip() if request.name is not None else None
+            ),
             prompt_text=(
                 request.prompt_text.strip() if request.prompt_text is not None else None
             ),
