@@ -14,13 +14,16 @@ A build is clone-complete only when all seven hold:
 
 1. **Coverage.** Every reference screen in `reference/PAIRING.json` is satisfied by either a
    paired capture in `docs/studio/compare/`, a named automated spec, or an explicit
-   `negative` marker (matching Suno means the surface is absent here too).
+   `negative` marker (matching Suno means the surface is absent here too). A named spec must
+   contain at least one runnable declaration — a file that exists but is entirely skipped is
+   not evidence.
 2. **Geometry.** `reference/METRICS.json` is byte-identical to
    `camxora.com/public/studio-metrics.json`, every metric id is asserted by
    `tests/e2e/studio-pixel.spec.ts`, and paired screens are diffed per region at ±2 px.
 3. **Content.** Every functional string in `reference/FUNCTIONAL_STRINGS.json` exists in the
-   shipped UI, and every captured menu row exists in the same order (YouTube Tutorials is
-   the one sanctioned absence).
+   shipped UI — matched against `.ts`/`.tsx`/`.css` source only, so a string that survives
+   merely in a document does not count — and every captured menu row exists in the same order
+   (YouTube Tutorials is the one sanctioned absence).
 4. **Behaviour.** Each captured interaction reproduces the reference behaviour; an addition
    may only *add* surfaces, never replace or move a captured control.
 5. **Allowed divergence.** Brand wordmark/logo, palette tokens, our own help/marketing

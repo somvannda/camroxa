@@ -48,6 +48,23 @@ None. The specifications still exercise the real API and UI where the data exist
 
 Every window stays bounded, so a genuine hang still fails.
 
+## Gate hardening (same day)
+
+`check:clone` accepted two weak signals, so rule 1 and rule 3 were softer than they claimed:
+
+- a named spec that **exists but is entirely skipped** counted as screen coverage;
+- functional strings were matched against `.md` files as well, so a document could satisfy a
+  string that the UI no longer ships.
+
+Both now fail closed:
+
+- a named spec must contain at least one runnable `test(`/`it(` declaration (`test.skip(`
+  and `it.skip(` do not count; in-body gates still do);
+- rule 3 matches `.ts`/`.tsx`/`.css` source only.
+
+Proven in both directions with a disposable probe: an entirely-skipped spec and a doc-only
+string each failed the gate with the exact message, and the real gate stays green.
+
 ## Verification
 
 - Playwright on the storage-backed stack: **178 passed / 2 skipped** (8.5 min, 2 workers).

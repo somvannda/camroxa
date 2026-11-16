@@ -72,8 +72,18 @@ for (const [id, entry] of Object.entries(pairing)) {
     speced += 1;
     const specPath = join(E2E, entry.spec);
     const inApp = join(APP, "tests", entry.spec);
-    if (!existsSync(specPath) && !existsSync(inApp)) {
+    const found = existsSync(specPath) ? specPath : existsSync(inApp) ? inApp : null;
+    if (!found) {
       problems.push(`${id} spec does not exist: ${entry.spec}`);
+    } else {
+      // A spec that exists but is entirely skipped is not evidence. Count real
+      // declarations only: `test(`/`it(` are runnable, `test.skip(`/`it.skip(` are not,
+      // and in-body gates such as test.skip(condition) still leave the declaration.
+      const specSource = readFileSync(found, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      const runnable = (specSource.match(/(^|[\s;])(it|test)\(/gm) ?? []).length;
+      if (runnable === 0) {
+        problems.push(`${id} spec has no runnable test: ${entry.spec}`);
+      }
     }
   }
   if (isNegative) {
@@ -113,7 +123,9 @@ function collectSource(dir, out = []) {
       collectSource(path, out);
       continue;
     }
-    if (/\.(tsx?|css|md)$/.test(name)) out.push(readFileSync(path, "utf8"));
+    // Shipped source only: a string that appears only in a markdown file (an audit,
+    // an inventory, a changelog) is not evidence that the UI ships it.
+    if (/\.(tsx?|css)$/.test(name)) out.push(readFileSync(path, "utf8"));
   }
   return out;
 }
