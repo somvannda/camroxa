@@ -59,7 +59,7 @@ export type StudioTrackPanelProps = {
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
   /** S21 "Unmute all": clears mute on hidden tracks without showing them. */
-  onMuteAllHidden: () => void;
+  onUnmuteAllHidden: () => void;
   /** ARR-027: group levels and assignment. */
   groups?: GroupMix;
   onGroupMix?: (groupId: string, value: number) => void;
@@ -148,7 +148,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onSelectMaster,
     onToggleHidden,
     onShowAllHidden,
-  onMuteAllHidden,
+  onUnmuteAllHidden,
   groups = {},
   onGroupMix,
     onToggleAllCollapsed,
@@ -644,11 +644,11 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     </button>
                   </div>
                 ))}
-                <button type="button" className="se-pill" onClick={onMuteAllHidden}>
-                  Mute all
+                <button type="button" className="se-pill" onClick={onUnmuteAllHidden}>
+                  <Icon name="fa-volume-xmark" /> Unmute all
                 </button>
                 <button type="button" className="se-pill on" onClick={onShowAllHidden}>
-                  Show All Hidden Tracks <span className="se-project-hint">shift alt H</span>
+                  <Icon name="fa-eye" /> Show All Hidden Tracks <span className="se-project-hint">shift alt H</span>
                 </button>
               </div>
             ) : null}

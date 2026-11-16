@@ -80,11 +80,12 @@ Each entry names the ledger row it closes and the test that pins it.
 - Exports/menus counted in tests were updated; the captured sequence is asserted as a
   sequence, additions as additions.
 
-### B7 — hidden-tracks popover tells the truth
+### B7 — hidden-tracks popover (partial correction)
 
-- The bulk action is **Mute all** and now actually mutes hidden tracks (it used to unmute
-  them under the wrong captured label).
-- **Show All Hidden Tracks** carries the `shift alt H` hint the binding already used.
+- The capture (S21) says **“Unmute all”**, and the action always cleared mute; C's “Mute all”
+  claim was wrong and is withdrawn. The popover now also carries the captured icons and the
+  `shift alt H` hint on **Show All Hidden Tracks**.
+- Icon-only Show/Mute row buttons remain text pills; recorded as the remaining slice.
 
 ### B12 / B13 — chrome
 
@@ -108,7 +109,24 @@ Each entry names the ledger row it closes and the test that pins it.
 - Test: `studio-record.spec.ts` records onto a track that already holds a loop and asserts
   the new clip reads **Take 1**.
 
+### B5 part 2 — clip and export menus put captured rows first
+
+- **Clip menu:** Get Stems · Download WAV · Get MIDI · Remove FX now run in capture order;
+  the transforms, Download MIDI and Add FX follow them after a separator.
+- **Export menu:** Full Song · Selected Time Range · Multitrack come first; the WAV/MP3 format
+  group, Normalise and Project (JSON) are additive rows below a separator.
+- Tests: the pixel clip-menu case asserts the captured sequence then the additive rows;
+  `studio-clip-menu.spec.ts` and `studio-export.spec.ts` stay green.
+
+### B6 (part 1) — real cover art in the clip rail
+
+- The hero renders the source version's `image_url` (preferring the version that matches the
+  clip audio) and falls back to the clip colour; before, it always drew a swatch. Tests:
+  `tests/studio-clip-info.test.tsx` covers both branches.
+- Remaining B6 slice: the captured like/dislike/overflow cluster and the rail header sitting
+  in the top bar. Both need the like API wired into the rail, so they are separate work.
+
 ## Open in the ledger
 
-B5 part 2 (clip menu and export ordering) · B6 clip info · B9 plugin catalog · B10 MIDI/clip
+B6 remainder (like/overflow cluster, header in the top bar) · B9 plugin catalog · B10 MIDI/clip
 editor polish · the mirror enqueue backoff.

@@ -2526,12 +2526,12 @@ export function StudioEditorShell() {
     }
   }
 
-  /** S21 "Mute all": mutes every hidden track, leaving it hidden. */
-  function muteAllHidden() {
-    const hiddenUnmuted = tracks.some((track) => track.hidden && !track.muted);
-    if (!hiddenUnmuted) return;
+  /** S21 "Unmute all": un-mutes every hidden track without showing them. */
+  function unmuteAllHidden() {
+    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
+    if (!hiddenMuted) return;
     commitTracks(
-      tracks.map((track) => (track.hidden && !track.muted ? { ...track, muted: true } : track))
+      tracks.map((track) => (track.hidden && track.muted ? { ...track, muted: false } : track))
     );
   }
 
@@ -5874,7 +5874,7 @@ export function StudioEditorShell() {
           onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
-          onMuteAllHidden={muteAllHidden}
+          onUnmuteAllHidden={unmuteAllHidden}
           groups={groupMix}
           onGroupMix={(groupId, value) => setGroupMix(groupId as TrackGroupId, value)}
           onToggleAllCollapsed={toggleAllCollapsed}
@@ -6632,6 +6632,47 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
+                  disabled={!clip.audioUrl}
+                  onClick={() => void downloadClipWav(clip.id)}
+                >
+                  <Icon name="fa-download" /> Download WAV
+                </button>
+                
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId}
+                  title={
+                    clip.songId
+                      ? "Transcribe this clip's audio into a MIDI track"
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => void generateMidiForClip(clip)}
+                >
+                  <Icon name="fa-music" /> Get MIDI
+                </button>
+                
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={sanitizeChain((clip as { fx?: unknown }).fx).length === 0}
+                  title={
+                    sanitizeChain((clip as { fx?: unknown }).fx).length === 0
+                      ? "This clip has no effects"
+                      : "Remove this clip's own effects"
+                  }
+                  onClick={() => {
+                    setClipFx(clip.id, []);
+                    setExportToast("Clip effects removed.");
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-xmark" /> Remove FX
+                </button>
+<div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
                   disabled={!clip.songId || Boolean(transformBusy)}
                   title={
                     clip.songId
@@ -6746,15 +6787,7 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-scissors" /> Replace…
                 </button>
-                <div className="se-clip-menu-sep" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={!clip.audioUrl}
-                  onClick={() => void downloadClipWav(clip.id)}
-                >
-                  <Icon name="fa-download" /> Download WAV
-                </button>
+                
                 <button
                   type="button"
                   role="menuitem"
@@ -6771,42 +6804,12 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!clip.songId}
-                  title={
-                    clip.songId
-                      ? "Transcribe this clip's audio into a MIDI track"
-                      : "No source generation for this clip"
-                  }
-                  onClick={() => void generateMidiForClip(clip)}
-                >
-                  <Icon name="fa-music" /> Get MIDI
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
                   onClick={() => {
                     setClipFxTarget(clip.id);
                     setClipMenu(null);
                   }}
                 >
                   <Icon name="fa-plus" /> Add FX…
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={sanitizeChain((clip as { fx?: unknown }).fx).length === 0}
-                  title={
-                    sanitizeChain((clip as { fx?: unknown }).fx).length === 0
-                      ? "This clip has no effects"
-                      : "Remove this clip's own effects"
-                  }
-                  onClick={() => {
-                    setClipFx(clip.id, []);
-                    setExportToast("Clip effects removed.");
-                    setClipMenu(null);
-                  }}
-                >
-                  <Icon name="fa-xmark" /> Remove FX
                 </button>
               </div>
             );

@@ -444,6 +444,7 @@ test("clip context menu matches the captured popover", async ({ page }) => {
   expect(info.width).toBe(163);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
+  // Captured rows first, in capture order; our additive rows follow a separator.
   expect(info.rows.map((row) => row.text)).toEqual([
     "Copy ctrl C",
     "Paste ctrl V",
@@ -460,6 +461,9 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Clip Info",
     "Clip Color",
     "Get Stems",
+    "Download WAV",
+    "Get MIDI",
+    "Remove FX",
     "Extend",
     "Cover…",
     "Remaster",
@@ -467,11 +471,8 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Instrumental…",
     "Mashup…",
     "Replace…",
-    "Download WAV",
     "Download MIDI",
-    "Get MIDI",
     "Add FX…",
-    "Remove FX",
   ]);
   expect(info.rows[0]?.hintSize).toBe("11px");
   expect(info.rows.every((row) => row.height === 38)).toBe(true);
