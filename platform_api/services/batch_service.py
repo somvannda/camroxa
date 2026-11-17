@@ -310,6 +310,7 @@ class BatchService:
         image_job_service: ImageJobService | None = None,
         image_sample_rotation: ImageSampleRotationService | None = None,
         image_prompt_library: ImagePromptLibraryService | None = None,
+        thumbnail_text_library: Any | None = None,
     ) -> None:
         self._batch_repo = batch_repo
         self._credit_service = credit_service
@@ -323,6 +324,7 @@ class BatchService:
         self._image_job_service = image_job_service
         self._image_sample_rotation = image_sample_rotation
         self._image_prompt_library = image_prompt_library
+        self._thumbnail_text_library = thumbnail_text_library
         # Background Suno-download health probe (per-user debounce/inflight).
         self._dead_download_probe_last: dict[str, float] = {}
         self._dead_download_probe_inflight: set[str] = set()
@@ -2818,6 +2820,13 @@ class BatchService:
         }
         existing_keys = set(existing_by_key)
         used_prompt_ids = self._batch_used_prompt_ids(existing)
+        used_text_ids: list[str] = []
+        use_text_presets = False
+        if self._thumbnail_text_library is not None:
+            try:
+                use_text_presets = bool(await self._thumbnail_text_library.active_count())
+            except Exception:
+                use_text_presets = False
         previous_batch_id = None
         get_previous = getattr(self._batch_repo, "get_previous_batch_id", None)
         if get_previous is not None:
@@ -2843,6 +2852,8 @@ class BatchService:
                     used_prompt_ids=used_prompt_ids,
                     previous_batch_id=previous_batch_id,
                     existing_by_key=existing_by_key,
+                    used_text_ids=used_text_ids,
+                    use_text_presets=use_text_presets,
                 )
             )
         if batch.alt_profile_id:
@@ -2857,6 +2868,8 @@ class BatchService:
                     used_prompt_ids=used_prompt_ids,
                     previous_batch_id=previous_batch_id,
                     existing_by_key=existing_by_key,
+                    used_text_ids=used_text_ids,
+                    use_text_presets=use_text_presets,
                 )
             )
 
@@ -5900,6 +5913,8 @@ class BatchService:
         used_prompt_ids: dict[ImageKind, list[str]] | None = None,
         previous_batch_id: UUID | None = None,
         existing_by_key: dict[Any, ImageJob] | None = None,
+        used_text_ids: list[str] | None = None,
+        use_text_presets: bool = False,
     ) -> list[ImageJob]:
         """Create image jobs for a specific profile based on its image_config.
 
@@ -5948,6 +5963,7 @@ class BatchService:
             ImageKind.BACKGROUND: [],
             ImageKind.THUMBNAIL: [],
         }
+        text_usage = used_text_ids if used_text_ids is not None else []
         existing = existing_by_key or {}
         thumbnail_mode = normalize_thumbnail_reference_mode(
             str(settings.get("thumbnailReferenceMode", "background_text") or "background_text")
@@ -5969,6 +5985,7 @@ class BatchService:
 
             style = None
             thumbnail_text = ""
+            thumbnail_lockup = None
             if kind == ImageKind.BACKGROUND:
                 profile_prompt = image_config.get("background_prompt", "")
                 input_image_path = await self._resolve_sample_reference_path(
@@ -6007,21 +6024,43 @@ class BatchService:
                 if source_job_id is None:
                     input_image_path = style_reference_path
 
+            use_text_preset_for_kind = (
+                use_text_presets
+                and kind == ImageKind.THUMBNAIL
+                and thumbnail_mode == "background_text"
+            )
             if is_admin_prompt_source(settings, kind):
                 style = await self._pick_admin_prompt_style(
                     kind=kind,
                     batch=batch,
                     used_prompt_ids=prompt_usage,
                     previous_batch_id=previous_batch_id,
+                    text_mode="lockup" if use_text_preset_for_kind else None,
                 )
                 ui_prompt = style.prompt_text
                 if kind == ImageKind.THUMBNAIL:
-                    thumbnail_text = self._resolve_style_text(
-                        style,
-                        song=song,
-                        album=album_label,
-                        channel=channel_name,
-                    )
+                    if use_text_preset_for_kind:
+                        record = await self._pick_thumbnail_text(batch, text_usage)
+                        if record is not None:
+                            from platform_api.services.thumbnail_composite import (
+                                ThumbnailTextLockup,
+                            )
+
+                            thumbnail_lockup = ThumbnailTextLockup(
+                                title=record.title,
+                                subtitle=record.subtitle or "",
+                                subline=record.subline or "",
+                                placement=record.placement,
+                                alignment=record.alignment,
+                                style_hint=record.style_hint or "",
+                            )
+                    else:
+                        thumbnail_text = self._resolve_style_text(
+                            style,
+                            song=song,
+                            album=album_label,
+                            channel=channel_name,
+                        )
             else:
                 ui_prompt = self._get_user_image_prompt(settings, kind)
 
@@ -6044,9 +6083,13 @@ class BatchService:
             elif thumbnail_mode == "background_text":
                 from platform_api.services.thumbnail_composite import (
                     enrich_thumbnail_background_text_prompt,
+                    enrich_thumbnail_text_lockup,
                 )
 
-                prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
+                if thumbnail_lockup is not None:
+                    prompt = enrich_thumbnail_text_lockup(prompt, thumbnail_lockup)
+                else:
+                    prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
             elif thumbnail_mode == "composite":
                 from platform_api.services.image_source_mode import is_prompt_only_source
 
@@ -6096,6 +6139,7 @@ class BatchService:
         batch: Batch,
         used_prompt_ids: dict[ImageKind, list[str]],
         previous_batch_id: UUID | None,
+        text_mode: str | None = None,
     ) -> Any:
         from platform_api.exceptions import ValidationError
         from platform_api.services.image_source_mode import empty_prompt_library_message
@@ -6111,6 +6155,7 @@ class BatchService:
             batch_id=batch.id,
             exclude_ids=used_prompt_ids.get(kind, []),
             previous_batch_id=previous_batch_id,
+            text_mode=text_mode,
         )
         used_prompt_ids.setdefault(kind, []).append(style.id)
         return style
@@ -6131,6 +6176,19 @@ class BatchService:
             album=album,
             channel=channel,
         )
+
+    async def _pick_thumbnail_text(
+        self, batch: Batch, used_text_ids: list[str]
+    ) -> Any | None:
+        if self._thumbnail_text_library is None:
+            return None
+        record = await self._thumbnail_text_library.pick_text(
+            user_id=batch.user_id,
+            batch_id=batch.id,
+            exclude_ids=used_text_ids,
+        )
+        used_text_ids.append(record.id)
+        return record
 
     @staticmethod
     def _validate_image_prompt(prompt: str, kind: ImageKind) -> str:

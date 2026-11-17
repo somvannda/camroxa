@@ -439,7 +439,22 @@ def get_batch_service():
         image_job_service=get_image_job_service(),
         image_sample_rotation=get_image_sample_rotation_service(),
         image_prompt_library=get_image_prompt_library_service(),
+        thumbnail_text_library=get_thumbnail_text_library_service(),
     )
+
+
+def get_thumbnail_text_repo():
+    from platform_api.repositories.image_thumbnail_text_repo import (
+        ImageThumbnailTextRepository,
+    )
+
+    return ImageThumbnailTextRepository(pool=get_db_pool())
+
+
+def get_thumbnail_text_library_service():
+    from platform_api.services.thumbnail_text_library import ThumbnailTextLibraryService
+
+    return ThumbnailTextLibraryService(repo=get_thumbnail_text_repo())
 
 
 def get_image_sample_repo():

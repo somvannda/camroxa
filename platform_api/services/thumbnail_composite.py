@@ -27,6 +27,76 @@ THUMBNAIL_PROMPT_ONLY_INSTRUCTION = (
     "centered horizontally and positioned slightly above the vertical middle (center Y ≈ 45% of frame height)."
 )
 
+from dataclasses import dataclass
+
+@dataclass(frozen=True, slots=True)
+class ThumbnailTextLockup:
+    title: str
+    subtitle: str = ""
+    subline: str = ""
+    placement: str = "top_center"
+    alignment: str = "center"
+    style_hint: str = ""
+
+
+def _placement_instruction(placement: str, alignment: str) -> str:
+    place = str(placement or "").strip().lower()
+    if place == "bottom_center":
+        position = "bottom center, above the lower edge"
+    elif place == "center":
+        position = "centered in the upper middle area"
+    else:
+        position = "top center, slightly below the top edge"
+    align = str(alignment or "").strip().lower()
+    if align == "left":
+        position += ", left aligned"
+    elif align == "right":
+        position += ", right aligned"
+    else:
+        position += ", centered horizontally"
+    return position
+
+
+def enrich_thumbnail_text_lockup(prompt: str, lockup: ThumbnailTextLockup) -> str:
+    """Append a strict three-line text lockup instruction."""
+    base = str(prompt or "").strip()
+    title = str(lockup.title or "").strip()
+    subtitle = str(lockup.subtitle or "").strip()
+    subline = str(lockup.subline or "").strip()
+    if not title:
+        return enrich_thumbnail_background_text_prompt(base, subtitle or subline)
+    lines = [f'Title: "{title}"']
+    if subtitle:
+        lines.append(f'Subtitle: "{subtitle}"')
+    if subline:
+        lines.append(f'Subline: "{subline}"')
+    style_hint = str(lockup.style_hint or "").strip()
+    typography = (
+        f"Typography style: {style_hint}."
+        if style_hint
+        else "Typography style: follow the art direction above."
+    )
+    instruction = (
+        "Use the supplied image as the exact background. Keep its scene, composition, "
+        "colors, lighting, objects, and framing unchanged. Do not redraw, recolor, crop, "
+        "or move anything.\n\n"
+        "Add ONLY the following text, exactly as written and spelled correctly:\n"
+        + "\n".join(lines)
+        + f"\n\nLayout: {_placement_instruction(lockup.placement, lockup.alignment)}. "
+        "The title is the largest line. The subtitle sits directly below at about 60% "
+        "of the title size. The subline sits directly below the subtitle at about 40% "
+        "of the title size.\n"
+        + typography
+        + " No extra words, letters, numbers, logos, watermarks, captions, signage, or "
+        "decorations that were not requested."
+    )
+    if "Add ONLY the following text" in base:
+        return base
+    if not base:
+        return instruction
+    return f"{base}\n\n{instruction}".strip()
+
+
 THUMBNAIL_BACKGROUND_TEXT_INSTRUCTION = (
     "Use the supplied image as the exact background. Keep its composition, colors, lighting, "
     "objects, and framing unchanged. Do not redraw, recolor, crop, or move anything. "

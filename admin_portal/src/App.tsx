@@ -75,6 +75,7 @@ const ContentPoolsPage = React.lazy(() => import('@/pages/content-pools/index'))
 const RemixStaffPicksPage = React.lazy(() => import('@/pages/remix-staff-picks/index'));
 const ImageSamplePacksPage = React.lazy(() => import('@/pages/image-sample-packs/index'));
 const ImagePromptsPage = React.lazy(() => import('@/pages/image-prompts/index'));
+const ThumbnailTextsPage = React.lazy(() => import('@/pages/thumbnail-texts/index'));
 const MarketplacePage = React.lazy(() => import('@/pages/marketplace/index'));
 const StreamingCatalogPage = React.lazy(() => import('@/pages/streaming/catalog'));
 const StreamingPlaybackAuditPage = React.lazy(() => import('@/pages/streaming/playback-audit'));
@@ -140,6 +141,7 @@ function App() {
                     <Route path="/remix-staff-picks" element={<RemixStaffPicksPage />} />
                     <Route path="/image-sample-packs" element={<ImageSamplePacksPage />} />
                     <Route path="/image-prompts" element={<ImagePromptsPage />} />
+                    <Route path="/thumbnail-texts" element={<ThumbnailTextsPage />} />
                     <Route path="/marketplace" element={<MarketplacePage />} />
                     <Route path="/streaming" element={<StreamingCatalogPage />} />
                     <Route path="/streaming/playback-audit" element={<StreamingPlaybackAuditPage />} />

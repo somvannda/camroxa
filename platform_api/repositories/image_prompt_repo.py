@@ -62,17 +62,33 @@ class ImagePromptStyleRepository:
             )
         return [self._row_to_record(row) for row in rows]
 
-    async def list_active(self, *, kind: str) -> list[ImagePromptStyleRecord]:
-        rows = await self._db.fetch(
-            f"""
-            SELECT {_SELECT_COLUMNS}
-            FROM image_prompt_styles
-            WHERE lower(kind) = lower($1)
-              AND is_active = TRUE
-            ORDER BY sort_order ASC, lower(name) ASC, created_at ASC
-            """,
-            kind,
-        )
+    async def list_active(
+        self, *, kind: str, text_mode: str | None = None
+    ) -> list[ImagePromptStyleRecord]:
+        if text_mode:
+            rows = await self._db.fetch(
+                f"""
+                SELECT {_SELECT_COLUMNS}
+                FROM image_prompt_styles
+                WHERE lower(kind) = lower($1)
+                  AND is_active = TRUE
+                  AND text_mode = $2
+                ORDER BY sort_order ASC, lower(name) ASC, created_at ASC
+                """,
+                kind,
+                text_mode,
+            )
+        else:
+            rows = await self._db.fetch(
+                f"""
+                SELECT {_SELECT_COLUMNS}
+                FROM image_prompt_styles
+                WHERE lower(kind) = lower($1)
+                  AND is_active = TRUE
+                ORDER BY sort_order ASC, lower(name) ASC, created_at ASC
+                """,
+                kind,
+            )
         return [self._row_to_record(row) for row in rows]
 
     async def get_by_id(self, style_id: str) -> ImagePromptStyleRecord | None:
