@@ -108,7 +108,7 @@
     "id": "B-22",
     "verdict": "FAIL",
     "evidence": "window modes: toggle / panels / windows - B-22-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31m0\u001b[39m"
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m6\u001b[39m\nReceived: \u001b[31m3\u001b[39m"
   },
   {
     "id": "B-23",
@@ -177,13 +177,15 @@
   },
   {
     "id": "B-36",
-    "verdict": "PASS",
-    "evidence": "menu rows = 6; no \"Design response.\" row"
+    "verdict": "FAIL",
+    "evidence": "with Advanced content off there is no Design response row - B-36-1689x1277.png",
+    "detail": "locator.click: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('article.sp-slot[aria-label^=\"Convolution slot\"]').first().locator('button[aria-label=\\'Impulse response\\']')\u001b[22m\n"
   },
   {
     "id": "B-37",
-    "verdict": "PASS",
-    "evidence": "Design response. row present; designer dialog opened"
+    "verdict": "FAIL",
+    "evidence": "with Advanced content on, Design response opens the IR designer - B-37-1689x1277.png",
+    "detail": "locator.click: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('article.sp-slot[aria-label^=\"Convolution slot\"]').first().locator('button[aria-label=\\'Impulse response\\']')\u001b[22m\n"
   },
   {
     "id": "B-38",
@@ -492,25 +494,22 @@
     "id": "B-98",
     "verdict": "FAIL",
     "evidence": "pop-out moves the card to a fixed bottom-right overlay - B-98-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveClass\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('article.sp-slot[aria-label^=\"Compressor slot\"]').first()\nExpected pattern: \u001b[32m/is-popped/\u001b[39m\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toHaveClass\" locator('article.sp-slot[aria-label^=\"Compressor slot\"]').first() with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot[aria-label^=\"Compressor slot\"]').first()\u001b[22m\n"
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m468\u001b[39m\nReceived: \u001b[31m200\u001b[39m"
   },
   {
     "id": "B-99",
-    "verdict": "FAIL",
-    "evidence": "Dock returns the card inline and the state persists - B-99-1689x1277.png",
-    "detail": "locator.click: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\\'Dock Compressor\\']')\u001b[22m\n"
+    "verdict": "PASS",
+    "evidence": "Dock works inline; poppedOut survived the reload"
   },
   {
     "id": "B-100",
-    "verdict": "FAIL",
-    "evidence": "chains are per track - B-100-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.sp-dialog[role=\\'dialog\\']')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.sp-dialog[role=\\'dialog\\']') with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('.sp-dialog[role=\\'dialog\\']')\u001b[22m\n"
+    "verdict": "PASS",
+    "evidence": "Bass shows the empty state; Drums kept 3 slots"
   },
   {
     "id": "B-101",
-    "verdict": "FAIL",
-    "evidence": "add / undo / redo and reload all agree - B-101-1689x1277.png",
-    "detail": "locator.click: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"Remove Delay\"]').first()\u001b[22m\n"
+    "verdict": "PASS",
+    "evidence": "undo -> 2, redo -> 3, reload + saved JSON = compressor/reverb/delay"
   },
   {
     "id": "B-102",
@@ -697,6 +696,6 @@
   {
     "id": "B-138",
     "verdict": "PASS",
-    "evidence": "meter samples = [\"-17.1 dB pk\",\"-12.6 dB pk\",\"-14.3 dB pk\",\"-23.8 dB pk\",\"-23.8 dB pk\",\"-23.8 dB pk\"]"
+    "evidence": "meter samples = [\"-18.0 dB pk\",\"-13.2 dB pk\",\"-14.1 dB pk\",\"-24.9 dB pk\",\"-24.9 dB pk\",\"-24.9 dB pk\"]"
   }
 ]

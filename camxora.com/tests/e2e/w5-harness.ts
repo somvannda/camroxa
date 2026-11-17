@@ -408,8 +408,10 @@ export async function setRangeInput(
 export async function openCatalog(page: Page) {
   await dismissOverlays(page);
   const add = page.locator(".sp-add-inline, .sp-add").first();
-  await add.click({ timeout: 8000 });
-  await expect(page.locator(".sp-dialog[role='dialog']")).toBeVisible({ timeout: 10_000 });
+  await add.click({ timeout: 20_000 });
+  // The dock opens a dialog synchronously; a parallel worker can still starve the
+  // render for a few seconds, so this window is deliberately wide.
+  await expect(page.locator(".sp-dialog[role='dialog']")).toBeVisible({ timeout: 30_000 });
 }
 
 export async function addPlugin(page: Page, name: string) {

@@ -2810,6 +2810,9 @@ export function CreateStudio() {
   const createDisabled =
     busy ||
     !formReady ||
+    // Wait for the quota before submitting: otherwise a click can reach the provider
+    // before the balance is known and bypass the S61 pre-flight modal.
+    quota === null ||
     // Batch sizes stay client-blocked; a single song opens the top-up modal.
     (needsCredits && batchCount > 1) ||
     batchRequiresUpgrade ||
