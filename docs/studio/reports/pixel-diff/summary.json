@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T03:24:17.352Z",
+  "generatedAt": "2026-11-17T04:17:45.399Z",
   "tolerancePct": 0.2,
   "pixelThreshold": 0.1,
   "scaler": "nearest-neighbour",
@@ -8,8 +8,8 @@
   "counts": {
     "IDENTICAL": 0,
     "WITHIN": 0,
-    "STRUCTURAL": 9,
-    "REVIEW": 54,
+    "STRUCTURAL": 10,
+    "REVIEW": 53,
     "NO-FRAME": 10
   },
   "screens": [
@@ -78,32 +78,32 @@
     {
       "id": "S03",
       "title": "Signed-in entry reopened",
-      "evidence": "capture:ours-entry-overlay.png",
-      "capture": "ours-entry-overlay.png",
+      "evidence": "capture:ours-entry-overlay-reopened.png",
+      "capture": "ours-entry-overlay-reopened.png",
       "frame": "S03-signed-in-entry-reopened.jpeg",
       "refSize": "1094x1245",
-      "oursSize": "1689x1277",
+      "oursSize": "1094x1245",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 5.36,
+      "diffPct": 5.92,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S03.png",
       "bands": {
-        "headerPct": 6.84,
-        "bodyPct": 5.24,
-        "footerPct": 6.29
+        "headerPct": 6.87,
+        "bodyPct": 5.81,
+        "footerPct": 7.27
       },
       "comparability": {
-        "kind": "different-viewport",
-        "wholeFrameComparable": false,
+        "kind": "full-viewport",
+        "wholeFrameComparable": true,
         "refAspect": 0.88,
-        "oursAspect": 1.32,
-        "aspectDeltaPct": 33.56
+        "oursAspect": 0.88,
+        "aspectDeltaPct": 0
       },
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 72978,
+      "differingPixels": 80656,
       "edgeScore": 0.29
     },
     {
@@ -175,28 +175,28 @@
       "capture": "ours-entry-overlay.png",
       "frame": "S06-onboarding-overlay.jpeg",
       "refSize": "1094x1245",
-      "oursSize": "1689x1277",
+      "oursSize": "1094x1245",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 5.46,
+      "diffPct": 6.03,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S06.png",
       "bands": {
-        "headerPct": 6.79,
-        "bodyPct": 5.45,
-        "footerPct": 4.44
+        "headerPct": 6.89,
+        "bodyPct": 6.02,
+        "footerPct": 5.37
       },
       "comparability": {
-        "kind": "different-viewport",
-        "wholeFrameComparable": false,
+        "kind": "full-viewport",
+        "wholeFrameComparable": true,
         "refAspect": 0.88,
-        "oursAspect": 1.32,
-        "aspectDeltaPct": 33.56
+        "oursAspect": 0.88,
+        "aspectDeltaPct": 0
       },
       "specNature": null,
       "specDetail": null,
-      "sharedWith": "S03",
-      "differingPixels": 74330,
+      "sharedWith": null,
+      "differingPixels": 82103,
       "edgeScore": 0.43
     },
     {
@@ -423,29 +423,29 @@
       "capture": "ours-shortcuts.png",
       "frame": "S14-keyboard-shortcuts.jpeg",
       "refSize": "1115x1245",
-      "oursSize": "1689x1277",
+      "oursSize": "1115x1245",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 11.78,
+      "diffPct": 10.95,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S14.png",
       "bands": {
-        "headerPct": 6.45,
-        "bodyPct": 12.21,
-        "footerPct": 8
+        "headerPct": 6.63,
+        "bodyPct": 11.25,
+        "footerPct": 8.86
       },
       "comparability": {
-        "kind": "different-viewport",
-        "wholeFrameComparable": false,
+        "kind": "full-viewport",
+        "wholeFrameComparable": true,
         "refAspect": 0.9,
-        "oursAspect": 1.32,
-        "aspectDeltaPct": 32.29
+        "oursAspect": 0.9,
+        "aspectDeltaPct": 0
       },
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 163501,
-      "edgeScore": 0.37
+      "differingPixels": 151957,
+      "edgeScore": 0.42
     },
     {
       "id": "S15",
@@ -566,28 +566,28 @@
       "capture": "ours-track-options.png",
       "frame": "S19-track-options-menu.jpeg",
       "refSize": "1094x1245",
-      "oursSize": "1689x1277",
+      "oursSize": "1094x1245",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 8.51,
+      "diffPct": 6.41,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S19.png",
       "bands": {
-        "headerPct": 9.75,
-        "bodyPct": 8.32,
-        "footerPct": 11.16
+        "headerPct": 10.84,
+        "bodyPct": 5.91,
+        "footerPct": 12.33
       },
       "comparability": {
-        "kind": "different-viewport",
-        "wholeFrameComparable": false,
+        "kind": "full-viewport",
+        "wholeFrameComparable": true,
         "refAspect": 0.88,
-        "oursAspect": 1.32,
-        "aspectDeltaPct": 33.56
+        "oursAspect": 0.88,
+        "aspectDeltaPct": 0
       },
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 115923,
+      "differingPixels": 87293,
       "edgeScore": 0.5
     },
     {
@@ -814,29 +814,29 @@
       "capture": "ours-clip-info.png",
       "frame": "S27-clip-info-panel.jpeg",
       "refSize": "1920x1277",
-      "oursSize": "1689x1277",
+      "oursSize": "1920x1277",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 15.69,
+      "diffPct": 14.69,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S27.png",
       "bands": {
-        "headerPct": 6.7,
-        "bodyPct": 16.41,
-        "footerPct": 9.49
+        "headerPct": 6.41,
+        "bodyPct": 15.31,
+        "footerPct": 9.96
       },
       "comparability": {
         "kind": "full-viewport",
         "wholeFrameComparable": true,
         "refAspect": 1.5,
-        "oursAspect": 1.32,
-        "aspectDeltaPct": 13.68
+        "oursAspect": 1.5,
+        "aspectDeltaPct": 0
       },
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": null,
-      "differingPixels": 384576,
-      "edgeScore": 0.44
+      "differingPixels": 360228,
+      "edgeScore": 0.31
     },
     {
       "id": "S28",
@@ -1165,13 +1165,13 @@
       "oursSize": "1689x1277",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 10.92,
+      "diffPct": 10.6,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S39.png",
       "bands": {
-        "headerPct": 3.3,
-        "bodyPct": 11.51,
-        "footerPct": 6.01
+        "headerPct": 3.97,
+        "bodyPct": 11.13,
+        "footerPct": 6.02
       },
       "comparability": {
         "kind": "full-viewport",
@@ -1183,8 +1183,8 @@
       "specNature": "visual",
       "specDetail": "asserts toHaveCSS, boundingBox, getComputedStyle, clip:",
       "sharedWith": null,
-      "differingPixels": 235488,
-      "edgeScore": 0.59
+      "differingPixels": 228567,
+      "edgeScore": 0.53
     },
     {
       "id": "S40",
@@ -1313,20 +1313,20 @@
     {
       "id": "S44",
       "title": "Convolution card",
-      "evidence": "capture:ours-plugin-dock-eq-convolution.png",
-      "capture": "ours-plugin-dock-eq-convolution.png",
+      "evidence": "capture:ours-plugin-dock-convolution.png",
+      "capture": "ours-plugin-dock-convolution.png",
       "frame": "S44-convolution-card.jpeg",
       "refSize": "940x400",
       "oursSize": "1689x1277",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 9.76,
+      "diffPct": 5.65,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S44.png",
       "bands": {
-        "headerPct": 9.61,
-        "bodyPct": 10.03,
-        "footerPct": 4.67
+        "headerPct": 9.37,
+        "bodyPct": 5.57,
+        "footerPct": 4.04
       },
       "comparability": {
         "kind": "crop-or-panel",
@@ -1337,8 +1337,8 @@
       },
       "specNature": null,
       "specDetail": null,
-      "sharedWith": "S41",
-      "differingPixels": 36696,
+      "sharedWith": null,
+      "differingPixels": 21234,
       "edgeScore": 0.38
     },
     {
@@ -1866,15 +1866,15 @@
       "frame": "S64-1024px.jpeg",
       "refSize": "1024x900",
       "oursSize": "1024x900",
-      "verdict": "REVIEW",
+      "verdict": "STRUCTURAL",
       "reason": null,
-      "diffPct": 23.17,
+      "diffPct": 25.97,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S64.png",
       "bands": {
-        "headerPct": 13.97,
-        "bodyPct": 23.74,
-        "footerPct": 19.96
+        "headerPct": 14.14,
+        "bodyPct": 26.79,
+        "footerPct": 20.29
       },
       "comparability": {
         "kind": "full-viewport",
@@ -1886,8 +1886,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 213502,
-      "edgeScore": 0.41
+      "differingPixels": 239304,
+      "edgeScore": 0.63
     },
     {
       "id": "S65",

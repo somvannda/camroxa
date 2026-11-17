@@ -14,7 +14,7 @@
     },
     "S03": {
       "title": "Signed-in entry reopened",
-      "capture": "ours-entry-overlay.png"
+      "capture": "ours-entry-overlay-reopened.png"
     },
     "S04": {
       "title": "My Projects chooser",
@@ -26,8 +26,7 @@
     },
     "S06": {
       "title": "Onboarding overlay",
-      "capture": "ours-entry-overlay.png",
-      "sharedWith": "S03"
+      "capture": "ours-entry-overlay.png"
     },
     "S07": {
       "title": "Project menu",
@@ -190,8 +189,7 @@
     },
     "S44": {
       "title": "Convolution card",
-      "capture": "ours-plugin-dock-eq-convolution.png",
-      "sharedWith": "S41"
+      "capture": "ours-plugin-dock-convolution.png"
     },
     "S45": {
       "title": "Plugin designer",
