@@ -414,12 +414,12 @@ async def test_v3_settle_keeps_held_when_executed_model_has_no_pricing() -> None
     settled = await service.finalize_held_operation(
         USER_ID,
         "background_image",
-        "cala",
+        "kie",
         sub_model=None,
         hold=hold,
         routed_provider="slai",
         routed_model="cx/gpt-image-2.5",
-        executed_provider="cala",
+        executed_provider="kie",
         executed_model=None,
     )
 

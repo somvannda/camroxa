@@ -1842,7 +1842,6 @@ class GenerationService:
     def _get_image_gateway(self) -> Any:
         if self._image_gateway is None:
             from platform_api.ai.providers.image.gateway import ImageProviderGateway
-            from platform_api.dependencies import get_cala_client
 
             self._image_gateway = ImageProviderGateway(
                 fal_client=self._fal_client,
@@ -1851,7 +1850,6 @@ class GenerationService:
                 slai_pool=self._slai_pool_wrapper,
                 openai_pool=self._llm_pool_wrapper,
                 key_pool_service=self._key_pool_service,
-                cala_client=get_cala_client(),
                 kie_client=self._kie_client,
                 kie_pool=self._kie_pool_wrapper,
             )
@@ -3136,8 +3134,6 @@ class GenerationService:
                 image_bytes = await self._generate_slai_image(request, width, height)
             elif request.provider == "openai":
                 image_bytes = await self._generate_openai_image(request, width, height)
-            elif request.provider == "cala":
-                image_bytes = await self._generate_cala_image(request, width, height)
             elif request.provider == "kie":
                 image_bytes = await self._generate_kie_image(request, width, height)
             else:
@@ -3366,8 +3362,6 @@ class GenerationService:
             return await self._generate_slai_image(request, width, height)
         if request.provider == "openai":
             return await self._generate_openai_image(request, width, height)
-        if request.provider == "cala":
-            return await self._generate_cala_image(request, width, height)
         if request.provider == "kie":
             return await self._generate_kie_image(request, width, height)
         raise ValidationError(
@@ -3523,10 +3517,19 @@ class GenerationService:
         self, request: ImageRequest, width: int, height: int
     ) -> bytes:
         """Generate an image via Fal AI and return PNG bytes."""
+        from platform_api.ai.registry import resolve_image_model_id
+
         extra_params: dict[str, Any] = {}
         if request.base_image is not None:
-            extra_params["image"] = base64.b64encode(request.base_image).decode()
-            extra_params["strength"] = request.style_strength
+            reference_b64 = base64.b64encode(request.base_image).decode()
+            data_uri = f"data:image/png;base64,{reference_b64}"
+            model = resolve_image_model_id("fal", request.model_id)
+            if model in {"flux-2/edit", "flux-2-pro/edit", "flux-2/flash/edit"}:
+                extra_params["image_urls"] = [data_uri]
+            else:
+                extra_params["image_url"] = data_uri
+                extra_params["strength"] = request.style_strength
+            extra_params["output_format"] = "png"
 
         response = await self._get_image_gateway().generate_fal(
             prompt=request.prompt,
@@ -3569,22 +3572,6 @@ class GenerationService:
             height=height,
         )
         return self._extract_image_bytes(response, provider="openai")
-
-    async def _generate_cala_image(
-        self, request: ImageRequest, width: int, height: int
-    ) -> bytes:
-        """Generate an image via CALA client and return PNG bytes."""
-        reference_b64: str | None = None
-        if request.base_image is not None:
-            reference_b64 = base64.b64encode(request.base_image).decode()
-
-        response = await self._get_image_gateway().generate_cala(
-            prompt=request.prompt,
-            width=width,
-            height=height,
-            reference_image_base64=reference_b64,
-        )
-        return await self.extract_image_bytes_async(response, provider="cala")
 
     async def _generate_kie_image(
         self, request: ImageRequest, width: int, height: int

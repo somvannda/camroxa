@@ -455,6 +455,21 @@ class ControlsQueueCard(StudioPanel):
         self._refresh_prompt_counter(self._background_prompt, self._background_counter)
         self._refresh_prompt_counter(self._thumbnail_prompt, self._thumbnail_counter)
 
+    def set_prompt_library_mode(self, *, background: bool, thumbnail: bool) -> None:
+        """Make the local prompt boxes read-only when the admin library is active."""
+        self._background_prompt.setReadOnly(bool(background))
+        self._thumbnail_prompt.setReadOnly(bool(thumbnail))
+        self._background_prompt.setPlaceholderText(
+            "Using admin prompt library — a different style is chosen per channel."
+            if background
+            else "Guide how the background should evolve from the chosen sample image."
+        )
+        self._thumbnail_prompt.setPlaceholderText(
+            "Using admin prompt library — style and thumbnail text come from the library."
+            if thumbnail
+            else "Guide how the thumbnail should build on the generated background plus text style."
+        )
+
     def set_stat_values(self, *, date_range: str, matched_batches: int, queue_status: str) -> None:
         self._date_range_value.setText(date_range)
         self._matched_batches_value.setText(str(matched_batches))

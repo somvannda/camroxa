@@ -92,7 +92,6 @@ class AIService(StrEnum):
     OPENAI = "openai"
     DEEPSEEK = "deepseek"
     SLAI = "slai"
-    CALA = "cala"
     KIE = "kie"
 
 

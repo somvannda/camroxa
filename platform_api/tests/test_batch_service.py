@@ -144,6 +144,140 @@ def make_service(
 
 
 @pytest.mark.asyncio
+async def test_prompt_library_gives_different_styles_per_channel(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    settings = {
+        "imageBackgroundSourceMode": "prompt_only",
+        "imageThumbnailSourceMode": "prompt_only",
+        "imageBackgroundPromptSource": "admin_library",
+        "imageThumbnailPromptSource": "admin_library",
+        "thumbnailReferenceMode": "background_text",
+    }
+    settings_service.get_merged_settings = AsyncMock(return_value=settings)
+    profiles = [
+        SimpleNamespace(name="Primary", image_config={"mode": "bg_thumb"}),
+        SimpleNamespace(name="Secondary", image_config={"mode": "bg_thumb"}),
+    ]
+    profile_repo.get_by_id = AsyncMock(side_effect=profiles)
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+
+    from platform_api.services.image_prompt_library import ImagePromptLibraryService
+    from platform_api.repositories.image_prompt_repo import ImagePromptStyleRecord
+
+    styles = {
+        "background": [
+            ImagePromptStyleRecord(id=str(uuid4()), kind="background", name="BG A", prompt_text="BG style A"),
+            ImagePromptStyleRecord(id=str(uuid4()), kind="background", name="BG B", prompt_text="BG style B"),
+        ],
+        "thumbnail": [
+            ImagePromptStyleRecord(
+                id=str(uuid4()),
+                kind="thumbnail",
+                name="TH A",
+                prompt_text="TH style A",
+                text_template="{album}",
+            ),
+            ImagePromptStyleRecord(
+                id=str(uuid4()),
+                kind="thumbnail",
+                name="TH B",
+                prompt_text="TH style B",
+                text_template="{album}",
+            ),
+        ],
+    }
+
+    class _FakeLibrary:
+        async def pick_style(self, *, user_id, kind, batch_id, exclude_ids=None, previous_batch_id=None):
+            excluded = set(exclude_ids or [])
+            for style in styles[kind.value]:
+                if style.id not in excluded:
+                    return style
+            return styles[kind.value][0]
+
+        async def active_counts(self):
+            return {"background": 2, "thumbnail": 2}
+
+        @staticmethod
+        def resolve_text_template(style, *, title="", album="", channel=""):
+            return ImagePromptLibraryService.resolve_text_template(
+                style, title=title, album=album, channel=channel
+            )
+
+    service._image_prompt_library = _FakeLibrary()
+
+    batch = Batch(
+        id=uuid4(),
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        ok_profile_id=UUID("00000000-0000-0000-0000-000000000002"),
+        alt_profile_id=UUID("00000000-0000-0000-0000-000000000003"),
+        ok_album="Night Shift",
+        alt_album="Night Shift II",
+        auto_gen_image=True,
+    )
+    song = Song(
+        id=uuid4(),
+        batch_id=batch.id,
+        batch_index=0,
+        user_id=batch.user_id,
+        title="Storm Run",
+        album="Night Shift",
+        lyrics="lyrics",
+    )
+    used_prompt_ids: dict[ImageKind, list[str]] = {
+        ImageKind.BACKGROUND: [],
+        ImageKind.THUMBNAIL: [],
+    }
+
+    primary = await service._create_jobs_for_profile(
+        song=song,
+        batch=batch,
+        profile_id=batch.ok_profile_id,
+        channel_role=ChannelRole.OK,
+        settings=settings,
+        used_prompt_ids=used_prompt_ids,
+    )
+    secondary = await service._create_jobs_for_profile(
+        song=song,
+        batch=batch,
+        profile_id=batch.alt_profile_id,
+        channel_role=ChannelRole.ALT,
+        settings=settings,
+        used_prompt_ids=used_prompt_ids,
+    )
+
+    assert len(primary) == 2
+    assert len(secondary) == 2
+    primary_bg = next(job for job in primary if job.kind == ImageKind.BACKGROUND)
+    secondary_bg = next(job for job in secondary if job.kind == ImageKind.BACKGROUND)
+    primary_th = next(job for job in primary if job.kind == ImageKind.THUMBNAIL)
+    secondary_th = next(job for job in secondary if job.kind == ImageKind.THUMBNAIL)
+
+    assert primary_bg.prompt_style_id != secondary_bg.prompt_style_id
+    assert primary_th.prompt_style_id != secondary_th.prompt_style_id
+    assert "BG style" in str(primary_bg.prompt)
+    assert "TH style" in str(primary_th.prompt)
+    assert "Night Shift" in str(primary_th.prompt)
+
+
+@pytest.mark.asyncio
 async def test_create_batch_persists_planned_date_window(
     batch_repo: AsyncMock,
     credit_service: AsyncMock,
@@ -700,6 +834,9 @@ async def test_create_batch_includes_image_cost_when_auto_image_is_enabled(
     settings_service: AsyncMock,
 ) -> None:
     credit_service.get_balance = AsyncMock(return_value=58)
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={"thumbnailReferenceMode": "composite"}
+    )
     ai_routing_service.resolve = AsyncMock(
         side_effect=[
             SimpleNamespace(provider="deepseek", sub_model="chat"),
@@ -1336,6 +1473,7 @@ async def test_create_image_jobs_for_song_applies_dual_prompts_and_reference_pat
             "imageThumbSamples": [str(th_sample)],
             "imageBgRandom": False,
             "imageThumbRandom": False,
+            "thumbnailReferenceMode": "composite",
         }
     )
     batch_repo.get_image_jobs_by_batch = AsyncMock(return_value=[])
@@ -1513,6 +1651,7 @@ async def test_create_image_jobs_for_batch_is_once_per_channel_not_per_song(
             "imageThumbSamples": [str(th_sample)],
             "imageBgRandom": False,
             "imageThumbRandom": False,
+            "thumbnailReferenceMode": "composite",
         }
     )
     existing: list = []
@@ -1612,6 +1751,7 @@ async def test_create_image_jobs_for_batch_race_second_insert_is_noop(
             "imageThumbSamples": [str(th_sample)],
             "imageBgRandom": False,
             "imageThumbRandom": False,
+            "thumbnailReferenceMode": "composite",
         }
     )
     existing: list = []

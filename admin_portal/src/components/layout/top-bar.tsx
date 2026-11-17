@@ -31,6 +31,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/pipeline': 'Pipeline Ops',
   '/content-pools': 'Content Pools',
   '/image-sample-packs': 'Image Packs',
+  '/image-prompts': 'Image Prompts',
   '/marketplace': 'Marketplace',
   '/streaming/upload-jobs': 'Streaming Jobs',
   '/streaming': 'Music Streaming',

@@ -137,12 +137,11 @@ The desktop app is a separate, better story: local export/merge already run as a
 **Your ask:** multiple workers for assigning key pools and rate limits when multiple users hit at once.
 
 **Best news in this whole review: this already exists and is production-grade.**
-- Real DB+Redis-backed `KeyPoolService` covering Suno, Fal, SLAI, OpenAI, DeepSeek, CALA — round-robin or priority selection, automatic failover on HTTP 429 (rate-limited → cooldown → try next key) and 402/403 (exhausted → try next key), up to 3 keys tried per call.
+- Real DB+Redis-backed `KeyPoolService` covering Suno, Fal, SLAI, OpenAI, DeepSeek — round-robin or priority selection, automatic failover on HTTP 429 (rate-limited → cooldown → try next key) and 402/403 (exhausted → try next key), up to 3 keys tried per call.
 - This is exactly the "assign a key from the pool per concurrent user" mechanism you're asking for — it's not a single shared key, and it's not something that needs new workers, it needs to be **called consistently everywhere** (see the two exceptions below).
 
 **Gaps (small, not "not built"):**
 - The Suno-URL-refresh-for-streaming-upload path and its LRC-fetch sibling bypass the pool's failover and just grab one active key directly.
-- CALA gateway uses `get_key()` without `execute_with_failover()`.
 - There is genuinely no **outbound** rate limiter yet (the ingress per-user HTTP rate limiter is separate and already exists) — i.e. nothing today stops the platform itself from bursting 50 Suno submits in one second and getting the whole key 429'd. This is exactly what infra plan §9 already designs (`OutboundRateGate`, Redis token bucket per provider key, 20 req/10s for Suno, etc.) — not started yet, but fully specified.
 
 **Requirement:** (1) fix the two bypass paths to use the standard key-pool wrapper, (2) implement the already-designed `OutboundRateGate` from the infra plan, (3) no new "key pool worker" needed — the pool itself is a shared service called from whichever worker lane is making the outbound call, not a worker of its own.

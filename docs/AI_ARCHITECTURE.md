@@ -15,7 +15,7 @@ Provider gateway (text or image)
         ↓
 Model registry (ids, aliases, quirks)
         ↓
-HTTP client (OpenAI-compatible, FAL, SLAI, Suno, CALA)
+HTTP client (OpenAI-compatible, FAL, SLAI, Suno)
 ```
 
 | Layer | Location | Responsibility |
@@ -25,7 +25,7 @@ HTTP client (OpenAI-compatible, FAL, SLAI, Suno, CALA)
 | Routing | `platform_api/services/ai_routing_service.py` | Resolve operation → provider + model |
 | Parsing | `platform_api/ai/parsing/response_parser.py` | Markdown fences, JSON recovery (all providers) |
 | Text gateway | `platform_api/ai/providers/text/gateway.py` | openai / deepseek / slai chat |
-| Image gateway | `platform_api/ai/providers/image/gateway.py` | openai / fal / slai / cala images |
+| Image gateway | `platform_api/ai/providers/image/gateway.py` | openai / fal / slai / kie images |
 | Purposes | `platform_api/ai/purposes/` | Draft routing, channel text, channel generation |
 
 ## Operations (admin slots)

@@ -3582,6 +3582,23 @@ class ImageSamplePacksWorker(QThread):
             self.failed.emit(str(exc) or "Failed to load image sample packs.")
 
 
+class ImagePromptSummaryWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._api.get_image_prompt_summary())
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to load image prompt library.")
+
+
 class VideoWorkspaceWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)

@@ -1137,6 +1137,7 @@ class UsageEnforcementService:
         list_credit_units: int | None = None,
         prior_ledger_recorded: bool = True,
         count: int = 1,
+        provider_invoked: bool = True,
         routed_provider: str | None = None,
         routed_model: str | None = None,
         executed_provider: str | None = None,
@@ -1202,11 +1203,22 @@ class UsageEnforcementService:
             "purpose": reason,
             "outcome": "failed",
             "failed": True,
-            "platform_absorbed_cost": True,
+            "platform_absorbed_cost": bool(provider_invoked),
+            "provider_invoked": bool(provider_invoked),
             "list_credit_units": int(resolved_list or 0),
             "charged_credit_units": 0,
             "coverage": coverage,
         }
+
+        if provider_invoked:
+            try:
+                await self.record_fail_absorb(user_id)
+            except Exception:
+                logger.warning(
+                    "Failed to increment fail absorb budget for user %s",
+                    user_id,
+                    exc_info=True,
+                )
 
         if charged_credit_units > 0:
             failure_metadata["billing"] = "wallet"
@@ -1237,14 +1249,6 @@ class UsageEnforcementService:
             return
 
         failure_metadata["billing"] = "platform_absorb"
-        try:
-            await self.record_fail_absorb(user_id)
-        except Exception:
-            logger.warning(
-                "Failed to increment fail absorb budget for user %s",
-                user_id,
-                exc_info=True,
-            )
         if prior_ledger_recorded:
             # Prior plan_allowance/wallet debit already shows COGS; add a
             # zero-amount refund so failure + platform absorb are explicit.
@@ -1389,6 +1393,7 @@ class UsageEnforcementService:
         hold_credit_units: int,
         ai_service: str,
         sub_model: str | None = None,
+        ref_id: str | None = None,
     ) -> OperationHold:
         """Reserve product quota and escrow wallet before calling the provider.
 
@@ -1399,7 +1404,11 @@ class UsageEnforcementService:
         v3_op = await self._v3_op_if_enabled(operation_type)
         if v3_op is not None:
             held = await self._charge_via_v3(
-                user_id, operation_type, model=sub_model, provider=ai_service
+                user_id,
+                operation_type,
+                model=sub_model,
+                provider=ai_service,
+                ref_id=ref_id,
             )
             return OperationHold(
                 held_units=held,
@@ -1442,8 +1451,10 @@ class UsageEnforcementService:
             purpose=reason,
         )
         usage_metadata["hold"] = True
+        if ref_id:
+            usage_metadata["ref_id"] = str(ref_id)
         deduction_success = await self._credit_repo.atomic_deduct(
-            user_id, hold_units, reason, metadata=usage_metadata
+            user_id, hold_units, reason, ref_id=ref_id, metadata=usage_metadata
         )
         if not deduction_success:
             await self.release_operation_quota(

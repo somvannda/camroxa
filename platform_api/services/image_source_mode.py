@@ -10,6 +10,9 @@ SOURCE_MODE_PROMPT_ONLY = "prompt_only"
 SOURCE_MODE_CATEGORY = "category"
 SOURCE_MODE_PERSONAL_REFERENCE = "personal_reference"
 
+PROMPT_SOURCE_CUSTOM = "custom"
+PROMPT_SOURCE_ADMIN_LIBRARY = "admin_library"
+
 _BG_EMPTY_PROMPT = (
     "Background: Add a background prompt, or switch Background source to Category / User reference."
 )
@@ -58,6 +61,40 @@ def is_prompt_only_source(settings: dict[str, Any] | None, kind: ImageKind | str
 
 def is_personal_reference_source(settings: dict[str, Any] | None, kind: ImageKind | str) -> bool:
     return normalize_image_kind_source_mode(settings, kind) == SOURCE_MODE_PERSONAL_REFERENCE
+
+
+def normalize_prompt_source(settings: dict[str, Any] | None, kind: ImageKind | str) -> str:
+    """Return ``custom`` or ``admin_library`` for the kind.
+
+    Keys: ``imageBackgroundPromptSource`` / ``imageThumbnailPromptSource``.
+    Unknown values fall back to ``custom`` so old clients keep their prompt.
+    """
+    data = settings if isinstance(settings, dict) else {}
+    kind_value = str(getattr(kind, "value", kind) or "").strip().lower()
+    key = (
+        "imageBackgroundPromptSource"
+        if kind_value == "background"
+        else "imageThumbnailPromptSource"
+    )
+    raw = str(data.get(key) or "").strip().lower()
+    if raw in {"library", "admin", "admin_library", "prompt_library"}:
+        return PROMPT_SOURCE_ADMIN_LIBRARY
+    return PROMPT_SOURCE_CUSTOM
+
+
+def is_admin_prompt_source(settings: dict[str, Any] | None, kind: ImageKind | str) -> bool:
+    return normalize_prompt_source(settings, kind) == PROMPT_SOURCE_ADMIN_LIBRARY
+
+
+def empty_prompt_library_message(kind: ImageKind | str) -> str:
+    kind_value = str(getattr(kind, "value", kind) or "").strip().lower()
+    label = "Thumbnail" if kind_value == "thumbnail" else "Background"
+    return (
+        f"{label}: No active admin prompt styles are available. "
+        "Ask an admin to add one in Admin → Image Prompts, or switch the prompt source "
+        "back to My prompt."
+    )
+
 
 
 def empty_prompt_error_message(kind: ImageKind | str) -> str:

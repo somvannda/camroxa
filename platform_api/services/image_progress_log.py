@@ -251,3 +251,11 @@ def log_runner_crashed(*, user_id: str, batch_id: str, error: str) -> None:
         short_id(batch_id),
         error[:300],
     )
+
+def log_stale_sweep(*, recovered: int, failed: int, refunded: int) -> None:
+    _progress(
+        "Stale image sweep: recovered=%d failed=%d refunded=%d.",
+        recovered,
+        failed,
+        refunded,
+    )

@@ -32,6 +32,7 @@ from platform_api.dependencies import (
     get_reset_service,
     get_settings_service,
     get_image_sample_pack_repo,
+    get_image_prompt_repo,
     get_suno_balance_service,
     get_provider_key_balance_service,
     get_turnstile_service,
@@ -360,6 +361,20 @@ def wire_all_dependencies(app: FastAPI) -> None:
         return get_image_sample_pack_service()
 
     app.dependency_overrides[admin_image_packs_get_service] = real_image_sample_pack_service
+
+    # --- image_prompts.py / admin_image_prompts.py ---
+    from platform_api.routers.image_prompts import (
+        _get_image_prompt_repo as image_prompts_get_repo,
+    )
+    from platform_api.routers.admin_image_prompts import (
+        _get_image_prompt_repo as admin_image_prompts_get_repo,
+    )
+
+    async def real_image_prompt_repo():
+        return get_image_prompt_repo()
+
+    app.dependency_overrides[image_prompts_get_repo] = real_image_prompt_repo
+    app.dependency_overrides[admin_image_prompts_get_repo] = real_image_prompt_repo
 
     # --- credits.py ---
     from platform_api.routers.credits import (

@@ -249,6 +249,9 @@ class ImageJobListItem(BaseModel):
     input_image_path: str | None = None
     style_reference_path: str | None = None
     source_job_id: str | None = None
+    prompt_style_id: str | None = None
+    source_mode: str | None = None
+    thumbnail_mode: str | None = None
     status: str = "pending"
     attempt_count: int = 0
     output_image_path: str | None = None
@@ -259,6 +262,15 @@ class ImageJobListItem(BaseModel):
 
 class ImageJobsListResponse(BaseModel):
     items: list[ImageJobListItem] = Field(default_factory=list)
+
+
+class ImagePromptSummary(BaseModel):
+    background: int = 0
+    thumbnail: int = 0
+
+
+class ImagePromptSummaryResponse(BaseModel):
+    counts: ImagePromptSummary = Field(default_factory=ImagePromptSummary)
 
 
 class ImageJobsRunRequest(BaseModel):

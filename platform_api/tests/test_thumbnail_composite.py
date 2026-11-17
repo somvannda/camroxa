@@ -8,15 +8,25 @@ from platform_api.services.thumbnail_composite import (
     build_thumbnail_overlay_input_png,
     compose_thumbnail_onto_background,
     enrich_background_prompt,
+    enrich_thumbnail_background_text_prompt,
     enrich_thumbnail_prompt,
     normalize_thumbnail_reference_mode,
 )
 
 
-def test_normalize_thumbnail_reference_mode_defaults_to_composite() -> None:
-    assert normalize_thumbnail_reference_mode(None) == "composite"
+def test_normalize_thumbnail_reference_mode_defaults_to_background_text() -> None:
+    assert normalize_thumbnail_reference_mode(None) == "background_text"
+    assert normalize_thumbnail_reference_mode("background_text") == "background_text"
     assert normalize_thumbnail_reference_mode("dual_reference") == "dual_reference"
+    assert normalize_thumbnail_reference_mode("composite") == "composite"
     assert normalize_thumbnail_reference_mode("unknown") == "composite"
+
+
+def test_enrich_thumbnail_background_text_includes_exact_text() -> None:
+    prompt = enrich_thumbnail_background_text_prompt("Bold red type", "Night Drive")
+    assert "Keep its composition" in prompt
+    assert '"Night Drive"' in prompt
+    assert "Bold red type" in prompt
 
 
 def test_enrich_prompts_add_expected_instructions() -> None:

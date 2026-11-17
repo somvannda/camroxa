@@ -46,20 +46,6 @@ class SlaiImageClient(Protocol):
         ...
 
 
-class CalaImageClient(Protocol):
-    async def generate_image(
-        self,
-        *,
-        prompt: str,
-        width: int,
-        height: int,
-        reference_image_base64: str | None = None,
-        api_key: str | None = None,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        ...
-
-
 class KieImageClient(Protocol):
     async def generate_image(
         self,
@@ -96,7 +82,6 @@ class ImageProviderGateway:
         slai_pool: PoolWrapper | None = None,
         openai_pool: PoolWrapper | None = None,
         key_pool_service: KeyPoolService | None = None,
-        cala_client: CalaImageClient | None = None,
         kie_client: KieImageClient | None = None,
         kie_pool: PoolWrapper | None = None,
     ) -> None:
@@ -106,7 +91,6 @@ class ImageProviderGateway:
         self._slai_pool = slai_pool
         self._openai_pool = openai_pool
         self._key_pool_service = key_pool_service
-        self._cala_client = cala_client
         self._kie_client = kie_client
         self._kie_pool = kie_pool
 
@@ -190,30 +174,6 @@ class ImageProviderGateway:
             )
         )
 
-    async def generate_cala(
-        self,
-        *,
-        prompt: str,
-        width: int,
-        height: int,
-        reference_image_base64: str | None = None,
-    ) -> dict[str, Any]:
-        if self._cala_client is None:
-            raise ExternalServiceError(
-                "CALA client not available for image generation.",
-                details={"provider": "cala"},
-            )
-        if self._key_pool_service is None:
-            raise NoAvailableKeysError("cala", {})
-        api_key = await self._key_pool_service.get_key("cala")
-        return await self._cala_client.generate_image(
-            prompt=prompt,
-            width=width,
-            height=height,
-            reference_image_base64=reference_image_base64,
-            api_key=api_key,
-        )
-
     async def generate_kie(
         self,
         *,
@@ -288,13 +248,6 @@ class ImageProviderGateway:
                 style_strength=style_strength,
                 reference_image_base64=reference_image_base64,
                 extra_params=extra_params,
-            )
-        if provider == "cala":
-            return await self.generate_cala(
-                prompt=prompt,
-                width=width,
-                height=height,
-                reference_image_base64=reference_image_base64,
             )
         if provider == "kie":
             return await self.generate_kie(

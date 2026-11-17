@@ -59,6 +59,9 @@ class ImageJobListItem(BaseModel):
     input_image_path: str | None
     style_reference_path: str | None
     source_job_id: str | None
+    prompt_style_id: str | None = None
+    source_mode: str | None = None
+    thumbnail_mode: str | None = None
     status: str
     attempt_count: int
     output_image_path: str | None
@@ -166,6 +169,11 @@ async def list_image_jobs(
                 input_image_path=job.input_image_path,
                 style_reference_path=job.style_reference_path,
                 source_job_id=str(job.source_job_id) if job.source_job_id else None,
+                prompt_style_id=(
+                    str(job.prompt_style_id) if job.prompt_style_id else None
+                ),
+                source_mode=job.source_mode,
+                thumbnail_mode=job.thumbnail_mode,
                 status=job.status.value,
                 attempt_count=int(job.attempt_count or 0),
                 output_image_path=job.output_image_path,
@@ -275,6 +283,7 @@ async def retry_image_jobs(
         user_id=ctx.user_id,
         job_ids=request.job_ids,
         batch_id=request.batch_id,
+        force=bool(request.force),
     )
     updated = await service.retry_jobs(
         ctx.user_id,

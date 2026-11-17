@@ -496,3 +496,154 @@ async def test_resolve_base_image_bytes_null_input_uses_rotated_sample(tmp_path)
         settings={"imageBackgroundSourceMode": "category"},
     )
     assert data == sample.read_bytes()
+
+@pytest.mark.asyncio
+async def test_run_pending_jobs_background_text_sends_background_as_base_image(tmp_path) -> None:
+    user_id = uuid4()
+    batch_id = uuid4()
+    profile_id = uuid4()
+    source_job_id = uuid4()
+
+    background_output = tmp_path / "background.png"
+    Image.new("RGB", (1920, 1080), (20, 40, 120)).save(background_output)
+    thumbnail_job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        batch_id=batch_id,
+        profile_id=profile_id,
+        kind=ImageKind.THUMBNAIL,
+        channel_role=ChannelRole.OK,
+        prompt="Add the text Night Drive",
+        resolution="1920x1080",
+        style_strength=0.8,
+        source_job_id=source_job_id,
+        thumbnail_mode="background_text",
+        status=TaskStatus.RUNNING,
+    )
+    source_job = ImageJob(
+        id=source_job_id,
+        user_id=user_id,
+        batch_id=batch_id,
+        profile_id=profile_id,
+        kind=ImageKind.BACKGROUND,
+        channel_role=ChannelRole.OK,
+        prompt="Background prompt",
+        output_image_path=str(background_output),
+        status=TaskStatus.SUCCESS,
+    )
+
+    repo = AsyncMock()
+    repo.claim_image_jobs_for_run = AsyncMock(return_value=[thumbnail_job])
+    repo.get_batch_for_user = AsyncMock(return_value=Batch(id=batch_id, user_id=user_id, auto_gen_image=True))
+    repo.get_image_job_by_id = AsyncMock(return_value=source_job)
+    repo.update_image_job_status = AsyncMock()
+
+    settings_service = AsyncMock()
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={
+            "perfImageWorkers": 1,
+            "imageOutputDir": str(tmp_path / "outputs"),
+            "thumbnailReferenceMode": "background_text",
+        }
+    )
+    routing_service = AsyncMock()
+    routing_service.resolve_image_chain = AsyncMock(
+        return_value=[
+            SimpleNamespace(provider="slai", sub_model="cx/gpt-image-2.5"),
+            SimpleNamespace(provider="fal", sub_model="flux-2/edit"),
+        ]
+    )
+    enforcement_service = AsyncMock()
+    hold = SimpleNamespace(held_units=0, plan_covered=True)
+    enforcement_service.resolve_max_credits = AsyncMock(return_value=8)
+    enforcement_service.preflight_quotas_and_balance = AsyncMock()
+    enforcement_service.reserve_and_hold_before_provider = AsyncMock(return_value=hold)
+    enforcement_service.finalize_held_operation = AsyncMock(return_value=0)
+    generation_service = AsyncMock()
+    generation_service.submit_image_outcome = AsyncMock(
+        return_value=SimpleNamespace(
+            image_bytes=_solid_overlay_png(),
+            provider="slai",
+            sub_model="cx/gpt-image-2.5",
+        )
+    )
+    rotation = AsyncMock()
+    rotation.pick_sample_path = AsyncMock(return_value="/should/not/be/used.png")
+
+    service = ImageJobService(
+        repo=repo,
+        settings_service=settings_service,
+        routing_service=routing_service,
+        enforcement_service=enforcement_service,
+        generation_service=generation_service,
+        image_sample_rotation=rotation,
+    )
+
+    completed = await service.run_pending_jobs(str(user_id), batch_id=str(batch_id), limit=1)
+
+    assert completed == 1
+    rotation.pick_sample_path.assert_not_awaited()
+    generation_request = generation_service.submit_image_outcome.await_args.args[1]
+    assert generation_request.base_image == background_output.read_bytes()
+    assert generation_request.prompt == "Add the text Night Drive"
+    assert (
+        generation_service.submit_image_outcome.await_args.kwargs["provider_chain"]
+        == [
+            ("slai", "cx/gpt-image-2.5"),
+            ("fal", "flux-2/edit"),
+        ]
+    )
+
+@pytest.mark.asyncio
+async def test_background_text_rejects_provider_without_reference_support() -> None:
+    import asyncio
+
+    from platform_api.exceptions import ValidationError
+
+    user_id = uuid4()
+    batch_id = uuid4()
+    job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        batch_id=batch_id,
+        profile_id=uuid4(),
+        kind=ImageKind.THUMBNAIL,
+        channel_role=ChannelRole.OK,
+        prompt="Add text",
+        thumbnail_mode="background_text",
+        status=TaskStatus.RUNNING,
+    )
+    repo = AsyncMock()
+    repo.get_batch_for_user = AsyncMock(return_value=Batch(id=batch_id, user_id=user_id))
+    repo.update_image_job_status = AsyncMock()
+    settings_service = AsyncMock()
+    settings_service.get_merged_settings = AsyncMock(return_value={})
+    routing_service = AsyncMock()
+    routing_service.resolve_image_chain = AsyncMock(
+        return_value=[SimpleNamespace(provider="openai", sub_model="gpt-image-1")]
+    )
+    enforcement_service = AsyncMock()
+    enforcement_service.resolve_max_credits = AsyncMock(return_value=8)
+    enforcement_service.preflight_quotas_and_balance = AsyncMock()
+    enforcement_service.reserve_and_hold_before_provider = AsyncMock()
+    generation_service = AsyncMock()
+
+    service = ImageJobService(
+        repo=repo,
+        settings_service=settings_service,
+        routing_service=routing_service,
+        enforcement_service=enforcement_service,
+        generation_service=generation_service,
+    )
+
+    completed = await service._run_one_job(
+        user_id=user_id,
+        job=job,
+        settings={},
+        semaphore=asyncio.Semaphore(1),
+    )
+
+    assert completed is False
+    enforcement_service.reserve_and_hold_before_provider.assert_not_awaited()
+    generation_service.submit_image_outcome.assert_not_awaited()
+    repo.update_image_job_status.assert_awaited()

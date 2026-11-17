@@ -160,7 +160,7 @@ Implement a configurable AI model routing system that allows admins to assign AI
       - `platform_api/routers/channel_setup.py` (text + image generation)
       - `platform_api/routers/channel_prompts.py` (DeepSeek fallback)
       - `platform_api/routers/health.py` (provider health checks)
-      - `platform_api/services/generation_service.py` (OpenAI/CALA image key fallback)
+      - `platform_api/services/generation_service.py` (OpenAI image key fallback)
     - Ensure missing keys always returns a clear 503 (`NoAvailableKeysError`) instead of attempting a fallback.
   - [ ] 11.2 Add user-facing text-generation endpoint for desktop workflows (lyrics polish)
     - Add `/api/v1/generation/polish-lyrics` using `AIRoutingService.resolve("lyric")`

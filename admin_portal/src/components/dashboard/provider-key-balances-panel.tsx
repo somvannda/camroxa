@@ -14,11 +14,10 @@ const PROVIDER_LABELS: Record<string, string> = {
   deepseek: 'DeepSeek',
   openai: 'OpenAI',
   fal: 'Fal',
-  cala: 'CALA',
   kie: 'kie.ai',
 };
 
-const PROVIDER_ORDER = ['suno', 'slai', 'fal', 'openai', 'deepseek', 'cala', 'kie'] as const;
+const PROVIDER_ORDER = ['suno', 'slai', 'fal', 'openai', 'deepseek', 'kie'] as const;
 
 function balanceText(item: ProviderKeyBalanceItem): string {
   if (item.fetch_status === 'ok' || item.fetch_status === 'cached') {

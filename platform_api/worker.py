@@ -80,6 +80,36 @@ def _stale_sweep_interval_seconds() -> int:
         return _DEFAULT_STALE_SWEEP_INTERVAL_SECONDS
 
 
+def _image_stale_running_seconds() -> int:
+    try:
+        return max(
+            120,
+            int(
+                os.environ.get(
+                    "CAMXORA_IMAGE_STALE_RUNNING_SECONDS",
+                    900,
+                )
+            ),
+        )
+    except (TypeError, ValueError):
+        return 900
+
+
+def _image_stale_dependency_seconds() -> int:
+    try:
+        return max(
+            300,
+            int(
+                os.environ.get(
+                    "CAMXORA_IMAGE_STALE_DEPENDENCY_SECONDS",
+                    1800,
+                )
+            ),
+        )
+    except (TypeError, ValueError):
+        return 1800
+
+
 def _job_timeout_seconds() -> float:
     """Optional hard timeout per job. 0 (default) disables it."""
     try:
@@ -372,6 +402,8 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
     queue = get_job_queue_repo()
     stale_seconds = _stale_running_seconds()
     sweep_interval = _stale_sweep_interval_seconds()
+    image_stale_seconds = _image_stale_running_seconds()
+    image_dependency_seconds = _image_stale_dependency_seconds()
     job_timeout = _job_timeout_seconds()
     recovered = await queue.requeue_stale_running(older_than_seconds=stale_seconds)
     if recovered:
@@ -414,6 +446,17 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
                     logger.warning("Periodic sweep requeued %s stale running job(s).", swept)
             except Exception:
                 logger.exception("Periodic stale-job sweep failed; continuing.")
+            try:
+                from platform_api.dependencies import get_image_job_service
+
+                image_sweep = await get_image_job_service().sweep_stale_jobs(
+                    running_older_than_seconds=image_stale_seconds,
+                    dependency_older_than_seconds=image_dependency_seconds,
+                )
+                if any(image_sweep.values()):
+                    logger.warning("Periodic image sweep: %s", image_sweep)
+            except Exception:
+                logger.exception("Periodic image-job sweep failed; continuing.")
 
         if loop.time() >= next_mail:
             next_mail = loop.time() + 15

@@ -28,6 +28,24 @@ def clamp_image_prompt(text: str | None, *, max_chars: int = IMAGE_PROMPT_MAX_CH
     return value[:limit]
 
 
+def normalize_prompt_source(value: object) -> str:
+    """Map a prompt-source setting to ``custom`` or ``admin_library``."""
+    text = str(value or "").strip().lower()
+    if text in {"library", "admin", "admin_library", "prompt_library"}:
+        return "admin_library"
+    return "custom"
+
+
+def normalize_thumbnail_reference_mode(value: object) -> str:
+    """Map a thumbnail mode setting to ``background_text`` or ``composite``."""
+    text = str(value or "").strip().lower()
+    if text in {"background_text", "text_on_background", "image_edit", "edit"}:
+        return "background_text"
+    if text == "composite":
+        return "composite"
+    return "background_text"
+
+
 @dataclass(frozen=True, slots=True)
 class QueueRow:
     key: str

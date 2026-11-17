@@ -331,6 +331,29 @@ class BatchRepository:
             return None
         return self._row_to_batch(row)
 
+    async def get_previous_batch_id(self, user_id: UUID, batch_id: UUID) -> UUID | None:
+        """Return the batch created immediately before ``batch_id`` for a user."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT previous.id
+            FROM batches current
+            JOIN LATERAL (
+                SELECT id
+                FROM batches
+                WHERE user_id = current.user_id
+                  AND id <> current.id
+                  AND created_at <= current.created_at
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            ) previous ON TRUE
+            WHERE current.id = $1
+              AND current.user_id = $2
+            """,
+            batch_id,
+            user_id,
+        )
+        return UUID(str(row["id"])) if row else None
+
     async def list_batches_for_user(self, user_id: UUID) -> list[Batch]:
         """Return all batches belonging to a user, ordered by creation date descending.
 
@@ -1637,8 +1660,9 @@ class BatchRepository:
                 (id, song_id, user_id, batch_id, profile_id, kind,
                  channel_role, prompt, provider, resolution, style_strength,
                  input_image_path, style_reference_path, source_job_id,
+                 prompt_style_id, source_mode, thumbnail_mode,
                  status, attempt_count, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
             ON CONFLICT DO NOTHING
             RETURNING id
             """,
@@ -1656,6 +1680,9 @@ class BatchRepository:
             job.input_image_path,
             job.style_reference_path,
             job.source_job_id,
+            job.prompt_style_id,
+            job.source_mode,
+            job.thumbnail_mode,
             job.status.value,
             job.attempt_count,
         )
@@ -1749,6 +1776,7 @@ class BatchRepository:
             SELECT id, song_id, user_id, batch_id, profile_id, kind,
                    channel_role, prompt, provider, resolution, style_strength,
                    input_image_path, style_reference_path, source_job_id,
+                   prompt_style_id, source_mode, thumbnail_mode,
                    status, attempt_count, output_image_path, error,
                    created_at, updated_at
             FROM image_jobs
@@ -1780,6 +1808,7 @@ class BatchRepository:
             SELECT id, song_id, user_id, batch_id, profile_id, kind,
                    channel_role, prompt, provider, resolution, style_strength,
                    input_image_path, style_reference_path, source_job_id,
+                   prompt_style_id, source_mode, thumbnail_mode,
                    status, attempt_count, output_image_path, storage_key, error,
                    created_at, updated_at
             FROM image_jobs
@@ -1887,6 +1916,7 @@ class BatchRepository:
             SELECT id, song_id, user_id, batch_id, profile_id, kind,
                    channel_role, prompt, provider, resolution, style_strength,
                    input_image_path, style_reference_path, source_job_id,
+                   prompt_style_id, source_mode, thumbnail_mode,
                    status, attempt_count, output_image_path, storage_key, error,
                    created_at, updated_at
             FROM image_jobs
@@ -1969,6 +1999,7 @@ class BatchRepository:
                     RETURNING j.id, j.song_id, j.user_id, j.batch_id, j.profile_id, j.kind,
                               j.channel_role, j.prompt, j.provider, j.resolution, j.style_strength,
                               j.input_image_path, j.style_reference_path, j.source_job_id,
+                              j.prompt_style_id, j.source_mode, j.thumbnail_mode,
                               j.status, j.attempt_count, j.output_image_path, j.error,
                               j.created_at, j.updated_at
                     """,
@@ -1987,6 +2018,7 @@ class BatchRepository:
             SELECT id, song_id, user_id, batch_id, profile_id, kind,
                    channel_role, prompt, provider, resolution, style_strength,
                    input_image_path, style_reference_path, source_job_id,
+                   prompt_style_id, source_mode, thumbnail_mode,
                    status, attempt_count, output_image_path, storage_key, error,
                    created_at, updated_at
             FROM image_jobs
@@ -2022,17 +2054,26 @@ class BatchRepository:
         user_id: UUID,
         *,
         prompt: str,
+        prompt_style_id: UUID | None = None,
+        source_mode: str | None = None,
+        thumbnail_mode: str | None = None,
     ) -> None:
         await self._pool.execute(
             """
             UPDATE image_jobs
             SET prompt = $3,
+                prompt_style_id = $4,
+                source_mode = COALESCE($5, source_mode),
+                thumbnail_mode = COALESCE($6, thumbnail_mode),
                 updated_at = NOW()
             WHERE id = $1 AND user_id = $2
             """,
             job_id,
             user_id,
             prompt,
+            prompt_style_id,
+            source_mode,
+            thumbnail_mode,
         )
 
     async def update_image_job_status(
@@ -2065,6 +2106,106 @@ class BatchRepository:
             provider,
             attempt_count,
         )
+
+    async def update_image_job_billing_state(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+        *,
+        hold_units: int | None = None,
+        hold_state: str | None = None,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE image_jobs
+            SET hold_units = COALESCE($3, hold_units),
+                hold_state = COALESCE($4, hold_state),
+                updated_at = NOW()
+            WHERE id = $1 AND user_id = $2
+            """,
+            job_id,
+            user_id,
+            hold_units,
+            hold_state,
+        )
+
+    async def mark_image_job_provider_invoked(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE image_jobs
+            SET provider_invoked = TRUE,
+                updated_at = NOW()
+            WHERE id = $1 AND user_id = $2
+            """,
+            job_id,
+            user_id,
+        )
+
+    async def get_stale_running_image_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]:
+        rows = await self._pool.fetch(
+            """
+            SELECT id, song_id, user_id, batch_id, profile_id, kind,
+                   channel_role, prompt, provider, resolution, style_strength,
+                   input_image_path, style_reference_path, source_job_id,
+                   prompt_style_id, source_mode, thumbnail_mode,
+                   hold_units, hold_state, provider_invoked,
+                   status, attempt_count, output_image_path, storage_key, error,
+                   created_at, updated_at
+            FROM image_jobs
+            WHERE status = 'running'
+              AND updated_at < NOW() - make_interval(secs => $1)
+            ORDER BY updated_at ASC
+            LIMIT $2
+            """,
+            max(1, int(older_than_seconds)),
+            max(1, min(500, int(limit))),
+        )
+        return [self._row_to_image_job(row) for row in rows]
+
+    async def get_stale_pending_thumbnail_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]:
+        rows = await self._pool.fetch(
+            """
+            SELECT j.id, j.song_id, j.user_id, j.batch_id, j.profile_id, j.kind,
+                   j.channel_role, j.prompt, j.provider, j.resolution,
+                   j.style_strength, j.input_image_path, j.style_reference_path,
+                   j.source_job_id, j.prompt_style_id, j.source_mode,
+                   j.thumbnail_mode, j.hold_units, j.hold_state,
+                   j.provider_invoked, j.status, j.attempt_count,
+                   j.output_image_path, j.storage_key, j.error,
+                   j.created_at, j.updated_at,
+                   s.status AS source_status
+            FROM image_jobs j
+            JOIN image_jobs s ON s.id = j.source_job_id
+            WHERE j.kind = 'thumbnail'
+              AND j.status = 'pending'
+              AND (
+                  s.status = 'failed'
+                  OR (
+                      s.status IN ('pending', 'running')
+                      AND s.updated_at < NOW() - make_interval(secs => $1)
+                  )
+              )
+            ORDER BY j.updated_at ASC
+            LIMIT $2
+            """,
+            max(1, int(older_than_seconds)),
+            max(1, min(500, int(limit))),
+        )
+        return [self._row_to_image_job(row) for row in rows]
 
     async def requeue_auto_retry_failed_jobs(
         self,
@@ -2489,6 +2630,12 @@ class BatchRepository:
             input_image_path=row.get("input_image_path"),
             style_reference_path=row.get("style_reference_path"),
             source_job_id=row.get("source_job_id"),
+            prompt_style_id=row.get("prompt_style_id"),
+            source_mode=row.get("source_mode"),
+            thumbnail_mode=row.get("thumbnail_mode"),
+            hold_units=int(row.get("hold_units") or 0),
+            hold_state=str(row.get("hold_state") or "none"),
+            provider_invoked=bool(row.get("provider_invoked") or False),
             status=TaskStatus(row["status"]),
             attempt_count=row["attempt_count"],
             output_image_path=row["output_image_path"],
