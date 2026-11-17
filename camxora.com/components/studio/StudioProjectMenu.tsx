@@ -60,6 +60,22 @@ const UNTITLED = "Untitled project";
 
 const initialOf = (value: string) => (value.trim()[0] || "P").toUpperCase();
 
+/**
+ * S08: the captured History list prints `hh:mm AM` on the newest row and `hh:mm:ss AM`
+ * on the older ones. Format in one locale so the string does not drift by environment.
+ */
+function versionClock(createdAt: string | null | undefined, withSeconds: boolean): string | null {
+  if (!createdAt) return null;
+  const at = new Date(createdAt);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(withSeconds ? { second: "2-digit" } : {}),
+    hour12: true,
+  });
+}
+
 function isUnnamed(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.length === 0 || trimmed.toLowerCase() === UNTITLED.toLowerCase();
@@ -421,8 +437,13 @@ export function StudioProjectMenu({
 
   /** Version list grouped under a date heading, like the captured History panel. */
   const [historyDay, setHistoryDay] = useState(0);
+  /** S08: Restore is a row action revealed on hover/focus, not a permanent pill. */
+  const [revealedVersion, setRevealedVersion] = useState<string | null>(null);
   useEffect(() => {
-    if (dialog !== "versions") setHistoryDay(0);
+    if (dialog !== "versions") {
+      setHistoryDay(0);
+      setRevealedVersion(null);
+    }
   }, [dialog]);
 
   const groupedVersions = useMemo(() => {
@@ -437,6 +458,9 @@ export function StudioProjectMenu({
     }
     return [...map.entries()];
   }, [versions]);
+
+  /** The list endpoint returns newest first; the first entry is the captured selected row. */
+  const newestVersionId = versions?.[0]?.id ?? null;
 
   return (
     <div className="se-project" ref={wrapperRef}>
@@ -553,7 +577,7 @@ export function StudioProjectMenu({
               <Icon name="fa-xmark" />
             </button>
           </header>
-          <p className="se-history-note">Projects are saved automatically.</p>
+          <p className="se-history-note">Projects are saved automatically</p>
           {versions === null ? (
             <p className="se-dialog-note">Loading versions…</p>
           ) : versions.length === 0 ? (
@@ -587,26 +611,54 @@ export function StudioProjectMenu({
                       </button>
                     </div>
                     <ul>
-                    {items.map((version) => {
-                      const at = version.created_at ? new Date(version.created_at) : null;
-                      const time =
-                        at && !Number.isNaN(at.getTime())
-                          ? at.toLocaleTimeString()
-                          : version.label || version.title || "Version";
-                      return (
-                        <li key={version.id} className="se-history-row">
-                          <span>{version.label || time}</span>
-                          <button
-                            type="button"
-                            className="se-pill"
-                            onClick={() => restore(version.id)}
-                            disabled={busy}
-                            aria-label={`Restore ${version.label || version.title || "version"}`}
+                      {items.map((version) => {
+                        const isNewest = version.id === newestVersionId;
+                        const time =
+                          versionClock(version.created_at, !isNewest) ||
+                          version.label ||
+                          version.title ||
+                          "Version";
+                        const note =
+                          version.label && version.label !== time ? version.label : null;
+                        return (
+                          <li
+                            key={version.id}
+                            className={`se-history-item${isNewest ? " is-current" : ""}`}
                           >
-                            Restore
-                          </button>
-                        </li>
-                      );
+                            <button
+                              type="button"
+                              className={`se-history-row${
+                                revealedVersion === version.id ? " is-revealed" : ""
+                              }`}
+                              onClick={() => restore(version.id)}
+                              disabled={busy}
+                              aria-label={`Restore version from ${time}`}
+                              onPointerEnter={() => setRevealedVersion(version.id)}
+                              onPointerLeave={() =>
+                                setRevealedVersion((current) =>
+                                  current === version.id ? null : current
+                                )
+                              }
+                              onFocus={() => setRevealedVersion(version.id)}
+                              onBlur={() =>
+                                setRevealedVersion((current) =>
+                                  current === version.id ? null : current
+                                )
+                              }
+                            >
+                              <span className="se-history-dot" aria-hidden="true" />
+                              <span className="se-history-time">{time}</span>
+                              {note ? <span className="se-history-label">{note}</span> : null}
+                              {isNewest ? (
+                                <Icon name="fa-chevron-down" className="se-history-chevron" />
+                              ) : (
+                                <span className="se-history-restore" aria-hidden="true">
+                                  Restore
+                                </span>
+                              )}
+                            </button>
+                          </li>
+                        );
                       })}
                     </ul>
                   </section>
@@ -614,9 +666,6 @@ export function StudioProjectMenu({
               })()}
             </div>
           )}
-          <p className="se-history-note">
-            Restoring replaces the arrangement and reloads the editor.
-          </p>
         </aside>
       ) : dialog ? (
         <div
