@@ -80,24 +80,25 @@ async def test_refresh_proxies_the_read_only_check() -> None:
 
 
 @pytest.mark.asyncio
-async def test_refresh_rearms_a_mirror_that_never_reached_musicapi() -> None:
+async def test_refresh_returns_pending_without_rearming_the_mirror() -> None:
+    """An unlinked project must not start a push on every poll.
+
+    The editor refreshes on open and every 15 s; re-arming the enqueue here turned a
+    failing mirror into a 90 s push per poll (QA follow-up, 2026-11-16).
+    """
     service = _service()
     row = _project_row()
     service._pool.fetchrow = AsyncMock(return_value=row)
     service._studio_sync_endpoint = lambda: ("http://mirror", "token")
     service._studio_sync_request = AsyncMock(
-        side_effect=[
-            {**PENDING, "status": "pending", "suno_project_id": None},
-            {"status": "queued"},
-            {**PENDING, "status": "synced", "suno_project_id": "suno-2"},
-        ]
+        return_value={**PENDING, "status": "pending", "suno_project_id": None}
     )
 
     result = await service.refresh_studio_project(row["user_id"], row["id"])
 
-    assert result["status"] == "synced"
+    assert result["status"] == "pending"
     actions = [call.args[2] for call in service._studio_sync_request.await_args_list]
-    assert actions == ["refresh", "enqueue", "refresh"]
+    assert actions == ["refresh"]
 
 
 @pytest.mark.asyncio
