@@ -10,10 +10,11 @@ import { Icon } from "@/components/Icon";
  *
  * The capture offers five ways to start (Edit Your Song · Drum & Bass Demo · Upload Audio ·
  * Video Tutorial · Empty Project) fanned across the editor, with a close ✕ and a "Browse
- * Studio projects ›" pill. We ship the four that do something real: edit a song from the
- * library, upload audio, create a song, and start empty. The demo tile needs a bundled demo
- * arrangement we do not have, and the video tutorial is the YouTube row dropped by product
- * decision (CLONE_DEFINITION §5) — both are recorded as sanctioned absences, not silent gaps.
+ * Studio projects ›" pill. We ship five tiles in that order: edit a song from the library,
+ * the Drum & Bass demo (a project we seed with our own loop — the reference's bundled
+ * multi-track arrangement is not ours to ship), upload audio, create a song and start
+ * empty. The video tutorial is the YouTube row dropped by product decision
+ * (CLONE_DEFINITION §5) — the one recorded absence, not a silent gap.
  */
 
 const SEEN_PREFIX = "studio:onboarded:";
@@ -27,6 +28,7 @@ export function StudioOnboarding({
   isEmpty,
   reopenToken = 0,
   onOpenLibrary,
+  onOpenDemo,
 }: {
   projectId: string | null;
   isEmpty: boolean;
@@ -34,6 +36,8 @@ export function StudioOnboarding({
   reopenToken?: number;
   /** Open the library drawer on a specific list (songs or uploads). */
   onOpenLibrary?: (tab: "songs" | "uploads") => void;
+  /** Create and open the demo project (our own loop, seeded by `buildDemoProject`). */
+  onOpenDemo?: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -76,6 +80,14 @@ export function StudioOnboarding({
     onOpenLibrary?.(tab);
   }
 
+  async function openDemo() {
+    if (!onOpenDemo) return;
+    // Close first, like the library tiles: the editor is about to swap projects, and a
+    // closed overlay cannot be clicked twice into a second demo project.
+    dismiss();
+    await onOpenDemo();
+  }
+
   if (!open) return null;
 
   return (
@@ -108,6 +120,17 @@ export function StudioOnboarding({
             <span>Open a song from your library.</span>
           </button>
 
+          <button
+            type="button"
+            className="se-onboard-tile"
+            onClick={() => void openDemo()}
+            disabled={!onOpenDemo}
+          >
+            <Icon name="fa-drum" />
+            <strong>Drum &amp; Bass Demo</strong>
+            <span>A finished track to play, poke at and pull apart.</span>
+          </button>
+
           <button type="button" className="se-onboard-tile" onClick={() => openLibrary("uploads")}>
             <Icon name="fa-arrow-up-from-bracket" />
             <strong>Upload Audio</strong>
@@ -118,12 +141,6 @@ export function StudioOnboarding({
             <Icon name="fa-wand-magic-sparkles" />
             <strong>Create a song</strong>
             <span>Generate audio, then bring it into a project.</span>
-          </Link>
-
-          <Link className="se-onboard-tile" href="/studio">
-            <Icon name="fa-folder-open" />
-            <strong>Open a project</strong>
-            <span>Resume something you already started.</span>
           </Link>
 
           <button type="button" className="se-onboard-tile" onClick={dismiss}>

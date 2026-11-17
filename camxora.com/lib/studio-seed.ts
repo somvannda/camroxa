@@ -22,6 +22,28 @@ export type SeededProject = {
 
 const DEFAULT_DURATION = 120;
 
+/**
+ * The loop we own, shipped in `public/` — 4 s, mono, 22.05 kHz. The demo tile plays
+ * this file directly (no provider call, no generated audio).
+ */
+export const DEMO_LOOP_URL = "/seed/demo-loop.wav";
+export const DEMO_PROJECT_TITLE = "Drum & Bass Demo";
+/** The loop's real length in seconds (read off the WAV header). */
+const DEMO_LOOP_SECONDS = 4;
+/** The capture's demo project runs at 174 BPM (S17). */
+const DEMO_BPM = 174;
+const DEMO_TRACK_ID = "track-demo-loop";
+const DEMO_CLIP_ID = "clip-demo-loop";
+
+/** The captured master rack (S26/S48) is not empty: three real bus entries. */
+function masterRack(): Array<{ id: string; type: string; amount: number }> {
+  return [
+    { id: "master-compressor", type: "compressor", amount: 0.3 },
+    { id: "master-eq", type: "eq", amount: 0.2 },
+    { id: "master-eq-2", type: "eq", amount: 0.15 },
+  ];
+}
+
 function cleanTitle(value?: string | null): string {
   const trimmed = (value ?? "").trim();
   return trimmed.length > 0 ? trimmed : "Untitled song";
@@ -77,11 +99,55 @@ export function buildSeedFromSong(
       // The captured master rack is not empty (S26/S48): a song opened from the library
       // starts with a real chain instead of an empty dock. Types are the three the master
       // bus actually implements.
-      masterChain: [
-        { id: "master-compressor", type: "compressor", amount: 0.3 },
-        { id: "master-eq", type: "eq", amount: 0.2 },
-        { id: "master-eq-2", type: "eq", amount: 0.15 },
+      masterChain: masterRack(),
+    } as StudioProjectData,
+  };
+}
+
+/**
+ * Pure: the "Drum & Bass Demo" start-overlay tile (S03/S06).
+ *
+ * The reference opens a bundled multi-track project; we do not ship that arrangement, so
+ * the tile seeds one we own instead: our loop as an audio clip on one Audio Track at bar
+ * one, already audible (`clip.audioUrl` is what the editor plays). No Suno content and no
+ * provider call — the document is built here and created through `createStudioProject`.
+ */
+export function buildDemoProject(): SeededProject {
+  return {
+    title: DEMO_PROJECT_TITLE,
+    bpm: DEMO_BPM,
+    data: {
+      lanes: [
+        {
+          id: DEMO_CLIP_ID,
+          title: DEMO_PROJECT_TITLE,
+          start: 0,
+          duration: DEMO_LOOP_SECONDS,
+          volume: 1,
+          pan: 0,
+          muted: false,
+          solo: false,
+          audioUrl: DEMO_LOOP_URL,
+        },
       ],
+      tracks: [
+        {
+          id: DEMO_TRACK_ID,
+          name: "Drum & Bass Loop",
+          color: colorForTrackName("Drum & Bass Loop"),
+          index: 0,
+          volume: 80,
+          pan: 0,
+          muted: false,
+          solo: false,
+          hidden: false,
+          collapsed: false,
+          groupId: null,
+          chain: [],
+          clipIds: [DEMO_CLIP_ID],
+        },
+      ],
+      masterChain: masterRack(),
     } as StudioProjectData,
   };
 }

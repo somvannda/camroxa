@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSeedFromSong, emptyProjectData, isSeedable, pickSeedClip } from "@/lib/studio-seed";
+import {
+  buildDemoProject,
+  buildSeedFromSong,
+  DEMO_LOOP_URL,
+  emptyProjectData,
+  isSeedable,
+  pickSeedClip,
+} from "@/lib/studio-seed";
 import type { WebMusicGeneration } from "@/lib/library-api";
 
 function song(overrides: Partial<WebMusicGeneration> = {}): WebMusicGeneration {
@@ -77,6 +84,37 @@ describe("buildSeedFromSong", () => {
     const seed = buildSeedFromSong(song());
     const chain = (seed.data as { masterChain?: Array<{ type?: string }> }).masterChain ?? [];
     expect(chain.map((entry) => entry.type)).toEqual(["compressor", "eq", "eq"]);
+  });
+});
+
+describe("buildDemoProject", () => {
+  it("seeds one track with our loop as one clip, ready to play", () => {
+    const demo = buildDemoProject();
+    const data = demo.data as {
+      lanes: Array<Record<string, unknown>>;
+      tracks: Array<{ name: string; clipIds: string[] }>;
+    };
+
+    expect(demo.title).toBe("Drum & Bass Demo");
+    expect(demo.bpm).toBe(174);
+    expect(data.tracks).toHaveLength(1);
+    expect(data.lanes).toHaveLength(1);
+    expect(data.lanes[0]).toMatchObject({
+      title: "Drum & Bass Demo",
+      start: 0,
+      duration: 4,
+      audioUrl: "/seed/demo-loop.wav",
+    });
+    expect(data.tracks[0].clipIds).toEqual([data.lanes[0].id]);
+    expect(data.tracks[0].name).toContain("Drum & Bass");
+  });
+
+  it("plays the public seed file we own, not fabricated provider audio", () => {
+    expect(DEMO_LOOP_URL).toBe("/seed/demo-loop.wav");
+    const lane = (buildDemoProject().data as { lanes: Array<Record<string, unknown>> }).lanes[0];
+    expect(lane.audioUrl).toBe(DEMO_LOOP_URL);
+    expect(lane.songId).toBeUndefined();
+    expect(String(lane.audioUrl)).not.toMatch(/^https?:/);
   });
 });
 

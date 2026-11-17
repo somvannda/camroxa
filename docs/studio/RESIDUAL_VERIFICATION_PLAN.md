@@ -136,5 +136,6 @@ else is free.
 1. **W6 budget:** approve a credit cap (suggested: one operation each, 12 operations; cap at
    the pricing table's per-op cost × 14 for retries). Without this, D4 stays BLOCKED.
 2. **W7 absences:** default proposal — build the **MIDI overview strip** (real value), accept
-   the clip-rail header as our layout, accept Drum & Bass Demo + Video Tutorial as recorded
-   absences (no asset / dropped channel). Tell me if you want any of those changed.
+   the clip-rail header as our layout, accept **Video Tutorial** as the recorded absence
+   (dropped channel). **Drum & Bass Demo** is no longer an absence: it ships from our own
+   seed loop (`docs/studio/CLONE_DEFINITION.md` §5). Tell me if you want any of those changed.

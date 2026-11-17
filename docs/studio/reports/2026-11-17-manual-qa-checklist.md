@@ -753,16 +753,17 @@ Drag on the bar ruler first, then right-click the ruler.
 | C-203 | Shared | Signed out, footer | `Sign in to fork`; signed in, `Fork to Studio` creates a copy and opens it | `.shared-studio-footer-actions` | ☐ |
 | C-204 | Shared | Invalid or expired token | `Project unavailable` + the error message | `.shared-studio-empty` | ☐ |
 
-### C14. Onboarding — 6 checks
+### C14. Onboarding — 7 checks
 
 | ID | Area | Action | Expected result | Evidence / selector | ☐ |
 |---|---|---|---|---|---|
 | C-205 | Onboarding | Open P0 (empty project) | `How do you want to start?` overlay with 5 tiles | `[aria-label="How do you want to start?"]` | ☐ |
-| C-206 | Onboarding | Read the tiles | Edit Your Song, Upload Audio, Create a song, Open a project, Empty Project | `.se-onboard-tile` | ☐ |
+| C-206 | Onboarding | Read the tiles | Edit Your Song, Drum & Bass Demo, Upload Audio, Create a song, Empty Project | `.se-onboard-tile` | ☐ |
 | C-207 | Onboarding | **Edit Your Song** | Overlay closes, library opens on All Songs | `.se-library` songs view | ☐ |
 | C-208 | Onboarding | **Upload Audio** | Overlay closes, library opens on Uploads | uploads view | ☐ |
-| C-209 | Onboarding | **Start empty** / ✕ | Overlay closes and does not return on reload (seen flag per project) | `studio:onboarded:<id>` | ☐ |
-| C-210 | Onboarding | Project menu → **Show Quick Start again** | Overlay re-opens even though it was dismissed | `.se-onboard` | ☐ |
+| C-209 | Onboarding | **Drum & Bass Demo** | A new project opens with one track holding our `demo-loop.wav` clip at bar one; it plays | `.se-clip` + waveform | ☐ |
+| C-210 | Onboarding | **Start empty** / ✕ | Overlay closes and does not return on reload (seen flag per project) | `studio:onboarded:<id>` | ☐ |
+| C-211 | Onboarding | Project menu → **Show Quick Start again** | Overlay re-opens even though it was dismissed | `.se-onboard` | ☐ |
 
 ## D. Arrangement gestures — 88 checks
 
@@ -1060,13 +1061,13 @@ open, the missing save chip is **expected**, not a regression.
 |---|---|---|
 | **A** | Entry, gates, chrome | **16** |
 | **B** | Plugins — every card, parameter, mode, preset, chain op, master, designers | **138** |
-| **C** | Every menu, dialog, settings pane, home, share, onboarding | **210** |
+| **C** | Every menu, dialog, settings pane, home, share, onboarding | **211** |
 | **D** | Arrangement, clip, warp and MIDI gestures | **88** |
 | **E** | Four viewports incl. the 767/768 gate boundary | **24** |
 | **F** | Autosave, queueing, conflict, offline draft, mirror, provider errors | **33** |
-| **Total** | | **509** |
+| **Total** | | **510** |
 
-Every ID is contiguous inside its area (`A-01…A-16`, `B-01…B-138`, `C-01…C-210`, `D-01…D-88`,
+Every ID is contiguous inside its area (`A-01…A-16`, `B-01…B-138`, `C-01…C-211`, `D-01…D-88`,
 `E-01…E-24`, `F-01…F-33`), so a missing row is visible by inspection and the count can be re-derived
 mechanically.
 

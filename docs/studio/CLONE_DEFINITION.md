@@ -64,14 +64,16 @@ project JSON import, clip comments, presence, supersaw audition speed.
 | There is **no conflict UI** (S59) | Our 409 UI is additive |
 | Deletion is **soft with recovery** (S04/§56) | Recently Deleted + restore |
 | Learn has **YouTube Tutorials** | Dropped by product decision - the only sanctioned missing row |
-| Start overlay has **Drum & Bass Demo** (S03/S06) | No bundled demo arrangement ships, so the tile would open nothing; recorded absence |
+| Start overlay has **Drum & Bass Demo** (S03/S06) | Shipped, with content we own rather than Suno's bundled arrangement: `buildDemoProject()` seeds one Audio Track holding our 4 s seed loop (`public/seed/demo-loop.wav`) as one audio clip at bar one, 174 BPM, titled "Drum & Bass Demo" — audible on open, no provider call |
 | Start overlay has **Video Tutorial** (S03/S06) | Same content as the dropped YouTube row; recorded absence |
 | Clip rail header sits **inside the floating card** (S27) | The captured controls are all present (back, title, like/dislike, art, Remix, player, tabs); the card layout is ours, not a replacement |
 | MIDI editor has **no overview strip** | The grid zooms 1–12× instead of scrolling a mini-map; an overview with no scroll position to reflect would be decorative |
 | Footer strip shows the **master chain**, not the selected track’s (S26) | Deliberate: the capture’s footer centre is the master rack; per-track chains live in the dock |
 
-The start overlay ships **Edit Your Song, Upload Audio, Create a song, Open a project and
-Empty Project**, plus the captured ✕ and "Browse Studio projects ›" pill.
+The start overlay ships five tiles in the captured order — **Edit Your Song, Drum & Bass
+Demo, Upload Audio, Create a song and Empty Project** — plus the captured ✕ and "Browse
+Studio projects ›" pill. The demo tile opens a project we seed from our own loop; the
+video tutorial is the one recorded absence in that row.
 
 ## 6. Sign-off checklist
 
