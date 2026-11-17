@@ -28,6 +28,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
   cycle without repeating until the cycle is exhausted. Admin-library thumbnails
   use a strict text lockup and clean text-free typography styles instead of
   hardcoded words in the prompt.
+- **Background collections.** Admin → Settings → Image Generation can restrict
+  background rotation to a tagged collection. The production setting now uses
+  the 127 JBL portable-speaker backgrounds, with JBL-style branding added to all
+  portable-speaker prompts.
 
 ### Changed
 
