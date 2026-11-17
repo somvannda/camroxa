@@ -3340,6 +3340,10 @@ html{color-scheme:dark}
 /* ---------- misc ---------- */
 .s-toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:var(--s-bg3);border:1px solid var(--s-line);border-radius:var(--s-pill);padding:8px 16px;font-size:13px;z-index:260;box-shadow:var(--s-shadow)}
 .s-toast.warn{background:rgba(185,28,28,.22);border-color:rgba(254,202,202,.45);color:#fecaca;font-size:15px;font-weight:500;padding:12px 20px;bottom:96px;max-width:min(560px,calc(100vw - 32px));text-align:center}
+.s-refusal-toast{position:fixed;left:50%;bottom:104px;transform:translateX(-50%);z-index:260;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;width:min(520px,calc(100vw - 32px));padding:14px 16px;border-radius:12px;background:hsl(25 95% 53%);color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.45)}
+.s-refusal-toast strong{display:block;font-size:15px;font-weight:600;margin-bottom:4px}
+.s-refusal-toast p{margin:0;font-size:13px;line-height:1.45}
+.s-refusal-toast button{border:0;background:transparent;color:#fff;cursor:pointer;padding:2px;flex:none}
 .s-error{display:flex;align-items:center;gap:8px;font-size:13px;color:#fb9b85;background:rgba(248,68,27,.1);border:1px solid rgba(248,68,27,.24);border-radius:10px;padding:8px 12px}
 .s-note{font-size:12px;color:var(--s-text3);line-height:1.5}
 .s-note.warn{color:#faed87}

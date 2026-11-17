@@ -26,7 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
 import { cn } from "@/lib/utils";
-import { isCreditsRefusal } from "@/lib/studio-errors";
+import { classifyStudioError, isCreditsRefusal } from "@/lib/studio-errors";
 import type { WebMusicClip, WebMusicGeneration } from "@/lib/library-api";
 import {
   WebMusicApiError,
@@ -352,6 +352,8 @@ export function CreateStudio() {
   const [busy, setBusy] = useState(false);
   const [writingLyrics, setWritingLyrics] = useState(false);
   const [error, setError] = useState("");
+  /** S60: a policy refusal is the captured orange toast, not a footer line. */
+  const [refusal, setRefusal] = useState<{ title: string; body: string } | null>(null);
   const [notice, setNotice] = useState("");
   const [quota, setQuota] = useState<WebMusicQuota | null>(null);
   const [workspaces, setWorkspaces] = useState<WebMusicWorkspace[]>([]);
@@ -2176,6 +2178,7 @@ export function CreateStudio() {
     if (!remixSource || busy) return;
     setBusy(true);
     setError("");
+    setRefusal(null);
     setNotice("");
     try {
       const promptText =
@@ -2247,6 +2250,7 @@ export function CreateStudio() {
     }
     setBusy(true);
     setError("");
+    setRefusal(null);
     setStylesError("");
     setNotice("");
     let finalLyrics = lyrics.trim();
@@ -2380,6 +2384,16 @@ export function CreateStudio() {
         if (mounted.current) {
           setError("");
           setCreditsGateOpen(true);
+        }
+        return;
+      }
+      // S60: moderation refusals are the captured toast, keeping the footer for others.
+      const classified = classifyStudioError(message);
+      if (classified.kind === "policy" && createdCount === 0) {
+        const body = classified.text.replace(/^Couldn't generate that\\.\\s*/, "");
+        if (mounted.current) {
+          setError("");
+          setRefusal({ title: "Couldn't generate that.", body });
         }
         return;
       }
@@ -4386,6 +4400,21 @@ export function CreateStudio() {
               </div>
 
               <div className="s-form-foot">
+                {refusal ? (
+                  <div className="s-refusal-toast" role="alert">
+                    <div>
+                      <strong>{refusal.title}</strong>
+                      <p>{refusal.body}</p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Dismiss"
+                      onClick={() => setRefusal(null)}
+                    >
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : null}
                 {error ? (
                   <p className="s-error" role="alert">
                     {error}
