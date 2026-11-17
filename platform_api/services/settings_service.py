@@ -36,7 +36,9 @@ MAX_PATCH_SIZE = 50
 
 # Settings owned by the administrator. A user patch must never override them,
 # even though settings are normally merged with user values taking precedence.
-SYSTEM_ONLY_SETTINGS: frozenset[str] = frozenset({"imagePromptLibraryOnly"})
+SYSTEM_ONLY_SETTINGS: frozenset[str] = frozenset(
+    {"imagePromptLibraryOnly", "imageBackgroundCollection"}
+)
 
 
 # ---------------------------------------------------------------------------
