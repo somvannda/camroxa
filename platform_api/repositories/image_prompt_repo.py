@@ -165,6 +165,17 @@ class ImagePromptStyleRepository:
         )
         return result.upper().startswith("DELETE")
 
+    async def delete_all(self, *, kind: str) -> int:
+        """Delete every style of one kind and return how many rows were removed."""
+        result = await self._db.execute(
+            "DELETE FROM image_prompt_styles WHERE lower(kind) = lower($1)",
+            kind,
+        )
+        try:
+            return int(str(result).split()[-1])
+        except (IndexError, ValueError):
+            return 0
+
     async def pick_rotating_style(
         self,
         *,

@@ -34,3 +34,8 @@ export type ImagePromptImportResponse = {
   skipped_empty: number;
   errors: string[];
 };
+
+export type ImagePromptDeleteAllResponse = {
+  deleted: number;
+  kind: ImagePromptKind;
+};

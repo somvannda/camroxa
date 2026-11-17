@@ -13,6 +13,7 @@ import {
 
 import {
   useCreateImagePrompt,
+  useDeleteAllImagePrompts,
   useDeleteImagePrompt,
   useImagePrompts,
   useImportImagePrompts,
@@ -57,7 +58,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-const PROMPT_MAX_CHARS = 3000;
+const PROMPT_MAX_CHARS = 20000;
 
 type FormState = {
   kind: ImagePromptKind;
@@ -99,6 +100,7 @@ export default function ImagePromptsPage() {
   const createMutation = useCreateImagePrompt();
   const updateMutation = useUpdateImagePrompt();
   const deleteMutation = useDeleteImagePrompt();
+  const deleteAllMutation = useDeleteAllImagePrompts();
   const importMutation = useImportImagePrompts();
   const importFileRef = useRef<HTMLInputElement>(null);
 
@@ -108,6 +110,7 @@ export default function ImagePromptsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<ImagePromptStyleRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<ImagePromptStyleRecord | null>(null);
+  const [deleteAllKind, setDeleteAllKind] = useState<ImagePromptKind | null>(null);
 
   const allItems = promptsQuery.data?.items ?? [];
   const items = useMemo(
@@ -209,6 +212,21 @@ export default function ImagePromptsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!deleteAllKind) return;
+    const kind = deleteAllKind;
+    try {
+      const result = await deleteAllMutation.mutateAsync(kind);
+      toast({
+        title: `Deleted ${result.deleted} ${kind} prompt ${result.deleted === 1 ? 'style' : 'styles'}`,
+      });
+      setDeleteAllKind(null);
+      promptsQuery.refetch();
+    } catch {
+      toast({ title: 'Unable to delete prompt styles', variant: 'destructive' });
+    }
+  };
+
   const handleImport = async () => {
     const file = importFileRef.current?.files?.[0] ?? null;
     if (!file) {
@@ -290,17 +308,33 @@ export default function ImagePromptsPage() {
       </div>
 
       <Card className="border-slate-800 bg-slate-900/50">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base text-slate-100">Prompt library</CardTitle>
-          <Tabs
-            value={kindTab}
-            onValueChange={(value) => setKindTab(value as ImagePromptKind)}
-          >
-            <TabsList>
-              <TabsTrigger value="background">Background</TabsTrigger>
-              <TabsTrigger value="thumbnail">Thumbnail</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex flex-wrap items-center gap-2">
+            <Tabs
+              value={kindTab}
+              onValueChange={(value) => setKindTab(value as ImagePromptKind)}
+            >
+              <TabsList>
+                <TabsTrigger value="background">Background</TabsTrigger>
+                <TabsTrigger value="thumbnail">Thumbnail</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-400/30 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+              onClick={() => setDeleteAllKind(kindTab)}
+              disabled={items.length === 0 || deleteAllMutation.isPending}
+            >
+              {deleteAllMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete all
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {promptsQuery.isLoading ? (
@@ -592,6 +626,17 @@ export default function ImagePromptsPage() {
         confirmText="Delete"
         isLoading={deleteMutation.isPending}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteAllKind)}
+        onOpenChange={(open) => { if (!open) setDeleteAllKind(null); }}
+        title={`Delete all ${deleteAllKind ?? ''} prompts?`}
+        description={`This permanently removes all ${items.length} ${deleteAllKind ?? ''} prompt styles, including inactive ones. Rotation history for them is removed. Existing image jobs keep their stored prompt. This cannot be undone.`}
+        variant="destructive"
+        confirmText="Delete all"
+        isLoading={deleteAllMutation.isPending}
+        onConfirm={handleDeleteAll}
       />
     </div>
   );
