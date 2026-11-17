@@ -1013,10 +1013,12 @@ async function main() {
   let readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
   // The first cross-process connection to MusicAPI on this host can stall for seconds
   // (measured once at the 10 s guard, then ~1 ms on every retry), and a readiness
-  // snapshot is not a load test. One negative snapshot is re-read before it can block a
-  // run; a genuinely broken stack still fails twice.
-  if (readiness && readiness.checks && Object.values(readiness.checks).some((ok) => !ok)) {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+  // snapshot is not a load test. A negative snapshot is re-read before it can block a
+  // run; a genuinely broken stack still fails every attempt.
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    if (!readiness || !readiness.checks || !Object.values(readiness.checks).some((ok) => !ok)) break;
+    if (attempt === 3) break;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
   }
   const checks = readiness && readiness.checks ? readiness.checks : {};
@@ -1200,7 +1202,9 @@ async function main() {
     row.started_at = started.toISOString();
   }
 
-  // Reconcile the spend against the wallet so the report never under-reports.
+  // Reconcile the spend against the wallet so the report never under-reports: a row whose
+  // generation was accepted but whose poll failed still charged its credits (run 1 spent 10
+  // on a generation that never turned terminal, while the row itself stayed "error").
   try {
     const after = await client.call('/web-music/quota', { timeoutMs: 60000 });
     const walletAfter = Number(after.credits_remaining || 0);
@@ -1209,7 +1213,7 @@ async function main() {
   } catch {
     meta.walletDelta = null;
   }
-  meta.spent = spent;
+  meta.spent = Math.max(spent, Number(meta.walletDelta) || 0);
 
   const outDir = opts.out || path.join('docs', 'studio', 'reports', 'provider-matrix', `run-${meta.stamp}`);
   await mkdir(outDir, { recursive: true });

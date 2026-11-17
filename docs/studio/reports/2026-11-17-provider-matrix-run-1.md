@@ -6,7 +6,14 @@
 
 ## Outcome
 
-14 rows, **0 credits spent**, every row `error`:
+14 rows, **10 credits charged (one generation)**, every row `error`:
+
+> **Correction to the generated evidence.** `provider-matrix.{json,md}` in this directory says
+> “spent: 0” because the end-of-run wallet reconciliation called `/web-music/quota` with the
+> same token that had just expired, got a `401`, and fell back to `meta.walletDelta = null`.
+> The wallet went **448 → 438** across run 1, i.e. the accepted generation was charged 10
+> credits even though its poll failed. The runner now refreshes the token (so the
+> reconciliation succeeds) and takes `max(row total, wallet delta)`.
 
 | Row | Status | Reason recorded by the runner |
 |---|---|---|
@@ -73,8 +80,9 @@ a code path in either codebase.
 | Change | Why |
 |---|---|
 | refresh-and-retry on `401` | a 15-minute matrix poll cannot fit inside a 900 s token |
+| readiness re-read up to 3 times, 2 s apart | the same cold-connection effect produced two false negatives minutes apart, one of them on a run whose predecessor had just passed |
+| `spent = max(row total, wallet delta)` | an accepted generation is charged even when its poll fails; run 1 under-reported 10 credits |
 | three attempts for the MusicAPI health probe (own timeout each) | the first Node fetch to MusicAPI on this host can stall past 10 s, then answers in ~1 ms |
-| one re-read of `/web-music/studio/readiness` when any check is negative | same cold-connection effect, measured as a false negative minutes before a run that passed |
 
 None of these loosen the gate: a second 401 fails, a broken readiness snapshot fails twice,
 and the budget check is unchanged.

@@ -98,10 +98,12 @@ re-classified as intended behaviour: `sync` is omitted when the mirror cannot an
 
 `node scripts/dev/provider-matrix.mjs --budget 320 --execute` ran the full 14-row plan on
 2026-11-17. Every row is red for one reason: the source generation stayed `PENDING` for
-18 minutes with no error, so the 13 dependent rows had nothing to act on. **0 credits were
-spent.** The request path is healthy end to end (the platform accepted the generate, musicapi
-opened an upstream task, both polled with 200, `active_accounts=1`); the account in the pool
-is a free-plan account and the sandbox's `premier` account is inactive.
+18 minutes with no error, so the 13 dependent rows had nothing to act on. **The accepted
+generation was charged 10 credits** (wallet 448 → 438); the runner’s own “spent: 0” line was
+wrong because its reconciliation call used the expired token, and that is fixed too. The
+request path is healthy end to end (the platform accepted the generate, musicapi opened an
+upstream task, both polled with 200, `active_accounts=1`); the account in the pool is a
+free-plan account and the sandbox's `premier` account is inactive.
 
 The run also exposed a runner defect, now fixed: the login JWT lives 900 s, the poll window
 was also 900 s, and the runner ignored the `refresh_token` — row 1 was cancelled by a `401`
