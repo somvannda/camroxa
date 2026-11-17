@@ -525,7 +525,9 @@ async function runGenerate(ctx) {
   const { taskId, final } = await generateSong(ctx, `generate ${ctx.runTag}`);
   ctx.state.taskId = taskId;
   return {
-    ids: { task_id: taskId },
+    // `platform_id` is what the report table prints; `task_id` is what the dependent rows
+    // read. Both named so a run can be traced from the evidence alone.
+    ids: { platform_id: taskId, task_id: taskId },
     evidence: {
       status: String(final.status).toUpperCase(),
       model: final.model,
@@ -822,7 +824,9 @@ async function probeMusicapi(env) {
     try {
       const response = await fetch(`${env.musicapiBase}/internal/studio/health`, {
         headers: { 'x-internal-token': env.token },
-        signal: AbortSignal.timeout(10000),
+        // The endpoint authenticates the account pool live: a cold call has been measured
+        // at 12 035 ms and 23 277 ms, so a 10 s guard failed a healthy stack.
+        signal: AbortSignal.timeout(30000),
       });
       const payload = await response.json();
       last = { skipped: false, ok: response.ok && Boolean(payload.ok), payload, attempt };

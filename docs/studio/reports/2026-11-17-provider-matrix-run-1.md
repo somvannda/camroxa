@@ -63,8 +63,8 @@ The account in use is `somvannda@gmail.com` (`credits_left 1438`, **`plan: null`
 sandbox also holds a `premier` account with 3120 credits, but it is **inactive**
 (`is_active = false`) and therefore not in the pool.
 
-**The discriminating variable is the model, not the plan.** Listing every web-music
-generation in the sandbox:
+**The discriminating variable turned out to be the key pool, not the model.** Listing every
+web-music generation in the sandbox was suggestive:
 
 | Model | Status | Count |
 |---|---|---|
@@ -72,29 +72,88 @@ generation in the sandbox:
 | `V6` | `SUCCESS` | 4 (all 2026-11-14) |
 | `V6` | `FAILED` (with an `error_message`) | 5 |
 
-`V6_MINI` has never produced audio here, while `V6` has produced four completed songs. The
-runner's `DEFAULT_MODEL` is `V6_MINI`, so run 1 and the first retry both picked the one model
-this environment has never completed. The third attempt therefore runs with
-`PLATFORM_STUDIO_MODEL=V6`, which is what the successful rows used.
+The real chain is below (`job_queue.last_error` is what names it).
 
-A `V6` failure is at least *legible* (it carries `error_message`), unlike the silent
-`V6_MINI` `PENDING`, which is itself a useful signal: a model that cannot be served should
-surface an error rather than holding a row forever.
+### 3. The queue worker was orphaned, then the submit never reached the configured host
+
+`job_queue` is the ledger of truth here. The first three generations came from a worker that
+had been started from a worktree that no longer exists: its `platform_api` package path
+pointed at the deleted directory, so every job died with
+
+```
+status = failed, attempts = 3
+last_error = No module named 'platform_api.services.credit_service'
+```
+
+Nothing was ever submitted, `external_task_id` stayed `NULL`, and `_refresh_pending_from_suno`
+had nothing to poll — the `PENDING` was never a slow queue.
+
+Restarting a worker from this checkout made the job reach a provider, which answered:
+
+```
+last_error = Suno API error 401: submit_task
+```
+
+That 401 is **not** the key being wrong, and it is not musicapi rejecting it:
+
+- `api_key_entries` holds `local musicapi`, provider `suno`, `base_url http://127.0.0.1:4003`,
+  status `active` after re-seeding; the stored blob decrypts with the platform master key to
+  `sk-test-123` (11 chars) — verified, not assumed;
+- musicapi accepts exactly that bearer: a direct request returns `404` for an unknown task
+  instead of `401`;
+- **no `/v1/music/generate` request appears anywhere in musicapi's request log during any of
+  the attempts** — every other call (health, record-info, internal routes) is logged there.
+
+So the submit is being sent to some host other than the configured local musicapi, carrying a
+key that host rejects. The worker's traceback names the host outright:
+
+```
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url
+'https://musicapi.camxora.com/api/v1/generate'
+```
+
+It was posting to **production**. `platform_api/.env` does not define
+`PLATFORM_SUNO_API_BASE_URL`, so any process that is not started by
+`scripts/dev/studio-stack.ps1` silently falls back to the production host in settings. The
+API process had the local override only because it was exported into its environment; the
+worker I started by hand did not. Production musicapi correctly rejected a sandbox key,
+which is also what the `auth_rejected_401_unknown` key events were recording.
+
+With the worker started the way the stack script starts it —
+`PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003` plus the callback tunnel — the whole chain
+points at one environment and the generate row goes green:
+
+```
+[ ok  ] Generate a song -> SUCCESS (10 credits)
+Spent 10 credits (wallet delta 10). 0 row(s) not green.
+```
+
+Evidence: `docs/studio/reports/provider-matrix/run-8-generate-v6/`.
+
+Two product defects did come out of the pass and are fixed:
+
+- **A job that exhausts its attempts left the task `pending` forever** with
+  `error_message = NULL`, so the user watched a spinner and the reservation was never
+  released. The worker now marks the task failed through the same refund path the inline
+  failure uses (both the exception and timeout branches), with tests. The three stuck sandbox
+  rows were repaired through that path: all three are `failed` and the wallet returned from 20
+  to **448** as the reservations released.
+- **The failure was invisible in the run**: the matrix recorded `401` on a status read and
+  `no source generation` for the dependent rows, but the cause lived only in `job_queue`.
 
 ## What is needed to close D4
 
-1. **A provider account that completes generations in this environment**, either by
-   activating the premier account (a data change I will not make on my own: it routes real
-   generations through a different person's account) or by providing a key/account that
-   generates promptly.
-2. Re-run the same command. Row 1 is the only row that can spend; the rest are dependent.
-   `--timeout` can be raised above the 900 s default if the provider is merely slow, and the
-   runner now survives a run longer than one token lifetime.
+**Nothing but the remaining rows.** With the worker started through the stack script the
+submit reaches the configured host and the generate row is green
+(`docs/studio/reports/provider-matrix/run-8-generate-v6/`); the thirteen dependent rows then
+run against that task id for 178 credits. The one operational rule that cost this pass most of
+its time: every process that submits to the provider needs
+`PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003` in its own environment, because
+`platform_api/.env` does not set it and the fallback is production.
 
-A second attempt was launched on the same account with a 30-minute window
-(`--only generate --timeout 1800`); it hit the same silent `PENDING`. A third attempt runs
-with `PLATFORM_STUDIO_MODEL=V6`, the only model that has completed here. Each generation
-costs 10 credits; the dependent rows are free against a completed task.
+Eight generations were attempted before the wiring was right and **none was charged in the
+end**: every failure refunded, and the wallet was back at 448 before run 8 spent its 10.
+Evidence for each attempt is under `docs/studio/reports/provider-matrix/`.
 
 ## Runner changes in this pass
 
