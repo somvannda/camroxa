@@ -7,6 +7,38 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-11-17
+
+### Added
+
+- **Admin prompt library on the desktop.** Background and Thumbnail now have a
+  Prompt source selector: My prompt or Admin prompt library. The server picks a
+  different active style per channel from the user's current rotation cycle.
+- **Thumbnail text on the background.** New AI text-on-background mode sends the
+  generated background to the image model with the exact text, instead of
+  compositing a black text layer onto it. Composite remains available as a
+  legacy mode.
+- **Prompt-library preflight.** The Image page shows active style counts and
+  blocks generation when the selected admin library is empty.
+- **Import prompts in admin.** CSV/XLS/XLSX/JSON uploads with duplicate prompt
+  detection and no overwrites.
+
+### Changed
+
+- Image jobs now persist `prompt_style_id`, `source_mode`, and `thumbnail_mode`
+  so retries keep the selected prompt and mode.
+- Normal Retry preserves the selected admin prompt; Force Regenerate picks the
+  next prompt in the user's cycle.
+- Prompt rotation is now a per-user cycle: every active prompt is used once in
+  random order before the cycle wraps.
+
+### Fixed
+
+- Stale image jobs left running by a crashed worker are swept and their wallet
+  holds refunded before requeue/failure.
+- Provider fallback for AI thumbnail text is restricted to reference-capable,
+  text-capable models.
+
 ## [1.6.8] - 2026-11-11
 
 ### Added
