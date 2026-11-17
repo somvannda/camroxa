@@ -36,13 +36,16 @@ test("learn explains a control, then stays off after a reload", async ({ page })
   await expect(shortcuts).toContainText("Undo");
   // S14: grouped sections, two columns, and a search that filters them.
   await expect(shortcuts.locator(".se-shortcut-group h3").first()).toBeVisible();
-  await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(5);
+  // We have no plugin-selection bindings yet, so EFFECTS CHAIN is empty and filtered.
+  await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(4);
+  await expect(shortcuts.locator(".se-shortcut-group h3").first()).toHaveText("GENERAL");
+  await expect(shortcuts.getByText("CLIP EDITOR · MIDI")).toBeVisible();
   const search = shortcuts.getByLabel("Search shortcuts");
   await search.fill("zoom");
   await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(0);
   await expect(shortcuts.getByText(/Zoom/i).first()).toBeVisible();
   await search.fill("");
-  await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(5);
+  await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(4);
   await shortcuts.getByRole("button", { name: "Close" }).click();
   await expect(shortcuts).toHaveCount(0);
 

@@ -224,19 +224,51 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
 /** Five captured sections for the shortcut overlay (S14). */
 export type ShortcutGroup = { title: string; rows: { keys: string; action: string }[] };
 
-const SHORTCUT_GROUPS: Array<{ title: string; match: RegExp }> = [
-  { title: "Playback", match: /play|pause|jump|loop|metronome|stop|seek|tempo|count-in/i },
-  { title: "Tracks", match: /track|mute|solo|arm|record|take|group|send/i },
-  { title: "Editing", match: /split|trim|delete|duplicate|copy|paste|undo|redo|nudge|clip|fade|quanti[sz]e|warp|automation|midi/i },
-  { title: "View", match: /zoom|scroll|panel|library|inspect|focus|toggle|show|hide|close|open the library/i },
-  { title: "Project", match: /save|export|share|new|open|rename|version|settings|help/i },
-];
+/**
+ * The captured sections (S14): GENERAL · TRACKS · EFFECTS CHAIN · CLIP EDITOR · AUDIO ·
+ * CLIP EDITOR · MIDI. We have no plugin-selection bindings yet, so EFFECTS CHAIN is empty
+ * and filtered out rather than rendered as a heading with nothing under it.
+ */
+const GROUP_TITLES = [
+  "GENERAL",
+  "TRACKS",
+  "EFFECTS CHAIN",
+  "CLIP EDITOR · AUDIO",
+  "CLIP EDITOR · MIDI",
+] as const;
+
+function groupFor(row: { keys: string; action: string }): (typeof GROUP_TITLES)[number] {
+  const action = row.action;
+  // MIDI rows carry the "MIDI editor" prefix on their KEY, not their action.
+  if (row.keys.startsWith("MIDI editor") || action.startsWith("MIDI editor")) {
+    return "CLIP EDITOR · MIDI";
+  }
+  if (
+    /split|fade|time selection|warp|grid density|selected time|short fade/i.test(action)
+  ) {
+    return "CLIP EDITOR · AUDIO";
+  }
+  if (
+    /track up \/ down|focused track|hidden tracks|rename the focused track|mute \/ solo/i.test(
+      action
+    )
+  ) {
+    return "TRACKS";
+  }
+  if (/select all plugins|clear plugin selection|effect chain|plugin preset/i.test(action)) {
+    return "EFFECTS CHAIN";
+  }
+  return "GENERAL";
+}
 
 export function shortcutGroups(): ShortcutGroup[] {
-  const groups = SHORTCUT_GROUPS.map((group) => ({ title: group.title, rows: [] as { keys: string; action: string }[] }));
+  const groups = GROUP_TITLES.map((title) => ({
+    title: title as string,
+    rows: [] as { keys: string; action: string }[],
+  }));
   for (const row of SHORTCUTS) {
-    const index = SHORTCUT_GROUPS.findIndex((group) => group.match.test(row.action));
-    groups[index === -1 ? groups.length - 1 : index].rows.push(row);
+    const index = GROUP_TITLES.indexOf(groupFor(row));
+    groups[index].rows.push(row);
   }
   return groups.filter((group) => group.rows.length > 0);
 }

@@ -6555,27 +6555,8 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-trash" /> Delete <span>backspace</span>
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    copyClipSettings();
-                    setClipMenu(null);
-                  }}
-                >
-                  <Icon name="fa-sliders" /> Copy settings
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={!clipSettingsClipboard}
-                  onClick={() => {
-                    pasteClipSettings();
-                    setClipMenu(null);
-                  }}
-                >
-                  <Icon name="fa-paste" /> Paste settings
-                </button>
+                
+                
                 <div className="se-clip-menu-sep" />
                 <button
                   type="button"
@@ -6604,37 +6585,9 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-scissors" /> Split <span>ctrl E</span>
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={!clip.audioUrl && !clip.sourceAudioUrl}
-                  title={
-                    clip.audioUrl || clip.sourceAudioUrl
-                      ? "Cut this clip at the onsets found in its audio"
-                      : "This clip has no audio to analyse"
-                  }
-                  onClick={() => void splitOnTransients(clip)}
-                >
-                  <Icon name="fa-wave-square" /> Split on Transients
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => makeClipBeatOne(clip)}
-                  title="Move this clip onto the bar line its start belongs to"
-                >
-                  <Icon name="fa-arrows-left-right-to-line" /> Make Beat 1
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    createSectionFromClip(clip);
-                    setClipMenu(null);
-                  }}
-                >
-                  <Icon name="fa-flag" /> Create Section
-                </button>
+                
+                
+                
                 <button
                   type="button"
                   role="menuitem"
@@ -6767,6 +6720,58 @@ export function StudioEditorShell() {
                   }}
                 >
                   <Icon name="fa-xmark" /> Remove FX
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    copyClipSettings();
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-sliders" /> Copy settings
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clipSettingsClipboard}
+                  onClick={() => {
+                    pasteClipSettings();
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-paste" /> Paste settings
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.audioUrl && !clip.sourceAudioUrl}
+                  title={
+                    clip.audioUrl || clip.sourceAudioUrl
+                      ? "Cut this clip at the onsets found in its audio"
+                      : "This clip has no audio to analyse"
+                  }
+                  onClick={() => void splitOnTransients(clip)}
+                >
+                  <Icon name="fa-wave-square" /> Split on Transients
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => makeClipBeatOne(clip)}
+                  title="Move this clip onto the bar line its start belongs to"
+                >
+                  <Icon name="fa-arrows-left-right-to-line" /> Make Beat 1
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    createSectionFromClip(clip);
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-flag" /> Create Section
                 </button>
 <div className="se-clip-menu-sep" />
                 <button
