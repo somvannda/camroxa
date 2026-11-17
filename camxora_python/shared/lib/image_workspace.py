@@ -10,7 +10,7 @@ from shared.models.auth import ProfileResponse
 from shared.models.platform import ImageJobListItem, MusicHistoryBatch
 
 # Match platform_api.services.generation_service.IMAGE_MAX_PROMPT_LENGTH
-IMAGE_PROMPT_MAX_CHARS = 5000
+IMAGE_PROMPT_MAX_CHARS = 20000
 
 
 @dataclass(frozen=True, slots=True)

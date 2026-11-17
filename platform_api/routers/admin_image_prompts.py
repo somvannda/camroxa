@@ -16,7 +16,7 @@ from platform_api.repositories.image_prompt_repo import ImagePromptStyleReposito
 
 router = APIRouter(prefix="/admin/image-prompts", tags=["admin"])
 
-PROMPT_TEXT_MAX_CHARS = 3000
+PROMPT_TEXT_MAX_CHARS = 20000
 VALID_KINDS = {"background", "thumbnail"}
 
 
@@ -43,6 +43,11 @@ class ImagePromptStyleItem(BaseModel):
 
 class ImagePromptStyleListResponse(BaseModel):
     items: list[ImagePromptStyleItem]
+
+
+class DeleteAllImagePromptsResponse(BaseModel):
+    deleted: int
+    kind: str
 
 
 class ImagePromptStyleCreateRequest(BaseModel):
@@ -139,6 +144,22 @@ async def list_image_prompts(
         _handle_storage_error(exc)
         raise
     return ImagePromptStyleListResponse(items=[_item(style) for style in styles])
+
+
+@router.delete("", response_model=DeleteAllImagePromptsResponse)
+async def delete_all_image_prompts(
+    _ctx: AdminDep,
+    repo: RepoDep,
+    kind: str,
+) -> DeleteAllImagePromptsResponse:
+    """Delete every prompt style of one kind. Existing image jobs keep their prompt."""
+    kind_value = _validate_kind(kind)
+    try:
+        deleted = await repo.delete_all(kind=kind_value)
+    except Exception as exc:
+        _handle_storage_error(exc)
+        raise
+    return DeleteAllImagePromptsResponse(deleted=deleted, kind=kind_value)
 
 
 @router.post("", response_model=ImagePromptStyleItem)

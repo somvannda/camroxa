@@ -36,7 +36,7 @@ Boss wants image generation to be driven by a **server-side prompt library** tha
 | 7 | `background_text` is the **new default** thumbnail mode. `composite` remains available as the explicit legacy/fallback mode. |
 | 8 | If the routed provider cannot accept a reference image, the job fails with a clear validation error before wallet hold. It does **not** silently fall back to text-to-image or to composite. |
 | 9 | Thumbnail text tokens: `{title}`, `{album}`, `{channel}`. Resolution is per channel. Empty resolved text falls back to the song title, then to `NEW MUSIC`. |
-| 10 | Admin style prompts are capped at **3,000 characters**; the composed prompt must stay within the existing **5,000-character** image gate. |
+| 10 | Admin style prompts are capped at **20,000 characters**; the composed prompt must stay within the same **20,000-character** image gate. |
 | 11 | Per-job persistence: `prompt_style_id`, `source_mode`, and `thumbnail_mode` are stored on `image_jobs` so retries and setting changes do not alter an already-created job. |
 | 12 | Normal retry preserves the stored prompt. Only **force regenerate** re-picks a library style and bills a new image job as today. |
 | 13 | No new billing operation. Background jobs stay `background_image`; thumbnails stay `thumbnail_image`. A two-channel batch still creates four image jobs. |
@@ -153,7 +153,7 @@ A short `pg_advisory_xact_lock(hashtext('image_prompt_rotation:<user>:<kind>'))`
 
 - If a kind uses `admin_library`, at least one active style must exist.
 - If `background_text` is active, at least one reference-capable provider must be available in the routing chain.
-- A composed prompt over 5,000 characters is rejected at job creation; the admin editor prevents most of it at 3,000.
+- A composed prompt over 20,000 characters is rejected at job creation; the admin editor uses the same 20,000-character cap.
 
 Failures return a user-facing reason and must not charge music or image credits.
 
@@ -182,7 +182,7 @@ Composition order:
    - background: `BACKGROUND_NO_TEXT_INSTRUCTION`
    - thumbnail `background_text`: `THUMBNAIL_BACKGROUND_TEXT_INSTRUCTION`
    - thumbnail `composite`: `enrich_thumbnail_prompt(...)`
-5. length check against 5,000.
+5. length check against 20,000.
 
 Resolve tokens with `{title}`, `{album}` and the new `{channel}` (profile name where available).
 
@@ -242,7 +242,7 @@ New page: **Content → Image Prompts** (`/image-prompts`).
 
 - Tabs: **Background styles** and **Thumbnail styles**.
 - Table columns: name, prompt preview, text template, active, sort, usage.
-- Create/edit dialog fields: kind, name, prompt text (3,000-character counter), text template (thumbnail only), active, sort order, notes.
+- Create/edit dialog fields: kind, name, prompt text (20,000-character counter), text template (thumbnail only), active, sort order, notes.
 - **Import CSV / XLS / XLSX / JSON**:
   - columns: `#, background, thumbnail` (header optional);
   - JSON: list of `{ "background": "...", "thumbnail": "..." }` objects or lists;
@@ -321,7 +321,7 @@ Behavior:
 - [ ] A provider without reference-image support is rejected before wallet hold.
 - [ ] Normal retry keeps the original prompt; force regenerate re-picks and bills a new image job.
 - [ ] `prompt_style_id`, `source_mode`, and `thumbnail_mode` are persisted on image jobs.
-- [ ] Covered prompt > 5,000 characters fails clearly before the provider call.
+- [ ] Covered prompt > 20,000 characters fails clearly before the provider call.
 - [ ] Manual generation with no song title uses `NEW MUSIC` or the configured fallback.
 - [ ] Defaults preserve behavior for rows without the new fields; the new `background_text` default is documented and tested.
 - [ ] Credit estimate remains four image jobs per two-channel batch.

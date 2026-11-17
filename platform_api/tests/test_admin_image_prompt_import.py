@@ -129,3 +129,32 @@ async def test_import_endpoint_skips_duplicates_and_inserts_new() -> None:
     assert result.inserted_thumbnail == 1
     assert result.skipped_existing == 2  # Existing BG + duplicate New TH
     assert len(repo.created) == 2
+
+
+@pytest.mark.asyncio
+async def test_import_accepts_prompt_longer_than_old_3000_limit() -> None:
+    from platform_api.routers.admin_image_prompts import import_image_prompts
+
+    long_text = "a" * 5000
+    raw = f"#,background,thumbnail\n1,{long_text},{long_text}\n".encode()
+    repo = _FakeRepo()
+    result = await import_image_prompts(None, repo, _Upload(raw))
+
+    assert result.errors == []
+    assert result.inserted_background == 1
+    assert result.inserted_thumbnail == 1
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_prompt_over_20000_limit() -> None:
+    from platform_api.routers.admin_image_prompts import import_image_prompts
+
+    long_text = "a" * 20001
+    raw = f"#,background,thumbnail\n1,{long_text},{long_text}\n".encode()
+    repo = _FakeRepo()
+    result = await import_image_prompts(None, repo, _Upload(raw))
+
+    assert result.inserted_background == 0
+    assert result.inserted_thumbnail == 0
+    assert len(result.errors) == 2
+    assert "20000 characters" in result.errors[0]

@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import httpClient, { apiClient } from '@/lib/http-client';
 import type {
+  ImagePromptDeleteAllResponse,
   ImagePromptImportResponse,
+  ImagePromptKind,
   ImagePromptStyleCreateRequest,
   ImagePromptStyleListResponse,
   ImagePromptStyleRecord,
@@ -55,6 +57,22 @@ export function useDeleteImagePrompt() {
   return useMutation({
     mutationFn: (styleId: string) =>
       httpClient.delete<{ ok: boolean }>(`/api/v3/admin/image-prompts/${styleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: imagePromptKeys.all });
+    },
+  });
+}
+
+export function useDeleteAllImagePrompts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (kind: ImagePromptKind) => {
+      const response = await apiClient.delete<ImagePromptDeleteAllResponse>(
+        '/api/v3/admin/image-prompts',
+        { params: { kind } },
+      );
+      return response.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imagePromptKeys.all });
     },

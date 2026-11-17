@@ -1577,7 +1577,7 @@ class TestSubmitImage:
             slai_client=FakeSlaiClient(),
         )
         request = ImageRequest(
-            prompt="x" * 5001, provider="fal",
+            prompt="x" * 20001, provider="fal",
             resolution="1024x1024", style_strength=0.5,
         )
         with pytest.raises(ValidationError):
