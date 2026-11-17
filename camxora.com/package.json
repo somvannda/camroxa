@@ -10,7 +10,8 @@
     "check:ui": "node scripts/check-ui-system.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "check:clone": "node scripts/check-clone-parity.mjs"
+    "check:clone": "node scripts/check-clone-parity.mjs",
+    "check:pixels": "node scripts/pixel-diff.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
@@ -37,7 +38,10 @@
     "@types/react-dom": "^19",
     "autoprefixer": "^10.6.1",
     "axe-core": "^4.14.0",
+    "jpeg-js": "^0.4.4",
     "jsdom": "^29.1.1",
+    "pixelmatch": "^8.0.0",
+    "pngjs": "^7.0.0",
     "postcss": "^8.5.31",
     "tailwindcss": "^3.4.19",
     "tailwindcss-animate": "^1.0.7",
