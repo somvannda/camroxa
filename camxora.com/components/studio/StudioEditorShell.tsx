@@ -7342,6 +7342,7 @@ export function StudioEditorShell() {
           }
           onSavePreset={savePluginPreset}
           onDesignPlugin={openPluginDesigner}
+          bpm={bpm}
           windowMode={settings.windowMode}
           advancedContent={settings.advancedContent}
           sends={sanitizeSends(tracks.find((track) => track.id === selectedTrack)?.sends)}

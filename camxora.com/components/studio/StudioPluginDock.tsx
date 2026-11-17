@@ -11,8 +11,11 @@ import {
 import { Icon } from "@/components/Icon";
 import { ParamKnob } from "@/components/studio/ParamKnob";
 import {
+  NOTE_DIVISIONS,
   STUDIO_PLUGINS,
   customAsDef,
+  divisionMs,
+  nearestDivisionLabel,
   customParamMap,
   defaultParams,
   getPlugin,
@@ -71,6 +74,8 @@ type Props = {
     params: Record<string, number>,
     mode?: string
   ) => void;
+  /** Project tempo, for beat-synced params (Delay Tempo mode). */
+  bpm?: number;
   /** S10: whether cards open docked, floating, or with a per-card toggle. */
   windowMode?: StudioWindowMode;
   /** Shared-bus sends for the selected track. */
@@ -660,6 +665,7 @@ export function StudioPluginDock({
   tracks = [],
   userPresets = [],
   onSavePreset,
+  bpm = 120,
   windowMode = "toggle",
   advancedContent = false,
   sends = DEFAULT_SENDS,
@@ -1055,7 +1061,40 @@ export function StudioPluginDock({
                   {plugin.id === "compressor" ? <CompressorCurve params={entry.params} /> : null}
                   <div className="sp-knobs sp-knob-grid">
                     {[...primary, ...secondary].map((param) =>
-                      param.choices ? (
+                      param.tempoSynced && entry.mode === "tempo" ? (
+                        <label key={param.key} className="sp-knob">
+                          <select
+                            className="sp-choice"
+                            aria-label={`${param.label} division`}
+                            value={nearestDivisionLabel(
+                              entry.params[param.key] ?? param.default,
+                              bpm
+                            )}
+                            disabled={entry.bypassed}
+                            onChange={(event) => {
+                              const division = NOTE_DIVISIONS.find(
+                                (candidate) => candidate.label === event.target.value
+                              );
+                              if (!division) return;
+                              onChange(
+                                setParam(
+                                  chain,
+                                  entry.entryId,
+                                  param.key,
+                                  divisionMs(division.beats, bpm)
+                                )
+                              );
+                            }}
+                          >
+                            {NOTE_DIVISIONS.map((division) => (
+                              <option key={division.label} value={division.label}>
+                                {division.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="sp-knob-label">{param.label}</span>
+                        </label>
+                      ) : param.choices ? (
                         <label key={param.key} className="sp-knob">
                           <select
                             className="sp-choice"

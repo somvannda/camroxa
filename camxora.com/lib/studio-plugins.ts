@@ -522,3 +522,33 @@ export function sanitizeCustomPlugin(input: unknown): CustomPlugin | null {
   custom.defaults = customParamMap(custom, raw.defaults as Record<string, unknown> | undefined);
   return custom;
 }
+
+/** Note divisions for beat-synced params (Delay ▸ Time in Tempo mode, capture S41). */
+export const NOTE_DIVISIONS = [
+  { label: "1/32", beats: 0.125 },
+  { label: "1/16", beats: 0.25 },
+  { label: "1/8", beats: 0.5 },
+  { label: "1/4", beats: 1 },
+  { label: "1/2", beats: 2 },
+  { label: "1 bar", beats: 4 },
+] as const;
+
+/** Milliseconds for a note division at the project tempo. */
+export function divisionMs(beats: number, bpm: number): number {
+  const safeBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
+  return Math.max(1, Math.round((60000 / safeBpm) * beats));
+}
+
+/** The division a free-running ms value sits closest to, so the select shows a value. */
+export function nearestDivisionLabel(ms: number, bpm: number): string {
+  let best: { label: string; beats: number } = NOTE_DIVISIONS[3];
+  let distance = Number.POSITIVE_INFINITY;
+  for (const division of NOTE_DIVISIONS) {
+    const delta = Math.abs(divisionMs(division.beats, bpm) - ms);
+    if (delta < distance) {
+      distance = delta;
+      best = division;
+    }
+  }
+  return best.label;
+}
