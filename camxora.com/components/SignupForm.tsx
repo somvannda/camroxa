@@ -140,12 +140,8 @@ export function SignupForm() {
       >
         <Icon name="fa-user-plus" /> {busy ? "Creating account…" : "Create account"}
       </button>
-      {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
-        <>
-          <div className="auth-divider">or</div>
-          <GoogleSignInButton />
-        </>
-      ) : null}
+      <div className="auth-divider">or</div>
+      <GoogleSignInButton />
       <p className="auth-alt">
         Already have an account? <Link href="/login">Sign in</Link>
       </p>

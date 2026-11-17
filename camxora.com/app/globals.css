@@ -541,6 +541,7 @@ html{color-scheme:dark}
 
   /* ---------------- auth pages ---------------- */
   .auth-page{min-height:100dvh;display:grid;grid-template-columns:1.05fr .95fr;background:var(--bg)}
+  .auth-page.solo{grid-template-columns:1fr}
   .auth-body{overflow:auto}
   .auth-row input[type=checkbox]{accent-color:var(--purple)}
   .auth-visual{position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:44px}
@@ -579,25 +580,23 @@ html{color-scheme:dark}
   .auth-check a:hover{color:#e9d5ff}
   .auth-remember{display:flex;align-items:center;gap:9px;font-size:11px;line-height:1.4;color:var(--muted2);cursor:pointer;user-select:none}
   .auth-error{font-size:11.5px;line-height:1.5;color:#f87171;text-align:left;margin:0}
-  .auth-google{position:relative;display:flex;justify-content:center;width:100%;height:40px;margin:0 auto}
-  .auth-google-btn{
-    height:40px;min-width:280px;max-width:100%;padding:0 18px;border-radius:999px;
-    border:1px solid var(--line2);background:rgba(255,255,255,.06);color:var(--text);
-    font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:10px;
-    pointer-events:none;transition:background .16s,border-color .16s;
+  /* auth: provider cluster (S02). Google is wired; the other five are inert. */
+  .auth-providers{display:flex;flex-direction:column;gap:10px}
+  .auth-btn.auth-provider{justify-content:center;padding:0 16px}
+  .auth-btn.auth-provider > .auth-provider-glyph{margin-left:2px}
+  .auth-btn.provider-inert:disabled,
+  .auth-btn.provider-inert[aria-disabled="true"]{
+    border:1px dashed var(--line2);background:rgba(255,255,255,.025);
+    color:var(--muted2);opacity:.62;cursor:not-allowed;
   }
-  .auth-google:hover .auth-google-btn{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.24)}
-  .auth-google:focus-within .auth-google-btn{outline:2px solid var(--lav);outline-offset:3px}
-  .auth-google-btn.is-loading{opacity:.6}
-  .auth-google-btn.is-busy{opacity:.75}
-  .auth-google-glyph{width:18px;height:18px;flex:none}
-  .auth-google-gis{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;overflow:hidden;opacity:0}
-  .auth-google-gis>div{width:280px!important;margin-top:0}
-  /* GIS renders the real click target as a role=button div and a decorative
-     iframe below it. Hide the iframe so the button sits exactly on our pill. */
-  .auth-google-gis iframe{display:none!important}
-  .google-skeleton{width:100%;height:46px;border-radius:9px;border:1px solid var(--line2);background:rgba(255,255,255,.03)}
-  .google-skeleton-error{height:auto;min-height:46px;padding:10px 12px;display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1.5;color:var(--muted2);text-align:center}
+  .auth-btn.provider-inert:disabled:hover{filter:none;background:rgba(255,255,255,.025)}
+  .auth-provider-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .auth-btn.provider-compact{height:44px;font-size:11.5px;gap:7px;padding:0 6px;white-space:nowrap;overflow:hidden}
+  .auth-provider-glyph{width:16px;height:16px;flex:none}
+  .auth-provider-note{font-size:11px;line-height:1.5;color:var(--muted2);margin:0;text-align:center}
+  .auth-provider-note.is-error{color:#f87171}
+  .auth-callback-error{margin-top:14px}
+  .auth-callback-back{margin-top:18px;text-decoration:none}
   .otp{display:flex;gap:8px;margin-top:4px}
   .otp input{width:100%;height:50px;text-align:center;font-size:18px;background:rgba(7,10,19,.6);border:1px solid var(--line);border-radius:9px;color:var(--text);outline:none}
   .otp input:focus{border-color:rgba(168,85,247,.55)}

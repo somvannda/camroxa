@@ -324,7 +324,10 @@ class Settings(BaseSettings):
     google_redirect_uris: str = (
         "https://music.camxora.com/auth/callback,"
         "https://music.sandbox.camxora.com/auth/callback,"
-        "http://localhost:3001/auth/callback"
+        "http://localhost:3001/auth/callback,"
+        # The canonical web app (camxora.com) runs on 3103 locally.
+        "http://localhost:3103/auth/callback,"
+        "http://127.0.0.1:3103/auth/callback"
     )
     # Shared secret the edge proxy (nginx) sets as `X-Origin-Verify`. When set,
     # music-web geo enforcement requires it and fails closed without it, so a
