@@ -94,27 +94,28 @@ The single BLOCKED row (**C-47**) is environmental: the local mirror refuses a l
 callback, so the sentence path was proven against a controlled result instead. C-196 was
 re-classified as intended behaviour: `sync` is omitted when the mirror cannot answer.
 
-## D4 — provider matrix · **BLOCKED: the submit never reaches the configured host**
+## D4 — provider matrix · **PASS**
 
-Seven attempts (2026-11-17) spent nothing in the end — every failure refunded, wallet back at
-**448** — and every one is red for the same reason. `job_queue` is the ledger that explains it:
+Fourteen rows, fourteen green, **188 credits spent of a 320 cap** (wallet 448 → 260, exactly
+the plan total), model `V6`. Every row carries a platform id and a musicapi job id, including
+the 12-track stem split at 60 credits.
 
-1. the first three jobs died on an **orphaned worker** (`No module named
-   platform_api.services.credit_service`, its package path pointed at a deleted worktree), so
-   nothing was submitted and `external_task_id` stayed `NULL`;
-2. with a worker from this checkout the job reaches a provider that answers
-   `Suno API error 401: submit_task` — while the key entry is `active`, its blob decrypts to
-   `sk-test-123`, musicapi accepts that bearer, and **no `/v1/music/generate` request appears
-   in musicapi's log at all**. The submit is going somewhere else.
+| Row | Status | Credits |
+|---|---|---|
+| Generate a song | `SUCCESS`, 2 ready clips | 10 |
+| Export WAV / MP3 | downloaded, real bytes | 0 / 0 |
+| Voice persona | complete | 0 |
+| Bounce / upload + extend | complete | 12 |
+| Stems 2-track, Cover, Extend, Remaster, Add vocals, Add instrumental, Replace section | complete | 12 each |
+| Mashup (+ fixture generation) | complete | 12 + 10 |
+| Stems 12-track | complete | 60 |
 
-One product defect is fixed and tested: a generate job that exhausts its attempts used to
-leave the task `pending` forever with no error (permanent spinner, reservation held); the
-worker now fails the task through the refund path, and the three stuck sandbox rows were
-repaired through it.
-
-Detail: `docs/studio/reports/2026-11-17-provider-matrix-run-1.md` (prerequisites dry run:
-`2026-11-17-provider-matrix-dry-run.md`). Closing D4 needs the submit routed to the configured
-musicapi, then the same command again.
+Getting there took nine failed attempts, none of them in the Studio code: an orphaned queue
+worker, a dead job that never failed its task (fixed), submits that were going to **production**
+musicapi because `PLATFORM_SUNO_API_BASE_URL` was absent from the worker's environment, a
+readiness probe that could not survive a 12–23 s cold call, and a runner whose token expired
+exactly at its poll deadline. Full table and the reproduction sequence:
+`docs/studio/reports/2026-11-17-provider-matrix-final.md`.
 
 ## Final gates on the fixed build
 
