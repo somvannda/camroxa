@@ -525,7 +525,9 @@ async function runGenerate(ctx) {
   const { taskId, final } = await generateSong(ctx, `generate ${ctx.runTag}`);
   ctx.state.taskId = taskId;
   return {
-    ids: { task_id: taskId },
+    // `platform_id` is what the report table prints; `task_id` is what the dependent rows
+    // read. Both named so a run can be traced from the evidence alone.
+    ids: { platform_id: taskId, task_id: taskId },
     evidence: {
       status: String(final.status).toUpperCase(),
       model: final.model,
