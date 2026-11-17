@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /**
@@ -30,6 +30,7 @@ import { DEFAULT_STUDIO_SETTINGS } from "@/lib/studio-settings";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -231,9 +232,104 @@ describe("StudioProjectMenu", () => {
     await user.click(screen.getByRole("button", { name: /Demo/ }));
     await user.click(screen.getByRole("menuitem", { name: "Version History" }));
 
+    // S08: the captured row is a timestamp; a manual label rides along as muted meta.
     expect(await screen.findByText("Before the drop")).toBeTruthy();
-    expect(screen.getByLabelText("Restore Before the drop")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Restore version from Before the drop" })).toBeTruthy();
     expect(api.listStudioProjectVersions).toHaveBeenCalledWith("p1");
+  });
+
+  /** S08 fixture: three versions on one day, newest first, as the list endpoint returns. */
+  const versionItems = [
+    {
+      id: "v3",
+      label: null,
+      title: "Demo",
+      project_id: "p1",
+      bpm: 120,
+      time_signature: "4/4",
+      created_at: "2026-11-05T09:00:00Z",
+    },
+    {
+      id: "v2",
+      label: null,
+      title: "Demo",
+      project_id: "p1",
+      bpm: 120,
+      time_signature: "4/4",
+      created_at: "2026-11-05T09:42:06Z",
+    },
+    {
+      id: "v1",
+      label: null,
+      title: "Demo",
+      project_id: "p1",
+      bpm: 120,
+      time_signature: "4/4",
+      created_at: "2026-11-05T09:41:26Z",
+    },
+  ];
+
+  const clock = (iso: string, withSeconds = false) =>
+    new Date(iso).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      ...(withSeconds ? { second: "2-digit" } : {}),
+      hour12: true,
+    });
+
+  async function openHistory() {
+    const user = userEvent.setup();
+    api.listStudioProjectVersions.mockResolvedValue({ items: versionItems, total: 3 });
+    renderMenu();
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Version History" }));
+    await screen.findByText(clock(versionItems[0].created_at));
+    return user;
+  }
+
+  it("renders a dot-and-rail list with the newest version selected", async () => {
+    await openHistory();
+
+    const rows = screen.getAllByRole("button", { name: /^Restore version from / });
+    expect(rows).toHaveLength(3);
+    // One dot per version on the rail.
+    expect(document.querySelectorAll(".se-history-dot")).toHaveLength(3);
+
+    // Newest first, highlighted, with the captured chevron instead of a Restore pill.
+    expect(rows[0].closest("li")?.className).toContain("is-current");
+    expect(rows[0].querySelector(".se-history-chevron")).toBeTruthy();
+    expect(rows[0].querySelector(".se-history-restore")).toBeNull();
+    expect(rows[0].textContent).toContain(clock(versionItems[0].created_at));
+    expect(rows[0].textContent).not.toContain(clock(versionItems[0].created_at, true));
+
+    // Older rows are dot + hairline + hh:mm:ss AM and reveal Restore only when asked.
+    expect(rows[1].closest("li")?.className).not.toContain("is-current");
+    expect(rows[1].querySelector(".se-history-chevron")).toBeNull();
+    expect(rows[1].querySelector(".se-history-restore")?.textContent).toBe("Restore");
+    expect(rows[1].textContent).toContain(clock(versionItems[1].created_at, true));
+    expect(rows[1].textContent).not.toContain("Restore version from");
+
+    // The old permanent affordances are gone.
+    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
+    expect(screen.queryByText(/Restoring replaces/)).toBeNull();
+  });
+
+  it("reveals Restore on hover/focus and restores the chosen version", async () => {
+    api.restoreStudioProjectVersion.mockResolvedValue({ id: "v2" });
+    const user = await openHistory();
+
+    const rows = screen.getAllByRole("button", { name: /^Restore version from / });
+    expect(rows[1].className).not.toContain("is-revealed");
+    await user.hover(rows[1]);
+    expect(rows[1].className).toContain("is-revealed");
+
+    act(() => rows[2].focus());
+    expect(rows[2].className).toContain("is-revealed");
+
+    await user.click(rows[1]);
+    await waitFor(() =>
+      expect(api.restoreStudioProjectVersion).toHaveBeenCalledWith("p1", "v2")
+    );
   });
 
   it("renders version history as a dated side panel", async () => {
@@ -258,7 +354,8 @@ describe("StudioProjectMenu", () => {
     await user.click(screen.getByRole("menuitem", { name: "Version History" }));
 
     expect(await screen.findByText("History")).toBeTruthy();
-    expect(screen.getByText("Projects are saved automatically.")).toBeTruthy();
+    expect(screen.getByText("Projects are saved automatically")).toBeTruthy();
+    expect(screen.queryByText("Projects are saved automatically.")).toBeNull();
     expect(screen.getByText(new Date("2026-11-05T10:19:16Z").toLocaleDateString())).toBeTruthy();
     expect(screen.getByRole("button", { name: "Close version history" })).toBeTruthy();
   });
