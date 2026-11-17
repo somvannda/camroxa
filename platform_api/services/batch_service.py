@@ -4156,9 +4156,12 @@ class BatchService:
             batch_id=parsed_batch_id,
             limit=500,
         )
+        all_jobs = list(jobs)
         if parsed_job_ids:
             requested = {str(job_id) for job_id in parsed_job_ids}
             jobs = [job for job in jobs if str(job.id) in requested]
+        else:
+            requested = {str(job.id) for job in jobs}
 
         refreshed = 0
         batch_cache: dict[UUID, Batch | None] = {}
@@ -4166,6 +4169,19 @@ class BatchService:
             ImageKind.BACKGROUND: [],
             ImageKind.THUMBNAIL: [],
         }
+        for sibling in all_jobs:
+            if str(sibling.id) in requested:
+                continue
+            style_id = str(getattr(sibling, "prompt_style_id", "") or "").strip()
+            if not style_id:
+                continue
+            kind = (
+                sibling.kind
+                if isinstance(sibling.kind, ImageKind)
+                else ImageKind(str(sibling.kind).strip().lower())
+            )
+            used_prompt_ids.setdefault(kind, []).append(style_id)
+
         for job in jobs:
             if job.song_id is None or job.profile_id is None or job.batch_id is None:
                 continue

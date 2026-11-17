@@ -455,6 +455,14 @@ class ImageJobService:
                             },
                         )
                 primary_routing = routing_chain[0]
+                execution_chain = [
+                    (
+                        str(getattr(item, "provider", "") or "").strip(),
+                        getattr(item, "sub_model", None),
+                    )
+                    for item in routing_chain
+                    if str(getattr(item, "provider", "") or "").strip()
+                ]
                 routed_provider = str(
                     getattr(primary_routing, "provider", "") or ""
                 ).strip() or "slai"
@@ -564,6 +572,7 @@ class ImageJobService:
                             resolved_provider=resolved_provider,
                             model_id=model_id,
                             operation_type=operation_type,
+                            provider_chain=execution_chain,
                             slai_retry_attempts=slai_retry_attempts,
                         )
                     )
@@ -588,6 +597,7 @@ class ImageJobService:
                             resolved_provider=resolved_provider,
                             model_id=model_id,
                             operation_type=operation_type,
+                            provider_chain=execution_chain,
                             slai_retry_attempts=slai_retry_attempts,
                         )
                     )
@@ -614,6 +624,7 @@ class ImageJobService:
                             base_image=base_image,
                         ),
                         operation=operation_type,
+                        provider_chain=execution_chain,
                         skip_pricing=True,
                         job_id=str(job.id),
                         slai_retry_attempts=slai_retry_attempts,
@@ -949,6 +960,7 @@ class ImageJobService:
         resolved_provider: str,
         model_id: str | None,
         operation_type: str,
+        provider_chain: list[tuple[str, str | None]] | None = None,
         slai_retry_attempts: int = 5,
     ) -> tuple[bytes, str, str | None]:
         """Send the generated background to the provider and ask it to add text."""
@@ -985,6 +997,7 @@ class ImageJobService:
                 base_image=background_bytes,
             ),
             operation=operation_type,
+            provider_chain=provider_chain,
             skip_pricing=True,
             job_id=str(job.id),
             slai_retry_attempts=slai_retry_attempts,
@@ -1002,6 +1015,7 @@ class ImageJobService:
         resolved_provider: str,
         model_id: str | None,
         operation_type: str,
+        provider_chain: list[tuple[str, str | None]] | None = None,
         slai_retry_attempts: int = 5,
     ) -> tuple[bytes, str, str | None]:
         source_job = await self._wait_for_source_job_output(
@@ -1051,6 +1065,7 @@ class ImageJobService:
                 base_image=overlay_input,
             ),
             operation=operation_type,
+            provider_chain=provider_chain,
             skip_pricing=True,
             job_id=str(job.id),
             slai_retry_attempts=slai_retry_attempts,

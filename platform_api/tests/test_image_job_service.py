@@ -583,6 +583,10 @@ async def test_run_pending_jobs_background_text_sends_background_as_base_image(t
     generation_request = generation_service.submit_image_outcome.await_args.args[1]
     assert generation_request.base_image == background_output.read_bytes()
     assert generation_request.prompt == "Add the text Night Drive"
+    assert (
+        generation_service.submit_image_outcome.await_args.kwargs["provider_chain"]
+        == [("slai", "cx/gpt-image-2.5")]
+    )
 
 @pytest.mark.asyncio
 async def test_background_text_rejects_provider_without_reference_support() -> None:
