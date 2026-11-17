@@ -4895,7 +4895,7 @@ html{color-scheme:dark}
 .se-automation-point.is-selected{box-shadow:0 0 0 2px #f7f4ef,0 0 0 3px rgba(0,0,0,.55)}
 .se-automation-playhead{position:absolute;top:0;bottom:0;width:1px;background:#3dafff;pointer-events:none}
 .se-automation-caption{position:absolute;left:8px;bottom:4px;font-size:11px;color:#8b90a6;pointer-events:none}
-.se-midi{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.06);background:#101012;flex:none;max-height:360px}
+.se-midi{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.06);background:#101012;flex:none;max-height:392px}
 .se-midi-head{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.06)}
 .se-midi-head strong{font-size:12px;font-weight:600}
 .se-midi-head .se-icon{width:24px;height:24px}
@@ -4903,6 +4903,19 @@ html{color-scheme:dark}
 .se-midi-tabs button{height:34px;padding:0;border:0;border-bottom:2px solid transparent;background:transparent;color:#8b90a6;font:inherit;font-size:12px;cursor:pointer}
 .se-midi-tabs button.on{color:#f7f4ef;border-bottom-color:#f7f4ef}
 .se-midi-tabs button:disabled{opacity:.4;cursor:not-allowed}
+/* S31 overview strip: mini piano roll + visible window, zoom − / + over the gutter. */
+.se-midi-overview{display:flex;align-items:center;height:30px;flex:none;padding:0 10px 0 0;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.035)}
+.se-midi-overview-zoom{display:flex;align-items:center;justify-content:center;gap:2px;width:44px;flex:none}
+.se-midi-overview-zoom .se-icon{width:20px;height:20px;border-radius:5px;color:#8b90a6}
+.se-midi-overview-zoom .se-icon:hover:not(:disabled){color:#f7f4ef}
+.se-midi-overview-zoom .se-icon:disabled{opacity:.35}
+.se-midi-overview-track{position:relative;flex:1;min-width:0;height:18px;border-radius:5px;background:rgba(0,0,0,.32);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);cursor:grab;touch-action:none;overflow:hidden}
+.se-midi-overview.is-dragging .se-midi-overview-track{cursor:grabbing}
+.se-midi-overview-track:focus-visible{outline:2px solid #3dafff;outline-offset:2px}
+.se-midi-overview-tick{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.05);pointer-events:none}
+.se-midi-overview-notes{position:absolute;inset:1px 0;pointer-events:none}
+.se-midi-overview-note{position:absolute;height:2px;border-radius:1px;opacity:.75}
+.se-midi-overview-window{position:absolute;top:0;bottom:0;border-radius:4px;border:1px solid rgba(247,244,239,.7);background:rgba(247,244,239,.14);pointer-events:none}
 .se-midi-roll{position:relative;display:flex;height:172px;overflow:auto;scrollbar-width:thin;scrollbar-color:#2b2b30 transparent}
 .se-midi-keys{position:sticky;left:0;z-index:2;width:44px;flex:none;background:#141416;border-right:1px solid rgba(255,255,255,.06)}
 .se-midi-key{display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;font-size:11px;line-height:1;overflow:hidden;color:#8b90a6}
@@ -4915,7 +4928,8 @@ html{color-scheme:dark}
 .se-midi-note:hover{filter:brightness(1.15)}
 .se-midi-note.is-selected{box-shadow:0 0 0 1.5px #f7f4ef inset,0 0 0 1px rgba(0,0,0,.6)}
 .se-midi-note.is-disabled{opacity:.35;outline:1px dashed rgba(247,244,239,.55);outline-offset:-1px}
-.se-midi-velocity{position:relative;height:64px;border-top:1px solid rgba(255,255,255,.06);cursor:ns-resize}
+.se-midi-velocity{position:relative;height:64px;border-top:1px solid rgba(255,255,255,.06);cursor:ns-resize;overflow:hidden}
+.se-midi-lane-scroll{position:absolute;inset:0}
 .se-midi-velocity-baseline{position:absolute;left:0;right:0;bottom:8px;height:1px;background:rgba(96,165,250,.6)}
 .se-midi-velocity-bar{position:absolute;bottom:8px;width:2px;background:#3dafff}
 .se-midi-velocity-bar.is-active{background:#f7f4ef}

@@ -110,6 +110,107 @@ describe("StudioMidiEditor", () => {
     spy.mockRestore();
   });
 
+  describe("overview strip (S31)", () => {
+    const notes: MidiNote[] = [
+      { id: "n1", pitch: 60, start: 0, length: 0.5, velocity: 100 },
+      { id: "n2", pitch: 67, start: 4, length: 1, velocity: 100 },
+    ];
+
+    /** 8 s at 2 s/bar × 96 px = a 384 px clip; the roll gets a 200 px viewport (156 grid px). */
+    function renderOverview() {
+      const view = renderEditor({ clip: { id: "clip", duration: 8, midi: { notes } } });
+      const roll = view.container.querySelector(".se-midi-roll") as HTMLElement;
+      const track = view.container.querySelector(".se-midi-overview-track") as HTMLElement;
+      const windowEl = view.container.querySelector(".se-midi-overview-window") as HTMLElement;
+      Object.defineProperty(roll, "clientWidth", { configurable: true, value: 200 });
+      track.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: 400, height: 18, right: 400, bottom: 18, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+      fireEvent.scroll(roll);
+      return { ...view, roll, track, windowEl };
+    }
+
+    it("maps the clip's notes and marks the visible slice as a window", () => {
+      const { container, track, windowEl } = renderOverview();
+      const minimapNotes = Array.from(container.querySelectorAll(".se-midi-overview-note"));
+      expect(minimapNotes).toHaveLength(2);
+      expect((minimapNotes[0] as HTMLElement).style.left).toBe("0%");
+      expect((minimapNotes[1] as HTMLElement).style.left).toBe("50%");
+
+      expect(track.getAttribute("role")).toBe("slider");
+      expect(parseFloat(windowEl.style.left)).toBe(0);
+      // 156 visible grid px of 384 → 40.6 % of the clip.
+      expect(parseFloat(windowEl.style.width)).toBeCloseTo(40.625, 2);
+      expect(track.getAttribute("aria-valuetext")).toMatch(/^Bars 1\.0–/);
+      expect(track.getAttribute("aria-valuetext")).toContain("of 4.0");
+
+      expect(parseFloat((container.querySelector(".se-midi-grid") as HTMLElement).style.width)).toBe(
+        384
+      );
+    });
+
+    it("scrolls the roll to the point that is clicked", () => {
+      const { roll, track, windowEl, onChangeNotes } = renderOverview();
+      fireEvent.pointerDown(track, { clientX: 300, button: 0 });
+
+      // 75 % of the clip centred in a 156 px viewport: 288 − 78 = 210.
+      expect(roll.scrollLeft).toBe(210);
+      expect(parseFloat(windowEl.style.left)).toBeCloseTo((210 / 384) * 100, 2);
+      expect(track.getAttribute("aria-valuenow")).toBe("92");
+      expect(onChangeNotes).not.toHaveBeenCalled();
+    });
+
+    it("drags the window without jumping when it is grabbed", () => {
+      const { roll, track } = renderOverview();
+      fireEvent.pointerDown(track, { clientX: 300, button: 0 }); // park the window at 75 %
+      expect(roll.scrollLeft).toBe(210);
+
+      fireEvent.pointerDown(track, { clientX: 300, button: 0 }); // grab its middle
+      expect(roll.scrollLeft).toBe(210);
+      fireEvent.pointerMove(window, { clientX: 260 }); // 65 % of the clip
+      expect(roll.scrollLeft).toBe(172);
+      fireEvent.pointerUp(window);
+
+      fireEvent.pointerMove(window, { clientX: 100 });
+      expect(roll.scrollLeft).toBe(172);
+    });
+
+    it("pans from the keyboard so the strip is a real slider", () => {
+      const { roll, track, onChangeNotes } = renderOverview();
+      track.focus();
+
+      fireEvent.keyDown(track, { key: "ArrowRight" });
+      expect(roll.scrollLeft).toBe(39); // a quarter of the 156 px viewport
+      fireEvent.keyDown(track, { key: "End" });
+      expect(roll.scrollLeft).toBe(228); // 384 − 156
+      expect(track.getAttribute("aria-valuenow")).toBe("100");
+      fireEvent.keyDown(track, { key: "Home" });
+      expect(roll.scrollLeft).toBe(0);
+      expect(track.getAttribute("aria-valuenow")).toBe("0");
+
+      // The overview's keys never reach the note selection.
+      expect(onChangeNotes).not.toHaveBeenCalled();
+    });
+
+    it("zooms from the strip and keeps the window truthful", () => {
+      const { container, roll, track, windowEl } = renderOverview();
+      const grid = container.querySelector(".se-midi-grid") as HTMLElement;
+
+      fireEvent.click(screen.getByLabelText("Zoom in the piano roll"));
+      expect(parseFloat(grid.style.width)).toBe(576);
+      // 156 of 576 px → 27.1 %, with the old centre still in the middle.
+      expect(parseFloat(windowEl.style.width)).toBeCloseTo((156 / 576) * 100, 2);
+      expect(roll.scrollLeft).toBe(39);
+      expect(parseFloat(windowEl.style.left)).toBeCloseTo((39 / 576) * 100, 2);
+
+      fireEvent.doubleClick(track, { clientX: 300 }); // zoom around 75 % of the clip
+      expect(parseFloat(grid.style.width)).toBe(864);
+      expect(roll.scrollLeft).toBe(570); // 0.75 × 864 − 78
+
+      fireEvent.click(screen.getByLabelText("Zoom out the piano roll"));
+      expect(parseFloat(grid.style.width)).toBe(576);
+    });
+  });
+
   describe("captured keyboard shortcuts (S14)", () => {
     const notes = [
       { id: "n1", pitch: 60, start: 0.1, length: 0.4, velocity: 100 },

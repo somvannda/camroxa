@@ -264,3 +264,59 @@ test("Ctrl K turns on musical typing so Z stops zooming the roll", async ({ page
   await expect(panel.locator(".se-midi-note")).toHaveCount(2);
 });
 
+test("the overview strip maps the clip and drives the roll's scroll", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1689, height: 1277 });
+  await createStudioProject(page, { title: "MIDI overview" });
+
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  await page.getByRole("menuitem", { name: /MIDI/ }).click();
+  const panel = page.getByRole("region", { name: "MIDI editor" });
+  const grid = panel.locator(".se-midi-grid");
+  await grid.click({ position: { x: 60, y: 96 } });
+  await grid.click({ position: { x: 200, y: 60 } });
+  await expect(panel.locator(".se-midi-note")).toHaveCount(2);
+
+  // S31: the strip is above the piano roll and mirrors every note.
+  await expect(panel.locator(".se-midi-overview-note")).toHaveCount(2);
+  const strip = panel.getByRole("slider", { name: "Clip overview" });
+  await expect(strip).toHaveAttribute("aria-valuenow", "0");
+  await expect(strip).toHaveAttribute("aria-valuetext", /^Bars 1\.0–/);
+
+  const roll = panel.locator(".se-midi-roll");
+  const windowEl = panel.locator(".se-midi-overview-window");
+  const scrolls = () => roll.evaluate((element) => element.scrollWidth > element.clientWidth);
+  const windowPercent = (part: "left" | "width") =>
+    windowEl.evaluate((element, key) =>
+      Number.parseFloat((element as HTMLElement).style[key as "left" | "width"]), part);
+
+  // The fit zoom shows the whole clip, so there is nothing to scroll yet.
+  expect(await scrolls()).toBe(false);
+  expect(await windowPercent("width")).toBe(100);
+
+  // Zooming from the strip makes the grid wider than the panel and shrinks the window.
+  await panel.getByRole("button", { name: "Zoom in the piano roll" }).click();
+  await expect.poll(scrolls).toBe(true);
+  await expect.poll(() => windowPercent("width")).toBeLessThan(100);
+
+  // Clicking the strip pulls that part of the clip into the middle of the roll.
+  const stripBox = await strip.boundingBox();
+  if (!stripBox) throw new Error("no overview strip");
+  await page.mouse.click(stripBox.x + stripBox.width * 0.85, stripBox.y + stripBox.height / 2);
+  await expect.poll(() => roll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => windowPercent("left")).toBeGreaterThan(0);
+
+  // The strip is a slider: Home/End jump to the clip ends.
+  await strip.focus();
+  await page.keyboard.press("End");
+  await expect(strip).toHaveAttribute("aria-valuenow", "100");
+  await page.keyboard.press("Home");
+  await expect.poll(() => roll.evaluate((element) => element.scrollLeft)).toBe(0);
+  await expect(strip).toHaveAttribute("aria-valuenow", "0");
+
+  // Note editing still works with the strip in place.
+  await grid.click({ position: { x: 60, y: 40 } });
+  await expect(panel.locator(".se-midi-note")).toHaveCount(3);
+  await expect(panel.locator(".se-midi-overview-note")).toHaveCount(3);
+});
+
