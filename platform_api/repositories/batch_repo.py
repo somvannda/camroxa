@@ -2107,6 +2107,106 @@ class BatchRepository:
             attempt_count,
         )
 
+    async def update_image_job_billing_state(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+        *,
+        hold_units: int | None = None,
+        hold_state: str | None = None,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE image_jobs
+            SET hold_units = COALESCE($3, hold_units),
+                hold_state = COALESCE($4, hold_state),
+                updated_at = NOW()
+            WHERE id = $1 AND user_id = $2
+            """,
+            job_id,
+            user_id,
+            hold_units,
+            hold_state,
+        )
+
+    async def mark_image_job_provider_invoked(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE image_jobs
+            SET provider_invoked = TRUE,
+                updated_at = NOW()
+            WHERE id = $1 AND user_id = $2
+            """,
+            job_id,
+            user_id,
+        )
+
+    async def get_stale_running_image_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]:
+        rows = await self._pool.fetch(
+            """
+            SELECT id, song_id, user_id, batch_id, profile_id, kind,
+                   channel_role, prompt, provider, resolution, style_strength,
+                   input_image_path, style_reference_path, source_job_id,
+                   prompt_style_id, source_mode, thumbnail_mode,
+                   hold_units, hold_state, provider_invoked,
+                   status, attempt_count, output_image_path, storage_key, error,
+                   created_at, updated_at
+            FROM image_jobs
+            WHERE status = 'running'
+              AND updated_at < NOW() - make_interval(secs => $1)
+            ORDER BY updated_at ASC
+            LIMIT $2
+            """,
+            max(1, int(older_than_seconds)),
+            max(1, min(500, int(limit))),
+        )
+        return [self._row_to_image_job(row) for row in rows]
+
+    async def get_stale_pending_thumbnail_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]:
+        rows = await self._pool.fetch(
+            """
+            SELECT j.id, j.song_id, j.user_id, j.batch_id, j.profile_id, j.kind,
+                   j.channel_role, j.prompt, j.provider, j.resolution,
+                   j.style_strength, j.input_image_path, j.style_reference_path,
+                   j.source_job_id, j.prompt_style_id, j.source_mode,
+                   j.thumbnail_mode, j.hold_units, j.hold_state,
+                   j.provider_invoked, j.status, j.attempt_count,
+                   j.output_image_path, j.storage_key, j.error,
+                   j.created_at, j.updated_at,
+                   s.status AS source_status
+            FROM image_jobs j
+            JOIN image_jobs s ON s.id = j.source_job_id
+            WHERE j.kind = 'thumbnail'
+              AND j.status = 'pending'
+              AND (
+                  s.status = 'failed'
+                  OR (
+                      s.status IN ('pending', 'running')
+                      AND s.updated_at < NOW() - make_interval(secs => $1)
+                  )
+              )
+            ORDER BY j.updated_at ASC
+            LIMIT $2
+            """,
+            max(1, int(older_than_seconds)),
+            max(1, min(500, int(limit))),
+        )
+        return [self._row_to_image_job(row) for row in rows]
+
     async def requeue_auto_retry_failed_jobs(
         self,
         user_id: UUID,
@@ -2533,6 +2633,9 @@ class BatchRepository:
             prompt_style_id=row.get("prompt_style_id"),
             source_mode=row.get("source_mode"),
             thumbnail_mode=row.get("thumbnail_mode"),
+            hold_units=int(row.get("hold_units") or 0),
+            hold_state=str(row.get("hold_state") or "none"),
+            provider_invoked=bool(row.get("provider_invoked") or False),
             status=TaskStatus(row["status"]),
             attempt_count=row["attempt_count"],
             output_image_path=row["output_image_path"],

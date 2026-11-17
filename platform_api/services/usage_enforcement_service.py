@@ -1393,6 +1393,7 @@ class UsageEnforcementService:
         hold_credit_units: int,
         ai_service: str,
         sub_model: str | None = None,
+        ref_id: str | None = None,
     ) -> OperationHold:
         """Reserve product quota and escrow wallet before calling the provider.
 
@@ -1403,7 +1404,11 @@ class UsageEnforcementService:
         v3_op = await self._v3_op_if_enabled(operation_type)
         if v3_op is not None:
             held = await self._charge_via_v3(
-                user_id, operation_type, model=sub_model, provider=ai_service
+                user_id,
+                operation_type,
+                model=sub_model,
+                provider=ai_service,
+                ref_id=ref_id,
             )
             return OperationHold(
                 held_units=held,
@@ -1446,8 +1451,10 @@ class UsageEnforcementService:
             purpose=reason,
         )
         usage_metadata["hold"] = True
+        if ref_id:
+            usage_metadata["ref_id"] = str(ref_id)
         deduction_success = await self._credit_repo.atomic_deduct(
-            user_id, hold_units, reason, metadata=usage_metadata
+            user_id, hold_units, reason, ref_id=ref_id, metadata=usage_metadata
         )
         if not deduction_success:
             await self.release_operation_quota(

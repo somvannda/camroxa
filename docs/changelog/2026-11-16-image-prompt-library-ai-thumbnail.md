@@ -31,6 +31,10 @@ Thumbnail generation also gains `thumbnailReferenceMode=background_text`:
 - Migration `206` seeds `fal/flux-dev-image-to-image` thumbnail pricing:
   FAL list price $0.03/MP, 1920x1080 = $0.062208 cost, 100% markup = $0.124416,
   rounded to 25 credits (250,000 micro-units).
+- Migration `207` adds image-job hold recovery fields (`hold_units`,
+  `hold_state`, `provider_invoked`). The worker now sweeps stale `RUNNING`
+  image jobs and stale dependent thumbnails, refunding the exact hold by
+  `job.id` before requeueing/failing them.
 
 ## Data
 

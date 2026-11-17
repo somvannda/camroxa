@@ -222,6 +222,16 @@ For `background_text`, filter the routing chain to reference-capable providers. 
 
 `thumbnail_mode` is stored on the job. The worker uses `job.thumbnail_mode` first, then falls back to the setting for legacy rows.
 
+### 6.5 Stale-job recovery
+
+`image_jobs` records `hold_units`, `hold_state` (`none`/`held`/`settled`/`refunded`), and `provider_invoked`. The worker sweeps every five minutes:
+
+- `RUNNING` older than 15 minutes → requeue `PENDING` if attempts remain, else `FAILED`.
+- Stale `PENDING` thumbnail whose source is still pending/running → `FAILED` with a clear “background did not finish” message.
+- Thumbnail whose source failed → `FAILED` immediately.
+- Any `hold_state=held` job is refunded by `ref_id=job.id` before status changes.
+- `provider_invoked` determines whether the refunded failure also consumes fail-absorb budget.
+
 ---
 
 ## 7. Admin portal

@@ -135,6 +135,31 @@ class ImageJobRepositoryProtocol(Protocol):
         provider: str | None = None,
         attempt_count: int | None = None,
     ) -> None: ...
+    async def update_image_job_billing_state(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+        *,
+        hold_units: int | None = None,
+        hold_state: str | None = None,
+    ) -> None: ...
+    async def mark_image_job_provider_invoked(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+    ) -> None: ...
+    async def get_stale_running_image_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]: ...
+    async def get_stale_pending_thumbnail_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]: ...
     async def reset_image_jobs(
         self,
         user_id: UUID,
@@ -306,6 +331,115 @@ class ImageJobService:
             batch_id=parsed_batch_id,
             statuses=statuses,
         )
+
+    async def sweep_stale_jobs(
+        self,
+        *,
+        running_older_than_seconds: int = 900,
+        dependency_older_than_seconds: int = 1800,
+        limit: int = 200,
+    ) -> dict[str, int]:
+        """Recover jobs left running/pending by a crashed image worker."""
+        recovered = 0
+        failed = 0
+        refunded = 0
+
+        running_jobs = await self._repo.get_stale_running_image_jobs(
+            older_than_seconds=running_older_than_seconds,
+            limit=limit,
+        )
+        for job in running_jobs:
+            attempt = max(0, int(job.attempt_count or 0))
+            next_attempt = attempt + 1
+            auto_retry = next_attempt < _image_job_max_attempts()
+            if await self._refund_stale_hold(job, reason="image_generation_stale"):
+                refunded += 1
+            await self._repo.update_image_job_status(
+                job.id,
+                job.user_id,
+                status=TaskStatus.PENDING if auto_retry else TaskStatus.FAILED,
+                error=(
+                    "Image worker timed out; requeued."
+                    if auto_retry
+                    else "Image worker timed out; max attempts reached."
+                ),
+                attempt_count=next_attempt,
+            )
+            if auto_retry:
+                recovered += 1
+            else:
+                failed += 1
+
+        stale_thumbnails = await self._repo.get_stale_pending_thumbnail_jobs(
+            older_than_seconds=dependency_older_than_seconds,
+            limit=limit,
+        )
+        for job in stale_thumbnails:
+            if await self._refund_stale_hold(
+                job, reason="image_generation_dependency_stale"
+            ):
+                refunded += 1
+            await self._repo.update_image_job_status(
+                job.id,
+                job.user_id,
+                status=TaskStatus.FAILED,
+                error=(
+                    "Thumbnail: Background image did not finish. "
+                    "Retry the background, then retry the thumbnail."
+                ),
+                attempt_count=max(0, int(job.attempt_count or 0)),
+            )
+            failed += 1
+
+        if recovered or failed or refunded:
+            image_log.log_stale_sweep(
+                recovered=recovered,
+                failed=failed,
+                refunded=refunded,
+            )
+        return {
+            "recovered": recovered,
+            "failed": failed,
+            "refunded": refunded,
+        }
+
+    async def _refund_stale_hold(self, job: ImageJob, *, reason: str) -> bool:
+        if job.hold_state != "held":
+            return False
+        if self._enforcement_service is None:
+            return False
+        refund = getattr(self._enforcement_service, "refund_failed_operation", None)
+        if refund is None:
+            return False
+        operation_type = (
+            "thumbnail_image"
+            if getattr(job, "kind", None) == ImageKind.THUMBNAIL
+            else "background_image"
+        )
+        try:
+            await refund(
+                job.user_id,
+                job.profile_id,
+                operation_type,
+                str(job.provider or "slai"),
+                charged_credit_units=int(job.hold_units or 0),
+                sub_model=None,
+                reason=reason,
+                ref_id=str(job.id),
+                prior_ledger_recorded=True,
+                provider_invoked=bool(job.provider_invoked),
+            )
+        except Exception:
+            logger.exception(
+                "Could not refund stale image-job hold for job %s", job.id
+            )
+            return False
+        await self._repo.update_image_job_billing_state(
+            job.id,
+            job.user_id,
+            hold_state="refunded",
+        )
+        return True
 
     async def run_pending_jobs(
         self,
@@ -539,11 +673,18 @@ class ImageJobService:
                         hold_credit_units=max_credits,
                         ai_service=resolved_provider,
                         sub_model=model_id,
+                        ref_id=str(job.id),
                     )
                     operation_hold = hold
                     quota_reserved = True
                     charged_credit_units = int(hold.held_units or 0)
                     billing_finalized = bool(hold.held_units > 0)
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_units=charged_credit_units,
+                        hold_state="held",
+                    )
 
                 reference_mode = thumbnail_mode
                 if (
@@ -557,6 +698,14 @@ class ImageJobService:
 
                 resolved_sub_model = model_id
                 provider_invoked = True
+                try:
+                    await self._repo.mark_image_job_provider_invoked(job.id, user_id)
+                except Exception:
+                    logger.debug(
+                        "Could not persist provider_invoked for job %s",
+                        job.id,
+                        exc_info=True,
+                    )
                 thumb_prompt_only = (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
                     and is_prompt_only_source(settings, ImageKind.THUMBNAIL)
@@ -661,6 +810,11 @@ class ImageJobService:
                         or 0
                     )
                     billing_finalized = True
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_state="settled",
+                    )
 
                 output_path = self._write_image_output(
                     image_bytes=image_bytes,
@@ -746,6 +900,12 @@ class ImageJobService:
                             channel_profile_id=job.profile_id,
                             operation_type=operation_type,
                         )
+                if quota_reserved:
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_state="refunded",
+                    )
                 await self._repo.update_image_job_status(
                     job.id,
                     user_id,
@@ -801,6 +961,12 @@ class ImageJobService:
                 next_status = TaskStatus.PENDING if auto_retry else TaskStatus.FAILED
                 # Persist routed/executed truth — never leave stale create-time "fal".
                 job_provider = executed_provider or resolved_provider or routed_provider
+                if quota_reserved:
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_state="refunded",
+                    )
                 await self._repo.update_image_job_status(
                     job.id,
                     user_id,
