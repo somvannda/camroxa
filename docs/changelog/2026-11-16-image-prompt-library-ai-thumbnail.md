@@ -28,6 +28,9 @@ Thumbnail generation also gains `thumbnailReferenceMode=background_text`:
 - `background_text` is the new default; composite remains the explicit legacy
   mode. Migration `205` updates an existing `thumbnailReferenceMode=composite`
   system setting to `background_text`.
+- Migration `206` seeds `fal/flux-dev-image-to-image` thumbnail pricing:
+  FAL list price $0.03/MP, 1920x1080 = $0.062208 cost, 100% markup = $0.124416,
+  rounded to 25 credits (250,000 micro-units).
 
 ## Data
 

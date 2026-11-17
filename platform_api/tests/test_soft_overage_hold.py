@@ -160,3 +160,68 @@ async def test_reserve_and_hold_rolls_back_quota_when_wallet_empty(monkeypatch) 
             ai_service="fal",
         )
     service.release_operation_quota.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_refund_failed_operation_counts_fail_absorb_for_provider_failure() -> None:
+    user_id = uuid4()
+    profile_id = uuid4()
+    credit_repo = AsyncMock()
+    credit_repo.refund = AsyncMock()
+    service = UsageEnforcementService(
+        credit_repo=credit_repo,
+        usage_repo=AsyncMock(),
+        plan_repo=AsyncMock(),
+        pricing_repo=_FakePricingRepo(50_000),
+        redis=AsyncMock(),
+    )
+    service._v3_op_if_enabled = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    service.release_operation_quota = AsyncMock()
+    service.record_fail_absorb = AsyncMock()
+
+    await service.refund_failed_operation(
+        user_id,
+        profile_id,
+        "background_image",
+        "fal",
+        charged_credit_units=10,
+        reason="image_generation_failed",
+        ref_id="job-1",
+        prior_ledger_recorded=True,
+        provider_invoked=True,
+    )
+
+    service.record_fail_absorb.assert_awaited_once_with(user_id)
+    credit_repo.refund.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_refund_failed_operation_skips_fail_absorb_before_provider() -> None:
+    user_id = uuid4()
+    profile_id = uuid4()
+    credit_repo = AsyncMock()
+    credit_repo.refund = AsyncMock()
+    service = UsageEnforcementService(
+        credit_repo=credit_repo,
+        usage_repo=AsyncMock(),
+        plan_repo=AsyncMock(),
+        pricing_repo=_FakePricingRepo(50_000),
+        redis=AsyncMock(),
+    )
+    service._v3_op_if_enabled = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    service.release_operation_quota = AsyncMock()
+    service.record_fail_absorb = AsyncMock()
+
+    await service.refund_failed_operation(
+        user_id,
+        profile_id,
+        "background_image",
+        "fal",
+        charged_credit_units=10,
+        reason="image_generation_deferred",
+        ref_id="job-1",
+        prior_ledger_recorded=True,
+        provider_invoked=False,
+    )
+
+    service.record_fail_absorb.assert_not_awaited()
+    credit_repo.refund.assert_awaited_once()

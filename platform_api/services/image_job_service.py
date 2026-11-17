@@ -5,7 +5,6 @@ import base64
 import logging
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -436,28 +435,20 @@ class ImageJobService:
                 ):
                     from platform_api.ai.registry import image_model_supports_reference
 
-                    reference_chain: list[Any] = []
-                    for item in routing_chain:
-                        provider = str(getattr(item, "provider", "") or "").strip()
-                        sub_model = getattr(item, "sub_model", None)
-                        if (
-                            provider == "fal"
-                            and not image_model_supports_reference(provider, sub_model)
-                        ):
-                            # FAL's text endpoints ignore the source image. Use the
-                            # dedicated image-to-image endpoint for this mode.
-                            sub_model = "flux-dev-image-to-image"
-                        if not image_model_supports_reference(provider, sub_model):
-                            continue
-                        reference_chain.append(
-                            SimpleNamespace(provider=provider, sub_model=sub_model)
+                    routing_chain = [
+                        item
+                        for item in routing_chain
+                        if image_model_supports_reference(
+                            str(getattr(item, "provider", "") or ""),
+                            getattr(item, "sub_model", None),
                         )
-                    routing_chain = reference_chain
+                    ]
                     if not routing_chain:
                         raise ValidationError(
                             "Thumbnail: AI text on background needs an image provider that "
-                            "accepts a reference image. Ask an admin to route thumbnail_image "
-                            "to SLAI or FAL image-to-image, or switch Thumbnail generation to Composite.",
+                            "accepts a reference image. Set the thumbnail_image AI Routing "
+                            "primary/fallback to a reference-capable model (SLAI or "
+                            "fal/flux-dev-image-to-image), or switch Thumbnail generation to Composite.",
                             details={
                                 "job_id": str(job.id),
                                 "operation": operation_type,
@@ -737,6 +728,7 @@ class ImageJobService:
                                 reason="image_generation_deferred",
                                 ref_id=str(job.id),
                                 prior_ledger_recorded=True,
+                                provider_invoked=False,
                                 routed_provider=routed_provider,
                                 routed_model=routed_model,
                                 executed_provider=executed_provider,
@@ -790,6 +782,7 @@ class ImageJobService:
                             reason="image_generation_failed",
                             ref_id=str(job.id),
                             prior_ledger_recorded=billing_finalized,
+                            provider_invoked=provider_invoked,
                             routed_provider=routed_provider,
                             routed_model=routed_model,
                             executed_provider=executed_provider,

@@ -1137,6 +1137,7 @@ class UsageEnforcementService:
         list_credit_units: int | None = None,
         prior_ledger_recorded: bool = True,
         count: int = 1,
+        provider_invoked: bool = True,
         routed_provider: str | None = None,
         routed_model: str | None = None,
         executed_provider: str | None = None,
@@ -1202,11 +1203,22 @@ class UsageEnforcementService:
             "purpose": reason,
             "outcome": "failed",
             "failed": True,
-            "platform_absorbed_cost": True,
+            "platform_absorbed_cost": bool(provider_invoked),
+            "provider_invoked": bool(provider_invoked),
             "list_credit_units": int(resolved_list or 0),
             "charged_credit_units": 0,
             "coverage": coverage,
         }
+
+        if provider_invoked:
+            try:
+                await self.record_fail_absorb(user_id)
+            except Exception:
+                logger.warning(
+                    "Failed to increment fail absorb budget for user %s",
+                    user_id,
+                    exc_info=True,
+                )
 
         if charged_credit_units > 0:
             failure_metadata["billing"] = "wallet"
@@ -1237,14 +1249,6 @@ class UsageEnforcementService:
             return
 
         failure_metadata["billing"] = "platform_absorb"
-        try:
-            await self.record_fail_absorb(user_id)
-        except Exception:
-            logger.warning(
-                "Failed to increment fail absorb budget for user %s",
-                user_id,
-                exc_info=True,
-            )
         if prior_ledger_recorded:
             # Prior plan_allowance/wallet debit already shows COGS; add a
             # zero-amount refund so failure + platform absorb are explicit.

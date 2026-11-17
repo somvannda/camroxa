@@ -212,7 +212,7 @@ The model receives the generated background plus an instruction shaped like:
 Add `supports_reference_image` to image model specs:
 
 - SLAI image models: true.
-- FAL `flux-dev-image-to-image`: true. The gateway uses FAL's dedicated image-to-image endpoint when a reference image is present; normal FAL text-to-image models remain text-only.
+- FAL `flux-dev-image-to-image`: true. Admin AI Routing must select it for `thumbnail_image` primary/fallback; text-only FAL models are filtered out for `background_text`.
 - OpenAI image models: false until `/v1/images/edits` is implemented.
 - Kie: false (text-to-image only).
 
