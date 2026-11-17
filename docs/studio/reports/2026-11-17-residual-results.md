@@ -97,12 +97,31 @@ re-classified as intended behaviour: `sync` is omitted when the mirror cannot an
 ## D4 — provider matrix · **BLOCKED (runner verified by dry run)**
 
 `node scripts/dev/provider-matrix.mjs --budget 320` prints a 14-row plan totalling **188
-credits** read from the live pricing table, with nine of fourteen precondition checks passing
-(five failing, all traceable to the missing tunnel and one load-induced timeout). Two
-things, and only two, are missing: an **approved cap** (320 recommended — 188 plan plus
-retries) and a **public callback tunnel** (`PLATFORM_SUNO_CALLBACK_BASE_URL`). No provider
-call was made and no credit was spent. Detail:
-`docs/studio/reports/2026-11-17-provider-matrix-dry-run.md`.
+credits** read from the live pricing table. With a quick tunnel in place and an idle host,
+**all 14 preconditions pass and the dry run exits 0**; the only thing left is the cap itself
+(320 recommended — 188 plan plus retries). No provider call was made and no credit was
+spent. Detail: `docs/studio/reports/2026-11-17-provider-matrix-dry-run.md`.
+
+## Final gates on the fixed build
+
+Run against the merged tree (`262eb5b5` + the ADF fixes) with the local stack
+(`:9000 :4003 :8100 :3103`):
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npx vitest run` | **415 / 415** |
+| `npm run check:ui` | token scale, control heights, palette compliant |
+| `npm run check:clone` | 73/73 screens evidenced, 8 metrics at 0, 70/70 strings |
+| `node scripts/check-mojibake.mjs` | clean over 329 files |
+| Playwright, 64 product specs, 2 workers | **201 passed / 2 skipped / 0 failed (7.2 m)** |
+
+The two skips are conditional rows that need fixtures this stack does not carry: the
+storage-backed upload proxy (`STUDIO_UPLOAD_PROXY_URL`, `studio-bounce.spec.ts:133`) and
+Microphone recording (`studio-record.spec.ts:12`) — both guarded with `test.skip(...)` and a
+message naming the missing precondition. The `w5*` and `w5c-*` harnesses were excluded from
+this run so their recorded evidence JSONs stay as the runs produced them; every check they
+cover now has a product-level regression in the specs above.
 
 ## Provenance corrections made during this pass
 

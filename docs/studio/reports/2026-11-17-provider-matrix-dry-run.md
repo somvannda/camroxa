@@ -46,28 +46,42 @@ bare 188.
 
 ## Preconditions
 
-Passing now: `readiness.tables`, `readiness.pricing`, `readiness.storage`,
-`readiness.internal_token`, `readiness.suno_api_base_url`, and all four prices
-(`studio_edit` 12, `stems_2` 12, `stems_12` 60, `music` 10).
+First pass, no tunnel and with the full Playwright suite loading the same host: 9 of 14
+checks passed. Second pass, after starting a quick tunnel and restarting the API with it:
 
-Failing, and why:
+```
+PASS  callback_public                  https://<tunnel>.trycloudflare.com is public
+PASS  readiness.tables / pricing / storage / internal_token / suno_api_base_url
+PASS  readiness.suno_callback_base_url ok
+PASS  readiness.musicapi / musicapi_accounts   (accounts=1 active=1)
+PASS  price.studio_edit 12 · stems_2 12 · stems_12 60 · music 10
+PASS  musicapi.health                  accounts=1 active=1
+total 188 credits · wallet 448 · exit 0
+```
 
-| Precondition | State | What it needs |
-|---|---|---|
-| `callback_public` | **FAIL** — not set, so a generation would call back to `https://localhost` | a public tunnel to `:8100` (e.g. `cloudflared tunnel --url http://127.0.0.1:8100`) exported as `PLATFORM_SUNO_CALLBACK_BASE_URL`, and the same value in the platform API's environment before it starts |
-| `readiness.suno_callback_base_url` | **FAIL** — same cause, read from the running API | restart the API with the tunnel base set |
-| `readiness.musicapi` / `readiness.musicapi_accounts` | **FAIL** — these mirror the probe below | follow from the next row |
-| `musicapi.health` | **FAIL** — `AbortSignal.timeout(10000)` expired while the full Playwright suite was running against the same stack | re-probe on an idle stack; `GET :4003/internal/studio/health` with the internal token answers `{"ok":true,"accounts":1,"active_accounts":1,"jobs":1}` in well under a second when the host is not saturated |
+Commands that produced the green pass:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8100        # prints https://<name>.trycloudflare.com
+# restart the platform API with the tunnel base set, then:
+$env:PLATFORM_SUNO_CALLBACK_BASE_URL = 'https://<name>.trycloudflare.com'
+node scripts/dev/provider-matrix.mjs --budget 320
+```
+
+The two conditions that were failing before are therefore supplied by the operator, not by
+code: the public base must be set in **both** the runner and the running API (the readiness
+row reads it from the API), and the MusicAPI probe needs an idle host — the 10 s timeout is
+the runner's own guard, and the endpoint answers in ~23 ms standalone.
 
 ## What is required to close D4
 
 1. An approved cap. **320 credits recommended** (188 plan + retries); 210 if only two
    retries are acceptable; 188 if nothing may be re-run.
-2. A public tunnel to the platform API, with `PLATFORM_SUNO_CALLBACK_BASE_URL` set before
-   the API starts.
-3. An idle stack for the run: one shell lifetime, `--budget 320 --execute`, writing to
-   `docs/studio/reports/provider-matrix/run-1`.
+2. That is all — the tunnel path above is proven, the runner re-checks every precondition
+   before spending, and `--budget` is a hard cap.
+3. Run it on an idle stack in one shell lifetime:
+   `node scripts/dev/provider-matrix.mjs --budget 320 --execute --out docs/studio/reports/provider-matrix/run-1`.
 
 Everything else — the runner, the pricing read, the precondition gate, the per-row evidence
-(platform id, musicapi job id, provider clip, persona) — is in place and exercised by this
-dry run.
+(platform id, musicapi job id, provider clip, persona) — is in place and exercised by these
+dry runs.
