@@ -4189,6 +4189,13 @@ class BatchService:
             ImageKind.BACKGROUND: [],
             ImageKind.THUMBNAIL: [],
         }
+        use_text_presets = False
+        if self._thumbnail_text_library is not None:
+            try:
+                use_text_presets = bool(await self._thumbnail_text_library.active_count())
+            except Exception:
+                use_text_presets = False
+        used_text_ids: list[str] = []
         for sibling in all_jobs:
             if str(sibling.id) in requested:
                 continue
@@ -4227,27 +4234,57 @@ class BatchService:
             else:
                 profile_prompt = image_config.get("thumbnail_prompt", "")
 
+            thumbnail_mode = normalize_thumbnail_reference_mode(
+                str(
+                    getattr(job, "thumbnail_mode", "")
+                    or settings.get("thumbnailReferenceMode", "background_text")
+                    or "background_text"
+                )
+            )
+            use_text_for_kind = (
+                use_text_presets
+                and job.kind == ImageKind.THUMBNAIL
+                and thumbnail_mode == "background_text"
+            )
             style = None
             thumbnail_text = ""
+            thumbnail_lockup = None
             if is_admin_prompt_source(settings, job.kind):
                 style = await self._pick_admin_prompt_style(
                     kind=job.kind,
                     batch=batch,
                     used_prompt_ids=used_prompt_ids,
                     previous_batch_id=None,
+                    text_mode="lockup" if use_text_for_kind else None,
                 )
                 ui_prompt = style.prompt_text
                 if job.kind == ImageKind.THUMBNAIL:
-                    thumbnail_text = self._resolve_style_text(
-                        style,
-                        song=song,
-                        album=self._channel_album_label(batch, job.channel_role),
-                        channel=str(getattr(profile, "name", "") or ""),
-                    )
+                    if use_text_for_kind:
+                        record = await self._pick_thumbnail_text(batch, used_text_ids)
+                        if record is not None:
+                            from platform_api.services.thumbnail_composite import (
+                                ThumbnailTextLockup,
+                            )
+
+                            thumbnail_lockup = ThumbnailTextLockup(
+                                title=record.title,
+                                subtitle=record.subtitle or "",
+                                subline=record.subline or "",
+                                placement=record.placement,
+                                alignment=record.alignment,
+                                style_hint=record.style_hint or "",
+                            )
+                    else:
+                        thumbnail_text = self._resolve_style_text(
+                            style,
+                            song=song,
+                            album=self._channel_album_label(batch, job.channel_role),
+                            channel=str(getattr(profile, "name", "") or ""),
+                        )
             else:
                 ui_prompt = self._get_user_image_prompt(settings, job.kind)
 
-            if job.kind == ImageKind.THUMBNAIL and not thumbnail_text:
+            if job.kind == ImageKind.THUMBNAIL and not thumbnail_text and thumbnail_lockup is None:
                 thumbnail_text = (
                     str(song.title or "").strip()
                     or self._channel_album_label(batch, job.channel_role)
@@ -4261,21 +4298,18 @@ class BatchService:
                 profile_prompt=profile_prompt,
                 user_prompt=ui_prompt,
             )
-            thumbnail_mode = normalize_thumbnail_reference_mode(
-                str(
-                    getattr(job, "thumbnail_mode", "")
-                    or settings.get("thumbnailReferenceMode", "background_text")
-                    or "background_text"
-                )
-            )
             if job.kind == ImageKind.BACKGROUND:
                 prompt = enrich_background_prompt(prompt)
             elif thumbnail_mode == "background_text":
                 from platform_api.services.thumbnail_composite import (
                     enrich_thumbnail_background_text_prompt,
+                    enrich_thumbnail_text_lockup,
                 )
 
-                prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
+                if thumbnail_lockup is not None:
+                    prompt = enrich_thumbnail_text_lockup(prompt, thumbnail_lockup)
+                else:
+                    prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
             elif thumbnail_mode == "composite":
                 from platform_api.services.image_source_mode import is_prompt_only_source
 
