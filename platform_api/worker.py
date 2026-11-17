@@ -294,6 +294,52 @@ async def _handle_web_music_generate(job: Any, payload: dict[str, Any]) -> None:
         await _release_web_suno_lock(redis, lock_token)
 
 
+async def _fail_dead_generate(job: Any, error: str) -> None:
+    """Mark a generate task failed once its job has exhausted every attempt.
+
+    Without this the row keeps `status = 'pending'` with `error_message = NULL`, so the
+    user watches a spinner forever and the credit reservation is never released. Found
+    while running the W6 provider matrix against a worker that could not submit.
+    """
+    if job.job_type != JOB_WEB_MUSIC_GENERATE:
+        return
+    payload = job.payload or {}
+    try:
+        user_id = UUID(str(payload.get("user_id") or job.user_id))
+        task_id = UUID(str(payload.get("task_id") or job.song_id or ""))
+    except Exception:
+        logger.exception("Dead generate job %s has no usable payload", job.id)
+        return
+    reservation_id = str(payload.get("reservation_id") or task_id)
+    try:
+        from platform_api.dependencies import (
+            get_db_pool,
+            get_generation_service,
+            get_redis,
+        )
+        from platform_api.services.web_music_service import WebMusicService
+
+        try:
+            redis = get_redis()
+        except Exception:
+            redis = None
+        service = WebMusicService(
+            get_db_pool(),
+            get_generation_service(),
+            credit_service=None,
+            redis=redis,
+        )
+        await service._fail_queued_generate(
+            user_id,
+            task_id,
+            reservation_id=reservation_id,
+            message="Could not start this song. Credits were refunded.",
+        )
+        logger.info("Generate task %s marked failed after job %s gave up", task_id, job.id)
+    except Exception:
+        logger.exception("Could not mark generate task %s failed (%s)", task_id, error)
+
+
 async def _handle_suno(job: Any, payload: dict[str, Any]) -> None:
     from platform_api.dependencies import get_batch_service
 
@@ -521,14 +567,18 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
                 error=f"job exceeded {job_timeout:.0f}s timeout",
                 delay_seconds=min(300, 15 * max(1, job.attempts)),
             )
-            logger.error("Job %s timed out → %s", job.id, status)
+            logger.error("Job %s timed out -> %s", job.id, status)
+            if status == "failed":
+                await _fail_dead_generate(job, "job timed out")
         except Exception as exc:
             status = await queue.mark_failed_or_retry(
                 job,
                 error=str(exc),
                 delay_seconds=min(300, 15 * max(1, job.attempts)),
             )
-            logger.exception("Job %s failed → %s", job.id, status)
+            logger.exception("Job %s failed -> %s", job.id, status)
+            if status == "failed":
+                await _fail_dead_generate(job, str(exc))
 
     logger.info("Worker %s stopping.", worker_id)
 

@@ -822,7 +822,9 @@ async function probeMusicapi(env) {
     try {
       const response = await fetch(`${env.musicapiBase}/internal/studio/health`, {
         headers: { 'x-internal-token': env.token },
-        signal: AbortSignal.timeout(10000),
+        // The endpoint authenticates the account pool live: a cold call has been measured
+        // at 12 035 ms and 23 277 ms, so a 10 s guard failed a healthy stack.
+        signal: AbortSignal.timeout(30000),
       });
       const payload = await response.json();
       last = { skipped: false, ok: response.ok && Boolean(payload.ok), payload, attempt };

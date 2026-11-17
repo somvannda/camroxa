@@ -259,3 +259,74 @@ async def test_fulfill_refunds_when_suno_rejects() -> None:
     kwargs = service._release_daily_slot.await_args.kwargs
     assert kwargs["reference_id"] == "res-1"
     assert kwargs["task_id"] == str(task_id)
+
+
+@pytest.mark.asyncio
+async def test_dead_generate_job_marks_the_task_failed(monkeypatch) -> None:
+    """A generate job that exhausts its attempts must not leave the task pending.
+
+    Run 1 of the W6 provider matrix found three rows stuck at `pending` with
+    `error_message = NULL` because the job died (attempts exhausted) and nothing
+    propagated to the task, so the user saw a spinner and the reservation was held.
+    """
+    from platform_api import worker
+
+    captured: dict[str, object] = {}
+
+    class FakeWebMusicService:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def _fail_queued_generate(
+            self, user_id, task_id, *, reservation_id: str, message: str
+        ) -> None:
+            captured.update(
+                user_id=user_id,
+                task_id=task_id,
+                reservation_id=reservation_id,
+                message=message,
+            )
+
+    monkeypatch.setattr(
+        "platform_api.services.web_music_service.WebMusicService", FakeWebMusicService
+    )
+    monkeypatch.setattr("platform_api.dependencies.get_db_pool", lambda: object())
+    monkeypatch.setattr("platform_api.dependencies.get_generation_service", lambda: object())
+    monkeypatch.setattr("platform_api.dependencies.get_redis", lambda: None)
+
+    user_id = uuid4()
+    task_id = uuid4()
+    job = MagicMock()
+    job.id = "job-1"
+    job.job_type = JOB_WEB_MUSIC_GENERATE
+    job.user_id = str(user_id)
+    job.payload = {
+        "task_id": str(task_id),
+        "user_id": str(user_id),
+        "reservation_id": "res-1",
+    }
+
+    await worker._fail_dead_generate(job, "boom")
+
+    assert captured["task_id"] == task_id
+    assert captured["user_id"] == user_id
+    assert captured["reservation_id"] == "res-1"
+    assert "refunded" in str(captured["message"]).lower()
+
+
+@pytest.mark.asyncio
+async def test_dead_generate_ignores_other_job_types(monkeypatch) -> None:
+    from platform_api import worker
+
+    class ExplodingService:
+        def __init__(self, *args, **kwargs) -> None:
+            raise AssertionError("should not build the service for another job type")
+
+    monkeypatch.setattr(
+        "platform_api.services.web_music_service.WebMusicService", ExplodingService
+    )
+
+    job = MagicMock()
+    job.job_type = "execute_batch"
+    job.payload = {}
+    await worker._fail_dead_generate(job, "boom")
