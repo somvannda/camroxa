@@ -238,8 +238,8 @@ class ControlsQueueCard(StudioPanel):
         self._thumbnail_prompt = self._make_prompt_edit(
             "Guide how the thumbnail should build on the generated background plus text style."
         )
-        bg_header, self._background_counter = self._make_prompt_header("BACKGROUND PROMPT")
-        th_header, self._thumbnail_counter = self._make_prompt_header("THUMBNAIL PROMPT")
+        self._bg_header, self._background_counter = self._make_prompt_header("BACKGROUND PROMPT")
+        self._th_header, self._thumbnail_counter = self._make_prompt_header("THUMBNAIL PROMPT")
         self._bg_manual_btn = QPushButton("Manual Generation")
         self._bg_manual_btn.setObjectName("SecondaryButton")
         apply_button_icon(self._bg_manual_btn, "sparkles")
@@ -260,10 +260,10 @@ class ControlsQueueCard(StudioPanel):
         self._th_manual_btn.clicked.connect(
             lambda: self.manual_generation_requested.emit("thumbnail")
         )
-        prompts.addWidget(bg_header, 0, 0)
+        prompts.addWidget(self._bg_header, 0, 0)
         prompts.addWidget(self._background_prompt, 1, 0)
         prompts.addWidget(self._bg_manual_btn, 2, 0)
-        prompts.addWidget(th_header, 0, 1)
+        prompts.addWidget(self._th_header, 0, 1)
         prompts.addWidget(self._thumbnail_prompt, 1, 1)
         prompts.addWidget(self._th_manual_btn, 2, 1)
         prompts.setColumnStretch(0, 1)
@@ -454,6 +454,17 @@ class ControlsQueueCard(StudioPanel):
         self._thumbnail_prompt.blockSignals(False)
         self._refresh_prompt_counter(self._background_prompt, self._background_counter)
         self._refresh_prompt_counter(self._thumbnail_prompt, self._thumbnail_counter)
+
+    def set_prompt_library_only(self, enabled: bool) -> None:
+        """Hide the whole app-prompt editors when the admin library is forced globally."""
+        visible = not bool(enabled)
+        for widget in (
+            self._bg_header,
+            self._background_prompt,
+            self._th_header,
+            self._thumbnail_prompt,
+        ):
+            widget.setVisible(visible)
 
     def set_prompt_library_mode(self, *, background: bool, thumbnail: bool) -> None:
         """Lock the local prompt boxes when the admin library supplies the prompt."""

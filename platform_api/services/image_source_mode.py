@@ -12,6 +12,19 @@ SOURCE_MODE_PERSONAL_REFERENCE = "personal_reference"
 
 PROMPT_SOURCE_CUSTOM = "custom"
 PROMPT_SOURCE_ADMIN_LIBRARY = "admin_library"
+PROMPT_LIBRARY_ONLY_KEY = "imagePromptLibraryOnly"
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def prompt_library_only(settings: dict[str, Any] | None) -> bool:
+    """True when the administrator forces every image prompt to come from the library."""
+    data = settings if isinstance(settings, dict) else {}
+    return _truthy(data.get(PROMPT_LIBRARY_ONLY_KEY))
 
 _BG_EMPTY_PROMPT = (
     "Background: Add a background prompt, or switch Background source to Category / User reference."
@@ -70,6 +83,8 @@ def normalize_prompt_source(settings: dict[str, Any] | None, kind: ImageKind | s
     Unknown values fall back to ``custom`` so old clients keep their prompt.
     """
     data = settings if isinstance(settings, dict) else {}
+    if prompt_library_only(data):
+        return PROMPT_SOURCE_ADMIN_LIBRARY
     kind_value = str(getattr(kind, "value", kind) or "").strip().lower()
     key = (
         "imageBackgroundPromptSource"

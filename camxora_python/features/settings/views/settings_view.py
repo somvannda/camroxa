@@ -244,6 +244,7 @@ class SettingsView(QWidget):
         self._baseline_publication_draft = PublicationDraft()
         self._system_draft = SystemSettingsDraft()
         self._baseline_system_draft = SystemSettingsDraft()
+        self._prompt_library_only = False
         self._suno_draft = SunoSettingsDraft()
         self._baseline_suno_draft = SunoSettingsDraft()
         self._status_message = "All supported Settings changes are saved."
@@ -3420,13 +3421,27 @@ class SettingsView(QWidget):
         source_index = self._pref_image_source.findData(draft.image_source_mode)
         if source_index >= 0:
             self._pref_image_source.setCurrentIndex(source_index)
+        from shared.lib.image_workspace import prompt_library_only
+
+        self._prompt_library_only = prompt_library_only(self._settings_raw)
+        self._configure_source_combos(self._prompt_library_only)
+        bg_prompt_source = (
+            "admin_library"
+            if self._prompt_library_only
+            else draft.image_background_prompt_source
+        )
+        th_prompt_source = (
+            "admin_library"
+            if self._prompt_library_only
+            else draft.image_thumbnail_prompt_source
+        )
         bg_source_index = self._pref_background_source.findData(
-            f"{draft.image_background_source_mode}:{draft.image_background_prompt_source}"
+            f"{draft.image_background_source_mode}:{bg_prompt_source}"
         )
         if bg_source_index >= 0:
             self._pref_background_source.setCurrentIndex(bg_source_index)
         th_source_index = self._pref_thumbnail_source.findData(
-            f"{draft.image_thumbnail_source_mode}:{draft.image_thumbnail_prompt_source}"
+            f"{draft.image_thumbnail_source_mode}:{th_prompt_source}"
         )
         if th_source_index >= 0:
             self._pref_thumbnail_source.setCurrentIndex(th_source_index)
@@ -3768,6 +3783,36 @@ class SettingsView(QWidget):
         )
         self._refresh_footer()
 
+    def _configure_source_combos(self, library_only: bool) -> None:
+        options = (
+            (
+                ("Category + Admin library", "category:admin_library"),
+                ("Prompt only + Admin library", "prompt_only:admin_library"),
+            )
+            if library_only
+            else (
+                ("Category + My prompt", "category:custom"),
+                ("Category + Admin library", "category:admin_library"),
+                ("Prompt only + My prompt", "prompt_only:custom"),
+                ("Prompt only + Admin library", "prompt_only:admin_library"),
+            )
+        )
+        for combo in (self._pref_background_source, self._pref_thumbnail_source):
+            raw = str(combo.currentData() or "category:custom")
+            mode, _, prompt = raw.partition(":")
+            normalized_mode = "prompt_only" if mode == "prompt_only" else "category"
+            normalized_prompt = (
+                "admin_library" if library_only or prompt == "admin_library" else "custom"
+            )
+            blocked = combo.blockSignals(True)
+            combo.clear()
+            for label, value in options:
+                combo.addItem(label, value)
+            index = combo.findData(f"{normalized_mode}:{normalized_prompt}")
+            if index >= 0:
+                combo.setCurrentIndex(index)
+            combo.blockSignals(blocked)
+
     @staticmethod
     def _source_selection(value: object) -> tuple[str, str]:
         raw = str(value or "category:custom")
@@ -3788,6 +3833,9 @@ class SettingsView(QWidget):
         th_source_mode, th_prompt_source = self._source_selection(
             self._pref_thumbnail_source.currentData()
         )
+        if self._prompt_library_only:
+            bg_prompt_source = "admin_library"
+            th_prompt_source = "admin_library"
         self._system_draft = SystemSettingsDraft(
             ffmpeg_path=self._pref_ffmpeg.text(),
             # Downloads / merged / image output are auto-defaults (not shown in Preferences).

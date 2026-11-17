@@ -7,6 +7,20 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.7.1] - 2026-11-17
+
+### Changed
+
+- **One source dropdown per image kind.** Background and Thumbnail now use a
+  single selection: Category + My prompt, Category + Admin library, Prompt only +
+  My prompt, or Prompt only + Admin library. The separate Prompt source dropdown
+  is gone from both the Image page and Settings.
+- **Manual prompts lock automatically.** Selecting an Admin library option makes
+  the Background/Thumbnail prompt boxes read-only, because the server supplies
+  the prompt. Selecting a My prompt option enables them again.
+- **Longer prompts.** The prompt limit is now 20,000 characters for admin prompt
+  styles, the admin editor, and composed image prompts.
+
 ## [1.7.0] - 2026-11-17
 
 ### Added
