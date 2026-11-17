@@ -69,6 +69,9 @@ project JSON import, clip comments, presence, supersaw audition speed.
 | Clip rail header sits **inside the floating card** (S27) | The captured controls are all present (back, title, like/dislike, art, Remix, player, tabs); the card layout is ours, not a replacement |
 | MIDI editor overview strip (S31) | Shipped: mini piano roll + visible window + zoom −/+, driving the roll's real horizontal scroll. The grid also keeps its 1–12× zoom. |
 | Footer strip shows the **master chain**, not the selected track’s (S26) | Deliberate: the capture’s footer centre is the master rack; per-track chains live in the dock |
+| Assistant opens as a **left column** that hides the track panel (S36) | The capture floats a compact chat card bottom-left with tracks visible. Ours gives the assistant the column; changing it is a layout redesign, recorded rather than rushed |
+| S61 **auto-reload** is a disabled switch | No recurring top-up endpoint exists (one pack per checkout); the switch states that instead of pretending |
+| `+ Add new track` sits directly under the last track (S05/S16) | The captured tray sits at a fixed mid-panel position; ours follows the list. Recorded displacement |
 
 The start overlay ships five tiles in the captured order — **Edit Your Song, Drum & Bass
 Demo, Upload Audio, Create a song and Empty Project** — plus the captured ✕ and "Browse

@@ -42,10 +42,11 @@ the behaviour it covers is unchanged by the later UI additions.
 - W10 re-shot those 8 (7 now match the reference frame size exactly) and fixed a fixture bug
   that invalidated earlier waveform evidence (`/demo-loop.wav` → `/seed/demo-loop.wav`).
 
-Still open for a closed D3: the 11 LAYOUT rows. Nine are fixed since adjudication (S24 flags,
-S28 palette, S05/S16 track, S13 width, S14/S39/S64 chrome, S08 history, S61 modal); the
-adjudication was against the pre-fix build, so a fresh `check:pixels` + short re-adjudication
-is the closing act.
+W9b re-adjudicated on the fixed build: **8 LAYOUT, 26 STATE, 11 REGION, 8 ALLOWED**. Since
+then, S14 sections, S21 chip placement, S28 menu ordering and S60 toast are fixed; the three
+remaining causes are recorded in `CLONE_DEFINITION.md` §5 (S36 assistant column, S61
+auto-reload capability, S05/S16 add-row position), so **D3 closes with recorded divergences
+rather than unexplained deltas**.
 
 ## D4 — live provider matrix · **BLOCKED**
 
