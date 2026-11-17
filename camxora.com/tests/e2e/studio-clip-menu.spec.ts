@@ -76,11 +76,12 @@ test("the clip menu splits, renames and recolours a clip", async ({ page }) => {
   // Clip Color writes a per-clip colour override.
   await page.mouse.click(secondBox.x + 20, secondBox.y + 40, { button: "right" });
   await menu.getByRole("menuitem", { name: /Clip Color/ }).click();
-  await menu.getByLabel("Clip colour #f472b6").click();
+  // The flyout is portaled to body, so it is not inside the menu element.
+  await page.getByLabel("Clip colour #db2777").click();
   await expect
-    .poll(async () => (await lanes()).some((lane) => lane.color === "#f472b6"), { timeout: 15_000 })
+    .poll(async () => (await lanes()).some((lane) => lane.color === "#db2777"), { timeout: 15_000 })
     .toBe(true);
-  await expect(page.locator(".se-clip").nth(1)).toHaveCSS("background-color", "rgb(244, 114, 182)");
+  await expect(page.locator(".se-clip").nth(1)).toHaveCSS("background-color", "rgb(219, 39, 119)");
 });
 
 test("Ctrl+E splits the selected clip at the playhead", async ({ page }) => {

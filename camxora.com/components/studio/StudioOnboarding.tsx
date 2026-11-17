@@ -26,12 +26,15 @@ function seenKey(projectId: string): string {
 export function StudioOnboarding({
   projectId,
   isEmpty,
+  loading = false,
   reopenToken = 0,
   onOpenLibrary,
   onOpenDemo,
 }: {
   projectId: string | null;
   isEmpty: boolean;
+  /** True while the document is still loading; the seen flag must not be set early. */
+  loading?: boolean;
   /** Increment to re-open the overlay ("Show Quick Start again" in the project menu). */
   reopenToken?: number;
   /** Open the library drawer on a specific list (songs or uploads). */
@@ -42,8 +45,18 @@ export function StudioOnboarding({
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!projectId || !isEmpty) {
+    if (!projectId || loading) return;
+    if (!isEmpty) {
       setOpen(false);
+      // A project that has ever held clips is not a first run. Marking it seen keeps the
+      // overlay from reopening when the user deletes the last clip (W5 bounce regression).
+      if (projectId) {
+        try {
+          window.localStorage.setItem(seenKey(projectId), "1");
+        } catch {
+          /* storage may be unavailable */
+        }
+      }
       return;
     }
     try {
@@ -51,7 +64,7 @@ export function StudioOnboarding({
     } catch {
       setOpen(true);
     }
-  }, [projectId, isEmpty]);
+  }, [projectId, isEmpty, loading]);
 
   useEffect(() => {
     if (!projectId || reopenToken <= 0) return;

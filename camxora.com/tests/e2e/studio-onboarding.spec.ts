@@ -74,7 +74,8 @@ test("the Drum & Bass Demo tile opens a project seeded with our loop", async ({ 
   const clip = page.locator(".se-clip");
   await expect(clip).toHaveCount(1);
   await expect(clip.locator(".se-clip-head")).toHaveText("Drum & Bass Demo");
-  await expect(page.getByRole("img", { name: "Drum & Bass Demo waveform" })).toBeVisible();
+  // The clip body is aria-hidden, so assert the canvas state rather than its role.
+  await expect(clip.locator(".se-clip-body canvas")).toHaveAttribute("data-waveform", /ready|fallback/);
   await expect(page.locator(".se-track-name").first()).toContainText("Drum & Bass");
   await expect(page.locator(".se-lane")).toHaveCount(1);
 

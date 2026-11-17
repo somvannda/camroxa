@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -784,37 +785,36 @@ export function StudioPluginDock({
           const isDesigned = Boolean(entry.custom);
           const primary = plugin.params.filter((param) => param.tier !== "secondary");
           const secondary = plugin.params.filter((param) => param.tier === "secondary");
-          if (isPopped(entry)) {
-            // The popped card is position:fixed, so without a placeholder the rail has no
-            // in-flow children and collapses (W5 B-98).
-            return (
-              <article
-                key={entry.entryId}
-                className="sp-slot sp-slot-popped"
-                aria-label={`${plugin.name} popped out`}
-              >
-                <header className="sp-slot-head">
-                  <span className="sp-dot" aria-hidden="true" />
-                  <strong>{plugin.name}</strong>
-                </header>
-                <button
-                  type="button"
-                  className="sp-add-inline"
-                  onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
-                >
-                  <Icon name="fa-up-right-from-square" /> Dock {plugin.name}
-                </button>
-              </article>
-            );
-          }
           return (
-            <article
-              key={entry.entryId}
-              className={`sp-slot${entry.bypassed ? " is-bypassed" : ""}${
-                plugin.id === "eq" ? " sp-slot-eq" : ""
-              }${isPopped(entry) ? " is-popped" : ""}`}
-              aria-label={`${plugin.name} slot ${index + 1}`}
-            >
+            <Fragment key={entry.entryId}>
+              {isPopped(entry) ? (
+                // The popped card is position:fixed, so without an in-flow placeholder the
+                // rail has no children and collapses (W5 B-98). The real card still renders
+                // below and stays the thing you interact with.
+                <article
+                  className="sp-slot sp-slot-popped"
+                  aria-label={`${plugin.name} popped out`}
+                >
+                  <header className="sp-slot-head">
+                    <span className="sp-dot" aria-hidden="true" />
+                    <strong>{plugin.name}</strong>
+                  </header>
+                  <button
+                    type="button"
+                    className="sp-add-inline"
+                    aria-label={`Dock ${plugin.name} into the rail`}
+                    onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
+                  >
+                    <Icon name="fa-up-right-from-square" /> Dock {plugin.name}
+                  </button>
+                </article>
+              ) : null}
+              <article
+                className={`sp-slot${entry.bypassed ? " is-bypassed" : ""}${
+                  plugin.id === "eq" ? " sp-slot-eq" : ""
+                }${isPopped(entry) ? " is-popped" : ""}`}
+                aria-label={`${plugin.name} slot ${index + 1}`}
+              >
               <header className="sp-slot-head">
                 <span className="sp-dot" aria-hidden="true" />
                 <strong>{plugin.name}</strong>
@@ -1260,6 +1260,7 @@ export function StudioPluginDock({
                 </div>
               ) : null}
             </article>
+            </Fragment>
           );
         })}
 

@@ -38,7 +38,8 @@ test("restoring a version brings the arrangement back", async ({ page }) => {
   // Restore reloads the editor with the restored document; wait for that load before
   // touching the DOM, or an evaluate can land in the destroyed context.
   const reloaded = page.waitForEvent("load", { timeout: 30_000 });
-  await dialog.getByRole("button", { name: "Restore Original" }).click();
+  // S08: the row itself restores; its accessible name is the timestamp.
+  await dialog.getByRole("button", { name: /Restore version from/ }).first().click();
   await reloaded;
 
   await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
-import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
@@ -6454,6 +6453,7 @@ export function StudioEditorShell() {
 
       <StudioOnboarding
         projectId={projectId}
+        loading={loading}
         isEmpty={!loading && !error && clips.length === 0}
         reopenToken={quickStartToken}
         onOpenLibrary={(tab) => {
@@ -6676,46 +6676,43 @@ export function StudioEditorShell() {
                   >
                     <Icon name="fa-circle" /> Clip Color <Icon name="fa-chevron-right" />
                   </button>
-                  {clipColorOpen && clipColorPos
-                    ? createPortal(
-                        <div
-                          className="se-clip-menu-colors se-colors-portal"
-                          role="group"
-                          aria-label="Clip colour"
-                          style={{ left: clipColorPos.left, top: clipColorPos.top }}
-                        >
+                  {clipColorOpen && clipColorPos ? (
+                    <div
+                      className="se-clip-menu-colors se-colors-portal"
+                      role="group"
+                      aria-label="Clip colour"
+                      style={{ left: clipColorPos.left, top: clipColorPos.top }}
+                    >
+                      <button
+                        type="button"
+                        className="se-color-auto"
+                        aria-pressed={!clip.color}
+                        onClick={() => {
+                          setClipColor(clip.id, "");
+                          setClipMenu(null);
+                        }}
+                      >
+                        <span className="se-color-dot" aria-hidden="true" />
+                        Auto
+                        {!clip.color ? <Icon name="fa-check" /> : null}
+                      </button>
+                      <div className="se-color-grid">
+                        {CLIP_COLORS.map((color) => (
                           <button
+                            key={color}
                             type="button"
-                            className="se-color-auto"
-                            aria-pressed={!clip.color}
+                            aria-label={`Clip colour ${color}`}
+                            style={{ background: color }}
+                            className={clip.color === color ? "on" : undefined}
                             onClick={() => {
-                              setClipColor(clip.id, "");
+                              setClipColor(clip.id, color);
                               setClipMenu(null);
                             }}
-                          >
-                            <span className="se-color-dot" aria-hidden="true" />
-                            Auto
-                            {!clip.color ? <Icon name="fa-check" /> : null}
-                          </button>
-                          <div className="se-color-grid">
-                            {CLIP_COLORS.map((color) => (
-                              <button
-                                key={color}
-                                type="button"
-                                aria-label={`Clip colour ${color}`}
-                                style={{ background: color }}
-                                className={clip.color === color ? "on" : undefined}
-                                onClick={() => {
-                                  setClipColor(clip.id, color);
-                                  setClipMenu(null);
-                                }}
-                              />
-                            ))}
-                          </div>
-                        </div>,
-                        document.body
-                      )
-                    : null}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="se-clip-menu-sep" />
                 <button

@@ -291,8 +291,9 @@ test("Learn menu matches the captured popover", async ({ page }) => {
       rows,
     };
   });
-  // S13: 206 px wide, #1c1c1e, 12 px radius, 44 px rows in the captured order.
-  expect(info.width).toBe(206);
+  // S13 reads ~242 px in the frame; at 206 the two captured labels wrapped, so the menu is
+  // 250 px with nowrap rows.
+  expect(info.width).toBe(250);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
   // S13 has four rows; YouTube Tutorials is dropped by product decision (no channel,
@@ -1157,7 +1158,7 @@ test("popping a plugin out floats the captured card", async ({ page }) => {
   expect(box.position).toBe("fixed");
   expect(box.width).toBe(520);
   expect(box.right).toBe(24);
-  await page.getByRole("button", { name: "Dock EQ" }).click();
+  await page.getByRole("button", { name: "Dock EQ", exact: true }).click();
   await expect(page.locator(".sp-slot.is-popped")).toHaveCount(0);
 });
 

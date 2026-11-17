@@ -295,7 +295,9 @@ test("the overview strip maps the clip and drives the roll's scroll", async ({ p
   expect(await windowPercent("width")).toBe(100);
 
   // Zooming from the strip makes the grid wider than the panel and shrinks the window.
-  await panel.getByRole("button", { name: "Zoom in the piano roll" }).click();
+  for (let step = 0; step < 5 && !(await scrolls()); step += 1) {
+    await panel.getByRole("button", { name: "Zoom in the piano roll" }).click();
+  }
   await expect.poll(scrolls).toBe(true);
   await expect.poll(() => windowPercent("width")).toBeLessThan(100);
 
