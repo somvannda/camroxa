@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 import pytest
 from openpyxl import Workbook
@@ -57,6 +58,28 @@ def test_import_key_normalizes_case_and_whitespace() -> None:
 def test_unique_name_appends_suffix() -> None:
     existing = {"imported bg 001"}
     assert _unique_name("Imported BG 001", existing) == "Imported BG 001 (2)"
+
+
+def test_admin_downloadable_templates_parse_with_importer() -> None:
+    templates = (
+        Path(__file__).resolve().parents[2]
+        / "admin_portal"
+        / "public"
+        / "templates"
+    )
+    expected = (
+        "EXAMPLE: Replace this with your background prompt",
+        "EXAMPLE: Replace this with the thumbnail prompt",
+    )
+    for name in (
+        "image-prompts-template.csv",
+        "image-prompts-template.xls",
+        "image-prompts-template.xlsx",
+        "image-prompts-template.json",
+    ):
+        rows = _import_rows(name, (templates / name).read_bytes())
+        assert len(rows) == 1, name
+        assert rows[0][1:] == expected, name
 
 class _Upload:
     filename = "prompts.csv"
