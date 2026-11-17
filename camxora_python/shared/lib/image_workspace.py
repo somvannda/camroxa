@@ -11,6 +11,16 @@ from shared.models.platform import ImageJobListItem, MusicHistoryBatch
 
 # Match platform_api.services.generation_service.IMAGE_MAX_PROMPT_LENGTH
 IMAGE_PROMPT_MAX_CHARS = 20000
+PROMPT_LIBRARY_ONLY_SETTING = "imagePromptLibraryOnly"
+
+
+def prompt_library_only(settings: dict[str, object] | None) -> bool:
+    """True when the administrator forces every image prompt to the admin library."""
+    data = settings if isinstance(settings, dict) else {}
+    value = data.get(PROMPT_LIBRARY_ONLY_SETTING)
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True, slots=True)

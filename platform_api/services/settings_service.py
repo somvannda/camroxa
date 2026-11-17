@@ -34,6 +34,10 @@ SENSITIVE_PATTERNS: tuple[str, ...] = (
 MIN_PATCH_SIZE = 1
 MAX_PATCH_SIZE = 50
 
+# Settings owned by the administrator. A user patch must never override them,
+# even though settings are normally merged with user values taking precedence.
+SYSTEM_ONLY_SETTINGS: frozenset[str] = frozenset({"imagePromptLibraryOnly"})
+
 
 # ---------------------------------------------------------------------------
 # Dependency Protocols
@@ -127,6 +131,11 @@ class SettingsService:
 
         # Merge: system defaults first, then user overrides
         merged = {**system_settings, **user_settings}
+        for key in SYSTEM_ONLY_SETTINGS:
+            if key in system_settings:
+                merged[key] = system_settings[key]
+            else:
+                merged.pop(key, None)
 
         # Filter sensitive keys for user-facing responses
         if not include_sensitive:
@@ -157,7 +166,16 @@ class SettingsService:
                 contains invalid values.
         """
         # Validate patch size
+        had_keys = bool(patch)
+        patch = {
+            key: value
+            for key, value in patch.items()
+            if key not in SYSTEM_ONLY_SETTINGS
+        }
         if not patch:
+            if had_keys:
+                # A protected-only patch is a no-op, not an error.
+                return await self.get_merged_settings(user_id)
             raise ValidationError(
                 "Settings patch must contain at least 1 key-value pair.",
                 details={"patch_size": 0, "min": MIN_PATCH_SIZE, "max": MAX_PATCH_SIZE},

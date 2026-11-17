@@ -664,6 +664,29 @@ class TestSettingsService:
         assert result["bool_setting"] is True
         assert result["json_setting"] == {"nested": [1, 2, 3]}
 
+    @pytest.mark.asyncio
+    async def test_system_only_setting_cannot_be_overridden_by_user(
+        self, service: SettingsService, pool: FakeAsyncPGPool
+    ) -> None:
+        user_id = uuid4()
+        pool.seed_system_setting("imagePromptLibraryOnly", "boolean", "true")
+        pool.seed_user_setting(user_id, "imagePromptLibraryOnly", "boolean", "false")
+
+        result = await service.get_merged_settings(user_id)
+
+        assert result["imagePromptLibraryOnly"] is True
+
+    @pytest.mark.asyncio
+    async def test_user_patch_cannot_change_system_only_setting(
+        self, service: SettingsService, pool: FakeAsyncPGPool
+    ) -> None:
+        user_id = uuid4()
+        pool.seed_system_setting("imagePromptLibraryOnly", "boolean", "true")
+
+        result = await service.patch_settings(user_id, {"imagePromptLibraryOnly": False})
+
+        assert result["imagePromptLibraryOnly"] is True
+
 
 # ---------------------------------------------------------------------------
 # Tests: Global Credit Value methods

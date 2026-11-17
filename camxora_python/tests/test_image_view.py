@@ -343,3 +343,33 @@ def test_selected_album_clears_and_clear_filters_resets_dates(qapp: QApplication
     assert "Clear Filters" in {button.text() for button in card.findChildren(QPushButton)}
     card.clear_selection()
     assert card._selected_album.text() == "No album selected"
+
+
+def test_global_admin_library_only_forces_sources_and_hides_prompts(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = ImageView(PlatformApi())
+    monkeypatch.setattr(view, "_refresh_prompt_library_counts", lambda: None)
+    view._settings_raw = {
+        "imagePromptLibraryOnly": "true",
+        "imageBackgroundPromptSource": "custom",
+        "imageThumbnailPromptSource": "custom",
+        "imageBackgroundSourceMode": "prompt_only",
+        "imageThumbnailSourceMode": "prompt_only",
+    }
+
+    view._bind_source_modes_from_settings()
+    view._bind_prompt_sources_from_settings()
+
+    assert view._background_preview.prompt_source() == "admin_library"
+    assert view._thumbnail_preview.prompt_source() == "admin_library"
+    assert view._background_preview.source_mode() == "prompt_only"
+    assert view._thumbnail_preview.source_mode() == "prompt_only"
+    assert view._controls_card._background_prompt.isHidden()
+    assert view._controls_card._thumbnail_prompt.isHidden()
+    values = [
+        view._background_preview._source_mode.itemData(index)
+        for index in range(view._background_preview._source_mode.count())
+    ]
+    assert values == ["category:admin_library", "prompt_only:admin_library"]

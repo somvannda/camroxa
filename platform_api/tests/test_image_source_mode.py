@@ -62,3 +62,26 @@ def test_personal_reference_mode() -> None:
 def test_empty_prompt_messages_are_kind_specific() -> None:
     assert "Background:" in empty_prompt_error_message(ImageKind.BACKGROUND)
     assert "Thumbnail:" in empty_prompt_error_message(ImageKind.THUMBNAIL)
+
+
+def test_prompt_library_only_forces_admin_source() -> None:
+    from platform_api.services.image_source_mode import (
+        PROMPT_SOURCE_ADMIN_LIBRARY,
+        normalize_prompt_source,
+        prompt_library_only,
+    )
+
+    settings = {
+        "imagePromptLibraryOnly": "true",
+        "imageBackgroundPromptSource": "custom",
+        "imageThumbnailPromptSource": "custom",
+    }
+
+    assert prompt_library_only(settings)
+    assert normalize_prompt_source(settings, ImageKind.BACKGROUND) == (
+        PROMPT_SOURCE_ADMIN_LIBRARY
+    )
+    assert normalize_prompt_source(settings, ImageKind.THUMBNAIL) == (
+        PROMPT_SOURCE_ADMIN_LIBRARY
+    )
+    assert normalize_prompt_source({}, ImageKind.BACKGROUND) == "custom"

@@ -127,6 +127,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._prompts_initialized = False
         self._source_modes_initialized = False
         self._prompt_sources_initialized = False
+        self._prompt_library_only = False
         self._prompt_library_counts: dict[str, int] = {"background": 0, "thumbnail": 0}
         self._prompt_library_counts_loaded = False
         self._prompt_summary_worker: ImagePromptSummaryWorker | None = None
@@ -273,6 +274,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._prompts_initialized = False
         self._source_modes_initialized = False
         self._prompt_sources_initialized = False
+        self._prompt_library_only = False
         self._prompt_library_counts: dict[str, int] = {"background": 0, "thumbnail": 0}
         self._prompt_library_counts_loaded = False
         self._prompt_summary_worker: ImagePromptSummaryWorker | None = None
@@ -427,13 +429,21 @@ class ImageView(PollablePageMixin, QScrollArea):
         from shared.lib.image_workspace import (
             normalize_prompt_source,
             normalize_thumbnail_reference_mode,
+            prompt_library_only,
         )
 
+        library_only = prompt_library_only(self._settings_raw)
+        self._prompt_library_only = library_only
         bg_source = normalize_prompt_source(self._settings_raw.get("imageBackgroundPromptSource"))
         th_source = normalize_prompt_source(self._settings_raw.get("imageThumbnailPromptSource"))
         mode = normalize_thumbnail_reference_mode(
             self._settings_raw.get("thumbnailReferenceMode")
         )
+        if library_only:
+            bg_source = "admin_library"
+            th_source = "admin_library"
+        self._background_preview.set_prompt_library_only(library_only)
+        self._thumbnail_preview.set_prompt_library_only(library_only)
         self._background_preview.set_prompt_source(bg_source)
         self._thumbnail_preview.set_prompt_source(th_source)
         self._prompt_sources_initialized = True
@@ -466,8 +476,13 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._apply_prompt_source_state()
 
     def _apply_prompt_source_state(self) -> None:
-        bg_library = self._background_preview.prompt_source() == "admin_library"
-        th_library = self._thumbnail_preview.prompt_source() == "admin_library"
+        if self._prompt_library_only:
+            bg_library = True
+            th_library = True
+        else:
+            bg_library = self._background_preview.prompt_source() == "admin_library"
+            th_library = self._thumbnail_preview.prompt_source() == "admin_library"
+        self._controls_card.set_prompt_library_only(self._prompt_library_only)
         self._controls_card.set_prompt_library_mode(
             background=bg_library,
             thumbnail=th_library,
@@ -731,8 +746,16 @@ class ImageView(PollablePageMixin, QScrollArea):
             "imageThumbnailPrompt": self._controls_card.thumbnail_prompt(),
             "imageBackgroundSourceMode": self._background_preview.source_mode(),
             "imageThumbnailSourceMode": self._thumbnail_preview.source_mode(),
-            "imageBackgroundPromptSource": self._background_preview.prompt_source(),
-            "imageThumbnailPromptSource": self._thumbnail_preview.prompt_source(),
+            "imageBackgroundPromptSource": (
+                "admin_library"
+                if self._prompt_library_only
+                else self._background_preview.prompt_source()
+            ),
+            "imageThumbnailPromptSource": (
+                "admin_library"
+                if self._prompt_library_only
+                else self._thumbnail_preview.prompt_source()
+            ),
             "thumbnailReferenceMode": normalize_thumbnail_reference_mode(
                 self._settings_raw.get("thumbnailReferenceMode")
             ),

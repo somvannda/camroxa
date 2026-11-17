@@ -15,6 +15,21 @@ import {
 } from '@/components/ui/select';
 
 const SETTING_KEY = 'thumbnailReferenceMode';
+const LIBRARY_ONLY_KEY = 'imagePromptLibraryOnly';
+
+const LIBRARY_OPTIONS = [
+  {
+    value: 'false',
+    label: 'User choice',
+    description: 'Desktop users can pick My prompt or the Admin prompt library.',
+  },
+  {
+    value: 'true',
+    label: 'Admin library only (forced)',
+    description:
+      'Every desktop user is forced to the Admin prompt library. Their app prompt is hidden and the server ignores it.',
+  },
+] as const;
 
 const MODE_OPTIONS = [
   {
@@ -52,23 +67,34 @@ export function ImageGenerationSection() {
   const settings = data?.settings ?? [];
 
   const [mode, setMode] = useState('background_text');
+  const [libraryOnly, setLibraryOnly] = useState('false');
 
   useEffect(() => {
     setMode(readSettingValue(settings, SETTING_KEY, 'background_text'));
+    setLibraryOnly(readSettingValue(settings, LIBRARY_ONLY_KEY, 'false'));
   }, [settings]);
 
-  const handleSave = () => {
-    upsertSetting.mutate(
-      { key: SETTING_KEY, value: mode, value_type: 'string' },
-      {
-        onSuccess: () => {
-          toast({ title: 'Image generation settings saved' });
-        },
-      },
-    );
+  const handleSave = async () => {
+    try {
+      await upsertSetting.mutateAsync({
+        key: SETTING_KEY,
+        value: mode,
+        value_type: 'string',
+      });
+      await upsertSetting.mutateAsync({
+        key: LIBRARY_ONLY_KEY,
+        value: libraryOnly,
+        value_type: 'boolean',
+      });
+      toast({ title: 'Image generation settings saved' });
+    } catch {
+      toast({ title: 'Could not save image generation settings', variant: 'destructive' });
+    }
   };
 
   const selected = MODE_OPTIONS.find((option) => option.value === mode) ?? MODE_OPTIONS[0];
+  const librarySelected =
+    LIBRARY_OPTIONS.find((option) => option.value === libraryOnly) ?? LIBRARY_OPTIONS[0];
 
   if (isLoading) {
     return (
@@ -118,6 +144,23 @@ export function ImageGenerationSection() {
             </SelectContent>
           </Select>
           <p className="text-sm text-slate-400">{selected.description}</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="image-prompt-library-only">Admin prompt library</Label>
+          <Select value={libraryOnly} onValueChange={setLibraryOnly}>
+            <SelectTrigger id="image-prompt-library-only">
+              <SelectValue placeholder="Select mode" />
+            </SelectTrigger>
+            <SelectContent>
+              {LIBRARY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-sm text-slate-400">{librarySelected.description}</p>
         </div>
 
         <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">

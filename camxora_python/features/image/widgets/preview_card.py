@@ -66,6 +66,7 @@ class PreviewCard(StudioPanel):
         self._job_id = ""
         self._placeholder = placeholder or _EMPTY_BY_KIND.get(kind, "No image generated")
         self._prompt_library_count = 0
+        self._library_only = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -86,9 +87,7 @@ class PreviewCard(StudioPanel):
         root.addWidget(source_heading)
 
         self._source_mode = StudioComboBox()
-        for label, value in _SOURCE_OPTIONS:
-            self._source_mode.addItem(label, value)
-        self._source_mode.sync_item_tooltips()
+        self._populate_options()
         self._source_mode.currentIndexChanged.connect(self._emit_selection)
         root.addWidget(self._source_mode)
         self._prompt_source_note = QLabel("")
@@ -133,6 +132,27 @@ class PreviewCard(StudioPanel):
         self._set_actions_enabled(False)
         self.set_status("Empty")
 
+    def _populate_options(self) -> None:
+        current_mode, current_prompt = self._selection()
+        blocked = self._source_mode.blockSignals(True)
+        self._source_mode.clear()
+        for label, value in _SOURCE_OPTIONS:
+            if self._library_only and value.endswith(":custom"):
+                continue
+            self._source_mode.addItem(label, value)
+        self._source_mode.sync_item_tooltips()
+        self._source_mode.blockSignals(blocked)
+        prompt_source = "admin_library" if self._library_only else current_prompt
+        self._select(current_mode, prompt_source)
+
+    def set_prompt_library_only(self, enabled: bool) -> None:
+        normalized = bool(enabled)
+        if normalized == self._library_only:
+            self._update_prompt_source_note()
+            return
+        self._library_only = normalized
+        self._populate_options()
+
     def _selection(self) -> tuple[str, str]:
         raw = str(self._source_mode.currentData() or "category:custom")
         source_mode, _, prompt_source = raw.partition(":")
@@ -163,7 +183,8 @@ class PreviewCard(StudioPanel):
         blocked = self._source_mode.blockSignals(True)
         self._source_mode.setCurrentIndex(index)
         self._source_mode.blockSignals(blocked)
-        self._update_prompt_source_note()
+        if hasattr(self, "_prompt_source_note"):
+            self._update_prompt_source_note()
 
     def source_mode(self) -> str:
         return self._selection()[0]
@@ -188,6 +209,12 @@ class PreviewCard(StudioPanel):
         self._update_prompt_source_note()
 
     def _update_prompt_source_note(self) -> None:
+        if self._library_only:
+            self._prompt_source_note.setText(
+                "Admin prompt library only — prompts are managed in Admin → Image Prompts."
+            )
+            self._prompt_source_note.show()
+            return
         if self.prompt_source() != "admin_library":
             self._prompt_source_note.hide()
             return
