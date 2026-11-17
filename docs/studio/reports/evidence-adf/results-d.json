@@ -1,0 +1,450 @@
+[
+  {
+    "id": "D-01",
+    "verdict": "PASS",
+    "evidence": "range 1→0; .se-clip.selected=1; track=\"Drums\""
+  },
+  {
+    "id": "D-02",
+    "verdict": "PASS",
+    "evidence": ".se-clip.selected=0; playhead 240.0px → 672.0px"
+  },
+  {
+    "id": "D-03",
+    "verdict": "PASS",
+    "evidence": ".se-marquee visible during drag; .se-clip.selected=2 (A 260, B 644)"
+  },
+  {
+    "id": "D-04",
+    "verdict": "PASS",
+    "evidence": "group kept: .se-clip.selected=2"
+  },
+  {
+    "id": "D-05",
+    "verdict": "PASS",
+    "evidence": "shift-click replaces: .se-clip.selected=1 (\"Vox\") (additive select remains an absence, G-6)"
+  },
+  {
+    "id": "D-06",
+    "verdict": "PASS",
+    "evidence": "Ctrl+A → .se-clip.selected=5/5"
+  },
+  {
+    "id": "D-07",
+    "verdict": "PASS",
+    "evidence": "start 0 → 2; .se-snap-line=1"
+  },
+  {
+    "id": "D-08",
+    "verdict": "PASS",
+    "evidence": "all selected clips moved +2s: [2,2,2,2]"
+  },
+  {
+    "id": "D-09",
+    "verdict": "PASS",
+    "evidence": "start clamped to 0 (>= 0)"
+  },
+  {
+    "id": "D-10",
+    "verdict": "PASS",
+    "evidence": ".se-trim-start opacity 0 → 1 on hover"
+  },
+  {
+    "id": "D-11",
+    "verdict": "PASS",
+    "evidence": "duration 4 → 4.5; start stayed 0"
+  },
+  {
+    "id": "D-12",
+    "verdict": "PASS",
+    "evidence": "start +0.5, offset +0.5"
+  },
+  {
+    "id": "D-13",
+    "verdict": "PASS",
+    "evidence": "start=0, offset=0"
+  },
+  {
+    "id": "D-14",
+    "verdict": "PASS",
+    "evidence": "undo disabled state unchanged (false); no write"
+  },
+  {
+    "id": "D-15",
+    "verdict": "PASS",
+    "evidence": "duration unchanged (4.5); .trimming=0"
+  },
+  {
+    "id": "D-16",
+    "verdict": "PASS",
+    "evidence": "fadeIn=1; .se-fade=1"
+  },
+  {
+    "id": "D-17",
+    "verdict": "PASS",
+    "evidence": "fadeOut=2; in+out=3 <= duration 4.5"
+  },
+  {
+    "id": "D-18",
+    "verdict": "PASS",
+    "evidence": "fadeOut removed from the document"
+  },
+  {
+    "id": "D-19",
+    "verdict": "PASS",
+    "evidence": "Shift+F set fadeIn=0.5 then cleared it"
+  },
+  {
+    "id": "D-20",
+    "verdict": "PASS",
+    "evidence": "toast=\"Fades only apply to audio arrangements.\"; no fade written"
+  },
+  {
+    "id": "D-21",
+    "verdict": "PASS",
+    "evidence": "clip count 5→6; right half start=2 offset=2"
+  },
+  {
+    "id": "D-22",
+    "verdict": "PASS",
+    "evidence": "split at the clip start: count stayed 5"
+  },
+  {
+    "id": "D-23",
+    "verdict": "PASS",
+    "evidence": "multi-split: clip count 6→7"
+  },
+  {
+    "id": "D-24",
+    "verdict": "PASS",
+    "evidence": "toast=\"Split into 5 clips at 4 transients.\"; lanes 5→9"
+  },
+  {
+    "id": "D-25",
+    "verdict": "PASS",
+    "evidence": "copy at start=2 (original 0, +2s)"
+  },
+  {
+    "id": "D-26",
+    "verdict": "PASS",
+    "evidence": "copy start=10; ruler width 11520→11520"
+  },
+  {
+    "id": "D-27",
+    "verdict": "PASS",
+    "evidence": "clip removed; focus on \"se-clip selected\""
+  },
+  {
+    "id": "D-28",
+    "verdict": "PASS",
+    "evidence": "lanes 5 → 0 → 5 in one undo"
+  },
+  {
+    "id": "D-29",
+    "verdict": "PASS",
+    "evidence": "pasted at 14s (playhead 14s)"
+  },
+  {
+    "id": "D-30",
+    "verdict": "PASS",
+    "evidence": "two independent copies (2); original untouched"
+  },
+  {
+    "id": "D-31",
+    "verdict": "PASS",
+    "evidence": "copy with nothing selected copied nothing (Paste disabled=true)"
+  },
+  {
+    "id": "D-32",
+    "verdict": "PASS",
+    "evidence": "lanes 5 → 4 (cut) → 5 (paste)"
+  },
+  {
+    "id": "D-33",
+    "verdict": "PASS",
+    "evidence": "paste landed on \"Drums\" (origin track), not the focused Vox track (G-7 absence)"
+  },
+  {
+    "id": "D-34",
+    "verdict": "PASS",
+    "evidence": "fadeIn=0.5 copied; no volume/pan/fx keys on the clip"
+  },
+  {
+    "id": "D-35",
+    "verdict": "PASS",
+    "evidence": "toast=\"Settings pasted to 5 clips.\""
+  },
+  {
+    "id": "D-36",
+    "verdict": "PASS",
+    "evidence": "after reload Paste is disabled (in-memory buffer)"
+  },
+  {
+    "id": "D-37",
+    "verdict": "PASS",
+    "evidence": "playhead left=288.0px; .se-range=0; flag=1"
+  },
+  {
+    "id": "D-38",
+    "verdict": "PASS",
+    "evidence": ".se-range=1; Selection start/end handles present"
+  },
+  {
+    "id": "D-39",
+    "verdict": "PASS",
+    "evidence": "range width 192 → 384 px"
+  },
+  {
+    "id": "D-40",
+    "verdict": "PASS",
+    "evidence": "range width 384 → 480 (+1 bar)"
+  },
+  {
+    "id": "D-41",
+    "verdict": "PASS",
+    "evidence": "Shift+→ grew the range 480 → 504 px (one 1/4 step)"
+  },
+  {
+    "id": "D-42",
+    "verdict": "PASS",
+    "evidence": "Escape cleared the range (.se-range=0)"
+  },
+  {
+    "id": "D-43",
+    "verdict": "FAIL",
+    "evidence": "footer={\"band\":0,\"end\":null} header={\"band\":1,\"end\":8} — D-43-1689x1277.png",
+    "detail": "loop band/persistence differs between surfaces: footer band=0 loopEnd=null; header band=1 loopEnd=8"
+  },
+  {
+    "id": "D-44",
+    "verdict": "PASS",
+    "evidence": "loopEnd 8 → 12; >= start + one beat"
+  },
+  {
+    "id": "D-45",
+    "verdict": "PASS",
+    "evidence": "playhead wrapped inside the loop: 96,106,117,131,144,157,170,182,2,14,28,41,54,66"
+  },
+  {
+    "id": "D-46",
+    "verdict": "PASS",
+    "evidence": "markers=2; \"Drums B\" at 8s"
+  },
+  {
+    "id": "D-47",
+    "verdict": "PASS",
+    "evidence": "playhead 0 → 384px (bar 5); .se-range=0"
+  },
+  {
+    "id": "D-48",
+    "verdict": "PASS",
+    "evidence": "markers 2→1; no context menu"
+  },
+  {
+    "id": "D-49",
+    "verdict": "PASS",
+    "evidence": "marker persisted after reload; times=[4] sorted=true"
+  },
+  {
+    "id": "D-50",
+    "verdict": "FAIL",
+    "evidence": "[{\"text\":\"Verse\",\"width\":16,\"overflow\":true}] — D-50-1689x1277.png",
+    "detail": "marker labels truncate at the widest zoom-out"
+  },
+  {
+    "id": "D-51",
+    "verdict": "PASS",
+    "evidence": "widths 96 → 144 → 192; clamps 192 / 48"
+  },
+  {
+    "id": "D-52",
+    "verdict": "PASS",
+    "evidence": "footer zoom: 48 → 64 px/bar"
+  },
+  {
+    "id": "D-53",
+    "verdict": "PASS",
+    "evidence": "Z on a 2-bar range → 192 px/bar (was 48); scrollLeft 0 → 0"
+  },
+  {
+    "id": "D-54",
+    "verdict": "PASS",
+    "evidence": "clip-selection zoom: 64 → 192 px/bar"
+  },
+  {
+    "id": "D-56",
+    "verdict": "PASS",
+    "evidence": "Fit to content: scrollLeft=0; width=192 px/bar"
+  },
+  {
+    "id": "D-55",
+    "verdict": "PASS",
+    "evidence": "Z with nothing selected zoomed to fit: 64 → 192 px/bar; scrollLeft=0"
+  },
+  {
+    "id": "D-57",
+    "verdict": "PASS",
+    "evidence": "fine grid (16 divisions) drop=0.125s; coarse (4) drop=0.5s"
+  },
+  {
+    "id": "D-58",
+    "verdict": "PASS",
+    "evidence": "section=\"Track automation\"; tabs=Volume/Pan; Clear + Close present"
+  },
+  {
+    "id": "D-59",
+    "verdict": "PASS",
+    "evidence": "points=3 (2 fixture + 1), selected=1, line=1"
+  },
+  {
+    "id": "D-60",
+    "verdict": "PASS",
+    "evidence": "time 84 → 84.1 (+0.1) → 85.1 (+1)"
+  },
+  {
+    "id": "D-61",
+    "verdict": "PASS",
+    "evidence": "value 60 → 61 (+1) → 71 (+10)"
+  },
+  {
+    "id": "D-62",
+    "verdict": "PASS",
+    "evidence": "points 3→2; neighbours kept"
+  },
+  {
+    "id": "D-63",
+    "verdict": "PASS",
+    "evidence": "lane=\"Pan automation lane\"; pan points=1; volume points untouched (2)"
+  },
+  {
+    "id": "D-64",
+    "verdict": "PASS",
+    "evidence": "lane empty; Clear disabled=true"
+  },
+  {
+    "id": "D-65",
+    "verdict": "PASS",
+    "evidence": ".se-audio open with volume, loop, reverse, pitch, stretch, formant, speed, quantize"
+  },
+  {
+    "id": "D-66",
+    "verdict": "PASS",
+    "evidence": "fixture markers=0; after Stretch on markers=2"
+  },
+  {
+    "id": "D-67",
+    "verdict": "PASS",
+    "evidence": "On Beat=9, Transients=2, Start and End=2; radios=3"
+  },
+  {
+    "id": "D-68",
+    "verdict": "PASS",
+    "evidence": "marker moved: \"Warp marker at 1.00 seconds\" → \"Warp marker at 1.22 seconds\""
+  },
+  {
+    "id": "D-69",
+    "verdict": "PASS",
+    "evidence": "Shift+Q re-quantized exactly the 1 selected marker"
+  },
+  {
+    "id": "D-70",
+    "verdict": "PASS",
+    "evidence": ".se-warp-marker.selected=9/9; aria-pressed=true"
+  },
+  {
+    "id": "D-71",
+    "verdict": "FAIL",
+    "evidence": "grid 1/8→1/8 [1/2:false 1/4:false 1/8:true 1/16:false 1/32:false] changed=5 — D-71-1689x1277.png",
+    "detail": "grid change or Quantize did not apply"
+  },
+  {
+    "id": "D-72",
+    "verdict": "PASS",
+    "evidence": "clip.audio={\"loop\":true,\"pitch\":2,\"speed\":200,\"gainDb\":-6,\"reverse\":true} survived reload"
+  },
+  {
+    "id": "D-73",
+    "verdict": "PASS",
+    "evidence": "collapse hid the body (header kept); close removed the panel"
+  },
+  {
+    "id": "D-74",
+    "verdict": "PASS",
+    "evidence": "MIDI editor; tabIndex=-1; focused=true; notes=3"
+  },
+  {
+    "id": "D-75",
+    "verdict": "PASS",
+    "evidence": "notes 3→4; selected=1; \"Note G#4 at 2.50s, velocity 100\"; second click kept 4"
+  },
+  {
+    "id": "D-76",
+    "verdict": "PASS",
+    "evidence": "major chord click: notes 4 → 7"
+  },
+  {
+    "id": "D-77",
+    "verdict": "PASS",
+    "evidence": "major + arp-up click added 3 notes on distinct steps: Note G4 at 1.25s, velocity 100, Note B4 at 1.50s, velocity 100, Note D5 at 1.75s, velocity 100"
+  },
+  {
+    "id": "D-78",
+    "verdict": "PASS",
+    "evidence": "note \"Note G#4 at 2.50s, velocity 100\" → \"Note A4 at 3.25s, velocity 100\""
+  },
+  {
+    "id": "D-79",
+    "verdict": "PASS",
+    "evidence": "notes 10 → 9"
+  },
+  {
+    "id": "D-80",
+    "verdict": "PASS",
+    "evidence": "velocity 80 → 89; bars=9"
+  },
+  {
+    "id": "D-81",
+    "verdict": "PASS",
+    "evidence": "bend point added (points=1, line=0); double-click removed it"
+  },
+  {
+    "id": "D-82",
+    "verdict": "PASS",
+    "evidence": "mod lane point=1; saved midi.mod=[{\"at\":4.5,\"value\":0.6}]; bend=[]"
+  },
+  {
+    "id": "D-83",
+    "verdict": "PASS",
+    "evidence": "selected=9; ←/→ moved all; Shift+→ lengthened"
+  },
+  {
+    "id": "D-84",
+    "verdict": "PASS",
+    "evidence": "pitch \"Note D3 at 0.87s, velocity 90\" → +1 \"Note D#3 at 0.87s, velocity 90\" → -12 \"Note D#2 at 0.87s, velocity 90\""
+  },
+  {
+    "id": "D-85",
+    "verdict": "PASS",
+    "evidence": ".is-disabled=9/9; data-disabled=true; label contains \"disabled\""
+  },
+  {
+    "id": "D-86",
+    "verdict": "PASS",
+    "evidence": "quantize 1/4 re-placed 3 notes immediately"
+  },
+  {
+    "id": "D-87",
+    "verdict": "PASS",
+    "evidence": "Clear → 0; import → 1 notes; toast=\"Imported 1 MIDI notes.\""
+  },
+  {
+    "id": "D-88",
+    "verdict": "PASS",
+    "evidence": "Ctrl+K → \"Keys On\" (aria-pressed=true); A/S/Z/X/C/V accepted"
+  },
+  {
+    "id": "D-VP",
+    "verdict": "PASS",
+    "evidence": "1280×800 drag still snapped to 2s; body scrollWidth=1280"
+  }
+]

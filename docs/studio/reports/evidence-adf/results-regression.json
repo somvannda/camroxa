@@ -1,0 +1,27 @@
+[
+  {
+    "id": "R-EQ",
+    "verdict": "PASS",
+    "evidence": "band drag moved Freq 1khz → 16.6khz; Gain 0db → 8db"
+  },
+  {
+    "id": "R-UNDO",
+    "verdict": "PASS",
+    "evidence": "rail refreshed per undo: 2 → 0 → 1 → 2 slots"
+  },
+  {
+    "id": "R-MENU",
+    "verdict": "PASS",
+    "evidence": "overflow-y=auto; 889/1070 px scrolls inside the 768×1024 viewport"
+  },
+  {
+    "id": "R-OVW",
+    "verdict": "PASS",
+    "evidence": "overview strip present (window 21.8686%/56.2971%); click scrolled the roll 639 → 1277"
+  },
+  {
+    "id": "R-LOOP",
+    "verdict": "PASS",
+    "evidence": "band + both flags present; end flag dragged one bar"
+  }
+]

@@ -1,0 +1,167 @@
+[
+  {
+    "id": "F-01",
+    "verdict": "PASS",
+    "evidence": "chip states: Saved → Saving… → Saved"
+  },
+  {
+    "id": "F-02",
+    "verdict": "PASS",
+    "evidence": "held write: chip=\"Saving…\", aria-live=1, dialogs=0, selection still works"
+  },
+  {
+    "id": "F-03",
+    "verdict": "PASS",
+    "evidence": "two queued edits landed (moved=3), no 409 banner"
+  },
+  {
+    "id": "F-04",
+    "verdict": "PASS",
+    "evidence": "queued burst mirrored to localStorage (1) and offered after reload"
+  },
+  {
+    "id": "F-05",
+    "verdict": "PASS",
+    "evidence": "Ctrl+S wrote immediately (updated_at 2026-11-17T07:22:35.553332+00:00 → 2026-11-17T07:22:44.803352+00:00); chip during=\"Saving…\""
+  },
+  {
+    "id": "F-06",
+    "verdict": "PASS",
+    "evidence": "chip=\"Save failed · Retry\" rendered as a button.se-save.on"
+  },
+  {
+    "id": "F-07",
+    "verdict": "PASS",
+    "evidence": "retry succeeded: chip=\"Saved\", .se-error=0"
+  },
+  {
+    "id": "F-08",
+    "verdict": "PASS",
+    "evidence": "beforeunload handler prevented the leave while a write is unsaved"
+  },
+  {
+    "id": "F-09",
+    "verdict": "PASS",
+    "evidence": "chip=\"Offline · changes not saved\"; draft keys=1"
+  },
+  {
+    "id": "F-10",
+    "verdict": "PASS",
+    "evidence": "replay succeeded: chip=\"Saved\", draft cleared"
+  },
+  {
+    "id": "F-11",
+    "verdict": "PASS",
+    "evidence": "first replay failed, automatic retry succeeded after 2 PATCHes; chip=\"Saved\""
+  },
+  {
+    "id": "F-12",
+    "verdict": "PASS",
+    "evidence": "draft banner=\"We found an unsaved draft from a moment ago.The last change did not reach the server.DiscardRestore draft\""
+  },
+  {
+    "id": "F-13",
+    "verdict": "PASS",
+    "evidence": "draft discarded; server document unchanged"
+  },
+  {
+    "id": "F-14",
+    "verdict": "PASS",
+    "evidence": "draft restored and written (chip=\"Saved\", moved clips=3)"
+  },
+  {
+    "id": "F-15",
+    "verdict": "PASS",
+    "evidence": "alertdialog=\"This project changed in another tab.This project changed elsewhere.Reload theirsKeep mine\"; chip=\"Save failed · Retry\""
+  },
+  {
+    "id": "F-16",
+    "verdict": "PASS",
+    "evidence": "Keep mine wrote without expected_updated_at; banner cleared; chip=\"Saved\""
+  },
+  {
+    "id": "F-17",
+    "verdict": "PASS",
+    "evidence": "Reload theirs cleared the banner; chip=\"Saved\""
+  },
+  {
+    "id": "F-18",
+    "verdict": "PASS",
+    "evidence": "one failed PATCH and the queued burst was dropped (attempts=1)"
+  },
+  {
+    "id": "F-19",
+    "verdict": "PASS",
+    "evidence": "rename adopted the new updated_at; no 409 on the next edit"
+  },
+  {
+    "id": "F-20",
+    "verdict": "PASS",
+    "evidence": "dot data-state=pending; title=\"Suno Studio: waiting for the first copy\""
+  },
+  {
+    "id": "F-21",
+    "verdict": "PASS",
+    "evidence": "dot data-state=linked; title=\"Suno Studio: project exists — arrangement mirroring is staged: arrangement writes are paused.\""
+  },
+  {
+    "id": "F-22",
+    "verdict": "PASS",
+    "evidence": "dot data-state=synced; title=\"Suno Studio: mirrored\""
+  },
+  {
+    "id": "F-23",
+    "verdict": "PASS",
+    "evidence": "dot data-state=conflict; dialog on load=1"
+  },
+  {
+    "id": "F-24",
+    "verdict": "PASS",
+    "evidence": "dot data-state=error; title=\"Suno Studio sync failed: provider rejected the push\""
+  },
+  {
+    "id": "F-25",
+    "verdict": "PASS",
+    "evidence": "idle 17 s produced 1 mirror read(s) (sync)"
+  },
+  {
+    "id": "F-26",
+    "verdict": "PASS",
+    "evidence": "a mirror read followed the save (1 read(s) within 3.5 s)"
+  },
+  {
+    "id": "F-27",
+    "verdict": "PASS",
+    "evidence": "credits notice=\"Not enough creditsYour balance does not cover this generation. Top up or pick a \" + View plans"
+  },
+  {
+    "id": "F-28",
+    "verdict": "PASS",
+    "evidence": "policy notice=\"That prompt was refusedThe content policy blocked this request. Try re\"; Edit prompt refocused the input"
+  },
+  {
+    "id": "F-29",
+    "verdict": "PASS",
+    "evidence": "transform credits notice=\"Not enough creditsThis edit spends credits your balance does not cover.View plansNot enough credits.\""
+  },
+  {
+    "id": "F-30",
+    "verdict": "PASS",
+    "evidence": "failure notice=\"That edit did not runThe operation failed before anything was placed.provider exploded\"; dismissed"
+  },
+  {
+    "id": "F-31",
+    "verdict": "PASS",
+    "evidence": ".se-lib-error=1; Retry button=1"
+  },
+  {
+    "id": "F-32",
+    "verdict": "PASS",
+    "evidence": ".se-stem-status.off=\"stem backend unavailable\""
+  },
+  {
+    "id": "F-33",
+    "verdict": "PASS",
+    "evidence": "busy guard: 4 disabled action(s); one keep-mine request"
+  }
+]

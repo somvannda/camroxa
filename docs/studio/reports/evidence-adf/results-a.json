@@ -1,0 +1,88 @@
+[
+  {
+    "id": "A-01",
+    "verdict": "PASS",
+    "evidence": "marketing h1 present (1); .studio-home=0; \"Your projects\"=0"
+  },
+  {
+    "id": "A-03",
+    "verdict": "PASS",
+    "evidence": ".se-gate h1=\"Studio\"; p=\"Sign in to open a project.\"; link=/login?next=/studio"
+  },
+  {
+    "id": "A-02",
+    "verdict": "PASS",
+    "evidence": "h1=\"Your projects\"; .studio-home-actions=1; New project=1; Create a song=1"
+  },
+  {
+    "id": "A-04",
+    "verdict": "PASS",
+    "evidence": ".se-gate h1=\"No project selected\"; p=\"Choose a project from the Studio home.\""
+  },
+  {
+    "id": "A-05",
+    "verdict": "PASS",
+    "evidence": "observed states=shell -> loadingshell -> shellclip; onboarding flash=false"
+  },
+  {
+    "id": "A-06",
+    "verdict": "PASS",
+    "evidence": "chip=\"ADF P1\"; bpm=120; sig=4/4; .se-track=3 + hidden pill \"1\" (Scratch is hidden, so 3 rows + 1 hidden)"
+  },
+  {
+    "id": "A-07",
+    "verdict": "PASS",
+    "evidence": "role=alert text=\"Could not open this projectStudio project not found.Details00000000-0000-4000-8000-0000000\"; .se-load-failed=1; .se-loading=0"
+  },
+  {
+    "id": "A-08",
+    "verdict": "PASS",
+    "evidence": "/studio/editor/classic -> 200; no 404 copy"
+  },
+  {
+    "id": "A-09",
+    "verdict": "PASS",
+    "evidence": "[role=main]=1; [aria-label=\"Editor menus\"]=1"
+  },
+  {
+    "id": "A-10",
+    "verdict": "PASS",
+    "evidence": "head 0..52; body 52..1225; dock=absent; foot 1225..1277"
+  },
+  {
+    "id": "A-11",
+    "verdict": "PASS",
+    "evidence": ".se-shell clientHeight=1277; scrollHeight=1277"
+  },
+  {
+    "id": "A-12",
+    "verdict": "PASS",
+    "evidence": ".se-body .se-sr-only is <h1> \"ADF P1\""
+  },
+  {
+    "id": "A-13",
+    "verdict": "PASS",
+    "evidence": "20 tabs, 20 distinct stops: button:Back to start | button:Choose input for recording | button:Stop | button:Play | button:Loop | button:Metronome (click track) | input:Tempo in BPM | select:Time signature …"
+  },
+  {
+    "id": "A-14",
+    "verdict": "FAIL",
+    "evidence": "{\"dock\":0,\"assistant\":0,\"library\":0,\"empty\":0} — A-14-1689x1277.png",
+    "detail": "bottom panel is empty on load (no track selected, so no dock)"
+  },
+  {
+    "id": "A-15",
+    "verdict": "PASS",
+    "evidence": ".se-toast[role=status]=\"Select a clip to edit.\"; dismiss aria-label=\"Dismiss export message\""
+  },
+  {
+    "id": "A-16",
+    "verdict": "PASS",
+    "evidence": ".se-loading=0 after Saved"
+  },
+  {
+    "id": "A-GATE",
+    "verdict": "PASS",
+    "evidence": "768: shell shown, gate hidden; 767: gate flex, shell none, scrollWidth=767"
+  }
+]
