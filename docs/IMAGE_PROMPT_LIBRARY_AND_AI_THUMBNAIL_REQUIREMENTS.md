@@ -16,7 +16,7 @@ Boss wants image generation to be driven by a **server-side prompt library** tha
 1. Admin stores as many background and thumbnail prompt styles as needed.
 2. The desktop user can choose to use the admin library instead of a personal prompt.
 3. Each channel in a batch must draw a **different** prompt from the library, even when both channels belong to the same batch.
-4. Rotation must not give every batch the same prompt; least-used rotation is the default, with an attempt to avoid the immediately previous batch.
+4. Rotation is a **per-user shuffle bag**: every active prompt is used once per cycle in random order, then a new cycle starts.
 5. Thumbnail text must not be generated as a separate black-background layer and pasted onto the background. The image model must receive the generated background and add the exact text itself (`image-to-image` / image edit).
 6. The thumbnail text itself must be stored in admin, with tokens resolved per channel.
 7. Credit charging must not change: the feature must not add extra image jobs or silently bill extra generations.
@@ -31,7 +31,7 @@ Boss wants image generation to be driven by a **server-side prompt library** tha
 | 2 | **Prompt source is orthogonal to reference source.** New per-kind settings: `imageBackgroundPromptSource` / `imageThumbnailPromptSource` = `custom` \| `admin_library`. They can be combined with `Category` or `Prompt only` reference modes. |
 | 3 | Selection happens **server-side** at image-job creation. The desktop never picks the prompt itself; it only selects the prompt source. This also covers batches created by automation. |
 | 4 | Within one batch, a kind never reuses the same prompt style for two channels while another active style exists. If the library is too small, reuse with a warning instead of failing the batch. |
-| 5 | Across batches, selection uses the existing `image_random_history` least-used rotation. `last_batch_id` is stored so the service can avoid the immediately previous batch when alternatives exist. |
+| 5 | Across batches, selection uses `image_prompt_rotation`, a per-user cycle table. Every active style is used once per cycle in random order; the cycle wraps only after it is exhausted. |
 | 6 | New thumbnail reference mode `background_text`: the generated background is sent to the image provider as the reference/base image and the prompt asks the model to add the exact text without changing the background. |
 | 7 | `background_text` is the **new default** thumbnail mode. `composite` remains available as the explicit legacy/fallback mode. |
 | 8 | If the routed provider cannot accept a reference image, the job fails with a clear validation error before wallet hold. It does **not** silently fall back to text-to-image or to composite. |
@@ -122,28 +122,30 @@ New `ImagePromptLibraryService`:
 ```python
 async def pick_style(
     *,
+    user_id: UUID,
     kind: ImageKind,
     batch_id: UUID,
     exclude_ids: list[str] | None = None,
-    previous_batch_id: UUID | None = None,
 ) -> ImagePromptStyleRecord | None
 ```
 
 Algorithm:
 
 1. Load active styles for `kind`.
-2. Remove ids in `exclude_ids` (already selected for this batch).
-3. If `previous_batch_id` is provided, remove styles whose `last_batch_id` equals it, **only if** at least one candidate remains.
-4. Order candidates by `used_count ASC, used_at ASC NULLS FIRST, random()`.
-5. Increment the chosen style’s `used_count`, set `used_at = NOW()` and `last_batch_id = batch_id`.
-6. Return the style.
-7. If no active styles exist at all, raise `ValidationError` with a clear message. If exclusion emptied the list, reuse the full active list and log a warning.
+2. Read the user's latest `cycle_number` from `image_prompt_rotation`, defaulting to 1.
+3. Load the styles already used in that cycle.
+4. Candidates = active styles not used in this cycle and not excluded for this batch.
+5. If no candidates remain, start the next cycle and avoid only this batch's excluded styles while alternatives exist.
+6. Pick one candidate at random.
+7. Insert `(user_id, kind, style_id, cycle_number, batch_id)` into `image_prompt_rotation`.
+8. Return the style.
+9. If no active styles exist, raise `ValidationError` with a clear message.
 
-Use the existing least-used upsert, which is atomic per `(kind, value)` row. If multiple API workers can create batches concurrently, add a short `pg_advisory_xact_lock` per kind to keep two workers from picking the same style in the same instant.
+A short `pg_advisory_xact_lock(hashtext('image_prompt_rotation:<user>:<kind>'))` serialises concurrent workers.
 
 ### 4.2 Per-batch uniqueness
 
-`create_image_jobs_for_batch()` loads `used_prompt_ids` for the batch (from existing image jobs), passes them through the profile loop, and appends each selection. This mirrors the existing `used_samples` mechanism.
+`create_image_jobs_for_batch()` loads `used_prompt_ids` for the batch (from existing image jobs), passes them through the profile loop, and appends each selection. This mirrors the existing `used_samples` mechanism. The per-user cycle guarantees no repeat until the cycle is exhausted.
 
 ### 4.3 Preflight
 
@@ -241,7 +243,12 @@ New page: **Content → Image Prompts** (`/image-prompts`).
 - Tabs: **Background styles** and **Thumbnail styles**.
 - Table columns: name, prompt preview, text template, active, sort, usage.
 - Create/edit dialog fields: kind, name, prompt text (3,000-character counter), text template (thumbnail only), active, sort order, notes.
-- Bulk paste: one prompt per line creates multiple styles.
+- **Import CSV / XLS / XLSX / JSON**:
+  - columns: `#, background, thumbnail` (header optional);
+  - JSON: list of `{ "background": "...", "thumbnail": "..." }` objects or lists;
+  - duplicate prompt text (case/whitespace-normalised) is skipped and existing rows are never overwritten;
+  - empty cells are skipped;
+  - the response reports inserted/skipped counts and per-row errors.
 - Empty states explain that the desktop library mode requires at least two active styles per kind for two-channel batches.
 - Settings → Image Generation gains the `background_text` option and marks it recommended.
 - Existing Image Packs page remains for sample images.
@@ -250,6 +257,7 @@ API:
 
 - `GET /api/v3/admin/image-prompts?kind=...`
 - `POST /api/v3/admin/image-prompts`
+- `POST /api/v3/admin/image-prompts/import` (multipart CSV/XLS/XLSX/JSON)
 - `PATCH /api/v3/admin/image-prompts/{id}`
 - `DELETE /api/v3/admin/image-prompts/{id}`
 - `GET /api/v3/image-prompts/summary` (authenticated; active counts per kind)
@@ -305,7 +313,7 @@ Behavior:
 - [ ] Admin can create, edit, deactivate, and delete background/thumbnail prompt styles.
 - [ ] Admin can store a thumbnail text template with `{title}`, `{album}`, `{channel}`.
 - [ ] With `admin_library` on and at least two active styles, two channels in one batch receive different `prompt_style_id` values.
-- [ ] A second batch uses least-used rotation and avoids the previous batch where possible.
+- [ ] A second batch uses the next unused prompts in the user's cycle; the cycle wraps only after all active styles are used.
 - [ ] With only one active style, both channels reuse it with a warning, and the batch still completes.
 - [ ] Empty library rejects the batch at preflight with a clear message; no music or image credits are charged.
 - [ ] `background_text` sends the background bytes as `base_image` and never calls the composite helpers.

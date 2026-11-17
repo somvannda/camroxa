@@ -16,6 +16,16 @@ class ImagePromptStyleRepositoryProtocol(Protocol):
 
     async def count_active(self) -> dict[str, int]: ...
 
+    async def pick_rotating_style(
+        self,
+        *,
+        user_id: UUID,
+        kind: str,
+        active_ids: list[str],
+        exclude_ids: list[str] | None = None,
+        batch_id: UUID | None = None,
+    ) -> str | None: ...
+
 
 class ImageRandomHistoryProtocol(Protocol):
     async def pick_least_used_value(
@@ -36,31 +46,35 @@ def _kind_value(kind: ImageKind | str) -> str:
 
 
 class ImagePromptLibraryService:
-    """Pick admin-curated prompt styles with least-used rotation."""
+    """Pick admin-curated prompt styles from a per-user rotation cycle."""
 
     def __init__(
         self,
         *,
         repo: ImagePromptStyleRepositoryProtocol,
-        history: ImageRandomHistoryProtocol,
+        history: ImageRandomHistoryProtocol | None = None,
     ) -> None:
         self._repo = repo
+        # Kept for backward-compatible construction; prompt rotation no longer
+        # uses the global least-used table.
         self._history = history
 
     async def pick_style(
         self,
         *,
+        user_id: UUID,
         kind: ImageKind | str,
         batch_id: UUID,
         exclude_ids: list[str] | None = None,
         previous_batch_id: UUID | None = None,
     ) -> ImagePromptStyleRecord:
-        """Return one active style, avoiding ids already used in this batch.
+        """Return one active style for the user's current prompt cycle.
 
-        If the library has fewer styles than the batch needs, the exclusion is
-        relaxed and a style is reused. A genuinely empty library raises a clear
-        validation error before any job or wallet work happens.
+        Every active style is used once per cycle in random order. When the
+        cycle ends it wraps to a new cycle. Within a batch, already-used styles
+        are excluded while alternatives remain.
         """
+        del previous_batch_id  # per-user cycle replaces previous-batch avoidance
         kind_value = _kind_value(kind)
         active = await self._repo.list_active(kind=kind_value)
         if not active:
@@ -69,21 +83,18 @@ class ImagePromptLibraryService:
                 details={"kind": kind_value, "source": "admin_library"},
             )
 
-        excluded = {str(value).strip() for value in (exclude_ids or []) if str(value).strip()}
-        candidates = [style for style in active if style.id not in excluded]
-        if not candidates:
-            candidates = list(active)
-
-        by_id = {style.id: style for style in candidates}
-        chosen_id = await self._history.pick_least_used_value(
-            kind=f"{'thumb' if kind_value == 'thumbnail' else 'bg'}_prompt_style",
-            values=list(by_id.keys()),
+        chosen_id = await self._repo.pick_rotating_style(
+            user_id=user_id,
+            kind=kind_value,
+            active_ids=[style.id for style in active],
+            exclude_ids=exclude_ids,
             batch_id=batch_id,
-            previous_batch_id=previous_batch_id,
-            lock_key=f"image_prompt_style:{kind_value}",
         )
-        chosen = by_id.get(str(chosen_id)) or candidates[0]
-        return chosen
+        if chosen_id:
+            for style in active:
+                if style.id == str(chosen_id):
+                    return style
+        return active[0]
 
     async def active_counts(self) -> dict[str, int]:
         return await self._repo.count_active()

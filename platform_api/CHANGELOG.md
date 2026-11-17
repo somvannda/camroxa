@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Admin image-prompt import from CSV/XLS/XLSX/JSON, with duplicate prompt text
+  skipped and no overwrites.
+- Per-user prompt rotation cycles (`image_prompt_rotation`): every active prompt
+  is used once per cycle in random order, then wraps.
 - Image-job hold recovery: `hold_units`, `hold_state`, and `provider_invoked`
   on `image_jobs`; the worker now requeues/fails stale `RUNNING` jobs and stale
   dependent thumbnails, refunding the exact hold by `job.id`.

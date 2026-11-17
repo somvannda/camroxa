@@ -28,6 +28,11 @@ Thumbnail generation also gains `thumbnailReferenceMode=background_text`:
 - `background_text` is the new default; composite remains the explicit legacy
   mode. Migration `205` updates an existing `thumbnailReferenceMode=composite`
   system setting to `background_text`.
+- Admin **Image Prompts** page can import CSV/XLS/XLSX/JSON with columns
+  `#, background, thumbnail`. Duplicate prompt text is skipped, existing rows are
+  never overwritten, and empty/oversize rows are reported.
+- Migration `209` adds `image_prompt_rotation`: a per-user shuffle bag that uses
+  every active prompt once per cycle in random order, then wraps.
 - Migration `206` seeded Flux.1 image-to-image pricing; live tests showed it does
   not render text, so migration `208` removes it and seeds FLUX.2 edit instead:
   - `fal/flux-2/edit`: $0.012/MP, 1920x1080 = $0.0248832, 100% markup =

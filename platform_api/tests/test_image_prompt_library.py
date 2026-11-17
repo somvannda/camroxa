@@ -12,6 +12,8 @@ from platform_api.services.image_prompt_library import ImagePromptLibraryService
 class _Repo:
     def __init__(self, styles):
         self._styles = styles
+        self.used: dict[str, list[str]] = {"background": [], "thumbnail": []}
+        self.calls: list[dict] = []
 
     async def list_active(self, *, kind):
         return [style for style in self._styles if style.kind == kind]
@@ -22,35 +24,41 @@ class _Repo:
             "thumbnail": len([s for s in self._styles if s.kind == "thumbnail"]),
         }
 
-
-class _History:
-    def __init__(self):
-        self.seen: list[str] = []
-        self.lock_keys: list[str | None] = []
-
-    async def pick_least_used_value(
+    async def pick_rotating_style(
         self,
         *,
+        user_id,
         kind,
-        values,
-        exclude=None,
+        active_ids,
+        exclude_ids=None,
         batch_id=None,
-        previous_batch_id=None,
-        lock_key=None,
     ):
-        excluded = set(exclude or [])
-        candidates = [value for value in values if value not in excluded] or list(values)
+        self.calls.append(
+            {
+                "user_id": user_id,
+                "kind": kind,
+                "active_ids": list(active_ids),
+                "exclude_ids": list(exclude_ids or []),
+                "batch_id": batch_id,
+            }
+        )
+        used = self.used.setdefault(kind, [])
+        exclude = set(exclude_ids or [])
+        unused = [value for value in active_ids if value not in used]
+        candidates = [value for value in unused if value not in exclude]
+        if not candidates:
+            used.clear()
+            candidates = [value for value in active_ids if value not in exclude] or list(active_ids)
         chosen = candidates[0]
-        self.seen.append(chosen)
-        self.lock_keys.append(lock_key)
+        used.append(chosen)
         return chosen
 
 
 @pytest.mark.asyncio
 async def test_empty_library_raises_clear_error() -> None:
-    service = ImagePromptLibraryService(repo=_Repo([]), history=_History())
+    service = ImagePromptLibraryService(repo=_Repo([]))
     with pytest.raises(ValidationError, match="No active admin prompt styles"):
-        await service.pick_style(kind="background", batch_id=uuid4())
+        await service.pick_style(user_id=uuid4(), kind="background", batch_id=uuid4())
 
 
 @pytest.mark.asyncio
@@ -59,23 +67,28 @@ async def test_pick_style_avoids_ids_used_in_same_batch() -> None:
         ImagePromptStyleRecord(id=str(uuid4()), kind="background", name="A", prompt_text="a"),
         ImagePromptStyleRecord(id=str(uuid4()), kind="background", name="B", prompt_text="b"),
     ]
-    history = _History()
-    service = ImagePromptLibraryService(repo=_Repo(styles), history=history)
+    repo = _Repo(styles)
+    service = ImagePromptLibraryService(repo=repo)
     batch_id = uuid4()
+    user_id = uuid4()
 
-    first = await service.pick_style(kind="background", batch_id=batch_id)
+    first = await service.pick_style(
+        user_id=user_id, kind="background", batch_id=batch_id
+    )
     second = await service.pick_style(
+        user_id=user_id,
         kind="background",
         batch_id=batch_id,
         exclude_ids=[first.id],
     )
+    third = await service.pick_style(
+        user_id=user_id, kind="background", batch_id=batch_id
+    )
 
     assert first.id != second.id
-    assert history.seen == [first.id, second.id]
-    assert history.lock_keys == [
-        "image_prompt_style:background",
-        "image_prompt_style:background",
-    ]
+    assert third.id in {first.id, second.id}
+    assert repo.calls[0]["user_id"] == user_id
+    assert repo.calls[0]["active_ids"] == [first.id, second.id]
 
 
 def test_resolve_text_template_tokens_and_fallback() -> None:

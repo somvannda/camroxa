@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
+from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +164,110 @@ class ImagePromptStyleRepository:
             style_id,
         )
         return result.upper().startswith("DELETE")
+
+    async def pick_rotating_style(
+        self,
+        *,
+        user_id: UUID,
+        kind: str,
+        active_ids: list[str],
+        exclude_ids: list[str] | None = None,
+        batch_id: UUID | None = None,
+    ) -> str | None:
+        """Pick one active style for a user's current cycle, then advance it.
+
+        Every active style is used once per cycle in random order. When the
+        cycle is exhausted (or the batch exclusion leaves nothing), a new cycle
+        starts and the excluded styles are avoided while alternatives exist.
+        """
+        candidates_all = [str(value) for value in active_ids if str(value).strip()]
+        if not candidates_all:
+            return None
+        exclude = {str(value) for value in (exclude_ids or []) if str(value).strip()}
+        kind_key = str(kind or "").strip().lower() or "background"
+
+        acquire = getattr(self._db, "acquire", None)
+        if callable(acquire):
+            async with acquire() as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext($1))",
+                        f"image_prompt_rotation:{user_id}:{kind_key}",
+                    )
+                    return await self._pick_rotating_on(
+                        conn,
+                        user_id=user_id,
+                        kind_key=kind_key,
+                        candidates_all=candidates_all,
+                        exclude=exclude,
+                        batch_id=batch_id,
+                    )
+        return await self._pick_rotating_on(
+            self._db,
+            user_id=user_id,
+            kind_key=kind_key,
+            candidates_all=candidates_all,
+            exclude=exclude,
+            batch_id=batch_id,
+        )
+
+    async def _pick_rotating_on(
+        self,
+        db: Any,
+        *,
+        user_id: UUID,
+        kind_key: str,
+        candidates_all: list[str],
+        exclude: set[str],
+        batch_id: UUID | None,
+    ) -> str | None:
+        row = await db.fetchrow(
+            """
+            SELECT COALESCE(MAX(cycle_number), 0) AS cycle_number
+            FROM image_prompt_rotation
+            WHERE user_id = $1 AND kind = $2
+            """,
+            user_id,
+            kind_key,
+        )
+        cycle = max(1, int((row or {}).get("cycle_number") or 0))
+        used_rows = await db.fetch(
+            """
+            SELECT style_id
+            FROM image_prompt_rotation
+            WHERE user_id = $1 AND kind = $2 AND cycle_number = $3
+            """,
+            user_id,
+            kind_key,
+            cycle,
+        )
+        used = {str(item["style_id"]) for item in used_rows}
+        unused = [style_id for style_id in candidates_all if style_id not in used]
+        candidates = [style_id for style_id in unused if style_id not in exclude]
+        if not candidates:
+            # Either the cycle is exhausted or the remaining styles are all
+            # already used by this batch. Start the next cycle and keep the
+            # batch's channels distinct while alternatives exist.
+            cycle += 1
+            candidates = [
+                style_id for style_id in candidates_all if style_id not in exclude
+            ] or candidates_all
+        chosen = random.choice(candidates)
+        await db.execute(
+            """
+            INSERT INTO image_prompt_rotation (
+                user_id, kind, style_id, cycle_number, batch_id, used_at
+            )
+            VALUES ($1, $2, $3::uuid, $4, $5, NOW())
+            ON CONFLICT (user_id, kind, style_id, cycle_number) DO NOTHING
+            """,
+            user_id,
+            kind_key,
+            chosen,
+            cycle,
+            batch_id,
+        )
+        return chosen
 
     async def count_active(self) -> dict[str, int]:
         rows = await self._db.fetch(

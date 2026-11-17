@@ -235,6 +235,16 @@ CREATE TABLE IF NOT EXISTS image_prompt_styles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS image_prompt_rotation (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    style_id UUID NOT NULL REFERENCES image_prompt_styles(id) ON DELETE CASCADE,
+    cycle_number INTEGER NOT NULL,
+    batch_id UUID,
+    used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, kind, style_id, cycle_number)
+);
+
 CREATE INDEX IF NOT EXISTS idx_image_sample_packs_category_sort
     ON image_sample_packs(category, sort_order, lower(name));
 

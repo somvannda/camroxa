@@ -26,3 +26,11 @@ export type ImagePromptStyleCreateRequest = {
 };
 
 export type ImagePromptStyleUpdateRequest = Partial<ImagePromptStyleCreateRequest>;
+
+export type ImagePromptImportResponse = {
+  inserted_background: number;
+  inserted_thumbnail: number;
+  skipped_existing: number;
+  skipped_empty: number;
+  errors: string[];
+};

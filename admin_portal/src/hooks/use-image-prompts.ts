@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import httpClient from '@/lib/http-client';
+import httpClient, { apiClient } from '@/lib/http-client';
 import type {
+  ImagePromptImportResponse,
   ImagePromptStyleCreateRequest,
   ImagePromptStyleListResponse,
   ImagePromptStyleRecord,
@@ -54,6 +55,24 @@ export function useDeleteImagePrompt() {
   return useMutation({
     mutationFn: (styleId: string) =>
       httpClient.delete<{ ok: boolean }>(`/api/v3/admin/image-prompts/${styleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: imagePromptKeys.all });
+    },
+  });
+}
+
+export function useImportImagePrompts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await apiClient.post<ImagePromptImportResponse>(
+        '/api/v3/admin/image-prompts/import',
+        form,
+      );
+      return response.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imagePromptKeys.all });
     },

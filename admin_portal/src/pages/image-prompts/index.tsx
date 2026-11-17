@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
-import { Edit3, Loader2, Plus, RefreshCcw, Trash2 } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Edit3, Loader2, Plus, RefreshCcw, Trash2, Upload } from 'lucide-react';
 
 import {
   useCreateImagePrompt,
   useDeleteImagePrompt,
   useImagePrompts,
+  useImportImagePrompts,
   useUpdateImagePrompt,
 } from '@/hooks/use-image-prompts';
 import { useToast } from '@/hooks/use-toast';
@@ -88,10 +89,13 @@ export default function ImagePromptsPage() {
   const createMutation = useCreateImagePrompt();
   const updateMutation = useUpdateImagePrompt();
   const deleteMutation = useDeleteImagePrompt();
+  const importMutation = useImportImagePrompts();
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const [kindTab, setKindTab] = useState<ImagePromptKind>('background');
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<ImagePromptStyleRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<ImagePromptStyleRecord | null>(null);
 
@@ -195,6 +199,41 @@ export default function ImagePromptsPage() {
     }
   };
 
+  const handleImport = async () => {
+    const file = importFileRef.current?.files?.[0] ?? null;
+    if (!file) {
+      toast({ title: 'Choose a CSV, XLS, XLSX, or JSON file', variant: 'destructive' });
+      return;
+    }
+    try {
+      const result = await importMutation.mutateAsync(file);
+      toast({
+        title: `Imported ${result.inserted_background + result.inserted_thumbnail} prompt styles`,
+        description: [
+          `Background ${result.inserted_background}`,
+          `Thumbnail ${result.inserted_thumbnail}`,
+          `Skipped duplicates ${result.skipped_existing}`,
+          `Skipped empty ${result.skipped_empty}`,
+          result.errors.length ? `${result.errors.length} row errors` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+      if (result.errors.length) {
+        toast({
+          title: 'Some rows were not imported',
+          description: result.errors.slice(0, 5).join(' | '),
+          variant: 'destructive',
+        });
+      }
+      setImportOpen(false);
+      if (importFileRef.current) importFileRef.current.value = '';
+      promptsQuery.refetch();
+    } catch {
+      toast({ title: 'Import failed', variant: 'destructive' });
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -213,6 +252,10 @@ export default function ImagePromptsPage() {
           >
             <RefreshCcw className="h-4 w-4" />
             Reload
+          </Button>
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Import CSV / XLS / JSON
           </Button>
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
@@ -452,6 +495,42 @@ export default function ImagePromptsPage() {
             <Button onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {isEditing ? 'Save Changes' : 'Create Prompt'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import prompt styles</DialogTitle>
+            <DialogDescription>
+              Upload CSV, XLS, XLSX, or JSON. Use columns <code>#, background, thumbnail</code>.
+              Duplicate prompt text is skipped; existing rows are never overwritten.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <Input
+              ref={importFileRef}
+              type="file"
+              accept=".csv,.xls,.xlsx,.json,text/csv,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            />
+            <p className="text-xs text-slate-400">
+              CSV example: <code>#,background,thumbnail</code> then rows. JSON example:
+              <code>{'[{"background":"…","thumbnail":"…"}]'}</code>.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setImportOpen(false)}
+              disabled={importMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleImport} disabled={importMutation.isPending}>
+              {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Import
             </Button>
           </DialogFooter>
         </DialogContent>

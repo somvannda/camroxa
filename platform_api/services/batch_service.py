@@ -6106,6 +6106,7 @@ class BatchService:
                 details={"kind": kind.value, "source": "admin_library"},
             )
         style = await self._image_prompt_library.pick_style(
+            user_id=batch.user_id,
             kind=kind,
             batch_id=batch.id,
             exclude_ids=used_prompt_ids.get(kind, []),
