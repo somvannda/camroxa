@@ -1,0 +1,124 @@
+[
+  {
+    "id": "E-01",
+    "verdict": "PASS",
+    "evidence": "19 header controls visible; sync dot count=0 (unlinked fixture)"
+  },
+  {
+    "id": "E-02",
+    "verdict": "PASS",
+    "evidence": "clientHeight=1277, scrollHeight=1277, head=52px, dock bottom=1225, footer bottom=1277"
+  },
+  {
+    "id": "E-03",
+    "verdict": "PASS",
+    "evidence": "slot widths=448,448, lefts=10,468"
+  },
+  {
+    "id": "E-04",
+    "verdict": "PASS",
+    "evidence": "docs/studio/reports/evidence-w5/ours-studio-editor-1689x1277.png (109 KB, not a blank frame)"
+  },
+  {
+    "id": "E-05",
+    "verdict": "PASS",
+    "evidence": ".se-meter display=none"
+  },
+  {
+    "id": "E-06",
+    "verdict": "PASS",
+    "evidence": "[data-help=\"speed\"] display=none"
+  },
+  {
+    "id": "E-07",
+    "verdict": "PASS",
+    "evidence": "save/export/library/transport/time/BPM visible; sync dot count=0 (unlinked fixture)"
+  },
+  {
+    "id": "E-08",
+    "verdict": "PASS",
+    "evidence": "body reserves 368px; panel box 360px; timeline clientWidth=652 (>=4x96); no page h-scroll (1280/1280)"
+  },
+  {
+    "id": "E-09",
+    "verdict": "PASS",
+    "evidence": "slot 1 x=10..458; overflowX=auto (1463/1280); 0 clipped knobs"
+  },
+  {
+    "id": "E-10",
+    "verdict": "PASS",
+    "evidence": ".se-shell visible; .se-desktop-gate display=none"
+  },
+  {
+    "id": "E-11",
+    "verdict": "PASS",
+    "evidence": "header=52px; hidden = undoGroup, save, stop, inputToggle, metronome"
+  },
+  {
+    "id": "E-12",
+    "verdict": "PASS",
+    "evidence": "clock display=block; bar/beat=none"
+  },
+  {
+    "id": "E-13",
+    "verdict": "PASS",
+    "evidence": "chip 150px (max 150px, truncated=true); Play starts at 322 > chip right 262"
+  },
+  {
+    "id": "E-14",
+    "verdict": "PASS",
+    "evidence": ".se-prompt display=none"
+  },
+  {
+    "id": "E-15",
+    "verdict": "PASS",
+    "evidence": ".se-tracks width=260; mute/solo/arm/options visible"
+  },
+  {
+    "id": "E-16",
+    "verdict": "PASS",
+    "evidence": "2 columns; overflowY=auto (990/611)"
+  },
+  {
+    "id": "E-17",
+    "verdict": "PASS",
+    "evidence": "slot width=260; 0 knobs outside the card"
+  },
+  {
+    "id": "E-18",
+    "verdict": "FAIL",
+    "evidence": "settings, share, clip menu and transform dialogs fit the viewport - E-18-768x1024.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m5\u001b[39m"
+  },
+  {
+    "id": "E-19",
+    "verdict": "PASS",
+    "evidence": "assistant 360px; body padding-left=392px; timeline scrolls (11558/376)"
+  },
+  {
+    "id": "E-20",
+    "verdict": "PASS",
+    "evidence": "takes fit (127px); MIDI 341px (max-height 360px), inner scroll=true"
+  },
+  {
+    "id": "E-21",
+    "verdict": "PASS",
+    "evidence": "gate display=flex (1024px tall); shell display=none"
+  },
+  {
+    "id": "E-22",
+    "verdict": "PASS",
+    "evidence": "heading + desktop-only sentence + Back to Create -> /create"
+  },
+  {
+    "id": "E-23",
+    "verdict": "PASS",
+    "evidence": "0 chrome nodes visible; scrollWidth body=767 doc=767; 1 focusable control (link)"
+  },
+  {
+    "id": "E-24",
+    "verdict": "FAIL",
+    "evidence": "no clipping or overlap at the four viewports - E-24-768x1024.png",
+    "detail": "768x1024 header overlaps\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   \"se-head-group se-time x se-head-group se-tempo\",\u001b[39m\n\u001b[31m+ ]\u001b[39m"
+  }
+]
