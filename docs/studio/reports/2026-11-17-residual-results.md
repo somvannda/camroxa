@@ -94,6 +94,16 @@ The single BLOCKED row (**C-47**) is environmental: the local mirror refuses a l
 callback, so the sentence path was proven against a controlled result instead. C-196 was
 re-classified as intended behaviour: `sync` is omitted when the mirror cannot answer.
 
+## D4 — provider matrix · **BLOCKED (runner verified by dry run)**
+
+`node scripts/dev/provider-matrix.mjs --budget 320` prints a 14-row plan totalling **188
+credits** read from the live pricing table, with nine of fourteen precondition checks passing
+(five failing, all traceable to the missing tunnel and one load-induced timeout). Two
+things, and only two, are missing: an **approved cap** (320 recommended — 188 plan plus
+retries) and a **public callback tunnel** (`PLATFORM_SUNO_CALLBACK_BASE_URL`). No provider
+call was made and no credit was spent. Detail:
+`docs/studio/reports/2026-11-17-provider-matrix-dry-run.md`.
+
 ## Provenance corrections made during this pass
 
 - `Download .WAV` and `NO ASSET LOADED` restored from zoomed crops — the earlier corpus
