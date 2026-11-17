@@ -1010,15 +1010,21 @@ async function main() {
   const { accessToken, refreshToken } = await login(env);
   const client = createClient({ baseUrl: env.baseUrl, accessToken, refreshToken });
 
+  // Warm MusicAPI's account cache before asking the platform for a readiness snapshot.
+  // `/internal/studio/health` authenticates the pool live; on a cold cache it has been
+  // measured at 12 035 ms and then 8–11 ms on every subsequent call, while the platform's
+  // readiness probe gives up at 10 s. Warming first turns that into a deterministic pass
+  // instead of a coin flip.
+  const musicapi = await probeMusicapi(env);
+
   let readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
-  // The first cross-process connection to MusicAPI on this host can stall for seconds
-  // (measured once at the 10 s guard, then ~1 ms on every retry), and a readiness
-  // snapshot is not a load test. A negative snapshot is re-read before it can block a
-  // run; a genuinely broken stack still fails every attempt.
+  // A readiness snapshot is not a load test, so a negative one is re-read before it can
+  // block a run; a genuinely broken stack still fails every attempt.
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     if (!readiness || !readiness.checks || !Object.values(readiness.checks).some((ok) => !ok)) break;
     if (attempt === 3) break;
     await new Promise((resolve) => setTimeout(resolve, 2000));
+    await probeMusicapi(env);
     readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
   }
   const checks = readiness && readiness.checks ? readiness.checks : {};
@@ -1040,7 +1046,6 @@ async function main() {
     });
   }
 
-  const musicapi = await probeMusicapi(env);
   if (!musicapi.skipped) {
     preconditions.push({
       key: 'musicapi.health',

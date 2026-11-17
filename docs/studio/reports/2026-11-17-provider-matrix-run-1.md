@@ -75,14 +75,19 @@ a code path in either codebase.
    `--timeout` can be raised above the 900 s default if the provider is merely slow, and the
    runner now survives a run longer than one token lifetime.
 
+A second attempt was launched on the same account with a 30-minute window
+(`--only generate --timeout 1800`). It is the same spend as run 1 (10 credits) and it either
+produces a source task that the dependent rows can use for free, or it confirms the upstream
+block.
+
 ## Runner changes in this pass
 
 | Change | Why |
 |---|---|
 | refresh-and-retry on `401` | a 15-minute matrix poll cannot fit inside a 900 s token |
-| readiness re-read up to 3 times, 2 s apart | the same cold-connection effect produced two false negatives minutes apart, one of them on a run whose predecessor had just passed |
+| warm MusicAPI health before reading readiness, then re-read up to 3 times | `/internal/studio/health` authenticates the pool live: a cold call measured **12 035 ms**, the next five **8–11 ms**, while the platform's readiness probe gives up at **10 s** — the gate failed on a healthy stack twice |
 | `spent = max(row total, wallet delta)` | an accepted generation is charged even when its poll fails; run 1 under-reported 10 credits |
-| three attempts for the MusicAPI health probe (own timeout each) | the first Node fetch to MusicAPI on this host can stall past 10 s, then answers in ~1 ms |
+| three attempts for the MusicAPI health probe (own timeout each) | the same cold path can outlast a single 10 s attempt |
 
 None of these loosen the gate: a second 401 fails, a broken readiness snapshot fails twice,
 and the budget check is unchanged.
