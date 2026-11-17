@@ -7,31 +7,14 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
-## [1.7.1] - 2026-11-17
-
-### Changed
-
-- **One source dropdown per image kind.** Background and Thumbnail now use a
-  single selection: Category + My prompt, Category + Admin library, Prompt only +
-  My prompt, or Prompt only + Admin library. The separate Prompt source dropdown
-  is gone from both the Image page and Settings.
-- **Manual prompts lock automatically.** Selecting an Admin library option makes
-  the Background/Thumbnail prompt boxes read-only, because the server supplies
-  the prompt. Selecting a My prompt option enables them again.
-- **Longer prompts.** The prompt limit is now 20,000 characters for admin prompt
-  styles, the admin editor, and composed image prompts.
-- **Admin-enforced library only.** Admins can turn on *Admin library only* in
-  Admin → Settings → Image Generation. Every desktop user is then forced to the
-  admin library, the app prompt editors are hidden, and user settings cannot
-  override it.
-
 ## [1.7.0] - 2026-11-17
 
 ### Added
 
-- **Admin prompt library on the desktop.** Background and Thumbnail now have a
-  Prompt source selector: My prompt or Admin prompt library. The server picks a
-  different active style per channel from the user's current rotation cycle.
+- **Admin prompt library on the desktop.** Background and Thumbnail use one
+  source dropdown: Category or Prompt only, combined with My prompt or Admin
+  prompt library. The server picks a different active style per channel from the
+  user's current rotation cycle.
 - **Thumbnail text on the background.** New AI text-on-background mode sends the
   generated background to the image model with the exact text, instead of
   compositing a black text layer onto it. Composite remains available as a
@@ -43,6 +26,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **One source dropdown per image kind.** Category or Prompt only is combined
+  with My prompt or Admin prompt library in a single selection. The separate
+  Prompt source dropdown is gone from the Image page and Settings.
+- **Manual prompts lock automatically.** Selecting an Admin library option locks
+  the prompt boxes; the admin can force library-only globally so the app prompt
+  editors are hidden and users cannot override it.
+- **Longer prompts.** The prompt limit is now 20,000 characters for admin prompt
+  styles, the admin editor, and composed image prompts.
 - Image jobs now persist `prompt_style_id`, `source_mode`, and `thumbnail_mode`
   so retries keep the selected prompt and mode.
 - Normal Retry preserves the selected admin prompt; Force Regenerate picks the
