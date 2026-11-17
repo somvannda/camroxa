@@ -2499,6 +2499,21 @@ export function StudioEditorShell() {
     commitTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
   }
 
+  /**
+   * Collapse or expand a whole group in one write. Calling updateTrack per member used a
+   * stale `tracks` snapshot, so only the last member collapsed (W5-C C-130).
+   */
+  function toggleGroupCollapse(groupId: string) {
+    const members = tracksRef.current.filter((track) => track.groupId === groupId);
+    if (members.length === 0) return;
+    const next = !members.every((track) => track.collapsed);
+    commitTracks(
+      tracksRef.current.map((track) =>
+        track.groupId === groupId ? { ...track, collapsed: next } : track
+      )
+    );
+  }
+
   /** Effective track mix for playback and export. */
   function mixFor(track: StudioTrack) {
     return { volume: track.volume, muted: track.muted, solo: track.solo };
@@ -5923,6 +5938,7 @@ export function StudioEditorShell() {
           onToggleFlag={toggleTrackFlag}
           onToggleArm={toggleArm}
           onUpdateTrack={updateTrack}
+        onToggleGroupCollapse={toggleGroupCollapse}
           onPreviewTrack={previewTrack}
           onRenameStart={startRename}
           onRenameChange={setRenameValue}

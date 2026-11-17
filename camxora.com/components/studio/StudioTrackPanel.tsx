@@ -36,6 +36,8 @@ export type StudioTrackPanelProps = {
   /** Arm exactly one track for recording (D-020). */
   onToggleArm: (trackId: string) => void;
   onUpdateTrack: (trackId: string, patch: Partial<StudioTrack>) => void;
+  /** Collapse/expand every member of a group in one write (C-130). */
+  onToggleGroupCollapse?: (groupId: string) => void;
   /** Live slider movement without a history entry; commit on release. */
   onPreviewTrack: (trackId: string, patch: Partial<StudioTrack>) => void;
   onRenameStart: (track: StudioTrack) => void;
@@ -130,6 +132,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onToggleFlag,
     onToggleArm,
     onUpdateTrack,
+  onToggleGroupCollapse,
     onPreviewTrack,
     onRenameStart,
     onRenameChange,
@@ -376,6 +379,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     className="se-track-rename"
                     value={renameValue}
                     autoFocus
+                    onFocus={(event) => event.currentTarget.select()}
                     onChange={(event) => onRenameChange(event.target.value)}
                     onBlur={onRenameCommit}
                     onKeyDown={(event) => {
@@ -496,13 +500,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   aria-pressed={visible
                     .filter((track) => track.groupId === group.id)
                     .every((track) => track.collapsed)}
-                  onClick={() => {
-                    const members = visible.filter((track) => track.groupId === group.id);
-                    const next = !members.every((track) => track.collapsed);
-                    members.forEach((track) =>
-                      onUpdateTrack(track.id, { collapsed: next })
-                    );
-                  }}
+                  onClick={() => onToggleGroupCollapse?.(group.id)}
                 >
                   {group.id}
                 </button>

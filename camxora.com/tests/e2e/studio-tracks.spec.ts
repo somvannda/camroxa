@@ -41,6 +41,13 @@ test("a track can be duplicated, renamed, hidden and deleted", async ({ page }) 
   await menuFor("Track 1 copy").click();
   await page.getByRole("menuitem", { name: "Rename track" }).click();
   const input = page.locator(".se-track-rename");
+  // C-109: focusing the field selects the whole name so typing replaces it.
+  const selected = await input.evaluate((element) => {
+    const field = element as HTMLInputElement;
+    return [field.selectionStart, field.selectionEnd, field.value.length];
+  });
+  expect(selected[0]).toBe(0);
+  expect(selected[1]).toBe(selected[2]);
   await input.fill("Drums");
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "Drums", exact: true })).toBeVisible();
@@ -147,6 +154,29 @@ test("track groups A-D assign, mix and collapse", async ({ page }) => {
   await expect
     .poll(async () => (await saved()).track?.collapsed, { timeout: 15_000 })
     .toBe(true);
+
+  // A second member must collapse too: one chip is one group write (W5-C C-130).
+  await page.getByRole("button", { name: "Collapse group A" }).click();
+  await page.getByRole("button", { name: /Add new track/ }).click();
+  await page.getByRole("menuitem", { name: /^Audio/ }).click();
+  await page.getByLabel("Group for Track 2").selectOption("A");
+  await page.getByRole("button", { name: "Collapse group A" }).click();
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const project = (await response.json()) as {
+            data?: { tracks?: Array<{ groupId?: string | null; collapsed?: boolean }> };
+          };
+          const members = (project.data?.tracks ?? []).filter((track) => track.groupId === "A");
+          return { count: members.length, allCollapsed: members.every((track) => track.collapsed) };
+        }, projectId),
+      { timeout: 15_000 }
+    )
+    .toEqual({ count: 2, allCollapsed: true });
+  await expect(page.getByRole("slider", { name: "Volume Track 1" })).toHaveCount(0);
+  await expect(page.getByRole("slider", { name: "Volume Track 2" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Collapse group A" }).click();
   await expect(page.getByRole("slider", { name: "Volume Track 1" })).toBeVisible();

@@ -227,11 +227,10 @@ test("studio settings open with the captured accelerator and persist", async ({ 
   const tag = Math.random().toString(36).slice(2, 8);
   await createStudioProject(page, { title: `Settings ${tag}` });
 
-  // `ctrl shift ,` — the accelerator recorded in §18.1.
+  // `ctrl shift ,` — the accelerator recorded in §18.1. A real Shift+Comma reports the
+  // key "<" (code Comma), so pressing "," synthetically would mask the bug (W5-C C-08).
   await page.keyboard.down("Control");
-  await page.keyboard.down("Shift");
-  await page.keyboard.press(",");
-  await page.keyboard.up("Shift");
+  await page.keyboard.press("Shift+Comma");
   await page.keyboard.up("Control");
 
   const dialog = page.getByRole("dialog", { name: "Studio settings" });
@@ -267,4 +266,29 @@ test("studio settings open with the captured accelerator and persist", async ({ 
       name: "Ghost drag for arrangement moves",
     })
   ).not.toBeChecked();
+});
+
+test("a failed project action reports outside the closed menu", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: "Menu failure" });
+  await page.route("**/api/v3/web-music/studio/projects/*", (route) =>
+    route.request().method() === "PATCH"
+      ? route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "The server failed to save." } }),
+        })
+      : route.continue()
+  );
+
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const dialog = page.getByRole("dialog", { name: "Rename project" });
+  await dialog.getByLabel("Project title").fill("Nope");
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  // The menu closes before the action runs, so the error must survive outside it (C-11).
+  await expect(page.getByRole("alert").filter({ hasText: /server failed|Could not/i })).toBeVisible({
+    timeout: 15_000,
+  });
 });

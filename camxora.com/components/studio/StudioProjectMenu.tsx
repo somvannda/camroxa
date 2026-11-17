@@ -200,7 +200,10 @@ export function StudioProjectMenu({
   // `ctrl shift ,` opens Studio Settings, the accelerator the capture records (§18.1).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!event.ctrlKey || !event.shiftKey || event.key !== ",") return;
+      // Shift+Comma reports "<" (or "," on some layouts), never the plain comma the capture
+      // names — check the physical key too (C-08).
+      const isComma = event.key === "," || event.key === "<" || event.code === "Comma";
+      if (!event.ctrlKey || !event.shiftKey || !isComma) return;
       // Do not stack Settings on top of another dialog the user is already in.
       if (dialog !== null) return;
       const target = event.target as HTMLElement | null;
@@ -542,6 +545,14 @@ export function StudioProjectMenu({
           <button type="button" role="menuitem" onClick={sendToSuno} disabled={busy}>
             <Icon name="fa-cloud-arrow-up" /> Send to Suno Sync
           </button>
+        </div>
+      ) : null}
+
+      {/* A failed action closes the menu first; without this the error would render inside
+          a menu the user can no longer see (W5-C C-11). */}
+      {error && !open ? (
+        <div className="se-error" role="alert">
+          {error}
         </div>
       ) : null}
 
