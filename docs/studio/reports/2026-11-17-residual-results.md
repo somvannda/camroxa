@@ -1,0 +1,88 @@
+# Residual verification results — 2026-11-17
+
+**Plan:** `docs/studio/RESIDUAL_VERIFICATION_PLAN.md` · **Base:** `origin/main` at the
+commit this file is merged with · **Production:** untouched (`985ccf00`)
+
+This is the verdict per criterion, with the evidence produced by workstreams W1–W13.
+
+## D1 — backend green after the refresh backoff · **PASS**
+
+- `platform_api/tests`: full suite run after the change; counts recorded in the W1 report
+  (`docs/studio/reports/2026-11-17-backend-residual.md`). One stale test
+  (`test_refresh_rearms_a_mirror_that_never_reached_musicapi`) encoded the removed contract;
+  it was retired and replaced by `test_refresh_returns_pending_without_rearming_the_mirror`.
+- `musicapi` unit: **198/198** (W1).
+- ruff/black: 23+1 findings are **pre-existing repo-wide** (no config, identical at the parent
+  revision, none in the changed hunk).
+
+## D2 — full e2e with the real mirror · **PASS** (on the verified commit)
+
+`docs/studio/reports/2026-11-17-e2e-real-mirror.md`:
+
+- readiness: tables, pricing, storage (real probe), token, Suno base, musicapi + 1 account ✓;
+  callback ✗ as expected without a tunnel;
+- suite: **185 passed / 2 skipped / 0 failed**, 6.6 min, **0 × 5xx**, **747** `/internal/studio/*`
+  requests — the mirror was on the path, not mocked.
+
+**Caveat:** the suite has since grown to 222 tests (S02/S61/demo/overview/recapture specs). The
+final-tree real-mirror rerun is the remaining action for a like-for-like D2 on this exact tree;
+the behaviour it covers is unchanged by the later UI additions.
+
+## D3 — every screen has a verdict · **MEASURED, adjudication in progress**
+
+`scripts/pixel-diff.mjs` (`npm run check:pixels`) now measures instead of pretending:
+
+- **73 screens, 63 diffable, 10 no-frame** (spec-only + negatives), **10 STRUCTURAL**,
+  **53 REVIEW**;
+- pixel equality is explicitly **not** the criterion: brand and palette are allowed
+  divergences, the smallest whole-frame delta is **2.37 %**; crops and viewports are
+  classified and reported with a structural edge score;
+- W9 adjudicated the first 55 reviews: **11 LAYOUT, 28 STATE, 10 REGION, 6 ALLOWED** — 8 of the
+  STATE rows were measuring builds that no longer existed;
+- W10 re-shot those 8 (7 now match the reference frame size exactly) and fixed a fixture bug
+  that invalidated earlier waveform evidence (`/demo-loop.wav` → `/seed/demo-loop.wav`).
+
+Still open for a closed D3: the 11 LAYOUT rows. Nine are fixed since adjudication (S24 flags,
+S28 palette, S05/S16 track, S13 width, S14/S39/S64 chrome, S08 history, S61 modal); the
+adjudication was against the pre-fix build, so a fresh `check:pixels` + short re-adjudication
+is the closing act.
+
+## D4 — live provider matrix · **BLOCKED**
+
+Runner and plan exist (`scripts/dev/provider-matrix.mjs`, `docs/studio/reports/2026-11-17-provider-matrix-plan.md`):
+12 operations, **188 credits clean / 210 realistic / 320 recommended cap**, `--dry-run` by default,
+refuses a private callback URL. It needs an explicit credit cap and a public tunnel. **Not run.**
+
+## D5 — the four absences · **DECIDED AND SHIPPED WHERE BUILDABLE**
+
+| Absence | Decision | State |
+|---|---|---|
+| Drum & Bass Demo tile | build from our own loop | **shipped** (`buildDemoProject`, one track, one clip, 174 BPM, captured master rack) |
+| MIDI overview strip | build with real scroll | **shipped** (window derived from `scrollLeft`, click/drag/keys, lane scroll-sync fix) |
+| Clip-rail header placement | accept (all captured controls present) | recorded in `CLONE_DEFINITION.md` §5 |
+| Video Tutorial tile | absent (the dropped YouTube row) | recorded in `CLONE_DEFINITION.md` §5 |
+
+S02 providers also decided: **Google real, five inert with reasons** — no dead controls that
+look live. Auto-reload in S61 is a disabled switch with its reason (no recurring top-up endpoint).
+
+## D6 — independent manual QA · **PARTIAL**
+
+`docs/studio/reports/2026-11-17-manual-run-b-e.md` (areas B 138 + E 24): **150 PASS / 12 FAIL**;
+every failure has a screenshot, and the functional ones are fixed (EQ drag, undo rail refresh,
+chorus sanitisation, clip-menu scrolling, load-error recovery, upload meta, kHz readout, 768
+header, pop-out placeholder). Area C is running; **A, D and F remain**, so D6 cannot close yet.
+
+## Provenance corrections made during this pass
+
+- `Download .WAV` and `NO ASSET LOADED` restored from zoomed crops — the earlier corpus
+  “corrections” were taken from our own UI.
+- 100 mojibake substitutions across 5 files (user-visible `Uploading video…`, `Admin → Key Pool`,
+  `Replace 12–48s`), with `scripts/check-mojibake.mjs` as a repeatable gate.
+- The blank clip bodies in old captures were partly the fixture 404, not only the renderer bug;
+  C1's fix stands on its own behaviour and the note in the changelog says so.
+
+## Bottom line
+
+The **defined contract** is satisfied and the studio works end to end in a browser. The
+phrase “pixel-for-pixel clone verified” is **not** yet earned: D4 is unrun, D6 is 162/510,
+and D3 needs one fresh measurement plus a short re-adjudication against the fixed build.
