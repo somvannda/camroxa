@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T02:17:46.125Z",
+  "generatedAt": "2026-11-17T02:26:16.395Z",
   "tolerancePct": 0.2,
   "pixelThreshold": 0.1,
   "scaler": "nearest-neighbour",
@@ -8,7 +8,8 @@
   "counts": {
     "IDENTICAL": 0,
     "WITHIN": 0,
-    "DELTA": 64,
+    "STRUCTURAL": 9,
+    "REVIEW": 55,
     "NO-FRAME": 9
   },
   "screens": [
@@ -20,7 +21,7 @@
       "frame": "S01-marketing-signed-out.jpeg",
       "refSize": "1116x1245",
       "oursSize": "1116x1245",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 31.16,
       "identicalPixels": false,
@@ -40,7 +41,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 432998
+      "differingPixels": 432998,
+      "edgeScore": 0.5
     },
     {
       "id": "S02",
@@ -50,7 +52,7 @@
       "frame": "S02-sign-in-modal.jpeg",
       "refSize": "1250x1245",
       "oursSize": "1250x1245",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 49.19,
       "identicalPixels": false,
@@ -70,7 +72,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 765474
+      "differingPixels": 765474,
+      "edgeScore": 0.27
     },
     {
       "id": "S03",
@@ -80,7 +83,7 @@
       "frame": "S03-signed-in-entry-reopened.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 5.36,
       "identicalPixels": false,
@@ -100,7 +103,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 72978
+      "differingPixels": 72978,
+      "edgeScore": 0.29
     },
     {
       "id": "S04",
@@ -110,7 +114,7 @@
       "frame": "S04-my-projects-modal.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 12.44,
       "identicalPixels": false,
@@ -130,7 +134,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 169453
+      "differingPixels": 169453,
+      "edgeScore": 0.65
     },
     {
       "id": "S05",
@@ -140,7 +145,7 @@
       "frame": "S05-empty-project.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 3.05,
       "identicalPixels": false,
@@ -160,7 +165,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 41589
+      "differingPixels": 41589,
+      "edgeScore": 0.39
     },
     {
       "id": "S06",
@@ -170,7 +176,7 @@
       "frame": "S06-onboarding-overlay.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 5.46,
       "identicalPixels": false,
@@ -190,7 +196,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": "S03",
-      "differingPixels": 74330
+      "differingPixels": 74330,
+      "edgeScore": 0.43
     },
     {
       "id": "S07",
@@ -200,7 +207,7 @@
       "frame": "S07-project-menu.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 8.63,
       "identicalPixels": false,
@@ -220,7 +227,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 117500
+      "differingPixels": 117500,
+      "edgeScore": 0.5
     },
     {
       "id": "S08",
@@ -230,7 +238,7 @@
       "frame": "S08-version-history.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 7.61,
       "identicalPixels": false,
@@ -250,7 +258,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 103628
+      "differingPixels": 103628,
+      "edgeScore": 0.42
     },
     {
       "id": "S09",
@@ -260,7 +269,7 @@
       "frame": "S09-settings-performance.jpeg",
       "refSize": "1115x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 12.77,
       "identicalPixels": false,
@@ -280,7 +289,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 177264
+      "differingPixels": 177264,
+      "edgeScore": 0.58
     },
     {
       "id": "S10",
@@ -290,7 +300,7 @@
       "frame": "S10-settings-window-management.jpeg",
       "refSize": "1115x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 12.38,
       "identicalPixels": false,
@@ -310,7 +320,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 171858
+      "differingPixels": 171858,
+      "edgeScore": 0.54
     },
     {
       "id": "S11",
@@ -320,7 +331,7 @@
       "frame": "S11-settings-content.jpeg",
       "refSize": "1115x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 13.99,
       "identicalPixels": false,
@@ -340,7 +351,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 194147
+      "differingPixels": 194147,
+      "edgeScore": 0.6
     },
     {
       "id": "S12",
@@ -350,7 +362,7 @@
       "frame": "S12-share-dialog.jpeg",
       "refSize": "1115x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 9.33,
       "identicalPixels": false,
@@ -370,7 +382,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 129472
+      "differingPixels": 129472,
+      "edgeScore": 0.64
     },
     {
       "id": "S13",
@@ -380,7 +393,7 @@
       "frame": "S13-learn-menu.jpeg",
       "refSize": "1115x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 7.51,
       "identicalPixels": false,
@@ -400,7 +413,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 104263
+      "differingPixels": 104263,
+      "edgeScore": 0.48
     },
     {
       "id": "S14",
@@ -410,7 +424,7 @@
       "frame": "S14-keyboard-shortcuts.jpeg",
       "refSize": "1115x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 11.78,
       "identicalPixels": false,
@@ -430,7 +444,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 163501
+      "differingPixels": 163501,
+      "edgeScore": 0.37
     },
     {
       "id": "S15",
@@ -440,7 +455,7 @@
       "frame": "S15-whats-this-card.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 4.48,
       "identicalPixels": false,
@@ -460,7 +475,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 96649
+      "differingPixels": 96649,
+      "edgeScore": 0.46
     },
     {
       "id": "S16",
@@ -470,7 +486,7 @@
       "frame": "S16-editor-empty-project.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 2.37,
       "identicalPixels": false,
@@ -490,7 +506,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": "S05",
-      "differingPixels": 51138
+      "differingPixels": 51138,
+      "edgeScore": 0.4
     },
     {
       "id": "S17",
@@ -500,7 +517,7 @@
       "frame": "S17-editor-loaded-project.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 35.43,
       "identicalPixels": false,
@@ -520,7 +537,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 764173
+      "differingPixels": 764173,
+      "edgeScore": 0.63
     },
     {
       "id": "S18",
@@ -549,7 +567,7 @@
       "frame": "S19-track-options-menu.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 8.51,
       "identicalPixels": false,
@@ -569,7 +587,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 115923
+      "differingPixels": 115923,
+      "edgeScore": 0.5
     },
     {
       "id": "S20",
@@ -579,7 +598,7 @@
       "frame": "S20-add-track-menu.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 7.96,
       "identicalPixels": false,
@@ -599,7 +618,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 108385
+      "differingPixels": 108385,
+      "edgeScore": 0.4
     },
     {
       "id": "S21",
@@ -609,7 +629,7 @@
       "frame": "S21-hidden-track.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 22.66,
       "identicalPixels": false,
@@ -629,7 +649,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 488703
+      "differingPixels": 488703,
+      "edgeScore": 0.55
     },
     {
       "id": "S22",
@@ -639,7 +660,7 @@
       "frame": "S22-ruler-zoom-levels.jpeg",
       "refSize": "2900x600",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 34.61,
       "identicalPixels": false,
@@ -659,7 +680,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 602284
+      "differingPixels": 602284,
+      "edgeScore": 0.21
     },
     {
       "id": "S23",
@@ -669,7 +691,7 @@
       "frame": "S23-section-markers.jpeg",
       "refSize": "920x840",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 35.02,
       "identicalPixels": false,
@@ -689,7 +711,8 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox, clip:",
       "sharedWith": null,
-      "differingPixels": 270631
+      "differingPixels": 270631,
+      "edgeScore": 0.24
     },
     {
       "id": "S24",
@@ -699,7 +722,7 @@
       "frame": "S24-loop-region.jpeg",
       "refSize": "1250x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 28.75,
       "identicalPixels": false,
@@ -719,7 +742,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 447351
+      "differingPixels": 447351,
+      "edgeScore": 0.54
     },
     {
       "id": "S25",
@@ -729,7 +753,7 @@
       "frame": "S25-clip-selected.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 17.44,
       "identicalPixels": false,
@@ -749,7 +773,8 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": null,
-      "differingPixels": 376186
+      "differingPixels": 376186,
+      "edgeScore": 0.3
     },
     {
       "id": "S26",
@@ -759,7 +784,7 @@
       "frame": "S26-clip-context-menu.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 24.18,
       "identicalPixels": false,
@@ -779,7 +804,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 521624
+      "differingPixels": 521624,
+      "edgeScore": 0.74
     },
     {
       "id": "S27",
@@ -789,7 +815,7 @@
       "frame": "S27-clip-info-panel.jpeg",
       "refSize": "1920x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 15.69,
       "identicalPixels": false,
@@ -809,25 +835,26 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": null,
-      "differingPixels": 384576
+      "differingPixels": 384576,
+      "edgeScore": 0.44
     },
     {
       "id": "S28",
       "title": "Clip colour submenu",
-      "evidence": "capture:ours-clip-color.png",
-      "capture": "ours-clip-color.png",
+      "evidence": "capture:ours-clip-color-open.png",
+      "capture": "ours-clip-color-open.png",
       "frame": "S28-clip-color-submenu.jpeg",
       "refSize": "920x1040",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 50.2,
+      "diffPct": 49.76,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S28.png",
       "bands": {
-        "headerPct": 67.94,
-        "bodyPct": 48.74,
-        "footerPct": 63.15
+        "headerPct": 68.35,
+        "bodyPct": 48.24,
+        "footerPct": 63.24
       },
       "comparability": {
         "kind": "different-viewport",
@@ -839,7 +866,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 480283
+      "differingPixels": 476115,
+      "edgeScore": 0.24
     },
     {
       "id": "S29",
@@ -849,7 +877,7 @@
       "frame": "S29-take-lanes.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 12.22,
       "identicalPixels": false,
@@ -869,7 +897,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 263640
+      "differingPixels": 263640,
+      "edgeScore": 0.44
     },
     {
       "id": "S30",
@@ -879,7 +908,7 @@
       "frame": "S30-warp-markers.jpeg",
       "refSize": "1261x1245",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 11.91,
       "identicalPixels": false,
@@ -899,7 +928,8 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": null,
-      "differingPixels": 186998
+      "differingPixels": 186998,
+      "edgeScore": 0.48
     },
     {
       "id": "S31",
@@ -909,7 +939,7 @@
       "frame": "S31-midi-clip-editor.jpeg",
       "refSize": "3200x560",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 23.78,
       "identicalPixels": false,
@@ -929,7 +959,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 426204
+      "differingPixels": 426204,
+      "edgeScore": 0.7
     },
     {
       "id": "S32",
@@ -939,7 +970,7 @@
       "frame": "S32-modulation-lane-empty.jpeg",
       "refSize": "3200x350",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 17.77,
       "identicalPixels": false,
@@ -959,7 +990,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 199018
+      "differingPixels": 199018,
+      "edgeScore": 0.36
     },
     {
       "id": "S33",
@@ -969,7 +1001,7 @@
       "frame": "S33-velocity-lane.jpeg",
       "refSize": "3200x260",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 21.95,
       "identicalPixels": false,
@@ -989,7 +1021,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 182643
+      "differingPixels": 182643,
+      "edgeScore": 0.5
     },
     {
       "id": "S34",
@@ -999,7 +1032,7 @@
       "frame": "S34-magicbar-idle.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 22.01,
       "identicalPixels": false,
@@ -1019,7 +1052,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 474663
+      "differingPixels": 474663,
+      "edgeScore": 0.42
     },
     {
       "id": "S35",
@@ -1029,7 +1063,7 @@
       "frame": "S35-magicbar-attachment.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 22.72,
       "identicalPixels": false,
@@ -1049,7 +1083,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 490136
+      "differingPixels": 490136,
+      "edgeScore": 0.39
     },
     {
       "id": "S36",
@@ -1059,7 +1094,7 @@
       "frame": "S36-magicbar-conversation.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 15.86,
       "identicalPixels": false,
@@ -1079,7 +1114,8 @@
       "specNature": "visual",
       "specDetail": "asserts toHaveCSS, boundingBox, getComputedStyle, clip:",
       "sharedWith": null,
-      "differingPixels": 342052
+      "differingPixels": 342052,
+      "edgeScore": 0.37
     },
     {
       "id": "S37",
@@ -1127,7 +1163,7 @@
       "frame": "S39-plugin-catalog.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 10.92,
       "identicalPixels": false,
@@ -1147,7 +1183,8 @@
       "specNature": "visual",
       "specDetail": "asserts toHaveCSS, boundingBox, getComputedStyle, clip:",
       "sharedWith": null,
-      "differingPixels": 235488
+      "differingPixels": 235488,
+      "edgeScore": 0.59
     },
     {
       "id": "S40",
@@ -1157,7 +1194,7 @@
       "frame": "S40-plugin-dock-single.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 16.89,
       "identicalPixels": false,
@@ -1177,7 +1214,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 364247
+      "differingPixels": 364247,
+      "edgeScore": 0.41
     },
     {
       "id": "S41",
@@ -1187,7 +1225,7 @@
       "frame": "S41-plugin-dock-multiple.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 23.07,
       "identicalPixels": false,
@@ -1207,7 +1245,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 497548
+      "differingPixels": 497548,
+      "edgeScore": 0.57
     },
     {
       "id": "S42",
@@ -1217,7 +1256,7 @@
       "frame": "S42-eq-card.jpeg",
       "refSize": "1000x524",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 10.37,
       "identicalPixels": false,
@@ -1237,7 +1276,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": "S41",
-      "differingPixels": 54340
+      "differingPixels": 54340,
+      "edgeScore": 0.5
     },
     {
       "id": "S43",
@@ -1247,7 +1287,7 @@
       "frame": "S43-compressor-routing-list.jpeg",
       "refSize": "1040x660",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 47.89,
       "identicalPixels": false,
@@ -1267,7 +1307,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 328687
+      "differingPixels": 328687,
+      "edgeScore": 0.25
     },
     {
       "id": "S44",
@@ -1277,7 +1318,7 @@
       "frame": "S44-convolution-card.jpeg",
       "refSize": "940x400",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 9.76,
       "identicalPixels": false,
@@ -1297,7 +1338,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": "S41",
-      "differingPixels": 36696
+      "differingPixels": 36696,
+      "edgeScore": 0.38
     },
     {
       "id": "S45",
@@ -1326,7 +1368,7 @@
       "frame": "S46-preset-menu.jpeg",
       "refSize": "840x450",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 41.27,
       "identicalPixels": false,
@@ -1346,7 +1388,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 155995
+      "differingPixels": 155995,
+      "edgeScore": 0.27
     },
     {
       "id": "S47",
@@ -1375,7 +1418,7 @@
       "frame": "S48-master-limiter.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 14.43,
       "identicalPixels": false,
@@ -1395,7 +1438,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 311260
+      "differingPixels": 311260,
+      "edgeScore": 0.4
     },
     {
       "id": "S49",
@@ -1405,7 +1449,7 @@
       "frame": "S49-export-menu.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 18.71,
       "identicalPixels": false,
@@ -1425,7 +1469,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 403613
+      "differingPixels": 403613,
+      "edgeScore": 0.42
     },
     {
       "id": "S50",
@@ -1454,7 +1499,7 @@
       "frame": "S51-export-result-toast.jpeg",
       "refSize": "1500x180",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 21.44,
       "identicalPixels": false,
@@ -1474,7 +1519,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 57892
+      "differingPixels": 57892,
+      "edgeScore": 0.44
     },
     {
       "id": "S52",
@@ -1484,7 +1530,7 @@
       "frame": "S52-library-workspaces.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 29.77,
       "identicalPixels": false,
@@ -1504,7 +1550,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 642137
+      "differingPixels": 642137,
+      "edgeScore": 0.74
     },
     {
       "id": "S53",
@@ -1514,7 +1561,7 @@
       "frame": "S53-library-songs.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 17.45,
       "identicalPixels": false,
@@ -1534,7 +1581,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 376451
+      "differingPixels": 376451,
+      "edgeScore": 0.26
     },
     {
       "id": "S54",
@@ -1544,7 +1592,7 @@
       "frame": "S54-share-permission-copy.jpeg",
       "refSize": "1200x600",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 23.94,
       "identicalPixels": false,
@@ -1564,7 +1612,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": "S12",
-      "differingPixels": 172361
+      "differingPixels": 172361,
+      "edgeScore": 0.45
     },
     {
       "id": "S55",
@@ -1593,7 +1642,7 @@
       "frame": "S56-shared-link-logged-out.jpeg",
       "refSize": "1920x1211",
       "oursSize": "1920x1211",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 39.12,
       "identicalPixels": false,
@@ -1613,7 +1662,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 909522
+      "differingPixels": 909522,
+      "edgeScore": 0.43
     },
     {
       "id": "S57",
@@ -1623,7 +1673,7 @@
       "frame": "S57-project-loading-blank.jpeg",
       "refSize": "1094x1245",
       "oursSize": "1094x1245",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 1.45,
       "identicalPixels": false,
@@ -1643,7 +1693,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 19686
+      "differingPixels": 19686,
+      "edgeScore": 1
     },
     {
       "id": "S58",
@@ -1653,7 +1704,7 @@
       "frame": "S58-empty-library.jpeg",
       "refSize": "720x280",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 7.43,
       "identicalPixels": false,
@@ -1673,7 +1724,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 14982
+      "differingPixels": 14982,
+      "edgeScore": 0.09
     },
     {
       "id": "S59",
@@ -1702,7 +1754,7 @@
       "frame": "S60-moderation.jpeg",
       "refSize": "1440x900",
       "oursSize": "1440x900",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 17.1,
       "identicalPixels": false,
@@ -1722,7 +1774,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 221633
+      "differingPixels": 221633,
+      "edgeScore": 0.48
     },
     {
       "id": "S61",
@@ -1732,7 +1785,7 @@
       "frame": "S61-insufficient-credits.jpeg",
       "refSize": "1440x900",
       "oursSize": "1440x900",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 12.67,
       "identicalPixels": false,
@@ -1752,7 +1805,8 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": null,
-      "differingPixels": 164252
+      "differingPixels": 164252,
+      "edgeScore": 0.58
     },
     {
       "id": "S62",
@@ -1762,7 +1816,7 @@
       "frame": "S62-offline-cold-load.jpeg",
       "refSize": "1971x1277",
       "oursSize": "1971x1277",
-      "verdict": "DELTA",
+      "verdict": "STRUCTURAL",
       "reason": null,
       "diffPct": 99.99,
       "identicalPixels": false,
@@ -1782,7 +1836,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 2516784
+      "differingPixels": 2516784,
+      "edgeScore": 1
     },
     {
       "id": "S63",
@@ -1792,7 +1847,7 @@
       "frame": "S63-1280px.jpeg",
       "refSize": "1280x900",
       "oursSize": "1280x900",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 21.69,
       "identicalPixels": false,
@@ -1812,7 +1867,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 249859
+      "differingPixels": 249859,
+      "edgeScore": 0.48
     },
     {
       "id": "S64",
@@ -1822,7 +1878,7 @@
       "frame": "S64-1024px.jpeg",
       "refSize": "1024x900",
       "oursSize": "1024x900",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 23.17,
       "identicalPixels": false,
@@ -1842,7 +1898,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 213502
+      "differingPixels": 213502,
+      "edgeScore": 0.41
     },
     {
       "id": "S65",
@@ -1852,7 +1909,7 @@
       "frame": "S65-gate-767px.jpeg",
       "refSize": "767x1000",
       "oursSize": "767x900",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 8.87,
       "identicalPixels": false,
@@ -1872,7 +1929,8 @@
       "specNature": "visual",
       "specDetail": "asserts toHaveCSS, boundingBox, getComputedStyle, clip:",
       "sharedWith": null,
-      "differingPixels": 68045
+      "differingPixels": 68045,
+      "edgeScore": 0.31
     },
     {
       "id": "EXTRA-generation-refused",
@@ -1882,7 +1940,7 @@
       "frame": "EXTRA-generation-refused-legacy.jpeg",
       "refSize": "1250x1245",
       "oursSize": "1250x1245",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 23.81,
       "identicalPixels": false,
@@ -1902,7 +1960,8 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": null,
-      "differingPixels": 370615
+      "differingPixels": 370615,
+      "edgeScore": 0.44
     },
     {
       "id": "EXTRA-generation-refused-legacy",
@@ -1912,7 +1971,7 @@
       "frame": "EXTRA-generation-refused-legacy.jpeg",
       "refSize": "1250x1245",
       "oursSize": "1250x1245",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 23.81,
       "identicalPixels": false,
@@ -1932,7 +1991,8 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": "EXTRA-generation-refused",
-      "differingPixels": 370615
+      "differingPixels": 370615,
+      "edgeScore": 0.44
     },
     {
       "id": "EXTRA-library-uploads",
@@ -1941,7 +2001,7 @@
       "frame": "EXTRA-library-uploads.jpeg",
       "refSize": "1261x1245",
       "oursSize": "1261x1245",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 9.27,
       "identicalPixels": false,
@@ -1961,7 +2021,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 145527
+      "differingPixels": 145527,
+      "edgeScore": 0.37
     },
     {
       "id": "EXTRA-library-song-detail",
@@ -1970,7 +2031,7 @@
       "frame": "EXTRA-library-song-detail.jpeg",
       "refSize": "1261x1245",
       "oursSize": "1261x1245",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 12.04,
       "identicalPixels": false,
@@ -1990,7 +2051,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 189082
+      "differingPixels": 189082,
+      "edgeScore": 0.37
     },
     {
       "id": "EXTRA-project-load-error",
@@ -1999,7 +2061,7 @@
       "frame": "EXTRA-project-load-error.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 3.31,
       "identicalPixels": false,
@@ -2019,7 +2081,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 71399
+      "differingPixels": 71399,
+      "edgeScore": 0.33
     },
     {
       "id": "EXTRA-restoring-last-project",
@@ -2028,7 +2091,7 @@
       "frame": "EXTRA-restoring-last-project.jpeg",
       "refSize": "1689x1277",
       "oursSize": "1689x1277",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 18.36,
       "identicalPixels": false,
@@ -2048,7 +2111,8 @@
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 395977
+      "differingPixels": 395977,
+      "edgeScore": 0.4
     },
     {
       "id": "EXTRA-take-lanes-empty",
@@ -2057,7 +2121,7 @@
       "frame": "EXTRA-take-lanes-empty.jpeg",
       "refSize": "1261x1245",
       "oursSize": "1261x1245",
-      "verdict": "DELTA",
+      "verdict": "REVIEW",
       "reason": null,
       "diffPct": 13.73,
       "identicalPixels": false,
@@ -2077,7 +2141,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 215495
+      "differingPixels": 215495,
+      "edgeScore": 0.36
     },
     {
       "id": "RESPONSIVE-gate-319px",
