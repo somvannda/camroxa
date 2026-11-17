@@ -39,14 +39,14 @@ Some endpoints still attempt to read provider keys from `Settings` or fall back 
 - `platform_api/routers/channel_setup.py`
   - Remove the DeepSeek `_call_llm()` helper that reads `settings.deepseek_api_key`.
   - Remove any OpenAI image generation that reads `settings.openai_api_key`.
-  - Prefer calling `GenerationService.submit_image(...)` for all image providers (fal/slai/openai/cala) using routing’s provider/sub_model.
+  - Prefer calling `GenerationService.submit_image(...)` for all image providers (fal/slai/openai/kie) using routing’s provider/sub_model.
 
 - `platform_api/routers/channel_prompts.py`
   - Remove the “Key Pool first then fallback to settings.deepseek_api_key” behavior.
   - Use Key Pool only. If no active key exists, raise `NoAvailableKeysError("deepseek", ...)`.
 
 - `platform_api/services/generation_service.py`
-  - Remove OpenAI and CALA image generation fallbacks that pass `api_key=None` or read env settings.
+  - Remove OpenAI image generation fallbacks that pass `api_key=None` or read env settings.
   - Require `KeyPoolServicePort` and use it to obtain a key for the provider.
 
 - `platform_api/routers/health.py`

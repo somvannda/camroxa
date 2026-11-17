@@ -9,10 +9,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
-const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie', 'youtube', 'facebook'] as const;
+const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'kie', 'youtube', 'facebook'] as const;
 
 /** Core generation providers shown on the dashboard key-pool row. */
-const DASHBOARD_ROW_PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie'] as const;
+const DASHBOARD_ROW_PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'kie'] as const;
 
 const PROVIDER_LABELS: Record<string, string> = {
   suno: 'Camxora Pool Key',
@@ -20,7 +20,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   deepseek: 'DeepSeek',
   slai: 'Slai',
-  cala: 'CALA',
   kie: 'kie.ai',
   youtube: 'YouTube',
   facebook: 'Facebook',
@@ -152,11 +151,11 @@ function CriticalAlertBanner({ criticalProviders }: { criticalProviders: string[
 export function HealthSummary({
   showAllWithKeys = true,
   alwaysIncludeCritical = true,
-  /** Merge /health services so providers like CALA still appear when key-pool omits them. */
+  /** Merge /health services so providers still appear when key-pool omits them. */
   apiServices = null,
   /** Stretch cards evenly across the full container width. */
   fillRow = false,
-  /** Prefer the compact dashboard provider set (includes CALA). */
+  /** Prefer the compact dashboard provider set. */
   dashboardRow = false,
 }: {
   showAllWithKeys?: boolean;
@@ -210,7 +209,7 @@ export function HealthSummary({
           .filter((id) => !PROVIDERS.includes(id as (typeof PROVIDERS)[number])),
       ];
 
-  // Always include any provider present in API health services (e.g. unhealthy CALA).
+  // Always include any provider present in API health services.
   if (apiServices) {
     for (const id of Object.keys(apiServices)) {
       if (!baseIds.includes(id as (typeof baseIds)[number])) {
@@ -238,7 +237,7 @@ export function HealthSummary({
     // Not in key-pool response — still show if API health knows about it.
     const available = serviceAvailable(apiServices, providerId);
     if (available === false || (dashboardRow && DASHBOARD_ROW_PROVIDERS.includes(providerId as (typeof DASHBOARD_ROW_PROVIDERS)[number]))) {
-      // For dashboard row, always show the six core providers (synthesize if missing).
+      // For dashboard row, always show the core providers (synthesize if missing).
       if (
         dashboardRow &&
         DASHBOARD_ROW_PROVIDERS.includes(providerId as (typeof DASHBOARD_ROW_PROVIDERS)[number])
@@ -250,7 +249,7 @@ export function HealthSummary({
     }
   }
 
-  // Dashboard: force all six core slots so CALA is never missing.
+  // Dashboard: force all core slots so a provider is never missing.
   const visible = dashboardRow
     ? DASHBOARD_ROW_PROVIDERS.map((id) => {
         const found = resolved.find((h) => h.provider === id);

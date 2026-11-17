@@ -6,6 +6,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from shared.lib.image_workspace import (
+    normalize_prompt_source,
+    normalize_thumbnail_reference_mode,
+)
 from shared.lib.music_settings import read_boolean_setting, read_number_setting, read_string_setting
 from shared.models.auth import ProfileResponse
 
@@ -189,6 +193,9 @@ class SystemSettingsDraft:
     image_source_mode: str = "ai"
     image_background_source_mode: str = "category"
     image_thumbnail_source_mode: str = "category"
+    image_background_prompt_source: str = "custom"
+    image_thumbnail_prompt_source: str = "custom"
+    thumbnail_reference_mode: str = "background_text"
     thumbnail_overlay_mode: str = "ai"
 
 
@@ -311,6 +318,15 @@ def build_system_settings_draft(settings: dict[str, Any]) -> SystemSettingsDraft
         image_source_mode=normalize_image_source_mode(normalized.get("imageSourceMode")),
         image_background_source_mode=resolve_kind_source_modes(normalized)[0],
         image_thumbnail_source_mode=resolve_kind_source_modes(normalized)[1],
+        image_background_prompt_source=normalize_prompt_source(
+            read_string_setting(normalized, "imageBackgroundPromptSource", "custom")
+        ),
+        image_thumbnail_prompt_source=normalize_prompt_source(
+            read_string_setting(normalized, "imageThumbnailPromptSource", "custom")
+        ),
+        thumbnail_reference_mode=normalize_thumbnail_reference_mode(
+            read_string_setting(normalized, "thumbnailReferenceMode", "background_text")
+        ),
         thumbnail_overlay_mode=read_string_setting(normalized, "thumbnailOverlayMode", "ai") or "ai",
     )
 
@@ -431,6 +447,21 @@ def build_system_settings_patch(
         "imageThumbnailSourceMode",
         draft.image_thumbnail_source_mode,
         current.image_thumbnail_source_mode,
+    )
+    assign_string(
+        "imageBackgroundPromptSource",
+        draft.image_background_prompt_source,
+        current.image_background_prompt_source,
+    )
+    assign_string(
+        "imageThumbnailPromptSource",
+        draft.image_thumbnail_prompt_source,
+        current.image_thumbnail_prompt_source,
+    )
+    assign_string(
+        "thumbnailReferenceMode",
+        draft.thumbnail_reference_mode,
+        current.thumbnail_reference_mode,
     )
     assign_string("thumbnailOverlayMode", draft.thumbnail_overlay_mode, current.thumbnail_overlay_mode)
 

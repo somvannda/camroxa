@@ -159,3 +159,4 @@ async def test_image_provider_failure_refunds_even_when_prepaid_batch(tmp_path) 
     call_kwargs = enforcement_service.refund_failed_operation.await_args.kwargs
     assert call_kwargs["prior_ledger_recorded"] is True
     assert call_kwargs["charged_credit_units"] == 10
+    assert call_kwargs["provider_invoked"] is True

@@ -272,7 +272,7 @@ def _check_assignment_pricing(
                     code="invalid_capability",
                     message=(
                         f"{label}: '{provider}' is not an image provider. "
-                        "Use fal, slai, openai, or cala."
+                        "Use fal, slai, openai, or kie."
                     ),
                     operation=operation,
                     provider=provider,

@@ -730,7 +730,7 @@ Acceptance:
 
 | # | Topic | Recommendation | Status |
 |---|--------|----------------|--------|
-| 1 | Prompt-only thumbnail visual strategy | **Composite:** prompt-driven text/typography overlay onto the **generated background**, **without** a style-sample corner box. Keeps BG+TH pixel-consistent for video/YouTube. Full freeform thumbnail (ignore BG) deferred. | **Locked for P0** |
+| 1 | Prompt-only thumbnail visual strategy | **Superseded 2026-11-16** by [`IMAGE_PROMPT_LIBRARY_AND_AI_THUMBNAIL_REQUIREMENTS.md`](./IMAGE_PROMPT_LIBRARY_AND_AI_THUMBNAIL_REQUIREMENTS.md): the default thumbnail mode is now `background_text` (image-to-image on the generated background). The composite fallback stays available as `thumbnailReferenceMode=composite`. | **Superseded** |
 | 2 | Profile-level overrides vs workspace image modes | **Workspace modes win for v1** (Settings source mode / category / personal refs apply to all channels). Per-profile overrides later only if operators need different categories per channel; do not block P0–P3. | **Deferred** |
 | 3 | Toast after Replace: “Export Video Only?” | **Yes, lightweight:** after successful Replace BG/TH, show a non-blocking toast/banner with **Export Video Only** / **Export and Merge** / Dismiss. Do not auto-start export. | **Include in P3** |
 | 4 | User folders/tags on personal library | **No for v1.** Only usable-as BG/TH tags. Folders later if library hits 200 and ops complain. | **Out of v1** |

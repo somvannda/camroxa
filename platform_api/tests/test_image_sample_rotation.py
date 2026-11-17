@@ -31,6 +31,29 @@ async def test_pick_least_used_value_rotates_samples() -> None:
     assert pool.execute.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_pick_least_used_value_avoids_previous_batch() -> None:
+    previous = uuid4()
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(
+        return_value=[
+            {"value": "a.png", "used_count": 1, "used_at": None, "last_batch_id": previous},
+            {"value": "b.png", "used_count": 1, "used_at": None, "last_batch_id": None},
+        ]
+    )
+    pool.execute = AsyncMock()
+    repo = ImageSampleRepository(pool=pool)
+
+    chosen = await repo.pick_least_used_value(
+        kind="bg_prompt_style",
+        values=["a.png", "b.png"],
+        batch_id=uuid4(),
+        previous_batch_id=previous,
+    )
+
+    assert chosen == "b.png"
+
+
 def test_build_candidates_prefers_selected_when_not_random(tmp_path) -> None:
     selected = tmp_path / "selected.png"
     selected.write_bytes(b"x")

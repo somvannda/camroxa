@@ -127,6 +127,11 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'flux-schnell', label: 'flux-schnell (~$0.003/img)' },
     { value: 'flux-dev', label: 'flux-dev (~$0.025/img)' },
     { value: 'flux-pro', label: 'flux-pro (~$0.05/img)' },
+    { value: 'flux-2/edit', label: 'flux-2/edit (~$0.012/MP)' },
+    {
+      value: 'flux-2-pro/edit',
+      label: 'flux-2-pro/edit (~$0.03 first MP + $0.015 extra)',
+    },
   ],
   slai: [
     { value: 'xiaomi/mimo-v2.5-pro', label: 'xiaomi/mimo-v2.5-pro (SLAI MiMo text)' },
@@ -137,7 +142,6 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'cx/gpt-6-sol-image', label: 'cx/gpt-6-sol-image (SLAI images)' },
   ],
   local: [],
-  cala: [],
   kie: [
     { value: 'grok-imagine-image-2-0/text-to-image', label: 'grok-imagine-image-2-0/text-to-image (kie.ai images)' },
   ],

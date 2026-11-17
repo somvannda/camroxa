@@ -135,6 +135,31 @@ class ImageJobRepositoryProtocol(Protocol):
         provider: str | None = None,
         attempt_count: int | None = None,
     ) -> None: ...
+    async def update_image_job_billing_state(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+        *,
+        hold_units: int | None = None,
+        hold_state: str | None = None,
+    ) -> None: ...
+    async def mark_image_job_provider_invoked(
+        self,
+        job_id: UUID,
+        user_id: UUID,
+    ) -> None: ...
+    async def get_stale_running_image_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]: ...
+    async def get_stale_pending_thumbnail_jobs(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int = 200,
+    ) -> list[ImageJob]: ...
     async def reset_image_jobs(
         self,
         user_id: UUID,
@@ -307,6 +332,115 @@ class ImageJobService:
             statuses=statuses,
         )
 
+    async def sweep_stale_jobs(
+        self,
+        *,
+        running_older_than_seconds: int = 900,
+        dependency_older_than_seconds: int = 1800,
+        limit: int = 200,
+    ) -> dict[str, int]:
+        """Recover jobs left running/pending by a crashed image worker."""
+        recovered = 0
+        failed = 0
+        refunded = 0
+
+        running_jobs = await self._repo.get_stale_running_image_jobs(
+            older_than_seconds=running_older_than_seconds,
+            limit=limit,
+        )
+        for job in running_jobs:
+            attempt = max(0, int(job.attempt_count or 0))
+            next_attempt = attempt + 1
+            auto_retry = next_attempt < _image_job_max_attempts()
+            if await self._refund_stale_hold(job, reason="image_generation_stale"):
+                refunded += 1
+            await self._repo.update_image_job_status(
+                job.id,
+                job.user_id,
+                status=TaskStatus.PENDING if auto_retry else TaskStatus.FAILED,
+                error=(
+                    "Image worker timed out; requeued."
+                    if auto_retry
+                    else "Image worker timed out; max attempts reached."
+                ),
+                attempt_count=next_attempt,
+            )
+            if auto_retry:
+                recovered += 1
+            else:
+                failed += 1
+
+        stale_thumbnails = await self._repo.get_stale_pending_thumbnail_jobs(
+            older_than_seconds=dependency_older_than_seconds,
+            limit=limit,
+        )
+        for job in stale_thumbnails:
+            if await self._refund_stale_hold(
+                job, reason="image_generation_dependency_stale"
+            ):
+                refunded += 1
+            await self._repo.update_image_job_status(
+                job.id,
+                job.user_id,
+                status=TaskStatus.FAILED,
+                error=(
+                    "Thumbnail: Background image did not finish. "
+                    "Retry the background, then retry the thumbnail."
+                ),
+                attempt_count=max(0, int(job.attempt_count or 0)),
+            )
+            failed += 1
+
+        if recovered or failed or refunded:
+            image_log.log_stale_sweep(
+                recovered=recovered,
+                failed=failed,
+                refunded=refunded,
+            )
+        return {
+            "recovered": recovered,
+            "failed": failed,
+            "refunded": refunded,
+        }
+
+    async def _refund_stale_hold(self, job: ImageJob, *, reason: str) -> bool:
+        if job.hold_state != "held":
+            return False
+        if self._enforcement_service is None:
+            return False
+        refund = getattr(self._enforcement_service, "refund_failed_operation", None)
+        if refund is None:
+            return False
+        operation_type = (
+            "thumbnail_image"
+            if getattr(job, "kind", None) == ImageKind.THUMBNAIL
+            else "background_image"
+        )
+        try:
+            await refund(
+                job.user_id,
+                job.profile_id,
+                operation_type,
+                str(job.provider or "slai"),
+                charged_credit_units=int(job.hold_units or 0),
+                sub_model=None,
+                reason=reason,
+                ref_id=str(job.id),
+                prior_ledger_recorded=True,
+                provider_invoked=bool(job.provider_invoked),
+            )
+        except Exception:
+            logger.exception(
+                "Could not refund stale image-job hold for job %s", job.id
+            )
+            return False
+        await self._repo.update_image_job_billing_state(
+            job.id,
+            job.user_id,
+            hold_state="refunded",
+        )
+        return True
+
     async def run_pending_jobs(
         self,
         user_id: str,
@@ -418,10 +552,59 @@ class ImageJobService:
                     channel_role=str(getattr(job.channel_role, "value", job.channel_role)),
                     attempt=max(1, attempt_count + 1),
                 )
+                kind = getattr(job, "kind", None)
+                thumbnail_mode = normalize_thumbnail_reference_mode(
+                    str(
+                        getattr(job, "thumbnail_mode", "")
+                        or settings.get("thumbnailReferenceMode", "background_text")
+                        or "background_text"
+                    )
+                )
                 routing_chain = await self._routing_service.resolve_image_chain(
                     operation_type
                 )
+                if (
+                    kind == ImageKind.THUMBNAIL
+                    and thumbnail_mode == "background_text"
+                ):
+                    from platform_api.ai.registry import (
+                        image_model_supports_reference,
+                        image_model_supports_text_render,
+                    )
+
+                    routing_chain = [
+                        item
+                        for item in routing_chain
+                        if image_model_supports_reference(
+                            str(getattr(item, "provider", "") or ""),
+                            getattr(item, "sub_model", None),
+                        )
+                        and image_model_supports_text_render(
+                            str(getattr(item, "provider", "") or ""),
+                            getattr(item, "sub_model", None),
+                        )
+                    ]
+                    if not routing_chain:
+                        raise ValidationError(
+                            "Thumbnail: AI text on background needs an image model that "
+                            "accepts a reference image and reliably renders text. Set the "
+                            "thumbnail_image AI Routing primary/fallback to SLAI or "
+                            "fal/flux-2/edit, or switch Thumbnail generation to Composite.",
+                            details={
+                                "job_id": str(job.id),
+                                "operation": operation_type,
+                                "thumbnail_mode": thumbnail_mode,
+                            },
+                        )
                 primary_routing = routing_chain[0]
+                execution_chain = [
+                    (
+                        str(getattr(item, "provider", "") or "").strip(),
+                        getattr(item, "sub_model", None),
+                    )
+                    for item in routing_chain
+                    if str(getattr(item, "provider", "") or "").strip()
+                ]
                 routed_provider = str(
                     getattr(primary_routing, "provider", "") or ""
                 ).strip() or "slai"
@@ -432,7 +615,6 @@ class ImageJobService:
                 resolved_provider = routed_provider
                 model_id = routed_model
 
-                kind = getattr(job, "kind", None)
                 if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_personal_reference_source(
                     settings, kind
                 ):
@@ -498,15 +680,20 @@ class ImageJobService:
                         hold_credit_units=max_credits,
                         ai_service=resolved_provider,
                         sub_model=model_id,
+                        ref_id=str(job.id),
                     )
                     operation_hold = hold
                     quota_reserved = True
                     charged_credit_units = int(hold.held_units or 0)
                     billing_finalized = bool(hold.held_units > 0)
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_units=charged_credit_units,
+                        hold_state="held",
+                    )
 
-                reference_mode = normalize_thumbnail_reference_mode(
-                    str(settings.get("thumbnailReferenceMode", "composite") or "composite")
-                )
+                reference_mode = thumbnail_mode
                 if (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
                     and reference_mode == "dual_reference"
@@ -518,11 +705,41 @@ class ImageJobService:
 
                 resolved_sub_model = model_id
                 provider_invoked = True
+                try:
+                    await self._repo.mark_image_job_provider_invoked(job.id, user_id)
+                except Exception:
+                    logger.debug(
+                        "Could not persist provider_invoked for job %s",
+                        job.id,
+                        exc_info=True,
+                    )
                 thumb_prompt_only = (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
                     and is_prompt_only_source(settings, ImageKind.THUMBNAIL)
                 )
                 if (
+                    getattr(job, "kind", None) == ImageKind.THUMBNAIL
+                    and reference_mode == "background_text"
+                ):
+                    image_bytes, resolved_provider, resolved_sub_model = (
+                        await self._generate_thumbnail_background_text(
+                            user_id=user_id,
+                            job=job,
+                            prompt=prompt,
+                            resolved_provider=resolved_provider,
+                            model_id=model_id,
+                            operation_type=operation_type,
+                            provider_chain=execution_chain,
+                            slai_retry_attempts=slai_retry_attempts,
+                        )
+                    )
+                    executed_provider = str(resolved_provider or "").strip() or None
+                    executed_model = (
+                        str(resolved_sub_model or "").strip() or None
+                        if resolved_sub_model is not None
+                        else None
+                    )
+                elif (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
                     and reference_mode == "composite"
                 ):
@@ -537,6 +754,7 @@ class ImageJobService:
                             resolved_provider=resolved_provider,
                             model_id=model_id,
                             operation_type=operation_type,
+                            provider_chain=execution_chain,
                             slai_retry_attempts=slai_retry_attempts,
                         )
                     )
@@ -563,6 +781,7 @@ class ImageJobService:
                             base_image=base_image,
                         ),
                         operation=operation_type,
+                        provider_chain=execution_chain,
                         skip_pricing=True,
                         job_id=str(job.id),
                         slai_retry_attempts=slai_retry_attempts,
@@ -598,6 +817,11 @@ class ImageJobService:
                         or 0
                     )
                     billing_finalized = True
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_state="settled",
+                    )
 
                 output_path = self._write_image_output(
                     image_bytes=image_bytes,
@@ -665,6 +889,7 @@ class ImageJobService:
                                 reason="image_generation_deferred",
                                 ref_id=str(job.id),
                                 prior_ledger_recorded=True,
+                                provider_invoked=False,
                                 routed_provider=routed_provider,
                                 routed_model=routed_model,
                                 executed_provider=executed_provider,
@@ -682,6 +907,12 @@ class ImageJobService:
                             channel_profile_id=job.profile_id,
                             operation_type=operation_type,
                         )
+                if quota_reserved:
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_state="refunded",
+                    )
                 await self._repo.update_image_job_status(
                     job.id,
                     user_id,
@@ -718,6 +949,7 @@ class ImageJobService:
                             reason="image_generation_failed",
                             ref_id=str(job.id),
                             prior_ledger_recorded=billing_finalized,
+                            provider_invoked=provider_invoked,
                             routed_provider=routed_provider,
                             routed_model=routed_model,
                             executed_provider=executed_provider,
@@ -736,6 +968,12 @@ class ImageJobService:
                 next_status = TaskStatus.PENDING if auto_retry else TaskStatus.FAILED
                 # Persist routed/executed truth — never leave stale create-time "fal".
                 job_provider = executed_provider or resolved_provider or routed_provider
+                if quota_reserved:
+                    await self._repo.update_image_job_billing_state(
+                        job.id,
+                        user_id,
+                        hold_state="refunded",
+                    )
                 await self._repo.update_image_job_status(
                     job.id,
                     user_id,
@@ -889,6 +1127,60 @@ class ImageJobService:
             details={"kind": str(getattr(kind, "value", kind)), "source": "category"},
         )
 
+    async def _generate_thumbnail_background_text(
+        self,
+        *,
+        user_id: UUID,
+        job: ImageJob,
+        prompt: str,
+        resolved_provider: str,
+        model_id: str | None,
+        operation_type: str,
+        provider_chain: list[tuple[str, str | None]] | None = None,
+        slai_retry_attempts: int = 5,
+    ) -> tuple[bytes, str, str | None]:
+        """Send the generated background to the provider and ask it to add text."""
+        source_job = await self._wait_for_source_job_output(
+            user_id=user_id,
+            source_job_id=job.source_job_id,
+        )
+        background_path = await self._resolve_source_background_path(user_id, source_job)
+        try:
+            background_bytes = Path(background_path).read_bytes()
+        except OSError as exc:
+            raise ValidationError(
+                "Thumbnail: The background image could not be read for AI text rendering. "
+                "Retry the background, then retry the thumbnail.",
+                details={"job_id": str(job.id), "source_job_id": str(job.source_job_id)},
+            ) from exc
+        if not background_bytes:
+            raise ValidationError(
+                "Thumbnail: The background image is empty. Retry the background, then retry "
+                "the thumbnail.",
+                details={"job_id": str(job.id), "source_job_id": str(job.source_job_id)},
+            )
+
+        resolution = str(job.resolution or "1920x1080")
+        style_strength = max(0.1, min(0.4, float(job.style_strength or 0.6)))
+        outcome = await self._generation_service.submit_image_outcome(
+            str(user_id),
+            ImageRequest(
+                prompt=prompt,
+                provider=resolved_provider,
+                model_id=model_id,
+                resolution=resolution,
+                style_strength=style_strength,
+                base_image=background_bytes,
+            ),
+            operation=operation_type,
+            provider_chain=provider_chain,
+            skip_pricing=True,
+            job_id=str(job.id),
+            slai_retry_attempts=slai_retry_attempts,
+        )
+        final_bytes = to_cover_png_bytes(outcome.image_bytes, resolution)
+        return final_bytes, outcome.provider, outcome.sub_model
+
     async def _generate_thumbnail_composite(
         self,
         *,
@@ -899,6 +1191,7 @@ class ImageJobService:
         resolved_provider: str,
         model_id: str | None,
         operation_type: str,
+        provider_chain: list[tuple[str, str | None]] | None = None,
         slai_retry_attempts: int = 5,
     ) -> tuple[bytes, str, str | None]:
         source_job = await self._wait_for_source_job_output(
@@ -948,6 +1241,7 @@ class ImageJobService:
                 base_image=overlay_input,
             ),
             operation=operation_type,
+            provider_chain=provider_chain,
             skip_pricing=True,
             job_id=str(job.id),
             slai_retry_attempts=slai_retry_attempts,

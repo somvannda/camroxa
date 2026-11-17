@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 # Provider name validation
 # ---------------------------------------------------------------------------
 
-_PROVIDER_PATTERN = r"^(deepseek|openai|fal|slai|cala|kie|suno|camxora_music_api)$"
+_PROVIDER_PATTERN = r"^(deepseek|openai|fal|slai|kie|suno|camxora_music_api)$"
 
 
 # ---------------------------------------------------------------------------

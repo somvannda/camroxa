@@ -8,7 +8,7 @@ Text-to-image models (e.g. Grok Imagine Image 2.0) only accept a prompt and an
 aspect ratio — there is no reference-image input on this endpoint.
 
 The result is normalized to ``{"data": [{"url": ...}]}`` so the existing image
-byte extractor can download it, matching the SLAI/CALA response shape.
+byte extractor can download it, matching the SLAI response shape.
 """
 
 from __future__ import annotations

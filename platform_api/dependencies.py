@@ -197,13 +197,6 @@ def get_slai_client():
     return SlaiClient(settings=get_settings())
 
 
-def get_cala_client():
-    """Dependency that returns the CalaClient instance."""
-    from platform_api.clients.cala_client import CalaClient
-
-    return CalaClient(settings=get_settings())
-
-
 def get_kie_client():
     """Dependency that returns the KieClient instance (kie.ai Market API)."""
     from platform_api.clients.kie_client import KieClient
@@ -445,6 +438,7 @@ def get_batch_service():
         enforcement_service=get_usage_enforcement_service(),
         image_job_service=get_image_job_service(),
         image_sample_rotation=get_image_sample_rotation_service(),
+        image_prompt_library=get_image_prompt_library_service(),
     )
 
 
@@ -460,6 +454,21 @@ def get_image_sample_rotation_service():
     return ImageSampleRotationService(
         repo=get_image_sample_repo(),
         pack_repo=get_image_sample_pack_repo(),
+    )
+
+
+def get_image_prompt_repo():
+    from platform_api.repositories.image_prompt_repo import ImagePromptStyleRepository
+
+    return ImagePromptStyleRepository(db=get_db_pool())
+
+
+def get_image_prompt_library_service():
+    from platform_api.services.image_prompt_library import ImagePromptLibraryService
+
+    return ImagePromptLibraryService(
+        repo=get_image_prompt_repo(),
+        history=get_image_sample_repo(),
     )
 
 

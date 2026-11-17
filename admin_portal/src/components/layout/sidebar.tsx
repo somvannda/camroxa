@@ -92,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Content Pools', path: '/content-pools', icon: Library },
       { label: 'Remix Staff Picks', path: '/remix-staff-picks', icon: Sparkles },
       { label: 'Image Packs', path: '/image-sample-packs', icon: Image },
+      { label: 'Image Prompts', path: '/image-prompts', icon: Sparkles },
       { label: 'Marketplace', path: '/marketplace', icon: Store },
     ],
   },

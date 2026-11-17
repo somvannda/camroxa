@@ -194,6 +194,12 @@ CREATE TABLE IF NOT EXISTS image_jobs (
     input_image_path TEXT,
     style_reference_path TEXT,
     source_job_id UUID,
+    prompt_style_id UUID,
+    source_mode TEXT,
+    thumbnail_mode TEXT,
+    hold_units BIGINT NOT NULL DEFAULT 0,
+    hold_state TEXT NOT NULL DEFAULT 'none',
+    provider_invoked BOOLEAN NOT NULL DEFAULT FALSE,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     attempt_count INTEGER NOT NULL DEFAULT 0,
     output_image_path VARCHAR(500),
@@ -214,6 +220,29 @@ CREATE TABLE IF NOT EXISTS image_sample_packs (
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS image_prompt_styles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    prompt_text TEXT NOT NULL,
+    text_template TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS image_prompt_rotation (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    style_id UUID NOT NULL REFERENCES image_prompt_styles(id) ON DELETE CASCADE,
+    cycle_number INTEGER NOT NULL,
+    batch_id UUID,
+    used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, kind, style_id, cycle_number)
 );
 
 CREATE INDEX IF NOT EXISTS idx_image_sample_packs_category_sort

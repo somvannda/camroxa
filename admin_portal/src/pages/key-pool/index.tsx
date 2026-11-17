@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
-const PROVIDERS = ['suno', 'camxora_music_api', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie', 'youtube', 'facebook'] as const;
+const PROVIDERS = ['suno', 'camxora_music_api', 'fal', 'openai', 'deepseek', 'slai', 'kie', 'youtube', 'facebook'] as const;
 type Provider = (typeof PROVIDERS)[number];
 
 const PROVIDER_LABELS: Record<Provider, string> = {
@@ -19,7 +19,6 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   openai: 'OpenAI',
   deepseek: 'DeepSeek',
   slai: 'Slai',
-  cala: 'CALA',
   kie: 'kie.ai',
   youtube: 'YouTube',
   facebook: 'Facebook',

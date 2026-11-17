@@ -27,19 +27,37 @@ THUMBNAIL_PROMPT_ONLY_INSTRUCTION = (
     "centered horizontally and positioned slightly above the vertical middle (center Y ≈ 45% of frame height)."
 )
 
+THUMBNAIL_BACKGROUND_TEXT_INSTRUCTION = (
+    "Use the supplied image as the exact background. Keep its composition, colors, lighting, "
+    "objects, and framing unchanged. Do not redraw, recolor, crop, or move anything. "
+    "Add only the following text, exactly as written and spelled correctly:\n"
+    '"<<THUMBNAIL_TEXT>>"\n'
+    "Typography style: follow the art direction above. The text block should be about "
+    "38–42% of the frame width, centered horizontally, and positioned slightly above the "
+    "vertical middle (center Y ≈ 45% of frame height). "
+    "No extra words, letters, logos, watermarks, captions, signage, or decorations that were "
+    "not requested."
+)
+
 BACKGROUND_NO_TEXT_INSTRUCTION = (
     "Do not generate any text, letters, numbers, typography, logos, watermarks, dates, titles, "
     "labels, stickers, or signage in the background image. No readable characters anywhere."
 )
 
-VALID_THUMBNAIL_REFERENCE_MODES = ("composite", "dual_reference")
+VALID_THUMBNAIL_REFERENCE_MODES = ("composite", "dual_reference", "background_text")
 
 
 def normalize_thumbnail_reference_mode(value: str | None) -> str:
-    mode = str(value or "composite").strip().lower()
-    if mode not in VALID_THUMBNAIL_REFERENCE_MODES:
+    mode = str(value or "").strip().lower()
+    if not mode:
+        return "background_text"
+    if mode in {"background_text", "text_on_background", "image_edit", "edit"}:
+        return "background_text"
+    if mode == "dual_reference":
+        return "dual_reference"
+    if mode == "composite":
         return "composite"
-    return mode
+    return "composite"
 
 
 def resolution_wh(resolution: str) -> tuple[int, int]:
@@ -193,6 +211,21 @@ def enrich_thumbnail_prompt(prompt: str, *, prompt_only: bool = False) -> str:
     )
     base = str(prompt or "").strip()
     if instruction in base:
+        return base
+    if not base:
+        return instruction
+    return f"{base}\n\n{instruction}".strip()
+
+
+def enrich_thumbnail_background_text_prompt(prompt: str, text: str) -> str:
+    """Append the image-edit instruction with the exact thumbnail text."""
+    base = str(prompt or "").strip()
+    display_text = str(text or "").strip() or "NEW MUSIC"
+    instruction = THUMBNAIL_BACKGROUND_TEXT_INSTRUCTION.replace(
+        "<<THUMBNAIL_TEXT>>",
+        display_text.replace('"', "'"),
+    )
+    if "Use the supplied image as the exact background." in base:
         return base
     if not base:
         return instruction
