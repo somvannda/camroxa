@@ -20,6 +20,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
   the prompt. Selecting a My prompt option enables them again.
 - **Longer prompts.** The prompt limit is now 20,000 characters for admin prompt
   styles, the admin editor, and composed image prompts.
+- **Admin-enforced library only.** Admins can turn on *Admin library only* in
+  Admin → Settings → Image Generation. Every desktop user is then forced to the
+  admin library, the app prompt editors are hidden, and user settings cannot
+  override it.
 
 ## [1.7.0] - 2026-11-17
 
