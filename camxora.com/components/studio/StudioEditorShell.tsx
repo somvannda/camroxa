@@ -64,6 +64,7 @@ import {
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
 import { projectFromSong } from "@/lib/studio-from-clip";
+import { buildDemoProject } from "@/lib/studio-seed";
 import {
   SONG_DRAG_TYPE,
   StudioLibrary,
@@ -920,6 +921,31 @@ export function StudioEditorShell() {
       active = false;
     };
   }, [authLoading, user, clipImport, projectId]);
+
+  /**
+   * Start overlay → "Drum & Bass Demo" (S03/S06). The reference opens Suno's bundled
+   * multi-track project; ours is a document we own: the seed loop as one audio clip on one
+   * track. Create it, then stay in the editor on the new id so the tile behaves like the
+   * other starting points rather than navigating away and back.
+   */
+  async function openDemoProject() {
+    if (!user) {
+      setError("Sign in to open the demo project.");
+      return;
+    }
+    try {
+      const created = await createStudioProject(buildDemoProject());
+      window.history.replaceState(
+        null,
+        "",
+        `/studio/editor?project=${encodeURIComponent(created.id)}`
+      );
+      setProjectId(created.id);
+      setExportToast("Drum & Bass Demo — press play to hear the loop.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not open the demo project.");
+    }
+  }
 
   useEffect(() => {
     if (authLoading) return;
@@ -6438,6 +6464,7 @@ export function StudioEditorShell() {
               : { kind: "songs", title: "All Songs", filter: "all" }
           );
         }}
+        onOpenDemo={openDemoProject}
       />
 
       <StudioMetricsProbe />
