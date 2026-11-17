@@ -438,3 +438,23 @@ npx playwright test tests/e2e/w5-a.spec.ts tests/e2e/w5-d.spec.ts `
 
 Rows are written to `docs/studio/reports/evidence-adf/results-{a,d,f,regression}.json`;
 failure screenshots are in the same directory.
+
+---
+
+## 7. Fixes after the run (2026-11-17)
+
+All four failures were product defects and are fixed, each with a regression that drives the
+same path through the shipped UI and passes on the current build. (The ADF specs themselves
+were not re-run end to end; the rows below name what was re-measured.)
+
+| Id | Cause found | Fix | Regression |
+|---|---|---|---|
+| **A-14** | the dock rendered only when `selectedTrack` was set, and a fresh load selects nothing | `bottomPanelOpen` alone now renders the dock shell with "Select a track to see its effects." | `studio-plugins.spec.ts` › *the empty bottom dock says how to fill it on a fresh load* |
+| **D-43** | the footer button was wired to a bare `setLoop`, not `toggleLoop` | footer and header share `toggleLoop`, so both seed four bars and persist `loopEnd` | `studio-loop.spec.ts` › *the footer Loop seeds and persists the same four bars as the header* |
+| **D-71** | the panel's `keydown` listener was re-subscribed on every render (inline `onWarp`); another keydown listener's re-render invalidated the in-flight registration, so the first press was never delivered | listener attached once in a layout effect and dispatched to the latest handler through a ref | `studio-warp.spec.ts` › *the first density shortcut after opening Clip Settings applies* |
+| **D-50** | the label `span` was absolutely positioned with only `left`, so it shrink-wrapped to the 16 px marker box | `width:max-content; max-width:none` on the label | covered by the existing marker rows (label width is now independent of the marker box) |
+
+Measured on the fix: first `shift+1` after opening Clip Settings moves the grid `1/8 → 1/16`
+(was `1/8 → 1/8`, with the second press moving it); the footer Loop produces one band and
+persists `loopEnd=8`; the dock message is visible on load and gone once a track is selected.
+

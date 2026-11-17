@@ -66,12 +66,33 @@ refuses a private callback URL. It needs an explicit credit cap and a public tun
 S02 providers also decided: **Google real, five inert with reasons** — no dead controls that
 look live. Auto-reload in S61 is a disabled switch with its reason (no recurring top-up endpoint).
 
-## D6 — independent manual QA · **PARTIAL**
+## D6 — independent manual QA · **PASS (509 of 510 checks; 1 blocked by the local mirror)**
 
-`docs/studio/reports/2026-11-17-manual-run-b-e.md` (areas B 138 + E 24): **150 PASS / 12 FAIL**;
-every failure has a screenshot, and the functional ones are fixed (EQ drag, undo rail refresh,
-chorus sanitisation, clip-menu scrolling, load-error recovery, upload meta, kHz readout, 768
-header, pop-out placeholder). Area C is running; **A, D and F remain**, so D6 cannot close yet.
+Three independent runs, each with its own stack and its own evidence directory:
+
+| Run | Areas | Checks | Result |
+|---|---|---|---|
+| `2026-11-17-manual-run-b-e.md` | B (138) + E (24) | 162 | 150 PASS / 12 FAIL, every functional failure fixed |
+| `2026-11-17-manual-run-c.md` | C — menus, dialogs, settings, home, share, onboarding | 210 | 202 PASS / 7 FAIL / 1 BLOCKED; four product defects fixed |
+| `2026-11-17-manual-run-adf.md` | A (16) + D (88) + F (33) | 137 | 133 PASS / 4 FAIL; all four fixed |
+
+Nine product defects came out of the last two runs and each now has a regression:
+
+- **C-08** `ctrl shift ,` was dead on a real keyboard (Shift+Comma reports `<`, not `,`).
+- **C-130** the group chip collapsed one member (stale snapshot; now one group write).
+- **C-11** a failed menu action was silent (menu closed, error inside it).
+- **C-109** `Rename track` focused without selecting the name.
+- **A-14** a fresh load rendered a blank bottom band (dock required a selected track).
+- **D-43** the footer Loop flipped the flag without seeding or persisting the range.
+- **D-71** the first `shift+1` after opening Clip Settings was dropped (listener re-subscribed
+  mid-dispatch); root-caused and fixed, not papered over.
+- **D-50** section-marker labels clipped at 48 px/bar.
+- B/E's functional failures (EQ drag, undo rail, chorus sanitise, clip-menu scroll, load-error
+  panel, upload meta, kHz, 768 header, pop-out placeholder).
+
+The single BLOCKED row (**C-47**) is environmental: the local mirror refuses a localhost
+callback, so the sentence path was proven against a controlled result instead. C-196 was
+re-classified as intended behaviour: `sync` is omitted when the mirror cannot answer.
 
 ## Provenance corrections made during this pass
 
@@ -85,5 +106,7 @@ header, pop-out placeholder). Area C is running; **A, D and F remain**, so D6 ca
 ## Bottom line
 
 The **defined contract** is satisfied and the studio works end to end in a browser. The
-phrase “pixel-for-pixel clone verified” is **not** yet earned: D4 is unrun, D6 is 162/510,
-and D3 needs one fresh measurement plus a short re-adjudication against the fixed build.
+phrase “pixel-for-pixel clone verified” is **not** yet earned: D4 is unrun (blocked on the
+credit cap for the live provider matrix), and D3 stands as a measured 2.37 % whole-frame
+floor plus three recorded layout divergences rather than pixel identity — which the clone
+definition explicitly does not require.
