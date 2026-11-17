@@ -146,7 +146,7 @@ function voiceFailureMessage(message: string): string {
     return "Create the voice from a song on the same Suno account that has Voice access.";
   }
   if (/403|401|entitlement|premier|vox-stem.*forbidden|voice-vox-stem/i.test(message)) {
-    return "Voice cloning needs a Voice-entitled (Premier) Suno account. Connect one in Admin â†’ Key Pool.";
+    return "Voice cloning needs a Voice-entitled (Premier) Suno account. Connect one in Admin → Key Pool.";
   }
   if (/429|rate.?limit|too many requests/i.test(message)) {
     return "The voice service is rate-limited. Please try again in a few minutes.";
@@ -1509,7 +1509,7 @@ export function CreateStudio() {
 
   function pickReferenceVideo() {
     if (referenceVideo) {
-      warnToast("Remove the attached clip first â€” one video at a time.");
+      warnToast("Remove the attached clip first — one video at a time.");
       return;
     }
     videoInputRef.current?.click();
@@ -3715,7 +3715,7 @@ export function CreateStudio() {
                       <Icon name="fa-circle-notch" />
                     </span>
                     <span className="s-video-chip-text">
-                      <b>Uploading videoâ€¦</b>
+                      <b>Uploading video…</b>
                       <small>Keep this tab open</small>
                     </span>
                   </div>
@@ -3748,7 +3748,7 @@ export function CreateStudio() {
                         id="create-prompt"
                         value={prompt}
                         onChange={(event) => setPrompt(event.target.value)}
-                        placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPMâ€¦"
+                        placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM…"
                         maxLength={5000}
                         rows={5}
                         aria-label="Song description"
@@ -3970,7 +3970,7 @@ export function CreateStudio() {
                           onChange={(event) => setStyle(event.target.value)}
                           placeholder={
                             instrumental
-                              ? "Instrumental genre, mood, instrumentation, tempoâ€¦"
+                              ? "Instrumental genre, mood, instrumentation, tempo…"
                               : "urbano, electric guitar, upbeat rock, 128 BPM, eurodance"
                           }
                           maxLength={1000}
@@ -3997,7 +3997,7 @@ export function CreateStudio() {
                             onClick={() => void suggestStyles()}
                             disabled={generatingStyles}
                           >
-                            <Icon name="fa-wand-magic-sparkles" /> {generatingStyles ? "Enhancingâ€¦" : "Enhance"}
+                            <Icon name="fa-wand-magic-sparkles" /> {generatingStyles ? "Enhancing…" : "Enhance"}
                           </button>
                         </div>
                       </div>
@@ -4049,10 +4049,10 @@ export function CreateStudio() {
                           onChange={(event) => setLyrics(event.target.value)}
                           placeholder={
                             instrumental
-                              ? "Instrumental track â€” lyrics are not used."
+                              ? "Instrumental track — lyrics are not used."
                               : lyricsMode === "write"
-                                ? "Write lyrics, or paste a verseâ€¦"
-                                : "Describe the story or feeling you want the lyrics to captureâ€¦"
+                                ? "Write lyrics, or paste a verse…"
+                                : "Describe the story or feeling you want the lyrics to capture…"
                           }
                           disabled={instrumental}
                           maxLength={5000}
@@ -4324,7 +4324,7 @@ export function CreateStudio() {
                           onClick={() => void onCreateWorkspace()}
                           disabled={workspaceBusy || !newWorkspaceName.trim()}
                         >
-                          {workspaceBusy ? "Savingâ€¦" : "Create"}
+                          {workspaceBusy ? "Saving…" : "Create"}
                         </button>
                       </div>
                     ) : null}
@@ -4350,7 +4350,7 @@ export function CreateStudio() {
                           onClick={() => void onRenameWorkspace()}
                           disabled={workspaceBusy || !renameWorkspaceName.trim()}
                         >
-                          {workspaceBusy ? "Savingâ€¦" : "Save"}
+                          {workspaceBusy ? "Saving…" : "Save"}
                         </button>
                       </div>
                     ) : null}
@@ -4394,9 +4394,9 @@ export function CreateStudio() {
                     <Icon name="fa-wand-magic-sparkles" />
                     <span>
                       {batchProgress
-                        ? `Creating ${Math.min(batchProgress.done + 1, batchProgress.total)}/${batchProgress.total}â€¦`
+                        ? `Creating ${Math.min(batchProgress.done + 1, batchProgress.total)}/${batchProgress.total}…`
                         : busy
-                          ? "Creatingâ€¦"
+                          ? "Creating…"
                           : cooldownSeconds > 0
                             ? `Wait ${cooldownSeconds}s`
                             : queueFull
@@ -4693,7 +4693,7 @@ export function CreateStudio() {
                   {batchBusy
                     ? batchDownloadProgress
                       ? `${batchDownloadProgress.done}/${batchDownloadProgress.total}`
-                      : "Preparingâ€¦"
+                      : "Preparing…"
                     : "ZIP"}
                 </button>
                 <button type="button" className="s-chip" onClick={() => setSelectedClipKeys([])}>
@@ -4985,7 +4985,7 @@ export function CreateStudio() {
                   onClick={() => void loadMoreSongs()}
                   disabled={loadingMore}
                 >
-                  {loadingMore ? "Loadingâ€¦" : `Load more (${songs.length} of ${totalSongs})`}
+                  {loadingMore ? "Loading…" : `Load more (${songs.length} of ${totalSongs})`}
                 </button>
               </div>
             ) : null}
@@ -5198,7 +5198,7 @@ export function CreateStudio() {
                 {deleteTarget.variant
                   ? `(${deleteTarget.variant === "alt" ? "Version 2" : "Version 1"}) moves to Trash. The other version stays in your library.`
                   : "and both versions move to Trash."}{" "}
-                You can restore it from Library â†’ Trash.
+                You can restore it from Library → Trash.
               </p>
             </div>
             <div className="s-modal-foot">
@@ -5279,18 +5279,18 @@ export function CreateStudio() {
                       <span>JPG, PNG, WebP or GIF · up to 10 MB</span>
                     </label>
                   )}
-                  {imageUploading ? <p className="s-note">Uploadingâ€¦</p> : null}
+                  {imageUploading ? <p className="s-note">Uploading…</p> : null}
                   {imageError ? <p className="s-error">{imageError}</p> : null}
                   <p className="s-note">The image guides the song&apos;s mood and cover art.</p>
                 </div>
               ) : attachModal === "playlist" ? (
                 <div className="s-playlist-picker">
                   <p className="s-note">
-                    Choose a playlist â€” its track styles will be merged into Styles.
+                    Choose a playlist — its track styles will be merged into Styles.
                   </p>
                   {playlistSourceError ? <p className="s-error">{playlistSourceError}</p> : null}
                   {playlistSource === null ? (
-                    <p className="s-note">Loading playlistsâ€¦</p>
+                    <p className="s-note">Loading playlists…</p>
                   ) : playlistSource.length ? (
                     playlistSource.map((playlist) => (
                       <button
@@ -5414,10 +5414,10 @@ export function CreateStudio() {
                       </>
                     ) : null}
                   </div>
-                  {audioUploading ? <p className="s-note">Uploadingâ€¦</p> : null}
+                  {audioUploading ? <p className="s-note">Uploading…</p> : null}
                   {audioBusy ? (
                     <p className="s-note">
-                      {audioKind === "cover" ? "Covering" : "Extending"}â€¦ status: {audioStatus || "queued"}
+                      {audioKind === "cover" ? "Covering" : "Extending"}… status: {audioStatus || "queued"}
                     </p>
                   ) : null}
                   {audioError ? <p className="s-error">{audioError}</p> : null}
@@ -5483,7 +5483,7 @@ export function CreateStudio() {
                         Turn a finished song into an MP4 with its cover art and a live waveform.
                       </p>
                       {videoSongs === null ? (
-                        <p className="s-note">Loading your songsâ€¦</p>
+                        <p className="s-note">Loading your songs…</p>
                       ) : videoSongs.length ? (
                         <div className="s-video-songs">
                           {videoSongs.map((song) => {
@@ -5578,7 +5578,7 @@ export function CreateStudio() {
                             disabled={videoBackgroundBusy}
                           >
                             <Icon name="fa-folder-open" />{" "}
-                            {videoBackgroundBusy ? "Uploadingâ€¦" : "Browse"}
+                            {videoBackgroundBusy ? "Uploading…" : "Browse"}
                           </button>
                         </div>
                       </div>
@@ -5623,7 +5623,7 @@ export function CreateStudio() {
                         </div>
                       ) : (
                         <p className="s-note">
-                          No background clip â€” the cover art is used. Browse an MP4, MOV, or WebM to
+                          No background clip — the cover art is used. Browse an MP4, MOV, or WebM to
                           use it instead.
                         </p>
                       )}
@@ -5634,7 +5634,7 @@ export function CreateStudio() {
 
                       {videoBusy ? (
                         <p className="s-note">
-                          Rendering videoâ€¦ status: {videoOperation?.status || "queued"}
+                          Rendering video… status: {videoOperation?.status || "queued"}
                         </p>
                       ) : null}
                       {videoError ? <p className="s-error">{videoError}</p> : null}
@@ -5646,7 +5646,7 @@ export function CreateStudio() {
                         disabled={videoBusy || !videoTaskId}
                       >
                         <Icon name={videoBusy ? "fa-circle-notch" : "fa-video"} />{" "}
-                        {videoBusy ? "Renderingâ€¦" : "Create video"}
+                        {videoBusy ? "Rendering…" : "Create video"}
                       </button>
                     </>
                   )}
@@ -5723,7 +5723,7 @@ export function CreateStudio() {
                         onChange={(event) => setVoiceStyles(event.target.value)}
                       />
                       {voiceError ? <p className="s-error">{voiceError}</p> : null}
-                      {voiceBusy ? <p className="s-note">Creating voiceâ€¦</p> : null}
+                      {voiceBusy ? <p className="s-note">Creating voice…</p> : null}
                       <button
                         type="button"
                         className="s-btn s-btn-primary"
@@ -5731,7 +5731,7 @@ export function CreateStudio() {
                         disabled={voiceBusy || !voiceCreateTaskId || !voiceName.trim()}
                       >
                         <Icon name="fa-microphone" />{" "}
-                        {voiceBusy ? "Creatingâ€¦" : "Create voice"}
+                        {voiceBusy ? "Creating…" : "Create voice"}
                       </button>
                       <p className="s-note">
                         Cloning requires a Voice-entitled (Premier) Suno account.
@@ -5790,7 +5790,7 @@ export function CreateStudio() {
 
                           <div className="s-voice-list">
                             {voicePersonas === null ? (
-                              <p className="s-note">Loading voicesâ€¦</p>
+                              <p className="s-note">Loading voices…</p>
                             ) : (
                               (() => {
                                 const query = voiceSearch.trim().toLowerCase();
@@ -5835,7 +5835,7 @@ export function CreateStudio() {
                                             ? persona.styles || "Custom voice"
                                             : persona.status === "error"
                                               ? voiceFailureMessage(persona.error_message || "")
-                                              : "Preparing voiceâ€¦"}
+                                              : "Preparing voice…"}
                                         </small>
                                       </span>
                                       {selectedPersona?.id === persona.id ? (
@@ -6014,7 +6014,7 @@ export function CreateStudio() {
             {remixTab === "staff" ? (
               <div className="s-remix-list">
                 {staffPicks === null ? (
-                  <p className="s-note">Loading Staff Picksâ€¦</p>
+                  <p className="s-note">Loading Staff Picks…</p>
                 ) : staffPicks.filter((pick) => {
                     const query = remixSearch.trim().toLowerCase();
                     return (
@@ -6147,7 +6147,7 @@ export function CreateStudio() {
             </div>
             <div className="s-remix-list">
               {audioBrowseItems === null ? (
-                <p className="s-note">Loading audioâ€¦</p>
+                <p className="s-note">Loading audio…</p>
               ) : (() => {
                 const query = audioBrowseSearch.trim().toLowerCase();
                 const items = audioBrowseItems.filter(
@@ -6327,7 +6327,7 @@ export function CreateStudio() {
                 <p className="s-voice-record-copy">Sing something in your natural voice.</p>
                 <div className="s-voice-record-divider" />
                 <div className="s-voice-record-main">
-                  <span>{voiceRecording ? "Recordingâ€¦" : "Click to start recording"}</span>
+                  <span>{voiceRecording ? "Recording…" : "Click to start recording"}</span>
                   <button
                     type="button"
                     className={cn("s-voice-record-btn", voiceRecording && "recording")}
@@ -6388,7 +6388,7 @@ export function CreateStudio() {
                   />
                 </div>
                 <div className="s-voice-trim-range">
-                  00:00 â€” {String(Math.floor(voiceSampleDuration / 60)).padStart(2, "0")}:
+                  00:00 — {String(Math.floor(voiceSampleDuration / 60)).padStart(2, "0")}:
                   {String(voiceSampleDuration % 60).padStart(2, "0")}
                 </div>
                 {voiceSampleDuration > 0 ? (
@@ -6474,7 +6474,7 @@ export function CreateStudio() {
             {voiceCreateStep === "phrase" ? (
               <div className="s-voice-phrase">
                 <p className="s-voice-phrase-label">Read this out loud</p>
-                <blockquote className="s-voice-phrase-text">â€œ{voicePhraseText}â€</blockquote>
+                <blockquote className="s-voice-phrase-text">“{voicePhraseText}”</blockquote>
                 <div className="s-voice-record-divider" />
                 {voiceRecording ? (
                   <div className="s-voice-phrase-recording">
@@ -6508,7 +6508,7 @@ export function CreateStudio() {
             {voiceCreateStep === "verifying" ? (
               <div className="s-voice-verifying">
                 <span className="s-voice-spinner" />
-                <b>Verifying your voiceâ€¦</b>
+                <b>Verifying your voice…</b>
                 <p>This usually takes a few seconds.</p>
               </div>
             ) : null}
@@ -6612,7 +6612,7 @@ export function CreateStudio() {
                   }}
                   disabled={voiceBusy || !voiceName.trim() || (!voiceSampleUrl && !voiceCreateTaskId)}
                 >
-                  <Icon name="fa-microphone" /> {voiceBusy ? "Creatingâ€¦" : "Create voice"}
+                  <Icon name="fa-microphone" /> {voiceBusy ? "Creating…" : "Create voice"}
                 </button>
               </div>
             ) : null}
@@ -6668,7 +6668,7 @@ export function CreateStudio() {
                     className="s-styles-modal-input"
                     value={style}
                     onChange={(event) => setStyle(event.target.value.slice(0, 1000))}
-                    placeholder="Describe genre, mood, instruments, tempo, and vocal styleâ€¦"
+                    placeholder="Describe genre, mood, instruments, tempo, and vocal style…"
                     maxLength={1000}
                     rows={5}
                     autoFocus
@@ -6779,7 +6779,7 @@ export function CreateStudio() {
                 </button>
               ) : null}
               {savedLyrics === null ? (
-                <p className="s-note">Loading saved lyricsâ€¦</p>
+                <p className="s-note">Loading saved lyrics…</p>
               ) : savedLyrics.length ? (
                 savedLyrics.map((item) => (
                   <div key={item.id} className="s-lyrics-saved-row">
@@ -6917,7 +6917,7 @@ export function CreateStudio() {
                     onClick={() => void saveLyricsDraft()}
                     disabled={lyricsSaving || !lyrics.trim()}
                   >
-                    {lyricsSaving ? "Savingâ€¦" : "Save"}
+                    {lyricsSaving ? "Saving…" : "Save"}
                   </button>
                   <button
                     type="button"
