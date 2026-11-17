@@ -133,17 +133,14 @@ FAL_IMAGE_MODELS: dict[str, ModelSpec] = {
     "flux-schnell": ModelSpec(
         api_id="fal-ai/flux/schnell",
         cost_tier="~$0.003/img",
-        supports_reference_image=True,
     ),
     "flux-dev": ModelSpec(
         api_id="fal-ai/flux/dev",
         cost_tier="~$0.025/img",
-        supports_reference_image=True,
     ),
     "flux-pro": ModelSpec(
         api_id="fal-ai/flux-pro/v1.1",
         cost_tier="~$0.05/img",
-        supports_reference_image=True,
     ),
 }
 
@@ -364,8 +361,8 @@ def image_model_supports_reference(provider: str, model: str | None) -> bool:
     if spec is not None:
         return bool(spec.supports_reference_image)
     # Unknown legacy sub-model ids for a provider that supports image editing
-    # (e.g. stored routing rows with ``fal/flux`` instead of ``fal/flux-pro``).
-    return provider_key in {"fal", "slai"}
+    # (e.g. stored routing rows with ``slai/cx/gpt-image-2.5`` aliases).
+    return provider_key == "slai"
 
 
 def get_music_model_spec(provider: str, model: str | None) -> ModelSpec | None:

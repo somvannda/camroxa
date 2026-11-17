@@ -834,6 +834,9 @@ async def test_create_batch_includes_image_cost_when_auto_image_is_enabled(
     settings_service: AsyncMock,
 ) -> None:
     credit_service.get_balance = AsyncMock(return_value=58)
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={"thumbnailReferenceMode": "composite"}
+    )
     ai_routing_service.resolve = AsyncMock(
         side_effect=[
             SimpleNamespace(provider="deepseek", sub_model="chat"),
