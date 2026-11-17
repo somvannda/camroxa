@@ -2,6 +2,35 @@
 
 State as of **2026-11-12**. Start here; the long plans live beside this file.
 
+## Update 2026-11-17 - all six criteria closed; the provider matrix is green
+
+- **Status:** D1 PASS (3,510 platform tests) · D2 PASS (185 real-mirror e2e, 0 x 5xx) · D3
+  PASS with three recorded layout divergences · **D4 PASS (14/14 provider rows, 188 of 320
+  credits)** · D5 DONE · D6 PASS (509/510 manual checks).
+- **D4 finally ran.** `node scripts/dev/provider-matrix.mjs --budget 320 --execute` generated a
+  song on `V6` (10 credits) and the thirteen dependent rows ran against its task id for 178
+  more. Every row carries a platform id and a musicapi job id. Table and reproduction in
+  `docs/studio/reports/2026-11-17-provider-matrix-final.md`.
+- **The blocker was never the Studio.** Nine attempts failed first. The rule that costs the
+  most time: **every process that submits to the provider needs
+  `PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003` in its own environment** - 
+  `platform_api/.env` does not set it, and the fallback is production `musicapi.camxora.com`,
+  which rejects sandbox keys with `401`. The worker needs it just as much as the API, plus
+  `PLATFORM_SUNO_CALLBACK_BASE_URL=<public tunnel>`. Use `V6`: `V6_MINI` has never completed in
+  this sandbox.
+- **Product fix from that pass:** a `web_music_generate` job that exhausts its attempts used to
+  leave the task `pending` forever with no error and a held reservation. The worker now fails
+  the task through the refund path (`_fail_dead_generate`, tests included). Entry:
+  `docs/changelog/2026-11-17-web-music-dead-generate-job.md`.
+- **Runner fixes:** refresh-and-retry on `401` (the JWT lives exactly as long as the default
+  poll window), `spent = max(row total, wallet delta)`, warm MusicAPI health before reading
+  readiness (a cold call measures 12-23 s; the platform's probe allows 10 s), 30 s probe
+  timeout, and the generate row records its `platform_id`.
+- **Production is untouched** at `985ccf00` and `music.camxora.com` was never touched. The
+  deploy (migrations, `deploy_production.py`, `deploy_musicapi_production.py --yes`) still
+  waits for an explicit request.
+
+
 ## Update 2026-11-16 — stack rebuilt, storage-backed uploads re-verified
 
 - **Recovery:** a host restart wiped this worktree (it is not durable). Rebuilt from
