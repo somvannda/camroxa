@@ -53,6 +53,13 @@ transport geometry, share copy/permissions, menu ordering, clip-info rail, key/B
 They are documented and ranked in `docs/studio/reports/2026-11-16-agent-c-consolidated.md`
 and need their own branch.
 
+> **Correction (2026-11-17).** The blank clip bodies that supported C1 in the captures were
+> partly a **fixture bug**: the capture script requested `/demo-loop.wav` while the asset is
+> `/seed/demo-loop.wav`, so 31 scenarios never decoded audio. The C1 fix stands on its own
+> terms — a failed fetch or a cross-origin decode without CORS still produced an invisible
+> canvas and a cached failure — but the capture evidence alone did not prove it. W10 fixed
+> the fixture and re-shot the frames; the renderer now reports `data-waveform` state.
+
 ## Verification
 
 Vitest **376** · Playwright **182 passed / 2 skipped** on the lean mirror · typecheck +
