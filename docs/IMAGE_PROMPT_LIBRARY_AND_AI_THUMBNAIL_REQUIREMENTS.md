@@ -284,6 +284,7 @@ Thumbnail generation:
 Behavior:
 
 - When `admin_library` is active, the local prompt box is disabled and shows “Using admin prompt library — a different style is chosen per channel.”
+- Admin → Settings → Image Generation can force **Admin library only** globally (`imagePromptLibraryOnly`). The server then ignores every user prompt source, and the desktop hides the app prompt editors.
 - Show active style counts from the summary endpoint.
 - If zero active styles, block generation with a clear inline error.
 - If fewer than two active styles for a kind, warn that both channels may reuse one style.
