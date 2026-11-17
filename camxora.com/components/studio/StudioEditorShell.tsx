@@ -7463,6 +7463,13 @@ export function StudioEditorShell() {
           onSendsChange={(kind, value) => setTrackSend(selectedTrack, kind, value)}
           onChange={(next) => commitChain(selectedTrack, next)}
         />
+      ) : bottomPanelOpen ? (
+        /* Nothing is selected on a fresh load, so the band used to render empty (W5 A-14). */
+        <section className="sp-dock" aria-label="Plugin chain">
+          <div className="sp-empty">
+            <p>Select a track to see its effects.</p>
+          </div>
+        </section>
       ) : null}
 
       <StudioFooter
@@ -7473,7 +7480,7 @@ export function StudioEditorShell() {
         }}
         hasTrack={masterSelected || Boolean(selectedTrack)}
         loop={loop}
-        onLoop={() => setLoop((value) => !value)}
+        onLoop={toggleLoop}
         onZoomOut={() => zoomBy(-1)}
         onZoomFit={zoomToFit}
         onZoomIn={() => zoomBy(1)}

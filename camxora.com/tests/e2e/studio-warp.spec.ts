@@ -150,3 +150,25 @@ test("transients place marker heads that can be selected, dragged and quantized"
   const warp = await savedWarp(page, projectId);
   expect(warp?.markers?.length).toBeGreaterThan(1);
 });
+
+test("the first density shortcut after opening Clip Settings applies", async ({ page }) => {
+  test.setTimeout(120_000);
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, {
+    title: `Grid ${tag}`,
+    clips: [
+      { id: "audio", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" },
+    ],
+  });
+
+  await openEditor(page);
+  const activeGrid = page.locator('[aria-label="Quantize grid"] button[aria-pressed="true"]');
+  await expect(activeGrid).toHaveText("1/8");
+
+  // The panel's shortcut listener used to be re-registered mid-dispatch, so the key
+  // pressed straight after opening was dropped (W5 D-71).
+  await page.keyboard.press("Shift+Digit1");
+  await expect(activeGrid).toHaveText("1/16");
+  await page.keyboard.press("Shift+Digit2");
+  await expect(activeGrid).toHaveText("1/8");
+});

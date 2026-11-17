@@ -549,8 +549,9 @@ export function StudioProjectMenu({
       ) : null}
 
       {/* A failed action closes the menu first; without this the error would render inside
-          a menu the user can no longer see (W5-C C-11). */}
-      {error && !open ? (
+          a menu the user can no longer see (W5-C C-11). A dialog prints its own copy, so
+          this surface stays out of the way while one is open. */}
+      {error && !open && dialog === null ? (
         <div className="se-error" role="alert">
           {error}
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { Waveform } from "@/components/studio/Waveform";
@@ -27,6 +27,9 @@ import {
   type WarpMode,
   type WarpState,
 } from "@/lib/studio-warp";
+
+/** `useLayoutEffect` on the client, `useEffect` during any server render. */
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
  * Audio clip editor (S30, spec §81/§97): the captured "Clip Settings" column beside a
@@ -172,55 +175,64 @@ export function StudioAudioEditor(props: StudioAudioEditorProps) {
     };
   });
 
-  /** The panel owns the marker shortcuts while it is open (spec §36). */
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-      ) {
-        return;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
-        event.preventDefault();
-        setSelected(warp.markers.map((marker) => marker.id));
-        return;
-      }
-      if (event.shiftKey && event.key.toLowerCase() === "q") {
-        event.preventDefault();
-        const ids = selected.length ? selected : warp.markers.map((marker) => marker.id);
-        const untouched = warp.markers.filter((marker) => !ids.includes(marker.id));
-        const snapped = quantiseWarpMarkers(
-          warp.markers.filter((marker) => ids.includes(marker.id)),
-          secondsPerBar,
-          beatsPerBar
+  /**
+   * The panel owns the marker shortcuts while it is open (spec §36).
+   *
+   * The listener is attached once and dispatches to the latest handler. Re-subscribing on
+   * every render (the `onWarp` prop is an inline arrow) let another keydown listener's
+   * re-render invalidate the in-flight registration, so the first SHIFT 1 after the panel
+   * opened was dropped (W5 D-71). A layout effect attaches before the panel is on screen.
+   */
+  const shortcutRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  shortcutRef.current = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+    ) {
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      setSelected(warp.markers.map((marker) => marker.id));
+      return;
+    }
+    if (event.shiftKey && event.key.toLowerCase() === "q") {
+      event.preventDefault();
+      const ids = selected.length ? selected : warp.markers.map((marker) => marker.id);
+      const untouched = warp.markers.filter((marker) => !ids.includes(marker.id));
+      const snapped = quantiseWarpMarkers(
+        warp.markers.filter((marker) => ids.includes(marker.id)),
+        secondsPerBar,
+        beatsPerBar
+      );
+      onWarp({
+        ...warp,
+        markers: [...untouched, ...snapped].sort((a, b) => a.time - b.time),
+      });
+      setSelected([]);
+      return;
+    }
+    // SHIFT 1 / SHIFT 2 step the quantize grid finer / coarser (spec §36).
+    const denser = event.shiftKey && (event.key === "1" || event.key === "!");
+    const sparser = event.shiftKey && (event.key === "2" || event.key === "@");
+    if (denser || sparser) {
+      event.preventDefault();
+      setQuantizeGrid((current) => {
+        const index = QUANTIZE_GRIDS.findIndex((grid) => grid.value === current);
+        const next = Math.max(
+          0,
+          Math.min(QUANTIZE_GRIDS.length - 1, index + (denser ? 1 : -1))
         );
-        onWarp({
-          ...warp,
-          markers: [...untouched, ...snapped].sort((a, b) => a.time - b.time),
-        });
-        setSelected([]);
-        return;
-      }
-      // SHIFT 1 / SHIFT 2 step the quantize grid finer / coarser (spec §36).
-      const denser = event.shiftKey && (event.key === "1" || event.key === "!");
-      const sparser = event.shiftKey && (event.key === "2" || event.key === "@");
-      if (denser || sparser) {
-        event.preventDefault();
-        setQuantizeGrid((current) => {
-          const index = QUANTIZE_GRIDS.findIndex((grid) => grid.value === current);
-          const next = Math.max(
-            0,
-            Math.min(QUANTIZE_GRIDS.length - 1, index + (denser ? 1 : -1))
-          );
-          return QUANTIZE_GRIDS[next].value;
-        });
-      }
-    };
+        return QUANTIZE_GRIDS[next].value;
+      });
+    }
+  };
+  useClientLayoutEffect(() => {
+    const onKey = (event: KeyboardEvent) => shortcutRef.current(event);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [warp, selected, secondsPerBar, beatsPerBar, onWarp]);
+  }, []);
 
   const bars = Math.max(1, Math.ceil(duration / secondsPerBar));
   const firstBar = Math.floor(clipStart / secondsPerBar);

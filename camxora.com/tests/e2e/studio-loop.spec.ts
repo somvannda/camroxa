@@ -90,3 +90,27 @@ test("the loop range has a flag at each end and the left flag drags", async ({ p
     )
     .toBeGreaterThan(0);
 });
+
+test("the footer Loop seeds and persists the same four bars as the header", async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = await createStudioProject(page, { title: "Footer loop" });
+
+  const saved = () =>
+    page.evaluate(async (id) => {
+      const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+      const body = (await response.json()) as {
+        data?: { loopStart?: number; loopEnd?: number };
+      };
+      return { start: body.data?.loopStart ?? 0, end: body.data?.loopEnd ?? null };
+    }, projectId);
+
+  const footerLoop = page.locator("footer").getByRole("button", { name: "Loop", exact: true });
+  await footerLoop.click();
+
+  // The footer used to flip the flag alone: no band and no persisted range (W5 D-43).
+  await expect(page.locator(".se-loop-band")).toHaveCount(1);
+  await expect.poll(async () => (await saved()).end, { timeout: 15_000 }).toBe(8);
+
+  await footerLoop.click();
+  await expect(page.locator(".se-loop-band")).toHaveCount(0);
+});

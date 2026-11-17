@@ -271,24 +271,23 @@ test("studio settings open with the captured accelerator and persist", async ({ 
 test("a failed project action reports outside the closed menu", async ({ page }) => {
   test.setTimeout(120_000);
   await createStudioProject(page, { title: "Menu failure" });
-  await page.route("**/api/v3/web-music/studio/projects/*", (route) =>
-    route.request().method() === "PATCH"
-      ? route.fulfill({
-          status: 500,
-          contentType: "application/json",
-          body: JSON.stringify({ error: { message: "The server failed to save." } }),
-        })
-      : route.continue()
+
+  // Duplicate is a menu row that closes the menu and runs with no dialog of its own, so
+  // an error raised afterwards used to render into a menu the user could no longer see
+  // (W5-C C-11).
+  await page.route("**/fork", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { message: "The copy could not be made." } }),
+    })
   );
 
   await page.locator(".se-project .se-chip").click();
-  await page.getByRole("menuitem", { name: "Rename" }).click();
-  const dialog = page.getByRole("dialog", { name: "Rename project" });
-  await dialog.getByLabel("Project title").fill("Nope");
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("menuitem", { name: /Duplicate Project/ }).click();
 
-  // The menu closes before the action runs, so the error must survive outside it (C-11).
-  await expect(page.getByRole("alert").filter({ hasText: /server failed|Could not/i })).toBeVisible({
+  await expect(page.getByRole("menu", { name: "Project options" })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /copy could not|failed/i })).toBeVisible({
     timeout: 15_000,
   });
 });

@@ -291,3 +291,15 @@ test("a plugin card clears its settings and saves a preset", async ({ page }) =>
       .getByRole("menuitem", { name: "My Glue" })
   ).toBeVisible();
 });
+
+test("the empty bottom dock says how to fill it on a fresh load", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: "Empty dock" });
+
+  // Nothing is selected on load, so the dock used to render as a blank band (W5 A-14).
+  const dock = page.getByRole("region", { name: "Plugin chain" });
+  await expect(dock.getByText("Select a track to see its effects.")).toBeVisible();
+
+  await page.locator(".se-track .se-track-name").first().click();
+  await expect(dock.getByText("Select a track to see its effects.")).toHaveCount(0);
+});
