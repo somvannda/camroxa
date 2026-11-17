@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { CreateCreditsModal } from "@/components/CreateCreditsModal";
 import { TrackRail } from "@/components/TrackRail";
 import { ReportClipModal } from "@/components/ReportClipModal";
 import { ShareClipModal } from "@/components/ShareClipModal";
@@ -25,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
 import { cn } from "@/lib/utils";
+import { isCreditsRefusal } from "@/lib/studio-errors";
 import type { WebMusicClip, WebMusicGeneration } from "@/lib/library-api";
 import {
   WebMusicApiError,
@@ -302,7 +304,7 @@ function SelectBox({
 }
 
 export function CreateStudio() {
-  const { user, credits, loading, refresh } = useAuth();
+  const { user, credits, creditAllowance, loading, refresh } = useAuth();
   const { playTrack, enqueue } = usePlayer();
   const [mode, setMode] = useState<Mode>("simple");
   const [prompt, setPrompt] = useState("");
@@ -521,6 +523,8 @@ export function CreateStudio() {
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
+  // S61: the captured out-of-credits modal, opened when a generate is refused.
+  const [creditsGateOpen, setCreditsGateOpen] = useState(false);
   const [stylesModalOpen, setStylesModalOpen] = useState(false);
   const [stylesModalMode, setStylesModalMode] = useState<"write" | "existing">("write");
   const [dragging, setDragging] = useState(false);
@@ -2233,8 +2237,12 @@ export function CreateStudio() {
       setError("Batch generation comes with credit packs. Open Buy packs to create several songs at once.");
       return;
     }
-    if (quota?.requires_upgrade) {
-      setError("A credit pack is required to generate full tracks. Open Buy packs to continue.");
+    // S61: a single song the balance cannot cover opens the captured
+    // out-of-credits modal. The Create button stays live for this (see
+    // `createDisabled`) so the modal is the answer to the click, not a dead button.
+    if (quota?.requires_upgrade || (needsCredits && batchCount === 1)) {
+      setError("");
+      setCreditsGateOpen(true);
       return;
     }
     setBusy(true);
@@ -2364,6 +2372,17 @@ export function CreateStudio() {
       // the song may have been queued and charged anyway, so reload the
       // library instead of letting the user submit a duplicate.
       const gatewayTimeout = /\b524\b|gateway time-?out|took too long/i.test(message);
+      if (createdCount === 0 && isCreditsRefusal(cause)) {
+        // S61: the refusal becomes the captured out-of-credits modal. Refresh
+        // the balance first so its meter reflects the charge that just failed.
+        const nextQuota = await fetchWebMusicQuota().catch(() => null);
+        if (nextQuota && mounted.current) setQuota(nextQuota);
+        if (mounted.current) {
+          setError("");
+          setCreditsGateOpen(true);
+        }
+        return;
+      }
       const hint =
         cause instanceof WebMusicApiError && cause.status === 402
           ? " Open Buy packs to add credits."
@@ -2791,7 +2810,8 @@ export function CreateStudio() {
   const createDisabled =
     busy ||
     !formReady ||
-    needsCredits ||
+    // Batch sizes stay client-blocked; a single song opens the top-up modal.
+    (needsCredits && batchCount > 1) ||
     batchRequiresUpgrade ||
     queueFull ||
     cooldownSeconds > 0 ||
@@ -4370,7 +4390,15 @@ export function CreateStudio() {
                 ) : null}
                 {(needsCredits && batchCount === 1) || quota?.requires_upgrade ? (
                   <p className="s-note warn">
-                    Not enough credits for this selection. <Link href="/pricing">Buy packs</Link>
+                    Not enough credits for this selection.{" "}
+                    <button
+                      type="button"
+                      className="s-credits-inline-trigger"
+                      onClick={() => setCreditsGateOpen(true)}
+                    >
+                      Top up
+                    </button>{" "}
+                    or <Link href="/pricing">buy packs</Link>
                   </p>
                 ) : null}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -5221,6 +5249,16 @@ export function CreateStudio() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {creditsGateOpen ? (
+        <CreateCreditsModal
+          open={creditsGateOpen}
+          creditsRemaining={availableCredits}
+          monthlyAllowance={creditAllowance}
+          onClose={() => setCreditsGateOpen(false)}
+          onCheckoutStarted={() => void refresh()}
+        />
       ) : null}
 
       {attachModal ? (

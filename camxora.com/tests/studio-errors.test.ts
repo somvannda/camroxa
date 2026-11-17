@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyStudioError } from "@/lib/studio-errors";
+import { classifyStudioError, isCreditsRefusal } from "@/lib/studio-errors";
 
 describe("Studio error taxonomy", () => {
   it("maps credit failures to the refusal copy", () => {
@@ -47,5 +47,30 @@ describe("Studio error taxonomy", () => {
       kind: "failed",
       text: "Could not run that.",
     });
+  });
+
+  it("separates a credit refusal from a rate limit (S61)", () => {
+    expect(
+      isCreditsRefusal(Object.assign(new Error("Insufficient credits."), { status: 402 }))
+    ).toBe(true);
+    expect(
+      isCreditsRefusal(
+        Object.assign(new Error("Insufficient credits."), {
+          status: 429,
+          code: "INSUFFICIENT_CREDITS",
+        })
+      )
+    ).toBe(true);
+    expect(
+      isCreditsRefusal(
+        Object.assign(new Error("Rate limit exceeded. Please retry later."), {
+          status: 429,
+          code: "RATE_LIMITED",
+        })
+      )
+    ).toBe(false);
+    expect(isCreditsRefusal(new Error("You are out of credits."))).toBe(true);
+    expect(isCreditsRefusal(new Error("Network down."))).toBe(false);
+    expect(isCreditsRefusal(null)).toBe(false);
   });
 });

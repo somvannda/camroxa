@@ -20,8 +20,7 @@ const CONFLICT =
   /cannot be combined|one arrangement at a time|conflict|already in progress|operation in progress/i;
 const TIMEOUT = /timed out|timeout|took too long/i;
 
-export function classifyStudioError(message: unknown, fallback = "That edit did not run."): StudioErrorCopy {
-  const raw = message instanceof Error ? message.message : String(message ?? "");
+export function classifyStudioError(message: unknown, fallback = "That edit did not run."): StudioErrorCopy {  const raw = message instanceof Error ? message.message : String(message ?? "");
   const text = raw.trim() || fallback;
 
   if (CREDITS.test(text)) {
@@ -49,4 +48,23 @@ export function classifyStudioError(message: unknown, fallback = "That edit did 
     };
   }
   return { kind: "failed", text };
+}
+
+/**
+ * True when a generate was refused for money rather than for throttling.
+ *
+ * `POST /web-music/generate` answers 402 for an empty wallet, but the pooled
+ * provider path surfaces the same billing stop as a 429 ("Insufficient credits.")
+ * — see `platform_api/services/key_pool_service.py`. A 429 without a credit marker
+ * is rate limiting and must not open the top-up modal (S61).
+ */
+export function isCreditsRefusal(error: unknown): boolean {
+  if (!error) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  const carrier = error as { status?: unknown; code?: unknown };
+  const status = Number(carrier?.status ?? 0);
+  const code = String(carrier?.code ?? "");
+  if (status === 402) return true;
+  if (/credit|billing|balance/i.test(code)) return true;
+  return CREDITS.test(message);
 }
