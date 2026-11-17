@@ -19,13 +19,10 @@ from features.create.widgets.studio_panel import StudioPanel
 
 
 _SOURCE_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("Category", "category"),
-    ("Prompt only", "prompt_only"),
-)
-
-_PROMPT_SOURCE_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("My prompt", "custom"),
-    ("Admin prompt library", "admin_library"),
+    ("Category + My prompt", "category:custom"),
+    ("Category + Admin library", "category:admin_library"),
+    ("Prompt only + My prompt", "prompt_only:custom"),
+    ("Prompt only + Admin library", "prompt_only:admin_library"),
 )
 
 _EMPTY_BY_KIND = {
@@ -92,18 +89,8 @@ class PreviewCard(StudioPanel):
         for label, value in _SOURCE_OPTIONS:
             self._source_mode.addItem(label, value)
         self._source_mode.sync_item_tooltips()
-        self._source_mode.currentIndexChanged.connect(self._emit_source_mode)
+        self._source_mode.currentIndexChanged.connect(self._emit_selection)
         root.addWidget(self._source_mode)
-
-        prompt_heading = QLabel("Prompt source")
-        prompt_heading.setObjectName("FieldLabel")
-        root.addWidget(prompt_heading)
-        self._prompt_source = StudioComboBox()
-        for label, value in _PROMPT_SOURCE_OPTIONS:
-            self._prompt_source.addItem(label, value)
-        self._prompt_source.sync_item_tooltips()
-        self._prompt_source.currentIndexChanged.connect(self._emit_prompt_source)
-        root.addWidget(self._prompt_source)
         self._prompt_source_note = QLabel("")
         self._prompt_source_note.setObjectName("PageSubtitle")
         self._prompt_source_note.setWordWrap(True)
@@ -146,40 +133,55 @@ class PreviewCard(StudioPanel):
         self._set_actions_enabled(False)
         self.set_status("Empty")
 
+    def _selection(self) -> tuple[str, str]:
+        raw = str(self._source_mode.currentData() or "category:custom")
+        source_mode, _, prompt_source = raw.partition(":")
+        source_mode = (
+            "prompt_only" if source_mode in {"prompt", "prompt_only"} else "category"
+        )
+        prompt_source = (
+            "admin_library" if prompt_source == "admin_library" else "custom"
+        )
+        return source_mode, prompt_source
+
+    def _select(self, source_mode: str, prompt_source: str) -> None:
+        normalized_mode = (
+            "prompt_only"
+            if str(source_mode or "").strip().lower() in {"prompt", "prompt_only"}
+            else "category"
+        )
+        normalized_prompt = (
+            "admin_library"
+            if str(prompt_source or "").strip().lower() == "admin_library"
+            else "custom"
+        )
+        index = self._source_mode.findData(
+            f"{normalized_mode}:{normalized_prompt}"
+        )
+        if index < 0:
+            return
+        blocked = self._source_mode.blockSignals(True)
+        self._source_mode.setCurrentIndex(index)
+        self._source_mode.blockSignals(blocked)
+        self._update_prompt_source_note()
+
     def source_mode(self) -> str:
-        return str(self._source_mode.currentData() or "category")
+        return self._selection()[0]
 
     def set_source_mode(self, mode: str) -> None:
-        normalized = str(mode or "category").strip().lower()
-        if normalized in {"prompt", "prompt_only"}:
-            normalized = "prompt_only"
-        else:
-            # personal_reference / unknown → category (User reference hidden until P2)
-            normalized = "category"
-        index = self._source_mode.findData(normalized)
-        if index < 0:
-            return
-        self._source_mode.blockSignals(True)
-        self._source_mode.setCurrentIndex(index)
-        self._source_mode.blockSignals(False)
-
-    def _emit_source_mode(self, *_args: object) -> None:
-        self.source_mode_changed.emit(self.source_mode())
+        self._select(mode, self.prompt_source())
 
     def prompt_source(self) -> str:
-        return str(self._prompt_source.currentData() or "custom")
+        return self._selection()[1]
 
     def set_prompt_source(self, mode: str) -> None:
-        normalized = str(mode or "custom").strip().lower()
-        if normalized not in {"custom", "admin_library"}:
-            normalized = "custom"
-        index = self._prompt_source.findData(normalized)
-        if index < 0:
-            return
-        self._prompt_source.blockSignals(True)
-        self._prompt_source.setCurrentIndex(index)
-        self._prompt_source.blockSignals(False)
+        self._select(self.source_mode(), mode)
+
+    def _emit_selection(self, *_args: object) -> None:
         self._update_prompt_source_note()
+        source_mode, prompt_source = self._selection()
+        self.source_mode_changed.emit(source_mode)
+        self.prompt_source_changed.emit(prompt_source)
 
     def set_prompt_library_count(self, count: int) -> None:
         self._prompt_library_count = max(0, int(count or 0))
@@ -198,10 +200,6 @@ class PreviewCard(StudioPanel):
             text = f"{count} admin styles active. A different style is chosen per channel."
         self._prompt_source_note.setText(text)
         self._prompt_source_note.show()
-
-    def _emit_prompt_source(self, *_args: object) -> None:
-        self._update_prompt_source_note()
-        self.prompt_source_changed.emit(self.prompt_source())
 
     def bind_job(self, job, *, empty_message: str | None = None) -> None:
         if empty_message:

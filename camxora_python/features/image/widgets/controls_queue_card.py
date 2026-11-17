@@ -456,9 +456,11 @@ class ControlsQueueCard(StudioPanel):
         self._refresh_prompt_counter(self._thumbnail_prompt, self._thumbnail_counter)
 
     def set_prompt_library_mode(self, *, background: bool, thumbnail: bool) -> None:
-        """Make the local prompt boxes read-only when the admin library is active."""
+        """Lock the local prompt boxes when the admin library supplies the prompt."""
         self._background_prompt.setReadOnly(bool(background))
         self._thumbnail_prompt.setReadOnly(bool(thumbnail))
+        self._background_prompt.setEnabled(not background)
+        self._thumbnail_prompt.setEnabled(not thumbnail)
         self._background_prompt.setPlaceholderText(
             "Using admin prompt library — a different style is chosen per channel."
             if background
