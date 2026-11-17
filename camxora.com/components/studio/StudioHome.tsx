@@ -22,6 +22,7 @@ import {
   updateStudioProject,
   type StudioProject,
 } from "@/lib/studio-api";
+import { emptyProjectData } from "@/lib/studio-seed";
 
 const SYNC_LABEL: Record<string, string> = {
   pending: "waiting for the first copy",
@@ -162,7 +163,7 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
         title: "Untitled project",
         bpm: 120,
         time_signature: "4/4",
-        data: {},
+        data: emptyProjectData(),
       });
       router.push(`/studio/editor?project=${encodeURIComponent(created.id)}`);
     } catch (cause) {

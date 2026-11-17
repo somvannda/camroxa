@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
+import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
@@ -188,7 +189,12 @@ const STUDIO_MODEL_API: Record<string, string> = {
   "v6-mini": "V6_MINI",
 };
 /** Clip Color swatches in the clip menu (same families as tracks). */
-const CLIP_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"];
+const CLIP_COLORS = [
+  "#9f1239", "#be185d", "#db2777", "#ec4899", "#f9a8d4",
+  "#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#93c5fd",
+  "#7c2d12", "#c2410c", "#ea580c", "#f97316", "#fdba74",
+  "#14532d", "#15803d", "#16a34a", "#4ade80", "#bbf7d0",
+];
 
 
 /** Retry a library read once: a fresh session can race the first authorised fetch. */
@@ -414,7 +420,10 @@ export function StudioEditorShell() {
     fadeOut?: number;
   } | null>(null);
   /** Clip context menu (S26/§47): anchored at the click point, built from clip state. */
-  const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);  const [clipColorOpen, setClipColorOpen] = useState(false);
+  const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  const [clipColorOpen, setClipColorOpen] = useState(false);
+  /** Fixed position for the colour flyout: it portals out of the scrolling menu. */
+  const [clipColorPos, setClipColorPos] = useState<{ left: number; top: number } | null>(null);
   /** §34: clip whose own insert chain is being edited (null = picker closed). */
   const [clipFxTarget, setClipFxTarget] = useState<string | null>(null);
   /** N-14: Wavetable Designer, and the MIDI clip that will use the saved table. */
@@ -778,6 +787,8 @@ export function StudioEditorShell() {
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(0);
   const loopDragRef = useRef(false);
+  /** Dragging the loop's left flag (S24): the capture has a flag at each end. */
+  const loopStartDragRef = useRef(false);
   /** Reversed source buffers, keyed by clip id + URL so Reverse is computed once. */
   const reversedBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   /** Time selection (N-01), created by dragging on the bar ruler; not persisted. */
@@ -1456,7 +1467,12 @@ export function StudioEditorShell() {
       /* fall back to the elapsed transport time */
     }
     const owner = tracksRef.current.find((track) => track.id === active.trackId);
-    const take = (owner?.clipIds.length ?? 0) + 1;
+    // Takes are the clips this feature created; counting every clip named the first
+    // recording "Take 2" whenever the track already held a loop (QA D3).
+    const takeCount = clipsRef.current.filter(
+      (clip) => clip.id.startsWith("clip-take-") && owner?.clipIds.includes(clip.id)
+    ).length;
+    const take = takeCount + 1;
     try {
       const upload = await uploadStudioAudio(
         new File([blob], `take-${Date.now()}.webm`, { type: "audio/webm" }),
@@ -1626,6 +1642,12 @@ export function StudioEditorShell() {
   }
 
   /** Like/unlike the row's primary clip, updating the Liked filter optimistically. */
+  /** Likes key the primary playable clip, so the rail must read the same key. */
+  function sourceLikeKey(song: WebMusicGeneration): string {
+    const primary = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
+    return `${song.id}:${primary?.variant ?? ""}`;
+  }
+
   async function toggleSongLike(song: WebMusicGeneration, nextLiked: boolean) {
     const clip = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
     if (!clip) return;
@@ -1895,6 +1917,13 @@ export function StudioEditorShell() {
     label: string,
     nextTracks?: StudioTrack[] | null
   ) {
+    // Before the first load resolves there is no document to edit. A write here used to
+    // send `{ tracks }` alone; the server replaces `data` wholesale, so every clip in the
+    // real project was deleted (QA D1). Refuse until the document exists.
+    if (!projectRef.current) {
+      setError("This project is still loading. Try again in a moment.");
+      return;
+    }
     const current = (projectRef.current?.data || {}) as Record<string, unknown>;
     const history = historyRef.current;
     history.undo.push({ data: current, label });
@@ -1919,6 +1948,9 @@ export function StudioEditorShell() {
     const data = entry.data as Record<string, unknown>;
     setProjectData(data);
     setLocalTracks(null);
+    // The rail reads localChains; without this reset, undo/redo reverts the document but
+    // leaves the plugin slots stale until a reload (W5 B-97/B-101).
+    setLocalChains(null);
     syncHistory();
     persist(
       (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
@@ -2193,6 +2225,33 @@ export function StudioEditorShell() {
       window.removeEventListener("pointerup", up);
     };
   });
+  /** Drag the loop's left flag on the ruler (S24 shows a flag at each end). */
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      if (!loopStartDragRef.current) return;
+      const lanes = document.querySelector(".se-lanes-inner");
+      if (!lanes) return;
+      const rect = lanes.getBoundingClientRect();
+      const seconds = ((event.clientX - rect.left) / barWidth) * secondsPerBar;
+      const snapped = snapToGrid(seconds, secondsPerBar, gridDivisions);
+      setLoopStart(Math.max(0, Math.min(loopEnd - secondsPerBar / beatsPerBar, snapped)));
+    };
+    const up = () => {
+      if (!loopStartDragRef.current) return;
+      loopStartDragRef.current = false;
+      setLoopStart((start) => {
+        commitLoopRange(start, loopEnd);
+        return start;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  });
+
   /** Convert a pointer position into a project time, using the lane grid. */
   function timeAtClientX(clientX: number): number | null {
     const lanes = document.querySelector(".se-lanes-inner");
@@ -2515,7 +2574,8 @@ export function StudioEditorShell() {
   }
 
   /** S21 "Unmute all": un-mutes every hidden track without showing them. */
-  function unmuteAllHidden() {    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
+  function unmuteAllHidden() {
+    const hiddenMuted = tracks.some((track) => track.hidden && track.muted);
     if (!hiddenMuted) return;
     commitTracks(
       tracks.map((track) => (track.hidden && track.muted ? { ...track, muted: false } : track))
@@ -2823,7 +2883,7 @@ export function StudioEditorShell() {
         chain: [],
         clipIds: [lane.id],
       };
-      const nextTracks = [...tracks, track];
+      const nextTracks = [...tracksRef.current, track];
       writeProjectData(
         { ...data, lanes: [...clipsRef.current, lane], tracks: nextTracks },
         "the mashup",
@@ -2946,7 +3006,7 @@ export function StudioEditorShell() {
         id: `track-midi-${stamp}`,
         name: "MIDI",
         color: colorForTrackName("midi"),
-        index: tracks.length,
+        index: tracksRef.current.length,
         volume: 80,
         pan: 0,
         muted: false,
@@ -2958,7 +3018,7 @@ export function StudioEditorShell() {
       };
       const data = currentData() as Record<string, unknown>;
       const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
-      const nextTracks = [...tracks, track];
+      const nextTracks = [...tracksRef.current, track];
       writeProjectData(
         { ...data, lanes: [...lanes, midiClip], tracks: nextTracks },
         "the MIDI transcription",
@@ -3185,7 +3245,12 @@ export function StudioEditorShell() {
 
   const derivedChains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
-    return (data.chains as Record<string, PluginChainEntry[]>) || {};
+    const raw = (data.chains ?? {}) as Record<string, unknown>;
+    const out: Record<string, PluginChainEntry[]> = {};
+    // Sanitising on load drops entries for plugins that no longer exist (legacy `chorus`)
+    // instead of rendering a slot with no card (W5 B-76).
+    for (const [trackId, chain] of Object.entries(raw)) out[trackId] = sanitizeChain(chain);
+    return out;
   }, [project]);
 
   /** Designed plugins saved in this project's library (S45). */
@@ -5722,7 +5787,16 @@ export function StudioEditorShell() {
           setSettings(next);
           writeStudioSettings(next);
         }}
-        onRenamed={(next) => setProject((current) => (current ? { ...current, title: next } : current))}
+        onRenamed={(next, updatedAt) => {
+          // Update the version ref synchronously so a save queued right after the rename
+          // sends the new updated_at instead of 409-ing against our own write.
+          if (updatedAt) projectVersionRef.current = updatedAt;
+          setProject((current) =>
+            current
+              ? { ...current, title: next, ...(updatedAt ? { updated_at: updatedAt } : {}) }
+              : current
+          );
+        }}
         onShowQuickStart={() => setQuickStartToken((value) => value + 1)}
         timeSignature={timeSignature}
         onTimeSignature={(next) => {
@@ -5882,6 +5956,7 @@ export function StudioEditorShell() {
         ) : null}
 
         <StudioTimeline
+          loading={loading}
           tracks={tracks}
           clips={clips}
           barWidth={barWidth}
@@ -5932,6 +6007,10 @@ export function StudioEditorShell() {
           onLoopHandleDown={(event) => {
             event.stopPropagation();
             loopDragRef.current = true;
+          }}
+          onLoopStartDown={(event) => {
+            event.stopPropagation();
+            loopStartDragRef.current = true;
           }}
         />
 
@@ -6349,8 +6428,16 @@ export function StudioEditorShell() {
 
       <StudioOnboarding
         projectId={projectId}
-        isEmpty={!loading && tracks.length === 0 && clips.length === 0}
+        isEmpty={!loading && !error && clips.length === 0}
         reopenToken={quickStartToken}
+        onOpenLibrary={(tab) => {
+          setLibraryOpen(true);
+          setLibraryView(
+            tab === "uploads"
+              ? { kind: "uploads" }
+              : { kind: "songs", title: "All Songs", filter: "all" }
+          );
+        }}
       />
 
       <StudioMetricsProbe />
@@ -6408,7 +6495,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-copy" /> Copy <span>Ctrl C</span>
+                  <Icon name="fa-copy" /> Copy <span>ctrl C</span>
                 </button>
                 <button
                   type="button"
@@ -6419,7 +6506,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-paste" /> Paste <span>Ctrl V</span>
+                  <Icon name="fa-paste" /> Paste <span>ctrl V</span>
                 </button>
                 <button
                   type="button"
@@ -6429,7 +6516,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-clone" /> Duplicate <span>Ctrl D</span>
+                  <Icon name="fa-clone" /> Duplicate <span>ctrl D</span>
                 </button>
                 <button
                   type="button"
@@ -6439,7 +6526,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-trash" /> Delete <span>Backspace</span>
+                  <Icon name="fa-trash" /> Delete <span>backspace</span>
                 </button>
                 <button
                   type="button"
@@ -6488,7 +6575,7 @@ export function StudioEditorShell() {
                     setClipMenu(null);
                   }}
                 >
-                  <Icon name="fa-scissors" /> Split <span>Ctrl E</span>
+                  <Icon name="fa-scissors" /> Split <span>ctrl E</span>
                 </button>
                 <button
                   type="button"
@@ -6548,42 +6635,60 @@ export function StudioEditorShell() {
                     role="menuitem"
                     aria-haspopup="true"
                     aria-expanded={clipColorOpen}
-                    onClick={() => setClipColorOpen((open) => !open)}
+                    onClick={(event) => {
+                      const row = event.currentTarget.getBoundingClientRect();
+                      const menuRect = event.currentTarget
+                        .closest(".se-clip-menu")
+                        ?.getBoundingClientRect();
+                      setClipColorPos({
+                        left: (menuRect?.right ?? row.right) + 12,
+                        top: Math.max(8, row.top - 6),
+                      });
+                      setClipColorOpen((open) => !open);
+                    }}
                   >
                     <Icon name="fa-circle" /> Clip Color <Icon name="fa-chevron-right" />
                   </button>
-                  {clipColorOpen ? (
-                    <div className="se-clip-menu-colors" role="group" aria-label="Clip colour">
-                      <button
-                        type="button"
-                        className="se-color-auto"
-                        aria-pressed={!clip.color}
-                        onClick={() => {
-                          setClipColor(clip.id, "");
-                          setClipMenu(null);
-                        }}
-                      >
-                        <span className="se-color-dot" aria-hidden="true" />
-                        Auto
-                        {!clip.color ? <Icon name="fa-check" /> : null}
-                      </button>
-                      <div className="se-color-grid">
-                        {CLIP_COLORS.map((color) => (
+                  {clipColorOpen && clipColorPos
+                    ? createPortal(
+                        <div
+                          className="se-clip-menu-colors se-colors-portal"
+                          role="group"
+                          aria-label="Clip colour"
+                          style={{ left: clipColorPos.left, top: clipColorPos.top }}
+                        >
                           <button
-                            key={color}
                             type="button"
-                            aria-label={`Clip colour ${color}`}
-                            style={{ background: color }}
-                            className={clip.color === color ? "on" : undefined}
+                            className="se-color-auto"
+                            aria-pressed={!clip.color}
                             onClick={() => {
-                              setClipColor(clip.id, color);
+                              setClipColor(clip.id, "");
                               setClipMenu(null);
                             }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                          >
+                            <span className="se-color-dot" aria-hidden="true" />
+                            Auto
+                            {!clip.color ? <Icon name="fa-check" /> : null}
+                          </button>
+                          <div className="se-color-grid">
+                            {CLIP_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                type="button"
+                                aria-label={`Clip colour ${color}`}
+                                style={{ background: color }}
+                                className={clip.color === color ? "on" : undefined}
+                                onClick={() => {
+                                  setClipColor(clip.id, color);
+                                  setClipMenu(null);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>,
+                        document.body
+                      )
+                    : null}
                 </div>
                 <div className="se-clip-menu-sep" />
                 <button
@@ -6599,6 +6704,47 @@ export function StudioEditorShell() {
                   <Icon name="fa-wand-magic-sparkles" /> Get Stems
                 </button>
                 <div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.audioUrl}
+                  onClick={() => void downloadClipWav(clip.id)}
+                >
+                  <Icon name="fa-download" /> Download .WAV
+                </button>
+                
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId}
+                  title={
+                    clip.songId
+                      ? "Transcribe this clip's audio into a MIDI track"
+                      : "No source generation for this clip"
+                  }
+                  onClick={() => void generateMidiForClip(clip)}
+                >
+                  <Icon name="fa-music" /> Get MIDI
+                </button>
+                
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={sanitizeChain((clip as { fx?: unknown }).fx).length === 0}
+                  title={
+                    sanitizeChain((clip as { fx?: unknown }).fx).length === 0
+                      ? "This clip has no effects"
+                      : "Remove this clip's own effects"
+                  }
+                  onClick={() => {
+                    setClipFx(clip.id, []);
+                    setExportToast("Clip effects removed.");
+                    setClipMenu(null);
+                  }}
+                >
+                  <Icon name="fa-xmark" /> Remove FX
+                </button>
+<div className="se-clip-menu-sep" />
                 <button
                   type="button"
                   role="menuitem"
@@ -6716,15 +6862,7 @@ export function StudioEditorShell() {
                 >
                   <Icon name="fa-scissors" /> Replace…
                 </button>
-                <div className="se-clip-menu-sep" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={!clip.audioUrl}
-                  onClick={() => void downloadClipWav(clip.id)}
-                >
-                  <Icon name="fa-download" /> Download WAV
-                </button>
+                
                 <button
                   type="button"
                   role="menuitem"
@@ -6741,42 +6879,12 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!clip.songId}
-                  title={
-                    clip.songId
-                      ? "Transcribe this clip's audio into a MIDI track"
-                      : "No source generation for this clip"
-                  }
-                  onClick={() => void generateMidiForClip(clip)}
-                >
-                  <Icon name="fa-music" /> Get MIDI
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
                   onClick={() => {
                     setClipFxTarget(clip.id);
                     setClipMenu(null);
                   }}
                 >
                   <Icon name="fa-plus" /> Add FX…
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={sanitizeChain((clip as { fx?: unknown }).fx).length === 0}
-                  title={
-                    sanitizeChain((clip as { fx?: unknown }).fx).length === 0
-                      ? "This clip has no effects"
-                      : "Remove this clip's own effects"
-                  }
-                  onClick={() => {
-                    setClipFx(clip.id, []);
-                    setExportToast("Clip effects removed.");
-                    setClipMenu(null);
-                  }}
-                >
-                  <Icon name="fa-xmark" /> Remove FX
                 </button>
               </div>
             );
@@ -7303,6 +7411,7 @@ export function StudioEditorShell() {
           }
           onSavePreset={savePluginPreset}
           onDesignPlugin={openPluginDesigner}
+          bpm={bpm}
           windowMode={settings.windowMode}
           advancedContent={settings.advancedContent}
           sends={sanitizeSends(tracks.find((track) => track.id === selectedTrack)?.sends)}
@@ -7312,11 +7421,11 @@ export function StudioEditorShell() {
       ) : null}
 
       <StudioFooter
-        chain={
-          masterSelected
-            ? masterChain.map((entry) => entry.type ?? "")
-            : (selectedTrack ? chains[selectedTrack] : [])?.map((entry) => entry.pluginId) ?? []
-        }
+        chain={masterChain.map((entry) => entry.type ?? "")}
+        onAddChainEffect={() => {
+          setMasterSelected(true);
+          setBottomPanelOpen(true);
+        }}
         hasTrack={masterSelected || Boolean(selectedTrack)}
         loop={loop}
         onLoop={() => setLoop((value) => !value)}
@@ -7381,7 +7490,21 @@ export function StudioEditorShell() {
         </div>
       ) : null}
 
-      {error ? <div className="se-error" role="alert">{error}</div> : null}
+      {!loading && !project && error ? (
+        <div className="se-load-failed" role="alert">
+          <strong>Could not open this project</strong>
+          <p>{error}</p>
+          <details>
+            <summary>Details</summary>
+            <pre>{projectId ?? "No project id"}</pre>
+          </details>
+          <button type="button" className="se-pill on" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+        </div>
+      ) : error ? (
+        <div className="se-error" role="alert">{error}</div>
+      ) : null}
       {transformNotice ? (
         <div className={`se-transform-notice ${transformNotice.kind}`} role="alert">
           <strong>

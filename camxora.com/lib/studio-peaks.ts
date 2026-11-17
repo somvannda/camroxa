@@ -11,33 +11,49 @@ export const PEAK_BUCKETS = 1024;
 
 const peakCache = new Map<string, Promise<number[] | null>>();
 
+/**
+ * Decode one URL to peaks. A failure is retried once: a transient network error used to
+ * blank a clip for the whole session because the null promise stayed cached (QA C1).
+ */
+async function decodePeaks(url: string): Promise<number[] | null> {
+  if (typeof AudioContext === "undefined") return null;
+  const context = new AudioContext();
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const decoded = await context.decodeAudioData(await response.arrayBuffer());
+    const data = decoded.getChannelData(0);
+    const step = Math.max(1, Math.floor(data.length / PEAK_BUCKETS));
+    const peaks: number[] = [];
+    for (let bucket = 0; bucket < PEAK_BUCKETS; bucket += 1) {
+      let peak = 0;
+      for (let i = 0; i < step; i += 1) {
+        const value = Math.abs(data[bucket * step + i] ?? 0);
+        if (value > peak) peak = value;
+      }
+      peaks.push(peak);
+    }
+    return peaks;
+  } catch {
+    return null;
+  } finally {
+    void context.close();
+  }
+}
+
 export function computePeaks(url: string): Promise<number[] | null> {
   const cached = peakCache.get(url);
   if (cached) return cached;
   const pending = (async () => {
-    if (typeof AudioContext === "undefined") return null;
-    const context = new AudioContext();
-    try {
-      const response = await fetch(url);
-      if (!response.ok) return null;
-      const decoded = await context.decodeAudioData(await response.arrayBuffer());
-      const data = decoded.getChannelData(0);
-      const step = Math.max(1, Math.floor(data.length / PEAK_BUCKETS));
-      const peaks: number[] = [];
-      for (let bucket = 0; bucket < PEAK_BUCKETS; bucket += 1) {
-        let peak = 0;
-        for (let i = 0; i < step; i += 1) {
-          const value = Math.abs(data[bucket * step + i] ?? 0);
-          if (value > peak) peak = value;
-        }
-        peaks.push(peak);
-      }
-      return peaks;
-    } catch {
-      return null;
-    } finally {
-      void context.close();
+    let peaks = await decodePeaks(url);
+    if (!peaks) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      peaks = await decodePeaks(url);
     }
+    // Do not cache a failure: the next mount gets another chance instead of a
+    // permanently blank waveform.
+    if (!peaks) peakCache.delete(url);
+    return peaks;
   })();
   peakCache.set(url, pending);
   return pending;

@@ -1,5 +1,5 @@
 {
-  "_comment": "Functional strings captured from Suno Studio and shipped by us verbatim. Prose is intentionally excluded (see CLONE_DEFINITION.md rule 5). YouTube Tutorials is the only sanctioned absence.",
+  "_comment": "Captured control strings (menu rows, labels, empty states, toasts, dialog actions) that must exist in the shipped UI. Entries under \"additive\" are our own operations that no captured frame shows; they are checked for presence but are not reference strings. Captures outrank transcription: \"Download .WAV\" (S26) and \"NO ASSET LOADED\" (S44) were both restored from the frames after the gate had enforced a transcription error.",
   "strings": [
     "New Project",
     "Open Project",
@@ -7,6 +7,7 @@
     "Duplicate Project",
     "Version History",
     "Share Project",
+    "Open a copy in v1",
     "Studio Settings",
     "Show Quick Start again",
     "Name project before sharing",
@@ -38,7 +39,7 @@
     "Clip Info",
     "Clip Color",
     "Get Stems",
-    "Download WAV",
+    "Download .WAV",
     "Download MIDI",
     "Get MIDI",
     "Remove FX",
@@ -66,10 +67,24 @@
     "Hidden tracks",
     "Unmute all",
     "Show All Hidden Tracks",
-    "No impulse response",
+    "NO ASSET LOADED",
     "Add a track",
     "Import project",
-    "Wavetable Designer",
-    "Sends"
+    "Wavetable Designer"
+  ],
+  "additive": [
+    "Project (JSON)",
+    "Normalise mix to",
+    "Import project",
+    "Extend",
+    "Cover",
+    "Remaster",
+    "Vocals",
+    "Instrumental",
+    "Mashup",
+    "Replace",
+    "Download MIDI",
+    "Add FX",
+    "Wavetable Designer"
   ]
 }

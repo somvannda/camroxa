@@ -4,9 +4,9 @@ import { createStudioProject } from "./studio-fixture";
 
 /**
  * Pixel-parity gate (D-022). Targets come from
- * `docs/studio/reference/METRICS.json` and the measured frame in spec �1.
+ * `docs/studio/reference/METRICS.json` and the measured frame in spec §1.
  *
- * Renders the editor at the captured viewport (1689�1277, DPR 1) and asserts the
+ * Renders the editor at the captured viewport (1689×1277, DPR 1) and asserts the
  * global frame: header/tracks/body/footer heights and widths, row pitch, bar pitch,
  * and the captured palette. Branding and copy are the only intentional deviations.
  */
@@ -45,19 +45,19 @@ test("global frame matches the captured metrics", async ({ page }) => {
     };
   });
 
-  // �1 frame.
+  // §1 frame.
   expect(frame.head).toMatchObject({ height: 52, background: "rgb(7, 10, 18)" });
   expect(frame.tracks).toMatchObject({ width: 260, background: "rgb(15, 20, 31)" });
   expect(frame.foot).toMatchObject({ height: 52, background: "rgb(7, 10, 18)" });
   expect(frame.body).toMatchObject({ background: "rgb(11, 15, 25)" });
   expect(frame.shell?.color).toBe("rgb(248, 250, 252)");
 
-  // �52.1 row rhythm.
+  // §52.1 row rhythm.
   expect(frame.track?.height).toBe(85);
   expect(frame.lane?.height).toBe(86);
   expect(frame.lane?.x).toBe(260);
 
-  // Track header internals: name at x48 / 11 px, controls 24�24 (extend 16),
+  // Track header internals: name at x48 / 11 px, controls 24×24 (extend 16),
   // faders 167 px + 50 px at x28 and y132.
   const track = await page.evaluate(() => {
     const name = document.querySelector(".se-track-name")?.getBoundingClientRect();
@@ -112,7 +112,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(pan.input).toEqual({ x: 201, width: 50 });
   expect(pan.angle).not.toBe("none");
 
-  // �4 ruler: 30 px band, first lane at y82, clip 82 px tall from y84.
+  // §4 ruler: 30 px band, first lane at y82, clip 82 px tall from y84.
   const timeline = await page.evaluate(() => {
     const rect = (selector: string) => {
       const element = document.querySelector(selector);
@@ -138,7 +138,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(timeline.clip).toMatchObject({ y: 84, height: 82 });
   expect(timeline.radius).toBe("10px");
 
-  // �2 header: 36 px pills on a 52 px band; project chip at x�115, undo/redo grouped.
+  // §2 header: 36 px pills on a 52 px band; project chip at x≈115, undo/redo grouped.
   const header = await page.evaluate(() => {
     const measure = (selector: string) => {
       const element = document.querySelector(selector);
@@ -168,14 +168,14 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(header.transport?.height).toBe(36);
   expect(header.tempo?.height).toBe(36);
 
-  // �44.3 ruler pitch: adjacent bar ticks are 96 px apart at the default zoom.
+  // §44.3 ruler pitch: adjacent bar ticks are 96 px apart at the default zoom.
   const ticks = await page.locator(".se-bar-tick").evaluateAll((nodes) =>
     nodes.slice(0, 2).map((node) => Math.round(node.getBoundingClientRect().x))
   );
   expect(ticks).toHaveLength(2);
   expect(ticks[1] - ticks[0]).toBe(96);
 
-  // �4 playhead: a 1 px line with a 10 px flag at the ruler's bottom edge.
+  // §4 playhead: a 1 px line with a 10 px flag at the ruler's bottom edge.
   const playhead = await page.evaluate(() => {
     const flag = document.querySelector(".se-playhead-flag")?.getBoundingClientRect();
     const line = document.querySelector(".se-playhead");
@@ -191,7 +191,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(Math.abs((playhead.flagX ?? 0) - (playhead.lineX ?? 0))).toBeLessThanOrEqual(5);
   expect(playhead.lineColor).toBe("rgb(76, 76, 76)");
 
-  // �4 bottom time ruler: 22 px band #1e1e20 with dim labels.
+  // §4 bottom time ruler: 22 px band #1e1e20 with dim labels.
   const timeRuler = await page.evaluate(() => {
     const band = document.querySelector(".se-ruler-time");
     const label = document.querySelector(".se-time-tick");
@@ -257,7 +257,7 @@ test("What's This card matches the captured hover card", async ({ page }) => {
       bodyLine: body ? getComputedStyle(body).lineHeight : null,
     };
   });
-  // �7.1: 256 px wide, light #d2d0ce, radius 16, padding 16, 12 px/700 title.
+  // §7.1: 256 px wide, light #d2d0ce, radius 16, padding 16, 12 px/700 title.
   expect(box.width).toBe(256);
   expect(box.radius).toBe("16px");
   expect(box.padding).toBe("16px");
@@ -336,10 +336,10 @@ test("track options menu matches the captured popover", async ({ page }) => {
   expect(info.rows.map((row) => row.text)).toEqual([
     "Rename track",
     "Collapse controls",
-    "Bounce track",
     "Duplicate",
     "Hide & Mute Track",
     "Delete",
+    "Bounce track",
   ]);
   expect(info.rows.every((row) => row.height === 33)).toBe(true);
 });
@@ -407,7 +407,7 @@ test("project menu matches the captured popover", async ({ page }) => {
   expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.rows).toHaveLength(11);
   expect(info.rows[0]?.text).toBe("New Project");
-  expect(info.rows[9]?.text).toBe("Studio Settings ctrl shift ,");
+  expect(info.rows[7]?.text).toBe("Studio Settings ctrl shift ,");
   expect(info.rows.every((row) => row.height === 34)).toBe(true);
 });
 
@@ -444,15 +444,16 @@ test("clip context menu matches the captured popover", async ({ page }) => {
   expect(info.width).toBe(163);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
+  // Captured rows first, in capture order; our additive rows follow a separator.
   expect(info.rows.map((row) => row.text)).toEqual([
-    "Copy Ctrl C",
-    "Paste Ctrl V",
-    "Duplicate Ctrl D",
-    "Delete Backspace",
+    "Copy ctrl C",
+    "Paste ctrl V",
+    "Duplicate ctrl D",
+    "Delete backspace",
     "Copy settings",
     "Paste settings",
     "Heal Edits",
-    "Split Ctrl E",
+    "Split ctrl E",
     "Split on Transients",
     "Make Beat 1",
     "Create Section",
@@ -460,6 +461,9 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Clip Info",
     "Clip Color",
     "Get Stems",
+    "Download .WAV",
+    "Get MIDI",
+    "Remove FX",
     "Extend",
     "Cover…",
     "Remaster",
@@ -467,11 +471,8 @@ test("clip context menu matches the captured popover", async ({ page }) => {
     "Instrumental…",
     "Mashup…",
     "Replace…",
-    "Download WAV",
     "Download MIDI",
-    "Get MIDI",
     "Add FX…",
-    "Remove FX",
   ]);
   expect(info.rows[0]?.hintSize).toBe("11px");
   expect(info.rows.every((row) => row.height === 38)).toBe(true);
@@ -578,7 +579,7 @@ test("hovering a clip explains it with the captured card", async ({ page }) => {
       background: getComputedStyle(element).backgroundColor,
     };
   });
-  // �7.1: the per-control card is the same 256 px light surface as the intro card.
+  // §7.1: the per-control card is the same 256 px light surface as the intro card.
   expect(box.width).toBe(256);
   expect(box.radius).toBe("16px");
   expect(box.background).toBe("rgb(210, 208, 206)");
@@ -622,7 +623,7 @@ test("track panel head toggles every track's controls", async ({ page }) => {
   const sizes = await head.locator("button").evaluateAll((nodes) =>
     nodes.map((node) => Math.round(node.getBoundingClientRect().width))
   );
-  // S16: 24 px icons in the 29 px head � expand/collapse all, and the rail toggle.
+  // S16: 24 px icons in the 29 px head — expand/collapse all, and the rail toggle.
   expect(sizes).toEqual([24, 24]);
   await head.getByRole("button", { name: "Collapse track panel" }).click();
   const panel = page.locator(".se-tracks");
@@ -853,11 +854,9 @@ test("the convolution card loads an impulse response from the library", async ({
     .click();
 
   const slot = page.locator(".sp-slot").first();
-  await expect(slot.getByRole("button", { name: "Impulse response" })).toContainText(
-    "No impulse response"
-  );
+  await expect(slot.getByRole("button", { name: "Impulse response" })).toContainText("NO ASSET LOADED");
   await expect(slot.getByRole("slider", { name: "Gain" })).toHaveValue("0");
-  await expect(slot.locator(".sp-ir")).toHaveAttribute("aria-label", "No impulse response");
+  await expect(slot.locator(".sp-ir")).toHaveAttribute("aria-label", "No asset loaded");
 
   await slot.getByRole("button", { name: "Impulse response" }).click();
   const menu = page.getByRole("menu", { name: "Impulse responses" });
@@ -876,7 +875,7 @@ test("the convolution card loads an impulse response from the library", async ({
   );
 });
 
-test("a track can hold the same plugin twice without duplicate React keys", async ({ page }) => {
+test("a chain can hold the same plugin twice without duplicate React keys", async ({ page }) => {
   test.setTimeout(120_000);
   const warnings: string[] = [];
   page.on("console", (message) => {
@@ -886,21 +885,13 @@ test("a track can hold the same plugin twice without duplicate React keys", asyn
   });
   await page.setViewportSize(REFERENCE_VIEWPORT);
   await createStudioProject(page, { title: "Pixel duplicate chain" });
-  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  // The footer strip shows the master chain (S26), so that is the chain to duplicate.
+  await page.getByRole("button", { name: "Main", exact: true }).click();
+  const master = page.getByRole("region", { name: "Master chain" });
+  await master.getByRole("button", { name: "Add EQ" }).click();
+  await master.getByRole("button", { name: "Add EQ" }).click();
 
-  await page.locator(".sp-add-inline").click();
-  await page.getByRole("dialog", { name: "Add a track plugin" })
-    .getByRole("button", { name: /^Convolution/ })
-    .first()
-    .click();
-
-  await page.locator(".sp-dock").getByRole("button", { name: "Add effect" }).click();
-  await page.getByRole("dialog", { name: "Add a track plugin" })
-    .getByRole("button", { name: /^Convolution/ })
-    .first()
-    .click();
-
-  await expect(page.locator(".sp-slot")).toHaveCount(2);
+  await expect(master.locator(".sp-slot")).toHaveCount(2);
   await expect(page.locator(".se-chain-chip")).toHaveCount(2);
   expect(warnings).toEqual([]);
 });
@@ -1029,12 +1020,12 @@ test("clip colour opens the captured submenu", async ({ page }) => {
   await page.locator(".se-clip").first().click({ button: "right" });
   const menu = page.getByRole("menu", { name: "Clip options" });
   await menu.getByRole("menuitem", { name: "Clip Color" }).click();
-  const flyout = menu.locator(".se-clip-menu-colors");
+  const flyout = page.locator(".se-clip-menu-colors");
   await expect(flyout).toBeVisible();
   const info = await flyout.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    const menuBox = element.closest(".se-clip-menu")?.getBoundingClientRect();
+    const menuBox = document.querySelector(".se-clip-menu")?.getBoundingClientRect();
     return {
       width: Math.round(rect.width),
       radius: style.borderTopLeftRadius,
@@ -1044,14 +1035,14 @@ test("clip colour opens the captured submenu", async ({ page }) => {
       swatches: element.querySelectorAll(".se-color-grid button").length,
     };
   });
-  // S28: a 196 px card to the right of the row, Auto + five swatches.
+  // S28: a 196 px card to the right of the row, Auto + twenty swatches in four hue rows.
   expect(info.width).toBe(196);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.leftOfMenu).toBeGreaterThanOrEqual(3);
   expect(info.leftOfMenu).toBeLessThanOrEqual(16);
   expect(info.auto).toBe("Auto");
-  expect(info.swatches).toBe(5);
+  expect(info.swatches).toBe(20);
 });
 
 test("EQ card matches the captured band editor and drags", async ({ page }) => {
@@ -1288,7 +1279,7 @@ test("library tiles sit on the captured grid", async ({ page }) => {
       };
     })
   );
-  // S52: 169�64 tiles, 8 px inset, 4 px gap, first row at y52.
+  // S52: 169×64 tiles, 8 px inset, 4 px gap, first row at y52.
   expect(tiles).toHaveLength(4);
   expect(tiles[0]).toMatchObject({ x: 1330, y: 97, width: 169, height: 64 });
   expect(tiles[1].x).toBe(1503);
@@ -1598,7 +1589,7 @@ test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
       background: style.backgroundColor,
     };
   });
-  // �19.1: floating card pinned 8 px from the top/right/bottom, 360 px wide.
+  // §19.1: floating card pinned 8 px from the top/right/bottom, 360 px wide.
   expect(box).toMatchObject({
     width: 360,
     x: REFERENCE_VIEWPORT.width - 368,

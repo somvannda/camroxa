@@ -242,7 +242,7 @@ test("double-clicking a song opens its detail rail and Back returns to the list"
   await detail.getByRole("button", { name: "More song options" }).click();
   const menu = detail.getByRole("menu", { name: "Song options" });
   await expect(menu.getByRole("menuitem")).toHaveCount(3);
-  await expect(menu.getByRole("menuitem", { name: /Download WAV/ })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: /Download \.WAV/ })).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
 
@@ -327,7 +327,7 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
 
   const outcome = await readOutcome();
   if (outcome === "refused") {
-    await expect(refused).toContainText(/not configured|Upload failed/i);
+    await expect(refused).toContainText(/not configured|Upload failed|Could not store/i);
   } else {
     await expect(library.getByLabel("Back to library")).toBeVisible();
   }

@@ -52,13 +52,29 @@ export type StudioProjectMenuProps = {
   title: string;
   settings: StudioSettings;
   onSettingsChange: (next: StudioSettings) => void;
-  onRenamed: (title: string) => void;
+  onRenamed: (title: string, updatedAt?: string | null) => void;
   onShowQuickStart: () => void;
 };
 
 const UNTITLED = "Untitled project";
 
 const initialOf = (value: string) => (value.trim()[0] || "P").toUpperCase();
+
+/**
+ * S08: the captured History list prints `hh:mm AM` on the newest row and `hh:mm:ss AM`
+ * on the older ones. Format in one locale so the string does not drift by environment.
+ */
+function versionClock(createdAt: string | null | undefined, withSeconds: boolean): string | null {
+  if (!createdAt) return null;
+  const at = new Date(createdAt);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(withSeconds ? { second: "2-digit" } : {}),
+    hour12: true,
+  });
+}
 
 function isUnnamed(value: string): boolean {
   const trimmed = value.trim();
@@ -137,8 +153,18 @@ export function StudioProjectMenu({
   const importRef = useRef<HTMLInputElement | null>(null);
 
   const label = title || UNTITLED;
+  /** The dialog shows the relative path; the clipboard gets the absolute URL. */
+  const sharePath = share?.path ?? "";
   const shareUrl =
     share && typeof window !== "undefined" ? `${window.location.origin}${share.path}` : "";
+  const shareExpiry = (() => {
+    const raw = share?.expires_at;
+    if (!raw) return "";
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime())
+      ? ""
+      : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  })();
 
   useEffect(() => {
     if (!open) return;
@@ -342,7 +368,9 @@ export function StudioProjectMenu({
     }
     void run(async () => {
       const updated = await updateStudioProject(projectId, { title: next });
-      onRenamed(updated.title || next);
+      // Carry the fresh version back: the PATCH bumped updated_at, so the next write
+      // would otherwise send the old value and 409 against our own rename (QA D2).
+      onRenamed(updated.title || next, updated.updated_at);
       setDialog(null);
     });
   }
@@ -392,7 +420,7 @@ export function StudioProjectMenu({
     void run(async () => {
       const updated = await updateStudioProject(projectId, { title: next });
       const name = updated.title || next;
-      onRenamed(name);
+      onRenamed(name, updated.updated_at);
       await openShare(name);
     });
   }
@@ -409,8 +437,13 @@ export function StudioProjectMenu({
 
   /** Version list grouped under a date heading, like the captured History panel. */
   const [historyDay, setHistoryDay] = useState(0);
+  /** S08: Restore is a row action revealed on hover/focus, not a permanent pill. */
+  const [revealedVersion, setRevealedVersion] = useState<string | null>(null);
   useEffect(() => {
-    if (dialog !== "versions") setHistoryDay(0);
+    if (dialog !== "versions") {
+      setHistoryDay(0);
+      setRevealedVersion(null);
+    }
   }, [dialog]);
 
   const groupedVersions = useMemo(() => {
@@ -425,6 +458,9 @@ export function StudioProjectMenu({
     }
     return [...map.entries()];
   }, [versions]);
+
+  /** The list endpoint returns newest first; the first entry is the captured selected row. */
+  const newestVersionId = versions?.[0]?.id ?? null;
 
   return (
     <div className="se-project" ref={wrapperRef}>
@@ -458,15 +494,6 @@ export function StudioProjectMenu({
           <button
             type="button"
             role="menuitem"
-            onClick={() => importRef.current?.click()}
-            disabled={busy}
-            title="Create a project from a Studio JSON document (the export format)"
-          >
-            <Icon name="fa-file-import" /> Import project…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
             onClick={() => openDialog("versions")}
             disabled={busy}
           >
@@ -474,9 +501,6 @@ export function StudioProjectMenu({
           </button>
           <button type="button" role="menuitem" onClick={startSharing} disabled={busy}>
             <Icon name="fa-arrow-up-from-bracket" /> Share Project
-          </button>
-          <button type="button" role="menuitem" onClick={sendToSuno} disabled={busy}>
-            <Icon name="fa-cloud-arrow-up" /> Send to Suno Sync
           </button>
           <button
             type="button"
@@ -504,6 +528,19 @@ export function StudioProjectMenu({
             }}
           >
             <Icon name="fa-wand-magic-sparkles" /> Show Quick Start again
+          </button>
+          {/* Additive rows live after the captured sequence, never inside it (B5). */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => importRef.current?.click()}
+            disabled={busy}
+            title="Create a project from a Studio JSON document (the export format)"
+          >
+            <Icon name="fa-file-import" /> Import project…
+          </button>
+          <button type="button" role="menuitem" onClick={sendToSuno} disabled={busy}>
+            <Icon name="fa-cloud-arrow-up" /> Send to Suno Sync
           </button>
         </div>
       ) : null}
@@ -540,7 +577,7 @@ export function StudioProjectMenu({
               <Icon name="fa-xmark" />
             </button>
           </header>
-          <p className="se-history-note">Projects are saved automatically.</p>
+          <p className="se-history-note">Projects are saved automatically</p>
           {versions === null ? (
             <p className="se-dialog-note">Loading versions…</p>
           ) : versions.length === 0 ? (
@@ -574,26 +611,54 @@ export function StudioProjectMenu({
                       </button>
                     </div>
                     <ul>
-                    {items.map((version) => {
-                      const at = version.created_at ? new Date(version.created_at) : null;
-                      const time =
-                        at && !Number.isNaN(at.getTime())
-                          ? at.toLocaleTimeString()
-                          : version.label || version.title || "Version";
-                      return (
-                        <li key={version.id} className="se-history-row">
-                          <span>{version.label || time}</span>
-                          <button
-                            type="button"
-                            className="se-pill"
-                            onClick={() => restore(version.id)}
-                            disabled={busy}
-                            aria-label={`Restore ${version.label || version.title || "version"}`}
+                      {items.map((version) => {
+                        const isNewest = version.id === newestVersionId;
+                        const time =
+                          versionClock(version.created_at, !isNewest) ||
+                          version.label ||
+                          version.title ||
+                          "Version";
+                        const note =
+                          version.label && version.label !== time ? version.label : null;
+                        return (
+                          <li
+                            key={version.id}
+                            className={`se-history-item${isNewest ? " is-current" : ""}`}
                           >
-                            Restore
-                          </button>
-                        </li>
-                      );
+                            <button
+                              type="button"
+                              className={`se-history-row${
+                                revealedVersion === version.id ? " is-revealed" : ""
+                              }`}
+                              onClick={() => restore(version.id)}
+                              disabled={busy}
+                              aria-label={`Restore version from ${time}`}
+                              onPointerEnter={() => setRevealedVersion(version.id)}
+                              onPointerLeave={() =>
+                                setRevealedVersion((current) =>
+                                  current === version.id ? null : current
+                                )
+                              }
+                              onFocus={() => setRevealedVersion(version.id)}
+                              onBlur={() =>
+                                setRevealedVersion((current) =>
+                                  current === version.id ? null : current
+                                )
+                              }
+                            >
+                              <span className="se-history-dot" aria-hidden="true" />
+                              <span className="se-history-time">{time}</span>
+                              {note ? <span className="se-history-label">{note}</span> : null}
+                              {isNewest ? (
+                                <Icon name="fa-chevron-down" className="se-history-chevron" />
+                              ) : (
+                                <span className="se-history-restore" aria-hidden="true">
+                                  Restore
+                                </span>
+                              )}
+                            </button>
+                          </li>
+                        );
                       })}
                     </ul>
                   </section>
@@ -601,9 +666,6 @@ export function StudioProjectMenu({
               })()}
             </div>
           )}
-          <p className="se-history-note">
-            Restoring replaces the arrangement and reloads the editor.
-          </p>
         </aside>
       ) : dialog ? (
         <div
@@ -621,7 +683,7 @@ export function StudioProjectMenu({
                     ? "Name project before sharing"
                     : dialog === "sync"
                       ? "Suno sync"
-                      : "Studio settings"
+                      : "Studio Settings"
           }
         >
           <div
@@ -635,7 +697,7 @@ export function StudioProjectMenu({
                   <h2>My Projects</h2>
                   <button
                     type="button"
-                    className="se-icon"
+                    className="se-dialog-x"
                     aria-label="Close projects"
                     onClick={() => setDialog(null)}
                   >
@@ -798,7 +860,7 @@ export function StudioProjectMenu({
                 >
                   <Icon name="fa-xmark" />
                 </button>
-                <h2>Studio settings</h2>
+                <h2>Studio Settings</h2>
                 <div className="se-settings">
                   <nav className="se-settings-nav" aria-label="Settings sections">
                     {(
@@ -969,23 +1031,24 @@ export function StudioProjectMenu({
               <>
                 <h2>Share “{shareName}”</h2>
                 <p className="se-dialog-lead">
-                  Anyone with the link can view this project and make their own editable copy.
+                  Anyone with the link can view this project and create their own editable copy.
                 </p>
                 <p className="se-dialog-note">
-                  Your project stays as it is — they cannot edit or change your version.
+                  Your original project will remain unchanged — others can&apos;t edit or affect
+                  your version.
                 </p>
                 {share ? (
                   <>
                     <input
                       className="se-pill"
-                      value={shareUrl}
+                      value={sharePath}
                       readOnly
                       aria-label="Share link"
                       onFocus={(event) => event.currentTarget.select()}
                     />
                     <p className="se-dialog-note">
-                      The link is view-and-copy only; it is not live collaboration. It expires in 7
-                      days.
+                      The link is view-and-copy only; it is not live collaboration.
+                      {shareExpiry ? ` It expires on ${shareExpiry}.` : ""}
                     </p>
                   </>
                 ) : (

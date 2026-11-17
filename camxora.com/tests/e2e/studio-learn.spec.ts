@@ -31,9 +31,18 @@ test("learn explains a control, then stays off after a reload", async ({ page })
   await expect(menu.getByRole("menuitemcheckbox")).toHaveAttribute("aria-checked", "true");
 
   await menu.getByRole("menuitem", { name: /Keyboard Shortcuts/ }).click();
-  const shortcuts = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  const shortcuts = page.getByRole("dialog", { name: "Keyboard Shortcuts" });
   await expect(shortcuts).toBeVisible();
   await expect(shortcuts).toContainText("Undo");
+  // S14: grouped sections, two columns, and a search that filters them.
+  await expect(shortcuts.locator(".se-shortcut-group h3").first()).toBeVisible();
+  await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(5);
+  const search = shortcuts.getByLabel("Search shortcuts");
+  await search.fill("zoom");
+  await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(0);
+  await expect(shortcuts.getByText(/Zoom/i).first()).toBeVisible();
+  await search.fill("");
+  await expect(shortcuts.locator(".se-shortcut-group")).toHaveCount(5);
   await shortcuts.getByRole("button", { name: "Close" }).click();
   await expect(shortcuts).toHaveCount(0);
 

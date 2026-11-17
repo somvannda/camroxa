@@ -25,8 +25,13 @@ A build is clone-complete only when all seven hold:
    shipped UI — matched against `.ts`/`.tsx`/`.css` source **with comments removed by the
    TypeScript parser**, so neither a document nor a code comment can satisfy a string — and
    every captured menu row exists in the same order (YouTube Tutorials is the one sanctioned
-   absence). The captured frames override the transcription: S26 reads "Download WAV", so the
-   list says that, not the "Download .WAV" that the implementation spec had recorded.
+   absence). The captured frames override the transcription **and the shipped UI**: S26 reads
+   "Download .WAV" and S44 reads "NO ASSET LOADED". A gate that only proves *presence* cannot
+   catch a label that was silently changed to match our own button, so any correction here
+   must be read off the frame, not inferred from passing tests.
+   `FUNCTIONAL_STRINGS.json` also carries an `additive` list: strings for our own operations
+   (JSON export, normalise, transforms, import, wavetable designer) that no frame shows —
+   checked for presence, never presented as captured.
 4. **Behaviour.** Each captured interaction reproduces the reference behaviour; an addition
    may only *add* surfaces, never replace or move a captured control.
 5. **Allowed divergence.** Brand wordmark/logo, palette tokens, our own help/marketing
@@ -58,7 +63,15 @@ project JSON import, clip comments, presence, supersaw audition speed.
 | There is **no mixer surface** (S47) | We do not ship one |
 | There is **no conflict UI** (S59) | Our 409 UI is additive |
 | Deletion is **soft with recovery** (S04/§56) | Recently Deleted + restore |
-| Learn has **YouTube Tutorials** | Dropped by product decision — the only sanctioned missing row |
+| Learn has **YouTube Tutorials** | Dropped by product decision - the only sanctioned missing row |
+| Start overlay has **Drum & Bass Demo** (S03/S06) | No bundled demo arrangement ships, so the tile would open nothing; recorded absence |
+| Start overlay has **Video Tutorial** (S03/S06) | Same content as the dropped YouTube row; recorded absence |
+| Clip rail header sits **inside the floating card** (S27) | The captured controls are all present (back, title, like/dislike, art, Remix, player, tabs); the card layout is ours, not a replacement |
+| MIDI editor has **no overview strip** | The grid zooms 1–12× instead of scrolling a mini-map; an overview with no scroll position to reflect would be decorative |
+| Footer strip shows the **master chain**, not the selected track’s (S26) | Deliberate: the capture’s footer centre is the master rack; per-track chains live in the dock |
+
+The start overlay ships **Edit Your Song, Upload Audio, Create a song, Open a project and
+Empty Project**, plus the captured ✕ and "Browse Studio projects ›" pill.
 
 ## 6. Sign-off checklist
 

@@ -1414,7 +1414,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   }
 
   const renderTrash = () => {
-    if (trashLoading) return <p className="s-note">Loading Trashâ€¦</p>;
+    if (trashLoading) return <p className="s-note">Loading Trash…</p>;
     if (!trashItems.length) {
       return renderEmpty(
         "fa-trash",

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useEffect,
@@ -11,8 +11,11 @@ import {
 import { Icon } from "@/components/Icon";
 import { ParamKnob } from "@/components/studio/ParamKnob";
 import {
+  NOTE_DIVISIONS,
   STUDIO_PLUGINS,
   customAsDef,
+  divisionMs,
+  nearestDivisionLabel,
   customParamMap,
   defaultParams,
   getPlugin,
@@ -71,6 +74,8 @@ type Props = {
     params: Record<string, number>,
     mode?: string
   ) => void;
+  /** Project tempo, for beat-synced params (Delay Tempo mode). */
+  bpm?: number;
   /** S10: whether cards open docked, floating, or with a per-card toggle. */
   windowMode?: StudioWindowMode;
   /** Shared-bus sends for the selected track. */
@@ -250,7 +255,7 @@ function ConvolutionCard({
           className="sp-ir"
           viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label={response ? `Impulse response ${response.name}` : "No impulse response"}
+          aria-label={response ? `Impulse response ${response.name}` : "No asset loaded"}
         >
           <line x1={0} x2={width} y1={height / 2} y2={height / 2} className="sp-ir-axis" />
           {[0, 1, 2, 3].map((second) => {
@@ -289,7 +294,7 @@ function ConvolutionCard({
               setOpen((value) => !value);
             }}
           >
-            <span>{response ? impulseLabel(assetId) : "No impulse response"}</span>
+            <span>{response ? impulseLabel(assetId) : "NO ASSET LOADED"}</span>
             <Icon name="fa-chevron-down" />
           </button>
           {open ? (
@@ -439,7 +444,8 @@ function EqCard({
 }: {
   params: Record<string, number>;
   disabled: boolean;
-  onChange: (key: string, value: number) => void;
+  /** Apply several param writes in one chain update; two calls would race the snapshot. */
+  onChange: (updates: Record<string, number>) => void;
 }) {
   const [selected, setSelected] = useState(1);
   const [dragging, setDragging] = useState<number | null>(null);
@@ -480,8 +486,10 @@ function EqCard({
     const ty = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
     const freq = Math.round(EQ_F_MIN * Math.pow(EQ_F_MAX / EQ_F_MIN, tx));
     const gain = Math.round((0.5 - ty) * 2 * EQ_DB * 10) / 10;
-    onChange(`band${band}.freq`, Math.min(EQ_F_MAX, Math.max(EQ_F_MIN, freq)));
-    onChange(`band${band}.gain`, Math.min(EQ_DB, Math.max(-EQ_DB, gain)));
+    onChange({
+      [`band${band}.freq`]: Math.min(EQ_F_MAX, Math.max(EQ_F_MIN, freq)),
+      [`band${band}.gain`]: Math.min(EQ_DB, Math.max(-EQ_DB, gain)),
+    });
   };
 
   return (
@@ -507,7 +515,7 @@ function EqCard({
           aria-label={`Band ${selected} enabled`}
           disabled={disabled}
           className={`sp-band-toggle${current.on ? " on" : ""}`}
-          onClick={() => onChange(`band${selected}.on`, current.on ? 0 : 1)}
+          onClick={() => onChange({ [`band${selected}.on`]: current.on ? 0 : 1 })}
         />
       </div>
 
@@ -520,7 +528,7 @@ function EqCard({
             aria-pressed={current.type === shape.id}
             disabled={disabled}
             className={current.type === shape.id ? "on" : undefined}
-            onClick={() => onChange(`band${selected}.type`, shape.id)}
+            onClick={() => onChange({ [`band${selected}.type`]: shape.id })}
           >
             <svg viewBox="0 0 28 18" aria-hidden="true">
               <path d={shape.path} />
@@ -590,7 +598,7 @@ function EqCard({
           unit="hz"
           log
           disabled={disabled}
-          onChange={(next) => onChange(`band${selected}.freq`, next)}
+          onChange={(next) => onChange({ [`band${selected}.freq`]: next })}
         />
         <ParamKnob
           label="Q"
@@ -599,7 +607,7 @@ function EqCard({
           max={18}
           step={0.1}
           disabled={disabled}
-          onChange={(next) => onChange(`band${selected}.q`, next)}
+          onChange={(next) => onChange({ [`band${selected}.q`]: next })}
         />
         <ParamKnob
           label="Gain"
@@ -609,7 +617,7 @@ function EqCard({
           step={0.5}
           unit="db"
           disabled={disabled}
-          onChange={(next) => onChange(`band${selected}.gain`, next)}
+          onChange={(next) => onChange({ [`band${selected}.gain`]: next })}
         />
       </div>
     </div>
@@ -628,6 +636,7 @@ const PREVIEW_PATHS: Record<string, string> = {
   rhythmGate: "M0 10 H30 V44 H50 V10 H80 V44 H100 V10 H130 V44 H150 V10 H180 V44 H200",
   distortion: "M0 42 L20 18 L40 42 L60 18 L80 42 L100 18 L120 42 L140 18 L160 42 L180 18 L200 42",
   convolution: "M0 46 L30 44 L60 10 L70 40 L90 34 L120 42 L150 40 L200 46",
+  stereoUtility: "M0 20 L60 20 L80 44 L120 44 L140 20 L200 20",
 };
 
 function PluginPreview({ id }: { id: string }) {
@@ -659,12 +668,15 @@ export function StudioPluginDock({
   tracks = [],
   userPresets = [],
   onSavePreset,
+  bpm = 120,
   windowMode = "toggle",
   advancedContent = false,
   sends = DEFAULT_SENDS,
   onSendsChange,
 }: Props) {
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogMenu, setCatalogMenu] = useState(false);
+  
   const [query, setQuery] = useState("");
   const [presetMenu, setPresetMenu] = useState<string | null>(null);
   const [savePresetFor, setSavePresetFor] = useState<string | null>(null);
@@ -772,6 +784,29 @@ export function StudioPluginDock({
           const isDesigned = Boolean(entry.custom);
           const primary = plugin.params.filter((param) => param.tier !== "secondary");
           const secondary = plugin.params.filter((param) => param.tier === "secondary");
+          if (isPopped(entry)) {
+            // The popped card is position:fixed, so without a placeholder the rail has no
+            // in-flow children and collapses (W5 B-98).
+            return (
+              <article
+                key={entry.entryId}
+                className="sp-slot sp-slot-popped"
+                aria-label={`${plugin.name} popped out`}
+              >
+                <header className="sp-slot-head">
+                  <span className="sp-dot" aria-hidden="true" />
+                  <strong>{plugin.name}</strong>
+                </header>
+                <button
+                  type="button"
+                  className="sp-add-inline"
+                  onClick={() => onChange(togglePoppedOut(chain, entry.entryId))}
+                >
+                  <Icon name="fa-up-right-from-square" /> Dock {plugin.name}
+                </button>
+              </article>
+            );
+          }
           return (
             <article
               key={entry.entryId}
@@ -1035,7 +1070,13 @@ export function StudioPluginDock({
                 <EqCard
                   params={entry.params}
                   disabled={Boolean(entry.bypassed)}
-                  onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
+                  onChange={(updates) => {
+                    let next = chain;
+                    for (const [key, value] of Object.entries(updates)) {
+                      next = setParam(next, entry.entryId, key, value);
+                    }
+                    onChange(next);
+                  }}
                 />
               ) : plugin.id === "convolution" ? (
                 <ConvolutionCard
@@ -1052,7 +1093,40 @@ export function StudioPluginDock({
                   {plugin.id === "compressor" ? <CompressorCurve params={entry.params} /> : null}
                   <div className="sp-knobs sp-knob-grid">
                     {[...primary, ...secondary].map((param) =>
-                      param.choices ? (
+                      param.tempoSynced && entry.mode === "tempo" ? (
+                        <label key={param.key} className="sp-knob">
+                          <select
+                            className="sp-choice"
+                            aria-label={`${param.label} division`}
+                            value={nearestDivisionLabel(
+                              entry.params[param.key] ?? param.default,
+                              bpm
+                            )}
+                            disabled={entry.bypassed}
+                            onChange={(event) => {
+                              const division = NOTE_DIVISIONS.find(
+                                (candidate) => candidate.label === event.target.value
+                              );
+                              if (!division) return;
+                              onChange(
+                                setParam(
+                                  chain,
+                                  entry.entryId,
+                                  param.key,
+                                  divisionMs(division.beats, bpm)
+                                )
+                              );
+                            }}
+                          >
+                            {NOTE_DIVISIONS.map((division) => (
+                              <option key={division.label} value={division.label}>
+                                {division.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="sp-knob-label">{param.label}</span>
+                        </label>
+                      ) : param.choices ? (
                         <label key={param.key} className="sp-knob">
                           <select
                             className="sp-choice"
@@ -1240,6 +1314,32 @@ export function StudioPluginDock({
                   autoFocus
                 />
               </label>
+              <button
+                type="button"
+                className="sp-dialog-close"
+                aria-label="Plugin catalogue options"
+                aria-haspopup="menu"
+                aria-expanded={catalogMenu}
+                onClick={() => setCatalogMenu((open) => !open)}
+              >
+                <Icon name="fa-ellipsis" />
+              </button>
+              {catalogMenu ? (
+                <div className="sp-ir-menu sp-catalog-menu" role="menu" aria-label="Catalogue options">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setCatalogMenu(false);
+                      setCatalogOpen(false);
+                      setQuery("");
+                      onDesignPlugin?.();
+                    }}
+                  >
+                    <Icon name="fa-wand-magic-sparkles" /> Create new plugin
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
                 className="sp-dialog-close"

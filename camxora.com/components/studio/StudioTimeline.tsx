@@ -71,6 +71,8 @@ function labelOn(fill: string): string {
 }
 
 export type StudioTimelineProps = {
+  /** True until the project document arrives; suppresses the empty-session placeholder. */
+  loading?: boolean;
   tracks: StudioTrack[];
   clips: TimelineClip[];
   barWidth: number;
@@ -135,10 +137,13 @@ export type StudioTimelineProps = {
     edge: "in" | "out"
   ) => void;
   onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  /** Drag the loop's left flag (S24). */
+  onLoopStartDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
 
 export function StudioTimeline(props: StudioTimelineProps) {
   const {
+    loading = false,
     tracks,
     clips,
     barWidth,
@@ -180,6 +185,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
     onTrimPointerDown,
     onFadePointerDown,
     onLoopHandleDown,
+  onLoopStartDown,
   } = props;
 
   const range =
@@ -471,7 +477,14 @@ export function StudioTimeline(props: StudioTimelineProps) {
               />
               <button
                 type="button"
-                className="se-loop-handle"
+                className="se-loop-handle start"
+                aria-label="Loop start"
+                style={{ left: (loopStart / secondsPerBar) * barWidth }}
+                onPointerDown={onLoopStartDown}
+              />
+              <button
+                type="button"
+                className="se-loop-handle end"
                 aria-label="Loop end"
                 style={{ left: (loopEnd / secondsPerBar) * barWidth }}
                 onPointerDown={onLoopHandleDown}
@@ -512,7 +525,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
           ) : null}
         </div>
 
-        {!tracks.length ? (
+        {!loading && !tracks.length ? (
           <div className="se-empty">
             <strong>Your session is empty</strong>
             <span>Add a track to start arranging.</span>

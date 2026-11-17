@@ -24,11 +24,11 @@ test("project menu renames the project and the name survives a reload", async ({
 
   // The order matches the capture; the one we cannot honour is disabled.
   await expect(menu.getByRole("menuitem")).toHaveCount(11);
-  await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Version History
-  await expect(menu.getByRole("menuitem").nth(6)).toBeEnabled(); // Share Project
-  await expect(menu.getByRole("menuitem").nth(7)).toBeEnabled(); // Send to Suno Sync
-  await expect(menu.getByRole("menuitem").nth(8)).toBeDisabled(); // v1 copy
-  await expect(menu.getByRole("menuitem").nth(9)).toBeEnabled(); // Settings
+  await expect(menu.getByRole("menuitem").nth(4)).toBeEnabled(); // Version History
+  await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Share Project
+  await expect(menu.getByRole("menuitem").nth(6)).toBeDisabled(); // v1 copy
+  await expect(menu.getByRole("menuitem").nth(7)).toBeEnabled(); // Settings
+  await expect(menu.getByRole("menuitem").nth(10)).toBeEnabled(); // Send to Suno Sync
 
   await menu.getByRole("menuitem", { name: "Rename" }).click();
   const dialog = page.getByRole("dialog", { name: "Rename project" });
@@ -50,6 +50,38 @@ test("project menu renames the project and the name survives a reload", async ({
 
   await page.reload();
   await expect(page.locator(".se-project .se-chip")).toHaveText(renamed);
+});
+
+test("renaming then editing does not raise a false conflict", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  // QA D2: the rename PATCH bumps updated_at; the editor must keep the fresh version or
+  // the next edit 409s against our own write and claims another tab changed the project.
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, { title: `Rename ${tag}` });
+
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const dialog = page.getByRole("dialog", { name: "Rename project" });
+  await dialog.getByLabel("Project title").fill(`Renamed ${tag}`);
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.keyboard.press("a");
+  await expect(page.getByText(/changed in another tab/i)).toHaveCount(0);
+  await expect(page.locator(".se-tracks").getByText("Track 2", { exact: true })).toBeVisible();
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const body = (await response.json()) as { data?: { tracks?: unknown[] } };
+          return (body.data?.tracks ?? []).length;
+        }, projectId),
+      { timeout: 15_000 }
+    )
+    .toBe(2);
 });
 
 test("send to Suno sync reports the mirror's answer", async ({ page }) => {
@@ -100,10 +132,13 @@ test("share creates a view link that resolves without the editor", async ({ page
 
   const dialog = page.getByRole("dialog", { name: "Share project" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(/view this project and make their own editable copy/)).toBeVisible();
+  await expect(dialog.getByText(/view this project and create their own editable copy/)).toBeVisible();
 
   const link = dialog.getByLabel("Share link");
-  await expect(link).toHaveValue(/\/studio\/shared\/.+$/);
+  await expect(link).toHaveValue(/^\/studio\/shared\/.+$/);
+  // The dialog must not print a dev origin; the clipboard action upgrades it to absolute.
+  await expect(dialog).not.toContainText("http://localhost");
+  await expect(dialog).not.toContainText("https://localhost");
 
   // The link is view + fork: the public share endpoint must answer for its token.
   const href = await link.inputValue();

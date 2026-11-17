@@ -315,3 +315,31 @@ async def test_for_song_requires_an_id() -> None:
         await service.studio_project_for_song(uuid4(), "   ")
 
     service._pool.fetchrow.assert_not_called()
+
+
+# --- refresh must not re-arm the mirror on every poll ---------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_does_not_enqueue_an_unlinked_project() -> None:
+    """QA follow-up: an editor polling refresh used to trigger a 90 s enqueue each time."""
+    service = _service()
+    project = _row()
+    service._pool.fetchrow = AsyncMock(return_value=project)
+    service._studio_sync_request = AsyncMock(
+        return_value={
+            "status": "pending",
+            "suno_project_id": None,
+            "suno_version_id": None,
+            "last_error": None,
+            "synced_at": None,
+            "skipped_clips": [],
+            "state_sync": False,
+        }
+    )
+
+    view = await service.refresh_studio_project(project["user_id"], project["id"])
+
+    assert view["status"] == "pending"
+    service._studio_sync_request.assert_awaited_once()
+    assert service._studio_sync_request.await_args.args[2] == "refresh"

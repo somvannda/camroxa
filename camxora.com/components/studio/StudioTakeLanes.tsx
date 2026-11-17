@@ -34,13 +34,19 @@ export function StudioTakeLanes({
   const rows = takes ?? [];
   return (
     <section className="se-takes" aria-label="Take lanes">
-      <button type="button" className="se-icon se-takes-close" aria-label="Close take lanes" onClick={onClose}>
-        <Icon name="fa-xmark" />
-      </button>
       {rows.length === 0 ? (
         <p className="se-takes-empty">Create a clip to see alternate takes here</p>
       ) : (
-        <ul className="se-takes-list">
+        <>
+          <button
+            type="button"
+            className="se-icon se-takes-close"
+            aria-label="Close take lanes"
+            onClick={onClose}
+          >
+            <Icon name="fa-xmark" />
+          </button>
+          <ul className="se-takes-list">
           {rows.map((take, position) => {
             const number = rows.length - position;
             const active = Boolean(take.active);
@@ -71,6 +77,7 @@ export function StudioTakeLanes({
             );
           })}
         </ul>
+        </>
       )}
     </section>
   );

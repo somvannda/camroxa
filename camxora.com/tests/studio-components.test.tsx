@@ -721,6 +721,22 @@ describe("StudioLibrary", () => {
     expect(screen.getByText("4m ago")).toBeTruthy();
   });
 
+  it("draws the arrangement preview in project rows, not a generic icon", () => {
+    const recent = new Date(Date.now() - 4 * 60_000).toISOString();
+    const project = {
+      id: "p2",
+      title: "Other",
+      bpm: 120,
+      time_signature: "4/4",
+      updated_at: recent,
+      thumb: { end: 8, tracks: [{ c: "#38bdf8", clips: [{ s: 0, d: 4 }] }] },
+    } as unknown as StudioProject;
+    const { container } = render(
+      <StudioLibrary {...libraryProps({ projects: [project], currentProjectId: "p1" })} />
+    );
+    expect(container.querySelector(".se-project-preview.is-thumb")).toBeTruthy();
+  });
+
   it("shows uploads with their length and adds one to the timeline", async () => {
     const user = userEvent.setup();
     const onAddUpload = vi.fn();
@@ -734,7 +750,8 @@ describe("StudioLibrary", () => {
       />
     );
     expect(screen.getByText("take-1.wav")).toBeTruthy();
-    expect(screen.getByText("2:07")).toBeTruthy();
+    expect(screen.getByText(/2:07/)).toBeTruthy();
+    expect(screen.getByText(/WAV/)).toBeTruthy();
     await user.click(screen.getByLabelText("Add take-1.wav"));
     expect(onAddUpload).toHaveBeenCalledWith(upload());
   });
@@ -948,7 +965,7 @@ describe("StudioSongDetail", () => {
     const menu = screen.getByRole("menu", { name: "Song options" });
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(3);
 
-    await user.click(within(menu).getByRole("menuitem", { name: /Download WAV/ }));
+    await user.click(within(menu).getByRole("menuitem", { name: /Download \.WAV/ }));
     expect(onDownloadWav).toHaveBeenCalledWith(detailSong);
 
     await user.click(screen.getByRole("button", { name: "More song options" }));
@@ -983,10 +1000,33 @@ describe("StudioFooter", () => {
         onWhatsThis={noop}
       />
     );
-    expect(screen.getByRole("button", { name: /Add Track Effects/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Add master effect/ })).toBeTruthy();
     await user.click(screen.getByLabelText("Zoom in"));
     expect(onZoomIn).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("All projects").getAttribute("href")).toBe("/studio");
+  });
+
+  it("shows the master chain and offers a live add control", async () => {
+    const user = userEvent.setup();
+    const onAddChainEffect = vi.fn();
+    render(
+      <StudioFooter
+        chain={["compressor", "eq"]}
+        hasTrack
+        onAddChainEffect={onAddChainEffect}
+        loop={false}
+        onLoop={noop}
+        onZoomOut={noop}
+        onZoomFit={noop}
+        onZoomIn={noop}
+        onSearch={noop}
+        onToggleLibrary={noop}
+        whatsThis={false}
+        onWhatsThis={noop}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Add master effect" }));
+    expect(onAddChainEffect).toHaveBeenCalledOnce();
   });
 
   it("keeps both chips when the same plugin sits in the chain twice", () => {
@@ -1109,10 +1149,10 @@ describe("StudioTrackPanel", () => {
       "Rename track",
       "Color",
       "Collapse controls",
-      "Bounce track",
       "Duplicate",
       "Hide & Mute Track",
       "Delete",
+      "Bounce track",
     ]);
   });
 

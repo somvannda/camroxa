@@ -22,10 +22,13 @@ export type ParamKnobProps = {
   onChange: (value: number) => void;
 };
 
-function formatValue(value: number, unit?: string, percent01 = false): string {
+export function formatValue(value: number, unit?: string, percent01 = false): string {
   if (percent01) return `${Math.round(value * 100)}%`;
   if (unit === "hz") {
-    return value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}khz` : `${Math.round(value)}hz`;
+    if (value < 1000) return `${Math.round(value)}hz`;
+    // 1000–9999 reads "1khz"/"4.5khz", never "4.0khz" (W5 B-51/B-52).
+    const khz = Math.round((value / 1000) * 10) / 10;
+    return `${khz}khz`;
   }
   if (unit === "db") return `${Math.round(value * 10) / 10}db`;
   if (unit === "ms") return `${Math.round(value)}ms`;

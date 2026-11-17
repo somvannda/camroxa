@@ -3,6 +3,20 @@ import { readFile } from "node:fs/promises";
 
 import { createStudioProject } from "./studio-fixture";
 
+test("the catalogue header offers its options menu", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: "Catalogue options" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  const dialog = page.getByRole("dialog", { name: "Add a track plugin" });
+  await dialog.getByRole("button", { name: "Plugin catalogue options" }).click();
+  const menu = page.getByRole("menu", { name: "Catalogue options" });
+  await expect(menu.getByRole("menuitem", { name: /Create new plugin/ })).toBeVisible();
+  // The captured ellipsis is real: it closes the catalogue and opens the designer.
+  await menu.getByRole("menuitem", { name: /Create new plugin/ }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 /**
  * Per-track plugin chains reach the audio engine (W4.1/§50).
  *
@@ -26,6 +40,43 @@ async function wavRms(download: Download): Promise<number> {
   }
   return count ? Math.sqrt(sum / count) : 0;
 }
+
+test("Delay's Tempo mode selects note divisions instead of milliseconds", async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = await createStudioProject(page, { title: "Tempo delay" });
+
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  await page.locator(".sp-add-inline").click();
+  await page.getByRole("dialog", { name: "Add a track plugin" })
+    .getByRole("button", { name: /^Delay/ })
+    .first()
+    .click();
+
+  const slot = page.locator(".sp-slot").first();
+  await slot.getByRole("tab", { name: "Tempo" }).click();
+  const select = slot.getByLabel("Time division");
+  await expect(select).toBeVisible();
+  await expect(select.locator("option")).toHaveCount(6);
+  await select.selectOption("1/8");
+
+  // The chain stores milliseconds, so the audio engine needs no tempo awareness: 1/8 at
+  // 120 BPM is 250 ms.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const body = (await response.json()) as {
+            data?: {
+              chains?: Record<string, Array<{ params?: { time?: number } }>>;
+            };
+          };
+          return body.data?.chains?.["fixture-track"]?.[0]?.params?.time ?? null;
+        }, projectId),
+      { timeout: 15_000 }
+    )
+    .toBe(250);
+});
 
 test("an EQ on the track changes the exported mix", async ({ page }) => {
   test.setTimeout(120_000);

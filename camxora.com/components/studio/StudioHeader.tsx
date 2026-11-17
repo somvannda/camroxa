@@ -21,7 +21,7 @@ export type StudioHeaderProps = {
   projectId: string | null;
   settings: StudioSettings;
   onSettingsChange: (next: StudioSettings) => void;
-  onRenamed: (title: string) => void;
+  onRenamed: (title: string, updatedAt?: string | null) => void;
   onShowQuickStart: () => void;
   timeSignature: string;
   onTimeSignature: (next: string) => void;
@@ -197,7 +197,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           title="Jump the playhead to the song start or beat 1 — press again for the other"
           data-help="back-to-start"
         >
-          <Icon name="fa-backward-step" />
+          <Icon name="fa-backward" />
         </button>
         <div className="se-record-wrap">
           <button
@@ -368,6 +368,16 @@ export function StudioHeader(props: StudioHeaderProps) {
         </button>
         {exportOpen ? (
           <div className="se-export-menu" role="menu" aria-label="Export options">
+            <button type="button" role="menuitem" onClick={() => onExport("mix")}>
+              <Icon name="fa-music" /> Full Song
+            </button>
+            <button type="button" role="menuitem" disabled={!rangeReady} onClick={() => onExport("range")}>
+              <Icon name="fa-clock" /> Selected Time Range
+            </button>
+            <button type="button" role="menuitem" onClick={() => onExport("tracks")}>
+              <Icon name="fa-layer-group" /> Multitrack
+            </button>
+            <div className="se-clip-menu-sep" />
             <div className="se-export-formats" role="group" aria-label="Export format">
               {(["wav", "mp3"] as const).map((format) => (
                 <button
@@ -390,15 +400,6 @@ export function StudioHeader(props: StudioHeaderProps) {
               title="Sets the mix peak to −1 dBFS so successive exports compare"
             >
               {normalise ? "✓ " : ""}Normalise mix to −1 dBFS
-            </button>
-            <button type="button" role="menuitem" onClick={() => onExport("mix")}>
-              <Icon name="fa-music" /> Full Song
-            </button>
-            <button type="button" role="menuitem" disabled={!rangeReady} onClick={() => onExport("range")}>
-              <Icon name="fa-clock" /> Selected Time Range
-            </button>
-            <button type="button" role="menuitem" onClick={() => onExport("tracks")}>
-              <Icon name="fa-layer-group" /> Multitrack
             </button>
             <button type="button" role="menuitem" onClick={() => onExport("json")}>
               <Icon name="fa-file-code" /> Project (JSON)

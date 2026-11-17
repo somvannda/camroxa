@@ -81,6 +81,7 @@ export function StudioAudioEditor(props: StudioAudioEditorProps) {
   const [peaks, setPeaks] = useState<number[] | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [quantizeGrid, setQuantizeGrid] = useState<QuantizeGrid>("1/8");
+  const [collapsed, setCollapsed] = useState(false);
   const [triplets, setTriplets] = useState(false);
   const [preview, setPreview] = useState<WarpMarker[] | null>(null);
   const previewRef = useRef<WarpMarker[] | null>(null);
@@ -228,12 +229,21 @@ export function StudioAudioEditor(props: StudioAudioEditorProps) {
     <section className="se-audio" aria-label="Clip settings">
       <header className="se-audio-head">
         <strong>Clip Settings</strong>
+        <button
+          type="button"
+          className="se-icon se-audio-collapse"
+          aria-label={collapsed ? "Expand clip settings" : "Collapse clip settings"}
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          <Icon name={collapsed ? "fa-chevron-down" : "fa-chevron-up"} />
+        </button>
         <button type="button" className="se-icon" aria-label="Close clip editor" onClick={onClose}>
           <Icon name="fa-xmark" />
         </button>
       </header>
 
-      <div className="se-audio-body">
+      <div className="se-audio-body" hidden={collapsed}>
         <div className="se-audio-settings">
           <label className="se-audio-volume">
             <span>Volume</span>

@@ -41,7 +41,7 @@ test("the clip menu splits, renames and recolours a clip", async ({ page }) => {
   expect(items.join(" ")).toContain("Split");
   expect(items.join(" ")).toContain("Clip Color");
   expect(items.join(" ")).toContain("Get Stems");
-  expect(items.join(" ")).toContain("Download WAV");
+  expect(items.join(" ")).toContain("Download .WAV");
   await expect(menu.getByRole("menuitem", { name: "Clip Info" })).toBeEnabled();
 
   // Split needs the playhead inside the clip: put it at 2 s (one bar).
@@ -97,4 +97,19 @@ test("Ctrl+E splits the selected clip at the playhead", async ({ page }) => {
   await page.locator(".se-clip").first().click();
   await page.keyboard.press("Control+e");
   await expect(page.locator(".se-clip")).toHaveCount(2);
+});
+
+test("the clip menu scrolls instead of hiding its lower rows", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: "Long clip menu" });
+  await page.locator(".se-clip").first().click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "Clip options" });
+  await expect(menu).toBeVisible();
+
+  // W5 E-18: removing overflow clipped five rows below the viewport. It scrolls now.
+  const overflow = await menu.evaluate((element) => getComputedStyle(element).overflowY);
+  expect(["auto", "scroll"]).toContain(overflow);
+  const addFx = menu.getByRole("menuitem", { name: /Add FX/ });
+  await addFx.scrollIntoViewIfNeeded();
+  await expect(addFx).toBeVisible();
 });
