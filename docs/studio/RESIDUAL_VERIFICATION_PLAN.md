@@ -142,8 +142,8 @@ else is free.
 
 ## 7. Decisions requested from you
 
-1. **W6 budget:** approve a credit cap (suggested: one operation each, 12 operations; cap at
-   the pricing table's per-op cost × 14 for retries). Without this, D4 stays BLOCKED.
+1. **W6 budget:** **approved at 320 credits and spent — 188 of them** (one generation plus the
+    thirteen dependent rows against its task id). D4 is PASS; no further decision is needed.
 2. **W7 absences:** default proposal — build the **MIDI overview strip** (real value), accept
    the clip-rail header as our layout, accept **Video Tutorial** as the recorded absence
    (dropped channel). **Drum & Bass Demo** is no longer an absence: it ships from our own

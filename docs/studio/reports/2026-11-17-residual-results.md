@@ -48,11 +48,28 @@ remaining causes are recorded in `CLONE_DEFINITION.md` §5 (S36 assistant column
 auto-reload capability, S05/S16 add-row position), so **D3 closes with recorded divergences
 rather than unexplained deltas**.
 
-## D4 — live provider matrix · **BLOCKED**
+## D4 — provider matrix · **PASS**
 
-Runner and plan exist (`scripts/dev/provider-matrix.mjs`, `docs/studio/reports/2026-11-17-provider-matrix-plan.md`):
-12 operations, **188 credits clean / 210 realistic / 320 recommended cap**, `--dry-run` by default,
-refuses a private callback URL. It needs an explicit credit cap and a public tunnel. **Not run.**
+Fourteen rows, fourteen green, **188 credits spent of a 320 cap** (wallet 448 → 260, exactly
+the plan total), model `V6`. Every row carries a platform id and a musicapi job id, including
+the 12-track stem split at 60 credits.
+
+| Row | Status | Credits |
+|---|---|---|
+| Generate a song | `SUCCESS`, 2 ready clips | 10 |
+| Export WAV / MP3 | downloaded, real bytes | 0 / 0 |
+| Voice persona | complete | 0 |
+| Bounce / upload + extend | complete | 12 |
+| Stems 2-track, Cover, Extend, Remaster, Add vocals, Add instrumental, Replace section | complete | 12 each |
+| Mashup (+ fixture generation) | complete | 12 + 10 |
+| Stems 12-track | complete | 60 |
+
+Getting there took nine failed attempts, none of them in the Studio code: an orphaned queue
+worker, a dead job that never failed its task (fixed), submits that were going to **production**
+musicapi because `PLATFORM_SUNO_API_BASE_URL` was absent from the worker's environment, a
+readiness probe that could not survive a 12–23 s cold call, and a runner whose token expired
+exactly at its poll deadline. Full table and the reproduction sequence:
+`docs/studio/reports/2026-11-17-provider-matrix-final.md`.
 
 ## D5 — the four absences · **DECIDED AND SHIPPED WHERE BUILDABLE**
 
@@ -149,8 +166,11 @@ cover now has a product-level regression in the specs above.
 
 ## Bottom line
 
-The **defined contract** is satisfied and the studio works end to end in a browser. The
-phrase “pixel-for-pixel clone verified” is **not** yet earned: D4 is unrun (blocked on the
-credit cap for the live provider matrix), and D3 stands as a measured 2.37 % whole-frame
-floor plus three recorded layout divergences rather than pixel identity — which the clone
-definition explicitly does not require.
+The **defined contract** is satisfied, the studio works end to end in a browser, and every
+criterion is now closed: D1 3,510 platform tests, D2 185 real-mirror e2e, D3 signed off with
+three recorded layout divergences, **D4 fourteen provider rows green for 188 credits**, D5
+absences decided and buildable ones shipped, D6 509/510 manual checks.
+
+What is still *not* claimed: pixel identity. D3 stands as a measured 2.37 % whole-frame floor
+plus the three recorded divergences, which the clone definition explicitly does not require —
+the criterion is a measured, adjudicated and recorded comparison, not a byte-equal screenshot.
