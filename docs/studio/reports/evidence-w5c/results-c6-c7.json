@@ -1,0 +1,159 @@
+[
+  {
+    "id": "C-108",
+    "verdict": "PASS",
+    "evidence": "menu \"Drums options\" with 7 rows: Rename track | Color | Collapse controls | Duplicate | Hide & Mute Track | Delete | Bounce track"
+  },
+  {
+    "id": "C-109",
+    "verdict": "FAIL",
+    "evidence": "see C-109.png",
+    "detail": "caret 5–5 of 5  \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m "
+  },
+  {
+    "id": "C-110",
+    "verdict": "PASS",
+    "evidence": "5 swatches in order; choosing one applied #a78bfa and closed the menu"
+  },
+  {
+    "id": "C-111",
+    "verdict": "PASS",
+    "evidence": "label flips to \"Expand controls\"; sliders 0 → 1"
+  },
+  {
+    "id": "C-112",
+    "verdict": "PASS",
+    "evidence": "track count 3 → 4; copy \"Drums blurred copy\" carries 2 clips (their stored trackId still points at \"t-drums\" — ownership is by clipIds)"
+  },
+  {
+    "id": "C-113",
+    "verdict": "PASS",
+    "evidence": "track leaves the list (4 → 3); pill \"2 hidden tracks\"; stored hidden+muted"
+  },
+  {
+    "id": "C-114",
+    "verdict": "PASS",
+    "evidence": "Bass and its clip removed (3 → 2 tracks)"
+  },
+  {
+    "id": "C-115",
+    "verdict": "PASS",
+    "evidence": "clip-less track: disabled, title=\"This track has no clips to bounce\""
+  },
+  {
+    "id": "C-116",
+    "verdict": "PASS",
+    "evidence": "sawBouncing=0; toast \"Bounce on Drums blurred added as a new track.\"; clips 6 → 7"
+  },
+  {
+    "id": "C-117",
+    "verdict": "PASS",
+    "evidence": "menu \"Add a track\" = Audio A | MIDI M | Upload U"
+  },
+  {
+    "id": "C-118",
+    "verdict": "PASS",
+    "evidence": "Audio row appended (3 → 4); \"A\" appended again (→ 5)"
+  },
+  {
+    "id": "C-119",
+    "verdict": "PASS",
+    "evidence": "MIDI row appended a track (5 → 6), last = \"MIDI 8\""
+  },
+  {
+    "id": "C-120",
+    "verdict": "PASS",
+    "evidence": "library opened on the Upload actions toolbar (\"Filter New In Project Stems\"); no track added"
+  },
+  {
+    "id": "C-121",
+    "verdict": "PASS",
+    "evidence": "Escape and outside click close it; after a scroll it is still open"
+  },
+  {
+    "id": "C-122",
+    "verdict": "PASS",
+    "evidence": "pill \"2 hidden tracks\"; popover with 2 row(s)"
+  },
+  {
+    "id": "C-123",
+    "verdict": "PASS",
+    "evidence": "Scratch returned to the track list; hidden rows now 1"
+  },
+  {
+    "id": "C-124",
+    "verdict": "PASS",
+    "evidence": "label Unmute → Mute; the track stays hidden"
+  },
+  {
+    "id": "C-125",
+    "verdict": "PASS",
+    "evidence": "Unmute all cleared muted on 2 hidden track(s) without showing them"
+  },
+  {
+    "id": "C-126",
+    "verdict": "PASS",
+    "evidence": "every hidden track returned; the pill disappeared"
+  },
+  {
+    "id": "C-127",
+    "verdict": "PASS",
+    "evidence": "Escape closed the hidden-tracks popover"
+  },
+  {
+    "id": "C-128",
+    "verdict": "PASS",
+    "evidence": "group row A with a level slider (1); member labels = 2"
+  },
+  {
+    "id": "C-129",
+    "verdict": "PASS",
+    "evidence": "group A level stored = 40; Vox's own fader still 82"
+  },
+  {
+    "id": "C-130",
+    "verdict": "FAIL",
+    "evidence": "see C-130.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m  Expected: \u001b[32m\"\u001b[7mtru\u001b[27me\"\u001b[39m Received: \u001b[31m\"\u001b[7mfals\u001b[27me\"\u001b[39m"
+  },
+  {
+    "id": "C-131",
+    "verdict": "PASS",
+    "evidence": "menu \"Export options\" open; button aria-expanded=true and shows the pressed class"
+  },
+  {
+    "id": "C-132",
+    "verdict": "PASS",
+    "evidence": "rows = Full Song | Selected Time Range | Multitrack | WAV | MP3 | Normalise mix to −1 dBFS | Project (JSON)"
+  },
+  {
+    "id": "C-133",
+    "verdict": "PASS",
+    "evidence": "no range and no loop range: Selected Time Range disabled"
+  },
+  {
+    "id": "C-134",
+    "verdict": "PASS",
+    "evidence": "with a range the row is enabled"
+  },
+  {
+    "id": "C-135",
+    "verdict": "PASS",
+    "evidence": "aria-checked moved to MP3 (WAV=false); the next export encodes MP3"
+  },
+  {
+    "id": "C-136",
+    "verdict": "PASS",
+    "evidence": "Normalise toggled to aria-checked=true with a leading ✓ (\"✓ Normalise mix to −1 dBFS\")"
+  },
+  {
+    "id": "C-137",
+    "verdict": "PASS",
+    "evidence": "Full Song downloaded \"W5C C7.mp3\""
+  },
+  {
+    "id": "C-138",
+    "verdict": "PASS",
+    "evidence": "Project (JSON) downloaded \"W5C C7.json\" with data.lanes=5 and data.tracks=4"
+  }
+]

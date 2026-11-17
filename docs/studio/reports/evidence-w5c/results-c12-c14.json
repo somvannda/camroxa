@@ -1,0 +1,123 @@
+[
+  {
+    "id": "C-187",
+    "verdict": "PASS",
+    "evidence": "eyebrow \"Camxora Studio\", h1 \"Your projects\", sub \"Pick up where you left off, or start a new arrangement.\", actions \"Create a song New project\""
+  },
+  {
+    "id": "C-188",
+    "verdict": "PASS",
+    "evidence": "resume block for \"W5C Home Pinned ZTN2\" with Open project (53 cards in the grid)"
+  },
+  {
+    "id": "C-189",
+    "verdict": "PASS",
+    "evidence": "search filtered to \"W5C Home Alpha ZTN2\"; no-match state \"No projects match “zzzz-no-such-project”\" + Clear search; clearing restored 53 cards"
+  },
+  {
+    "id": "C-190",
+    "verdict": "PASS",
+    "evidence": "Archived toggle revealed 1 archived card(s): W5C Home Archived ZTN2"
+  },
+  {
+    "id": "C-191",
+    "verdict": "PASS",
+    "evidence": "pinned block leads both modes (8 card(s), incl. W5C Home Pinned ZTN2); 42 others sort alphabetically under Title"
+  },
+  {
+    "id": "C-192",
+    "verdict": "PASS",
+    "evidence": "card menu = Open | Rename | Duplicate | Pin | Archive | Delete"
+  },
+  {
+    "id": "C-193",
+    "verdict": "PASS",
+    "evidence": "prefilled, Save disabled while empty, Enter saved the new title"
+  },
+  {
+    "id": "C-194",
+    "verdict": "PASS",
+    "evidence": "confirm dialog explains Recently Deleted; Keep project cancels; Delete removed the card"
+  },
+  {
+    "id": "C-195",
+    "verdict": "PASS",
+    "evidence": "the home deletion is listed in the editor's Recently Deleted tab and is restorable"
+  },
+  {
+    "id": "C-196",
+    "verdict": "FAIL",
+    "evidence": "see C-196.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m  Expected: > \u001b[32m0\u001b[39m Received:   \u001b[31m0\u001b[39m"
+  },
+  {
+    "id": "C-197",
+    "verdict": "PASS",
+    "evidence": "signed out: brand \"CAMXORA\", badge \"Read-only Studio share\", \"W5C Shared Song\", \"120 BPM · 4/4 · 5 tracks\", duration 0:12"
+  },
+  {
+    "id": "C-198",
+    "verdict": "PASS",
+    "evidence": "5 lane rows, 5 clips positioned in % (0%/33.3333%, 66.6667%/33.3333%, 0%/66.6667%); editable fields outside the comment form = 2"
+  },
+  {
+    "id": "C-199",
+    "verdict": "PASS",
+    "evidence": "comment at the top by W5C Guest (11/17/2026, 1:21:05 PM); textarea cleared"
+  },
+  {
+    "id": "C-200",
+    "verdict": "PASS",
+    "evidence": "banner \"Replying to W5C Guest Cancel\"; the reply nested under the comment; Cancel cleared the banner"
+  },
+  {
+    "id": "C-201",
+    "verdict": "PASS",
+    "evidence": "Post is disabled for an empty or whitespace-only body"
+  },
+  {
+    "id": "C-202",
+    "verdict": "PASS",
+    "evidence": "no-comments note = \"No comments yet.\""
+  },
+  {
+    "id": "C-203",
+    "verdict": "PASS",
+    "evidence": "signed out \"Sign in to fork Create your own\"; signed in \"Fork to Studio Create your own\"; fork opened a copy (\"W5C Shared Quiet (shared copy)\")"
+  },
+  {
+    "id": "C-204",
+    "verdict": "PASS",
+    "evidence": "\"Project unavailable\": \"Shared Studio project not found or expired.\""
+  },
+  {
+    "id": "C-205",
+    "verdict": "PASS",
+    "evidence": "overlay \"How do you want to start?\" with 5 tiles"
+  },
+  {
+    "id": "C-206",
+    "verdict": "PASS",
+    "evidence": "tiles in order = Edit Your Song | Upload Audio | Create a song | Open a project | Empty Project"
+  },
+  {
+    "id": "C-207",
+    "verdict": "PASS",
+    "evidence": "overlay closed; library opened (active \"undefined\")"
+  },
+  {
+    "id": "C-208",
+    "verdict": "PASS",
+    "evidence": "overlay closed; library opened on Uploads (Library Filter New In Project Stems Loading uploads……)"
+  },
+  {
+    "id": "C-209",
+    "verdict": "PASS",
+    "evidence": "Start empty closed it; studio:onboarded:68435be8… = \"1\"; absent after reload"
+  },
+  {
+    "id": "C-210",
+    "verdict": "PASS",
+    "evidence": "Show Quick Start again re-opened the overlay after it had been dismissed"
+  }
+]
