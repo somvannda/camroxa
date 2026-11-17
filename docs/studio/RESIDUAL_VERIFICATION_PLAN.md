@@ -19,7 +19,7 @@ Nothing here deploys. Production stays at `985ccf00` until explicitly released.
 |---|---|---|
 | **D1** | Backend green after the refresh-backoff change | full `platform_api/tests` ≥ 3,479 passed, `musicapi` unit 198, ruff/black clean |
 | **D2** | Full browser suite green **with the real mirror live** (`musicapi` + worker + moto + API token) | 185 passed / 2 skipped, no 5xx in the API log for the run, readiness all ✓ except the callback |
-| **D3** | Every one of the **73** reference screens has an automated pixel verdict | `scripts/pixel-diff.mjs` report: PASS / DELTA / NO-FRAME per screen; 14 previously “cannot judge” screens captured first |
+| **D3** | Every one of the **73** reference screens has an automated pixel verdict | `scripts/pixel-diff.mjs` report with one of: **SURFACE PASS** (crop/same-surface frame, ≤0.2 % differing pixels), **STRUCTURAL PASS** (whole-viewport frame: captured controls at the same relative positions ±2 px, non-brand diff reported), **STATE** (recapture needed), or **RECORDED GAP** (no reference frame exists). The 14 previously “cannot judge” screens captured first. |
 | **D4** | Every provider operation works end to end, live | ids + status recorded for: generate → stems (2 and 12) → persona → cover → extend → remaster → vocals → instrumental → mashup → replace → bounce/upload → export WAV/MP3 |
 | **D5** | The four absences are decided, not implied | each either built and merged, or recorded in `CLONE_DEFINITION.md` §5 with your sign-off |
 | **D6** | A second, independent manual walkthrough | new agent, different from Agent A, covering every plugin parameter and three viewports, with PASS/FAIL per control |
@@ -71,20 +71,28 @@ else is free.
 
 ## 4. Method per workstream
 
-### W2 — pixel harness
-- Decode PNG/JPEG with `pngjs` + `pixelmatch` (devDependencies in `camxora.com`).
-- Reference frames are `.jpeg` at their own sizes; our captures are `.png` at 1689×1277.
-  Normalise to the reference frame's dimensions before diffing (Lanczos/nearest; nearest is
-  deterministic for flat UI).
-- Report per screen: `identical`, `within tolerance` (≤0.2 % differing pixels), `delta`
-  with a diff image and the bounding boxes of the largest differences, or `no-frame`.
-- The 31 “capture-state” deltas from Agent B are expected to fail until W3 re-shoots them;
-  the report must say *which* failures are state, not layout.
+### W2 — pixel harness (delivered 2026-11-17)
+- Decode PNG/JPEG with `pngjs` + `pixelmatch` + `jpeg-js`; normalise to the reference frame
+  with nearest-neighbour; emit diff PNGs and `summary.json`; `npm run check:pixels`.
+- **Tolerance policy (measured):** an exact pixel criterion cannot apply to whole-viewport
+  frames because brand and palette are allowed divergences (`CLONE_DEFINITION.md` §5); the
+  smallest whole-frame delta observed is **2.37 %** (S16). Therefore:
+  - **crop / same-surface frames** → ≤0.2 % differing pixels = SURFACE PASS;
+  - **whole-viewport frames** → STRUCTURAL PASS: the captured controls exist at the same
+    relative positions ±2 px; the pixel delta is reported with a brand/palette mask, never
+    used as the sole gate;
+  - a frame showing a different app state is **STATE**, not a layout defect, and must be
+    recaptured (W3) before it can be judged.
+- First result: 52 diffable, 21 no-frame (18 spec-only, 2 negative, 1 missing reference frame
+  **S43**); delta split LAYOUT 24 · STATE 13 · STATE+LAYOUT 10 · REGION 5.
 
-### W3 — capture the 14 cannot-judge screens
-- Build a scripted state table (route + actions + viewport) per screen, run against a stack,
-  write `docs/studio/compare/ours-<slug>.png`, update `PAIRING.json` with anchors and
-  `sharedWith` where one frame covers two screens, then run `check:clone`.
+### W3 — captures and the missing reference frame
+- Capture/re-shoot the 13 screens whose frames show the wrong state, plus the 14 “cannot
+  judge” screens, at reference viewports; update `PAIRING.json` (anchors/`sharedWith`) and
+  re-run `check:clone`.
+- **S43 has no reference frame at all.** Attempt to capture it read-only from the live Suno
+  session (`node scripts/dev/suno-session.cjs --probe`, then a scripted screenshot); if the
+  session is unavailable, record S43 as a corpus gap rather than inventing a frame.
 
 ### W4 — real-mirror e2e
 - Start moto + bucket, platform API (sandbox DB, token, moto storage, Suno base →
