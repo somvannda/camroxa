@@ -13,7 +13,11 @@ from platform_api.services.image_source_mode import empty_prompt_library_message
 
 class ImagePromptStyleRepositoryProtocol(Protocol):
     async def list_active(
-        self, *, kind: str, text_mode: str | None = None
+        self,
+        *,
+        kind: str,
+        text_mode: str | None = None,
+        tag: str | None = None,
     ) -> list[ImagePromptStyleRecord]: ...
 
     async def count_active(self) -> dict[str, int]: ...
@@ -70,6 +74,7 @@ class ImagePromptLibraryService:
         exclude_ids: list[str] | None = None,
         previous_batch_id: UUID | None = None,
         text_mode: str | None = None,
+        tag: str | None = None,
     ) -> ImagePromptStyleRecord:
         """Return one active style for the user's current prompt cycle.
 
@@ -79,7 +84,9 @@ class ImagePromptLibraryService:
         """
         del previous_batch_id  # per-user cycle replaces previous-batch avoidance
         kind_value = _kind_value(kind)
-        active = await self._repo.list_active(kind=kind_value, text_mode=text_mode)
+        active = await self._repo.list_active(
+            kind=kind_value, text_mode=text_mode, tag=tag
+        )
         if not active:
             raise ValidationError(
                 empty_prompt_library_message(kind_value),

@@ -3119,6 +3119,12 @@ class BatchService:
                     batch=batch,
                     used_prompt_ids=used_prompt_ids,
                     previous_batch_id=None,
+                    tag=(
+                        str(settings.get("imageBackgroundCollection") or "").strip()
+                        or None
+                        if job_kind == ImageKind.BACKGROUND
+                        else None
+                    ),
                 )
                 user_prompt = prompt_style.prompt_text
                 if job_kind == ImageKind.THUMBNAIL:
@@ -4196,6 +4202,9 @@ class BatchService:
             except Exception:
                 use_text_presets = False
         used_text_ids: list[str] = []
+        background_collection = (
+            str(settings.get("imageBackgroundCollection") or "").strip() or None
+        )
         for sibling in all_jobs:
             if str(sibling.id) in requested:
                 continue
@@ -4256,6 +4265,7 @@ class BatchService:
                     used_prompt_ids=used_prompt_ids,
                     previous_batch_id=None,
                     text_mode="lockup" if use_text_for_kind else None,
+                    tag=background_collection if job.kind == ImageKind.BACKGROUND else None,
                 )
                 ui_prompt = style.prompt_text
                 if job.kind == ImageKind.THUMBNAIL:
@@ -6004,6 +6014,9 @@ class BatchService:
         )
         album_label = self._channel_album_label(batch, channel_role)
         channel_name = str(getattr(profile, "name", "") or "").strip()
+        background_collection = (
+            str(settings.get("imageBackgroundCollection") or "").strip() or None
+        )
 
         jobs: list[ImageJob] = []
         background_job_id: UUID | None = None
@@ -6070,6 +6083,7 @@ class BatchService:
                     used_prompt_ids=prompt_usage,
                     previous_batch_id=previous_batch_id,
                     text_mode="lockup" if use_text_preset_for_kind else None,
+                    tag=background_collection if kind == ImageKind.BACKGROUND else None,
                 )
                 ui_prompt = style.prompt_text
                 if kind == ImageKind.THUMBNAIL:
@@ -6174,6 +6188,7 @@ class BatchService:
         used_prompt_ids: dict[ImageKind, list[str]],
         previous_batch_id: UUID | None,
         text_mode: str | None = None,
+        tag: str | None = None,
     ) -> Any:
         from platform_api.exceptions import ValidationError
         from platform_api.services.image_source_mode import empty_prompt_library_message
@@ -6190,6 +6205,7 @@ class BatchService:
             exclude_ids=used_prompt_ids.get(kind, []),
             previous_batch_id=previous_batch_id,
             text_mode=text_mode,
+            tag=tag,
         )
         used_prompt_ids.setdefault(kind, []).append(style.id)
         return style

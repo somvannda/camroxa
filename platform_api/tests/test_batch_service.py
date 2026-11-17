@@ -214,6 +214,7 @@ async def test_prompt_library_gives_different_styles_per_channel(
             exclude_ids=None,
             previous_batch_id=None,
             text_mode=None,
+            tag=None,
         ):
             excluded = set(exclude_ids or [])
             for style in styles[kind.value]:

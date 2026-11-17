@@ -15,7 +15,7 @@ class _Repo:
         self.used: dict[str, list[str]] = {"background": [], "thumbnail": []}
         self.calls: list[dict] = []
 
-    async def list_active(self, *, kind, text_mode=None):
+    async def list_active(self, *, kind, text_mode=None, tag=None):
         return [style for style in self._styles if style.kind == kind]
 
     async def count_active(self):

@@ -16,6 +16,13 @@ import {
 
 const SETTING_KEY = 'thumbnailReferenceMode';
 const LIBRARY_ONLY_KEY = 'imagePromptLibraryOnly';
+const BACKGROUND_COLLECTION_KEY = 'imageBackgroundCollection';
+
+const BACKGROUND_COLLECTIONS = [
+  { value: '', label: 'All backgrounds' },
+  { value: 'jbl_speaker', label: 'JBL portable speakers' },
+  { value: 'speaker', label: 'All speaker backgrounds' },
+] as const;
 
 const LIBRARY_OPTIONS = [
   {
@@ -68,10 +75,12 @@ export function ImageGenerationSection() {
 
   const [mode, setMode] = useState('background_text');
   const [libraryOnly, setLibraryOnly] = useState('false');
+  const [backgroundCollection, setBackgroundCollection] = useState('');
 
   useEffect(() => {
     setMode(readSettingValue(settings, SETTING_KEY, 'background_text'));
     setLibraryOnly(readSettingValue(settings, LIBRARY_ONLY_KEY, 'false'));
+    setBackgroundCollection(readSettingValue(settings, BACKGROUND_COLLECTION_KEY, ''));
   }, [settings]);
 
   const handleSave = async () => {
@@ -85,6 +94,11 @@ export function ImageGenerationSection() {
         key: LIBRARY_ONLY_KEY,
         value: libraryOnly,
         value_type: 'boolean',
+      });
+      await upsertSetting.mutateAsync({
+        key: BACKGROUND_COLLECTION_KEY,
+        value: backgroundCollection,
+        value_type: 'string',
       });
       toast({ title: 'Image generation settings saved' });
     } catch {
@@ -161,6 +175,26 @@ export function ImageGenerationSection() {
             </SelectContent>
           </Select>
           <p className="text-sm text-slate-400">{librarySelected.description}</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="background-collection">Background collection</Label>
+          <Select value={backgroundCollection} onValueChange={setBackgroundCollection}>
+            <SelectTrigger id="background-collection">
+              <SelectValue placeholder="Select collection" />
+            </SelectTrigger>
+            <SelectContent>
+              {BACKGROUND_COLLECTIONS.map((option) => (
+                <SelectItem key={option.value || 'all'} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-sm text-slate-400">
+            Restrict background rotation to one tagged collection. Thumbnails continue to use the
+            selected background and the thumbnail text library.
+          </p>
         </div>
 
         <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">

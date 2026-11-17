@@ -63,32 +63,33 @@ class ImagePromptStyleRepository:
         return [self._row_to_record(row) for row in rows]
 
     async def list_active(
-        self, *, kind: str, text_mode: str | None = None
+        self,
+        *,
+        kind: str,
+        text_mode: str | None = None,
+        tag: str | None = None,
     ) -> list[ImagePromptStyleRecord]:
+        conditions = ["lower(kind) = lower($1)", "is_active = TRUE"]
+        params: list[object] = [kind]
         if text_mode:
-            rows = await self._db.fetch(
-                f"""
-                SELECT {_SELECT_COLUMNS}
-                FROM image_prompt_styles
-                WHERE lower(kind) = lower($1)
-                  AND is_active = TRUE
-                  AND text_mode = $2
-                ORDER BY sort_order ASC, lower(name) ASC, created_at ASC
-                """,
-                kind,
-                text_mode,
+            params.append(text_mode)
+            conditions.append(f"text_mode = ${len(params)}")
+        if tag:
+            params.append(tag)
+            conditions.append(
+                "EXISTS (SELECT 1 FROM image_prompt_style_tags t "
+                "WHERE t.style_id = image_prompt_styles.id "
+                f"AND t.tag = ${len(params)})"
             )
-        else:
-            rows = await self._db.fetch(
-                f"""
-                SELECT {_SELECT_COLUMNS}
-                FROM image_prompt_styles
-                WHERE lower(kind) = lower($1)
-                  AND is_active = TRUE
-                ORDER BY sort_order ASC, lower(name) ASC, created_at ASC
-                """,
-                kind,
-            )
+        rows = await self._db.fetch(
+            f"""
+            SELECT {_SELECT_COLUMNS}
+            FROM image_prompt_styles
+            WHERE {' AND '.join(conditions)}
+            ORDER BY sort_order ASC, lower(name) ASC, created_at ASC
+            """,
+            *params,
+        )
         return [self._row_to_record(row) for row in rows]
 
     async def get_by_id(self, style_id: str) -> ImagePromptStyleRecord | None:
