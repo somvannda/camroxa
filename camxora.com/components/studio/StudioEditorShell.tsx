@@ -188,7 +188,12 @@ const STUDIO_MODEL_API: Record<string, string> = {
   "v6-mini": "V6_MINI",
 };
 /** Clip Color swatches in the clip menu (same families as tracks). */
-const CLIP_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"];
+const CLIP_COLORS = [
+  "#9f1239", "#be185d", "#db2777", "#ec4899", "#f9a8d4",
+  "#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#93c5fd",
+  "#7c2d12", "#c2410c", "#ea580c", "#f97316", "#fdba74",
+  "#14532d", "#15803d", "#16a34a", "#4ade80", "#bbf7d0",
+];
 
 
 /** Retry a library read once: a fresh session can race the first authorised fetch. */
@@ -6378,7 +6383,7 @@ export function StudioEditorShell() {
 
       <StudioOnboarding
         projectId={projectId}
-        isEmpty={!loading && !error && tracks.length === 0 && clips.length === 0}
+        isEmpty={!loading && !error && clips.length === 0}
         reopenToken={quickStartToken}
         onOpenLibrary={(tab) => {
           setLibraryOpen(true);

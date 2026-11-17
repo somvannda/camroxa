@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T03:09:24.074Z",
+  "generatedAt": "2026-11-17T03:24:17.352Z",
   "tolerancePct": 0.2,
   "pixelThreshold": 0.1,
   "scaler": "nearest-neighbour",
@@ -147,13 +147,13 @@
       "oursSize": "1689x1277",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 3.05,
+      "diffPct": 3.04,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S05.png",
       "bands": {
         "headerPct": 9.71,
-        "bodyPct": 2.6,
-        "footerPct": 6.06
+        "bodyPct": 2.59,
+        "footerPct": 6.12
       },
       "comparability": {
         "kind": "different-viewport",
@@ -165,8 +165,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 41589,
-      "edgeScore": 0.39
+      "differingPixels": 41430,
+      "edgeScore": 0.43
     },
     {
       "id": "S06",
@@ -395,13 +395,13 @@
       "oursSize": "1689x1277",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 7.51,
+      "diffPct": 4.66,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S13.png",
       "bands": {
-        "headerPct": 8.89,
-        "bodyPct": 7.19,
-        "footerPct": 12.54
+        "headerPct": 9.23,
+        "bodyPct": 4.04,
+        "footerPct": 12.67
       },
       "comparability": {
         "kind": "different-viewport",
@@ -413,7 +413,7 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 104263,
+      "differingPixels": 64636,
       "edgeScore": 0.48
     },
     {
@@ -488,13 +488,13 @@
       "oursSize": "1689x1277",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 2.37,
+      "diffPct": 2.36,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S16.png",
       "bands": {
-        "headerPct": 6.77,
-        "bodyPct": 2.13,
-        "footerPct": 3.19
+        "headerPct": 6.86,
+        "bodyPct": 2.11,
+        "footerPct": 3.25
       },
       "comparability": {
         "kind": "full-viewport",
@@ -506,8 +506,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": "S05",
-      "differingPixels": 51138,
-      "edgeScore": 0.4
+      "differingPixels": 50863,
+      "edgeScore": 0.44
     },
     {
       "id": "S17",
@@ -848,12 +848,12 @@
       "oursSize": "1689x1277",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 49.76,
+      "diffPct": 49.25,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S28.png",
       "bands": {
-        "headerPct": 68.35,
-        "bodyPct": 48.24,
+        "headerPct": 68.23,
+        "bodyPct": 47.68,
         "footerPct": 63.24
       },
       "comparability": {
@@ -866,8 +866,8 @@
       "specNature": null,
       "specDetail": null,
       "sharedWith": null,
-      "differingPixels": 476115,
-      "edgeScore": 0.24
+      "differingPixels": 471196,
+      "edgeScore": 0.29
     },
     {
       "id": "S29",

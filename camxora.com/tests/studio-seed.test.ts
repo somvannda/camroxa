@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSeedFromSong, isSeedable, pickSeedClip } from "@/lib/studio-seed";
+import { buildSeedFromSong, emptyProjectData, isSeedable, pickSeedClip } from "@/lib/studio-seed";
 import type { WebMusicGeneration } from "@/lib/library-api";
 
 function song(overrides: Partial<WebMusicGeneration> = {}): WebMusicGeneration {
@@ -77,5 +77,14 @@ describe("buildSeedFromSong", () => {
     const seed = buildSeedFromSong(song());
     const chain = (seed.data as { masterChain?: Array<{ type?: string }> }).masterChain ?? [];
     expect(chain.map((entry) => entry.type)).toEqual(["compressor", "eq", "eq"]);
+  });
+});
+
+describe("emptyProjectData", () => {
+  it("starts with one Audio Track, as captured in S05/S16", () => {
+    const data = emptyProjectData() as { lanes: unknown[]; tracks: Array<{ name: string }> };
+    expect(data.lanes).toEqual([]);
+    expect(data.tracks).toHaveLength(1);
+    expect(data.tracks[0].name).toBe("Audio Track");
   });
 });

@@ -1,5 +1,6 @@
 import type { WebMusicClip, WebMusicGeneration } from "@/lib/library-api";
 import type { StudioProjectData } from "@/lib/studio-api";
+import { colorForTrackName } from "@/lib/studio-tracks";
 
 /**
  * Seeding a Studio project from an existing song.
@@ -83,4 +84,27 @@ export function buildSeedFromSong(
       ],
     } as StudioProjectData,
   };
+}
+
+/** The captured empty project (S05/S16) starts with one Audio Track, not zero. */
+export function emptyProjectData(): StudioProjectData {
+  return {
+    lanes: [],
+    tracks: [
+      {
+        id: "track-audio-1",
+        name: "Audio Track",
+        color: colorForTrackName("Audio Track"),
+        index: 0,
+        volume: 80,
+        pan: 0,
+        muted: false,
+        solo: false,
+        hidden: false,
+        collapsed: false,
+        chain: [],
+        clipIds: [],
+      },
+    ],
+  } as StudioProjectData;
 }

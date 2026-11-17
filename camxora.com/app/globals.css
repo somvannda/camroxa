@@ -5361,8 +5361,8 @@ html{color-scheme:dark}
 .se-learn{position:relative}
 .se-learn-pill{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:999px;border:1px solid transparent;background:hsl(var(--foreground));color:hsl(var(--background))}
 .se-learn-pill.on{box-shadow:0 0 0 2px rgba(168,85,247,.55)}
-.se-learn-menu{position:absolute;right:0;bottom:44px;display:flex;flex-direction:column;min-width:206px;padding:8px;border-radius:12px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:56}
-.se-learn-menu button{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-radius:9px;text-align:left;font-size:13px}
+.se-learn-menu{position:absolute;right:0;bottom:44px;display:flex;flex-direction:column;min-width:250px;padding:8px;border-radius:12px;background:#1c1c1e;border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 48px rgba(0,0,0,.45);z-index:90}
+.se-learn-menu button{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-radius:9px;text-align:left;font-size:13px;white-space:nowrap}
 .se-learn-menu button:hover:not(:disabled){background:rgba(255,255,255,.06)}
 .se-learn-menu button span{margin-left:auto;font-size:11px;opacity:.6}
 .se-learn-menu button:disabled{opacity:.5}

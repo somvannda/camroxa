@@ -1035,14 +1035,14 @@ test("clip colour opens the captured submenu", async ({ page }) => {
       swatches: element.querySelectorAll(".se-color-grid button").length,
     };
   });
-  // S28: a 196 px card to the right of the row, Auto + five swatches.
+  // S28: a 196 px card to the right of the row, Auto + twenty swatches in four hue rows.
   expect(info.width).toBe(196);
   expect(info.radius).toBe("12px");
   expect(info.background).toBe("rgb(19, 24, 38)");
   expect(info.leftOfMenu).toBeGreaterThanOrEqual(3);
   expect(info.leftOfMenu).toBeLessThanOrEqual(16);
   expect(info.auto).toBe("Auto");
-  expect(info.swatches).toBe(5);
+  expect(info.swatches).toBe(20);
 });
 
 test("EQ card matches the captured band editor and drags", async ({ page }) => {
