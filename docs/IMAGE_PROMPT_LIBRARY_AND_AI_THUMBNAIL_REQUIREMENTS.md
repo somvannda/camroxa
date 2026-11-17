@@ -268,10 +268,12 @@ API:
 
 ### 8.1 Settings / Image page
 
-Per kind:
+Per kind — one combined source dropdown:
 
-- Reference source: existing Category / Prompt only.
-- Prompt source: **My prompt** (`custom`) / **Admin prompt library** (`admin_library`).
+- **Category + My prompt** (`category` / `custom`)
+- **Category + Admin library** (`category` / `admin_library`)
+- **Prompt only + My prompt** (`prompt_only` / `custom`)
+- **Prompt only + Admin library** (`prompt_only` / `admin_library`)
 - Thumbnail only: text source is the selected admin style’s `text_template` when library is active; custom mode keeps the existing prompt-token behavior.
 
 Thumbnail generation:
