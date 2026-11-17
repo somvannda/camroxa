@@ -67,7 +67,7 @@ project JSON import, clip comments, presence, supersaw audition speed.
 | Start overlay has **Drum & Bass Demo** (S03/S06) | Shipped, with content we own rather than Suno's bundled arrangement: `buildDemoProject()` seeds one Audio Track holding our 4 s seed loop (`public/seed/demo-loop.wav`) as one audio clip at bar one, 174 BPM, titled "Drum & Bass Demo" — audible on open, no provider call |
 | Start overlay has **Video Tutorial** (S03/S06) | Same content as the dropped YouTube row; recorded absence |
 | Clip rail header sits **inside the floating card** (S27) | The captured controls are all present (back, title, like/dislike, art, Remix, player, tabs); the card layout is ours, not a replacement |
-| MIDI editor has **no overview strip** | The grid zooms 1–12× instead of scrolling a mini-map; an overview with no scroll position to reflect would be decorative |
+| MIDI editor overview strip (S31) | Shipped: mini piano roll + visible window + zoom −/+, driving the roll's real horizontal scroll. The grid also keeps its 1–12× zoom. |
 | Footer strip shows the **master chain**, not the selected track’s (S26) | Deliberate: the capture’s footer centre is the master rack; per-track chains live in the dock |
 
 The start overlay ships five tiles in the captured order — **Edit Your Song, Drum & Bass

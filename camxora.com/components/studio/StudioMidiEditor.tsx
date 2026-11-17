@@ -26,6 +26,10 @@ import {
  * control bar. Notes are edited in place and written through the clip document, so undo
  * and persistence work like audio clips. Pitch bend/modulation lanes were captured but
  * have no model yet, so those tabs are disabled with a reason rather than faked.
+ *
+ * Above the grid sits the captured overview strip: a mini piano roll for the whole clip,
+ * a window for the visible slice, and zoom −/+ at the left. It is wired to the roll's real
+ * horizontal scroll, so dragging it is the fast way to navigate a zoomed-in clip.
  */
 
 export type StudioMidiEditorProps = {
@@ -65,6 +69,8 @@ const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 12;
 const ZOOM_STEP = 1.5;
+/** Width of the piano gutter; the overview and the lanes share it. */
+const MIDI_GUTTER = 44;
 const SCALES: Record<string, number[]> = {
   major: [0, 2, 4, 5, 7, 9, 11],
   minor: [0, 2, 3, 5, 7, 8, 10],
@@ -144,6 +150,14 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
   const rollRef = useRef<HTMLDivElement | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
   const midiFileRef = useRef<HTMLInputElement | null>(null);
+  const overviewRef = useRef<HTMLDivElement | null>(null);
+  /** The roll's real horizontal scroll, in grid pixels; the overview window mirrors it. */
+  const [rollView, setRollView] = useState({ clientWidth: 0, scrollLeft: 0 });
+  /** The clip point a zoom step should keep in place once the new width lands. */
+  const zoomAnchor = useRef<{ ratio: number; viewport: number } | null>(null);
+  const [overviewDrag, setOverviewDrag] = useState(false);
+  /** Pointer offset inside the overview window, so grabbing it does not jump. */
+  const overviewGrab = useRef(0);
 
   // Start around middle C, like the capture.
   useEffect(() => {
@@ -161,11 +175,51 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     return () => cancelAnimationFrame(frame);
   }, [clip.id]);
 
-  // A different clip starts with nothing selected.
+  // A different clip starts with nothing selected, at the fit zoom, scrolled to the top left.
   useEffect(() => {
     setSelectedIds(new Set());
     setZoom(1);
+    const roll = rollRef.current;
+    if (roll) roll.scrollLeft = 0;
+    setRollView((current) => (current.scrollLeft === 0 ? current : { ...current, scrollLeft: 0 }));
   }, [clip.id]);
+
+  // The overview window is the roll's real viewport, so measure it and follow resizes.
+  // `width` is a dependency because a zoom changes the scroll range without resizing
+  // the panel itself, which a ResizeObserver alone would not report.
+  useEffect(() => {
+    const roll = rollRef.current;
+    if (!roll) return;
+    const measure = () => {
+      setRollView((current) =>
+        current.clientWidth === roll.clientWidth && current.scrollLeft === roll.scrollLeft
+          ? current
+          : { clientWidth: roll.clientWidth, scrollLeft: roll.scrollLeft }
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(roll);
+    return () => observer.disconnect();
+  }, [clip.id, width]);
+
+  // A zoom step lands the anchored clip point back under the same viewport position, so
+  // zooming keeps the part you were looking at instead of jumping to the clip start.
+  useEffect(() => {
+    const anchor = zoomAnchor.current;
+    if (!anchor) return;
+    zoomAnchor.current = null;
+    const roll = rollRef.current;
+    if (!roll) return;
+    const view = Math.max(0, Math.min(width, roll.clientWidth - MIDI_GUTTER));
+    const max = Math.max(0, width - view);
+    roll.scrollLeft = Math.min(max, Math.max(0, anchor.ratio * width - anchor.viewport * view));
+    setRollView({ clientWidth: roll.clientWidth, scrollLeft: roll.scrollLeft });
+  }, [width]);
 
   const step = secondsPerBar / Number(quantize);
 
@@ -317,11 +371,62 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         )
       : notes;
 
+  /** Pull the roll's current scroll position into state (the overview renders from it). */
+  function syncRollView() {
+    const roll = rollRef.current;
+    if (!roll) return;
+    setRollView((current) =>
+      current.clientWidth === roll.clientWidth && current.scrollLeft === roll.scrollLeft
+        ? current
+        : { clientWidth: roll.clientWidth, scrollLeft: roll.scrollLeft }
+    );
+  }
+
+  /** Visible grid pixels: the roll's viewport minus the sticky piano gutter. */
+  function visibleGridWidth(roll: HTMLDivElement | null = rollRef.current) {
+    const client = roll?.clientWidth ?? 0;
+    return Math.max(0, Math.min(width, client - MIDI_GUTTER));
+  }
+
+  function currentScrollLeft() {
+    return rollRef.current?.scrollLeft ?? rollView.scrollLeft;
+  }
+
+  /** Scroll the roll to an absolute grid offset, clamped to the real scroll range. */
+  function scrollToGrid(target: number) {
+    const roll = rollRef.current;
+    if (!roll) return;
+    const max = Math.max(0, width - visibleGridWidth(roll));
+    roll.scrollLeft = Math.min(max, Math.max(0, Math.round(target)));
+    syncRollView();
+  }
+
+  /** Scroll so the given point of the clip (0–1) sits in the middle of the roll. */
+  function scrollToRatio(ratio: number) {
+    const clamped = Math.min(1, Math.max(0, ratio));
+    scrollToGrid(clamped * width - visibleGridWidth() / 2);
+  }
+
+  /**
+   * Change the zoom while keeping a point of the clip under the same place in the
+   * viewport. The new width only exists after the next render, so the anchor is
+   * consumed by the width effect above.
+   */
+  function applyZoom(next: number, anchorRatio?: number) {
+    const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(next.toFixed(2))));
+    if (clamped === zoom) return;
+    const view = visibleGridWidth();
+    const ratio = anchorRatio ?? (currentScrollLeft() + view / 2) / width;
+    zoomAnchor.current = {
+      ratio: Math.min(1, Math.max(0, ratio)),
+      viewport: 0.5,
+    };
+    setZoom(clamped);
+  }
+
   /** Zoom the grid around the fit width (S14: CTRL = / CTRL -). */
   function zoomBy(factor: number) {
-    setZoom((current) =>
-      Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number((current * factor).toFixed(2))))
-    );
+    applyZoom(zoom * factor);
   }
 
   /**
@@ -334,13 +439,14 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
       setZoom(ZOOM_MIN);
       requestAnimationFrame(() => {
         if (rollRef.current) rollRef.current.scrollLeft = 0;
+        syncRollView();
       });
       return;
     }
     const start = Math.min(...selected.map((note) => note.start));
     const end = Math.max(...selected.map((note) => note.start + note.length));
     const span = Math.max(0.05, end - start);
-    const viewport = Math.max(96, (rollRef.current?.clientWidth ?? 460) - 44);
+    const viewport = Math.max(96, (rollRef.current?.clientWidth ?? 460) - MIDI_GUTTER);
     const pixelsPerSecond = fitWidth / duration;
     const target = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (viewport * 0.9) / (span * pixelsPerSecond)));
     setZoom(Number(target.toFixed(2)));
@@ -348,7 +454,97 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
       const roll = rollRef.current;
       if (!roll) return;
       roll.scrollLeft = Math.max(0, (start / duration) * fitWidth * target - 24);
+      syncRollView();
     });
+  }
+
+  /** Pointer position over the overview track as a 0–1 clip ratio. */
+  function overviewRatio(clientX: number) {
+    const track = overviewRef.current;
+    if (!track) return 0;
+    const rect = track.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  }
+
+  /**
+   * Grab the window where the pointer lands and drag it; a click outside the window
+   * pulls that part of the clip into the middle of the roll.
+   */
+  function beginOverviewDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    // Focus explicitly: preventDefault keeps the pointer from doing it for us.
+    event.preventDefault();
+    event.currentTarget.focus();
+    const pointer = overviewRatio(event.clientX);
+    const view = visibleGridWidth();
+    const scroll = currentScrollLeft();
+    const left = width > 0 ? scroll / width : 0;
+    const right = width > 0 ? (scroll + view) / width : 1;
+    overviewGrab.current = pointer >= left && pointer <= right ? pointer - (left + right) / 2 : 0;
+    setOverviewDrag(true);
+    scrollToRatio(pointer - overviewGrab.current);
+  }
+
+  useEffect(() => {
+    if (!overviewDrag) return;
+    const onMove = (event: PointerEvent) => {
+      scrollToRatio(overviewRatio(event.clientX) - overviewGrab.current);
+    };
+    const onUp = () => setOverviewDrag(false);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [overviewDrag, width]);
+
+  /**
+   * The overview is a slider over the scroll position: ←/→ pan a quarter of the
+   * viewport, PageUp/PageDown a full viewport (slider order), Home/End jump, and
+   * =/- zoom. The keys stop here so they never move the selected notes.
+   */
+  function handleOverviewKeys(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const view = Math.max(1, visibleGridWidth());
+    const scroll = currentScrollLeft();
+    const run = (action: () => void) => {
+      event.preventDefault();
+      event.stopPropagation();
+      action();
+    };
+    switch (event.key) {
+      case "ArrowLeft":
+        run(() => scrollToGrid(scroll - view * 0.25));
+        return;
+      case "ArrowRight":
+        run(() => scrollToGrid(scroll + view * 0.25));
+        return;
+      case "PageUp":
+        run(() => scrollToGrid(scroll + view));
+        return;
+      case "PageDown":
+        run(() => scrollToGrid(scroll - view));
+        return;
+      case "Home":
+        run(() => scrollToGrid(0));
+        return;
+      case "End":
+        run(() => scrollToGrid(width));
+        return;
+      case "=":
+      case "+":
+        run(() => zoomBy(ZOOM_STEP));
+        return;
+      case "-":
+      case "_":
+        run(() => zoomBy(1 / ZOOM_STEP));
+        return;
+      default:
+    }
   }
 
   /** Audition one pitch through the same synth voice the transport uses. */
@@ -554,6 +750,30 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
     }
   }
 
+  // Overview geometry. Before the roll is measured, show the whole clip rather than a
+  // zero-width window; once measured, the window is the true visible slice of the grid.
+  const barCount = Math.max(1, duration / secondsPerBar);
+  const measured = rollView.clientWidth > 0;
+  const visibleWidth = measured
+    ? Math.max(0, Math.min(width, rollView.clientWidth - MIDI_GUTTER))
+    : width;
+  const maxScroll = Math.max(0, width - visibleWidth);
+  const scrollRatio = maxScroll > 0 ? Math.min(1, Math.max(0, rollView.scrollLeft / maxScroll)) : 0;
+  const overviewWindowPct = Math.min(100, Math.max(2, (visibleWidth / width) * 100));
+  const overviewLeftPct = Math.min(
+    100 - overviewWindowPct,
+    Math.max(0, (rollView.scrollLeft / width) * 100)
+  );
+  const overviewBarStart = Math.min(
+    barCount,
+    1 + (width > 0 ? (rollView.scrollLeft / width) * barCount : 0)
+  );
+  const overviewBarEnd = Math.min(
+    barCount,
+    overviewBarStart + (width > 0 ? (visibleWidth / width) * barCount : 0)
+  );
+  const overviewTicks = Math.min(64, Math.max(1, Math.round(barCount)));
+
   return (
     <>
     <section
@@ -591,7 +811,79 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         ))}
       </div>
 
-      <div className="se-midi-roll" ref={rollRef}>
+      <div className={`se-midi-overview${overviewDrag ? " is-dragging" : ""}`}>
+        <div className="se-midi-overview-zoom">
+          <button
+            type="button"
+            className="se-icon"
+            aria-label="Zoom out the piano roll"
+            title="Zoom out (Ctrl -)"
+            disabled={zoom <= ZOOM_MIN}
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+          >
+            <Icon name="fa-magnifying-glass-minus" />
+          </button>
+          <button
+            type="button"
+            className="se-icon"
+            aria-label="Zoom in the piano roll"
+            title="Zoom in (Ctrl =)"
+            disabled={zoom >= ZOOM_MAX}
+            onClick={() => zoomBy(ZOOM_STEP)}
+          >
+            <Icon name="fa-magnifying-glass-plus" />
+          </button>
+        </div>
+        <div
+          ref={overviewRef}
+          className="se-midi-overview-track"
+          role="slider"
+          tabIndex={0}
+          aria-label="Clip overview"
+          aria-orientation="horizontal"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(scrollRatio * 100)}
+          aria-valuetext={`Bars ${overviewBarStart.toFixed(1)}–${overviewBarEnd.toFixed(
+            1
+          )} of ${barCount.toFixed(1)}`}
+          title="Drag to scroll the piano roll; double-click to zoom here"
+          onPointerDown={beginOverviewDrag}
+          onDoubleClick={(event) => applyZoom(zoom * ZOOM_STEP, overviewRatio(event.clientX))}
+          onKeyDown={handleOverviewKeys}
+        >
+          {Array.from({ length: Math.max(0, overviewTicks - 1) }).map((_, index) => (
+            <span
+              key={`overview-tick-${index}`}
+              className="se-midi-overview-tick"
+              style={{ left: `${((index + 1) / overviewTicks) * 100}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          <span className="se-midi-overview-notes" aria-hidden="true">
+            {shown.map((note) => (
+              <span
+                key={note.id}
+                className="se-midi-overview-note"
+                data-pitch={note.pitch}
+                style={{
+                  left: `${(note.start / duration) * 100}%`,
+                  width: `${Math.max(0.6, (note.length / duration) * 100)}%`,
+                  top: `${((MIDI_MAX_PITCH - note.pitch) / MIDI_PITCHES) * 100}%`,
+                  background: clip.color || "hsl(var(--accent))",
+                }}
+              />
+            ))}
+          </span>
+          <span
+            className="se-midi-overview-window"
+            aria-hidden="true"
+            style={{ left: `${overviewLeftPct}%`, width: `${overviewWindowPct}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="se-midi-roll" ref={rollRef} onScroll={syncRollView}>
         <div className="se-midi-keys" aria-hidden="true">
           {Array.from({ length: MIDI_PITCHES }).map((_, index) => {
             const pitch = MIDI_MAX_PITCH - index;
@@ -665,7 +957,8 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
           event.currentTarget.focus();
           if (lane === "velocity") {
             const rect = event.currentTarget.getBoundingClientRect();
-            const seconds = ((event.clientX - rect.left - 44) / width) * duration;
+            const seconds =
+              ((event.clientX - rect.left - MIDI_GUTTER + currentScrollLeft()) / width) * duration;
             const nearest = notes.reduce<MidiNote | null>((best, note) => {
               if (!best) return note;
               return Math.abs(note.start - seconds) < Math.abs(best.start - seconds) ? note : best;
@@ -685,7 +978,10 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
           const rect = event.currentTarget.getBoundingClientRect();
           const at = Math.min(
             duration,
-            Math.max(0, ((event.clientX - rect.left - 44) / width) * duration)
+            Math.max(
+              0,
+              ((event.clientX - rect.left - MIDI_GUTTER + currentScrollLeft()) / width) * duration
+            )
           );
           const ratio = 1 - (event.clientY - rect.top) / rect.height;
           const value = lane === "bend" ? ratio * 2 - 1 : ratio;
@@ -704,9 +1000,15 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
         }}
       >
         {lane === "velocity" ? (
-          <>
-            <span className="se-midi-velocity-baseline" aria-hidden="true" />
-            {shown.map((note) => {
+          <span className="se-midi-velocity-baseline" aria-hidden="true" />
+        ) : null}
+        {/* The lanes share the note grid's x-axis, so they follow its scroll. */}
+        <div
+          className="se-midi-lane-scroll"
+          style={{ transform: `translateX(${-rollView.scrollLeft}px)` }}
+        >
+          {lane === "velocity" ? (
+            shown.map((note) => {
               const height = Math.max(2, (note.velocity / 127) * 52);
               return (
                 <span key={note.id}>
@@ -714,70 +1016,75 @@ export function StudioMidiEditor(props: StudioMidiEditorProps) {
                     className={`se-midi-velocity-bar${
                       velocityDrag?.id === note.id ? " is-active" : ""
                     }`}
-                    style={{ left: 44 + (note.start / duration) * width, height }}
+                    style={{ left: MIDI_GUTTER + (note.start / duration) * width, height }}
                   />
                   <span
                     className={`se-midi-velocity-dot${
                       velocityDrag?.id === note.id ? " is-active" : ""
                     }`}
-                    style={{ left: 44 + (note.start / duration) * width + 1, bottom: 8 + height }}
+                    style={{
+                      left: MIDI_GUTTER + (note.start / duration) * width + 1,
+                      bottom: 8 + height,
+                    }}
                   />
                 </span>
               );
-            })}
-          </>
-        ) : (
-          <svg
-            className="se-midi-lane-svg"
-            viewBox={`0 0 ${44 + width} 64`}
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <line
-              x1={44}
-              x2={44 + width}
-              y1={lane === "bend" ? 32 : 60}
-              y2={lane === "bend" ? 32 : 60}
-              className="se-midi-lane-base"
-            />
-            {(() => {
-              const points =
-                lane === "bend"
-                  ? sanitizePoints(clip.midi?.bend, -1, 1)
-                  : sanitizePoints(clip.midi?.mod, 0, 1);
-              const px = (point: { at: number }) => 44 + (point.at / duration) * width;
-              const py = (point: { value: number }) =>
-                lane === "bend" ? 32 - point.value * 28 : 60 - point.value * 52;
-              return (
-                <>
-                  {points.length > 1 ? (
-                    <polyline
-                      className="se-midi-lane-line"
-                      points={points.map((point) => `${px(point)},${py(point)}`).join(" ")}
-                    />
-                  ) : null}
-                  {points.map((point, index) => (
-                    <circle
-                      key={`${point.at}-${index}`}
-                      className="se-midi-lane-point"
-                      cx={px(point)}
-                      cy={py(point)}
-                      r={3}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onDoubleClick={(event) => {
-                        event.stopPropagation();
-                        onChangeLanes(
-                          lane,
-                          points.filter((_, item) => item !== index)
-                        );
-                      }}
-                    />
-                  ))}
-                </>
-              );
-            })()}
-          </svg>
-        )}
+            })
+          ) : (
+            <svg
+              className="se-midi-lane-svg"
+              viewBox={`0 0 ${MIDI_GUTTER + width} 64`}
+              style={{ width: MIDI_GUTTER + width }}
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <line
+                x1={MIDI_GUTTER}
+                x2={MIDI_GUTTER + width}
+                y1={lane === "bend" ? 32 : 60}
+                y2={lane === "bend" ? 32 : 60}
+                className="se-midi-lane-base"
+              />
+              {(() => {
+                const points =
+                  lane === "bend"
+                    ? sanitizePoints(clip.midi?.bend, -1, 1)
+                    : sanitizePoints(clip.midi?.mod, 0, 1);
+                const px = (point: { at: number }) =>
+                  MIDI_GUTTER + (point.at / duration) * width;
+                const py = (point: { value: number }) =>
+                  lane === "bend" ? 32 - point.value * 28 : 60 - point.value * 52;
+                return (
+                  <>
+                    {points.length > 1 ? (
+                      <polyline
+                        className="se-midi-lane-line"
+                        points={points.map((point) => `${px(point)},${py(point)}`).join(" ")}
+                      />
+                    ) : null}
+                    {points.map((point, index) => (
+                      <circle
+                        key={`${point.at}-${index}`}
+                        className="se-midi-lane-point"
+                        cx={px(point)}
+                        cy={py(point)}
+                        r={3}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) => {
+                          event.stopPropagation();
+                          onChangeLanes(
+                            lane,
+                            points.filter((_, item) => item !== index)
+                          );
+                        }}
+                      />
+                    ))}
+                  </>
+                );
+              })()}
+            </svg>
+          )}
+        </div>
       </div>
 
       <div className="se-midi-controls">
