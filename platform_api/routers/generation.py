@@ -169,7 +169,7 @@ class ImageGenerationRequest(BaseModel):
     """
 
     prompt: str = Field(min_length=1, max_length=5000)
-    provider: str = Field(pattern=r"^(fal|slai|openai|cala)$")
+    provider: str = Field(pattern=r"^(fal|slai|openai)$")
     kind: str = Field(default="background", pattern=r"^(background|thumbnail)$")
     resolution: str = Field(default="1920x1080", pattern=r"^\d+x\d+$")
     style_strength: float = Field(ge=0.0, le=1.0, default=0.6)

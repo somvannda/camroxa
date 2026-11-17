@@ -212,7 +212,6 @@ The model receives the generated background plus an instruction shaped like:
 Add `supports_reference_image` to image model specs:
 
 - SLAI image models: true.
-- CALA: true.
 - FAL: true only for endpoints verified to accept image-to-image.
 - OpenAI image models: false until `/v1/images/edits` is implemented.
 - Kie: false (text-to-image only).

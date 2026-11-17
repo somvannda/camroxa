@@ -137,7 +137,6 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'cx/gpt-6-sol-image', label: 'cx/gpt-6-sol-image (SLAI images)' },
   ],
   local: [],
-  cala: [],
   kie: [
     { value: 'grok-imagine-image-2-0/text-to-image', label: 'grok-imagine-image-2-0/text-to-image (kie.ai images)' },
   ],

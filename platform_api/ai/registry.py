@@ -223,7 +223,6 @@ PROVIDER_SUB_MODELS: MappingProxyType[str, MappingProxyType[ServiceType, tuple[s
                     ServiceType.IMAGE_GENERATION: tuple(KIE_IMAGE_MODELS.keys()),
                 }
             ),
-            "cala": MappingProxyType({}),
             "suno": MappingProxyType(
                 {
                     ServiceType.TEXT_GENERATION: tuple(SUNO_TEXT_MODELS.keys()),
@@ -361,8 +360,6 @@ def get_image_model_spec(provider: str, model: str | None) -> ModelSpec | None:
 def image_model_supports_reference(provider: str, model: str | None) -> bool:
     """True when the provider/model can accept a source image for image editing."""
     provider_key = str(provider or "").strip().lower()
-    if provider_key == "cala":
-        return True
     spec = get_image_model_spec(provider_key, model)
     if spec is not None:
         return bool(spec.supports_reference_image)

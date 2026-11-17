@@ -447,7 +447,7 @@ class ImageJobService:
                         raise ValidationError(
                             "Thumbnail: AI text on background needs an image provider that "
                             "accepts a reference image. Ask an admin to route thumbnail_image "
-                            "to SLAI, FAL, or CALA, or switch Thumbnail generation to Composite.",
+                            "to SLAI or FAL, or switch Thumbnail generation to Composite.",
                             details={
                                 "job_id": str(job.id),
                                 "operation": operation_type,

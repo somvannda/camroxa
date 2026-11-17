@@ -6,6 +6,15 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-17] - Removed CALA provider
+
+### Removed
+
+- Deleted the CALA HTTP client and removed CALA from image routing, the provider
+  gateway, config, dependency wiring, health checks, key-pool/admin provider
+  lists, provider enums, and routing validation. CALA is no longer selectable or
+  routable. Historical credit/usage rows are intentionally left for audit.
+
 ## [2026-11-16] - Admin image prompt library and AI thumbnail text
 
 ### Added
@@ -349,7 +358,7 @@ See `docs/changelog/2026-11-10-creator-program.md`.
 
 ### Fixed
 
-- AI routing request schema hardcoded providers as `^(deepseek|openai|fal|slai|cala|suno)$`, excluding `kie`, so saving a kie routing/fallback entry returned 422. Pattern now includes `kie` (PR #142).
+- AI routing request schema hardcoded providers as a fixed pattern, excluding `kie`, so saving a kie routing/fallback entry returned 422. Pattern now includes `kie` (PR #142).
 
 ### Docs
 

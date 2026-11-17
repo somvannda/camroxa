@@ -197,13 +197,6 @@ def get_slai_client():
     return SlaiClient(settings=get_settings())
 
 
-def get_cala_client():
-    """Dependency that returns the CalaClient instance."""
-    from platform_api.clients.cala_client import CalaClient
-
-    return CalaClient(settings=get_settings())
-
-
 def get_kie_client():
     """Dependency that returns the KieClient instance (kie.ai Market API)."""
     from platform_api.clients.kie_client import KieClient

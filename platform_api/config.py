@@ -117,8 +117,6 @@ class Settings(BaseSettings):
 
     slai_api_base_url: str = ""
 
-    cala_api_base_url: str = "http://localhost:3000"
-
     # kie.ai unified Market API (Grok Imagine, etc.)
     kie_api_base_url: str = "https://api.kie.ai"
 

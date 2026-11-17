@@ -54,7 +54,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   deepseek: 'DeepSeek',
   suno: 'Camxora Pool Key',
-  cala: 'Cala',
   kie: 'kie.ai',
   local: 'Local',
 };
