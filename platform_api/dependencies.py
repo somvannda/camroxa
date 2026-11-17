@@ -448,7 +448,7 @@ def get_thumbnail_text_repo():
         ImageThumbnailTextRepository,
     )
 
-    return ImageThumbnailTextRepository(pool=get_db_pool())
+    return ImageThumbnailTextRepository(get_db_pool())
 
 
 def get_thumbnail_text_library_service():
