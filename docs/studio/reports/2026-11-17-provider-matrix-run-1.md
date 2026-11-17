@@ -72,10 +72,9 @@ web-music generation in the sandbox was suggestive:
 | `V6` | `SUCCESS` | 4 (all 2026-11-14) |
 | `V6` | `FAILED` (with an `error_message`) | 5 |
 
-but a `V6` attempt then failed too, with `Suno API error 401: submit_task`, which ruled the
-model out. The real chain is below (`job_queue.last_error` is what names it).
+The real chain is below (`job_queue.last_error` is what names it).
 
-### 3. The queue worker was orphaned, then the provider key was rejected
+### 3. The queue worker was orphaned, then the submit never reached the configured host
 
 `job_queue` is the ledger of truth here. The first three generations came from a worker that
 had been started from a worktree that no longer exists: its `platform_api` package path
@@ -87,45 +86,55 @@ last_error = No module named 'platform_api.services.credit_service'
 ```
 
 Nothing was ever submitted, `external_task_id` stayed `NULL`, and `_refresh_pending_from_suno`
-had nothing to poll — the `PENDING` was never a slow queue. Restarting a worker from this
-checkout made the job reach the provider, which answered:
+had nothing to poll — the `PENDING` was never a slow queue.
+
+Restarting a worker from this checkout made the job reach a provider, which answered:
 
 ```
 last_error = Suno API error 401: submit_task
 ```
 
-`api_key_entries` shows why: the `local musicapi` key was `rate_limited` since
-`auth_rejected_401_unknown`, so the pool had no usable key and every submit failed at the
-door. musicapi accepts `sk-test-123` (verified directly: a request with that bearer returns
-`404` for an unknown task rather than `401`), so the entry was re-seeded with the key musicapi
-knows and set back to `active` (`scripts/dev/seed-local-suno-key.py --database-url …`).
+That 401 is **not** the key being wrong, and it is not musicapi rejecting it:
 
-Two product defects came out of this and are fixed:
+- `api_key_entries` holds `local musicapi`, provider `suno`, `base_url http://127.0.0.1:4003`,
+  status `active` after re-seeding; the stored blob decrypts with the platform master key to
+  `sk-test-123` (11 chars) — verified, not assumed;
+- musicapi accepts exactly that bearer: a direct request returns `404` for an unknown task
+  instead of `401`;
+- **no `/v1/music/generate` request appears anywhere in musicapi's request log during any of
+  the attempts** — every other call (health, record-info, internal routes) is logged there.
+
+So the submit is being sent to some host other than the configured local musicapi, carrying a
+key that host rejects. The most likely cause is provider selection in the platform's key pool:
+the entry is registered as provider `suno`, while AI routing can assign `camxora_music_api`,
+and a pool lookup that matches the provider id exactly would find no key and fall back to the
+default upstream (`api.sunoapi.org`) with the local key. That is a hypothesis to confirm
+against `_music_pool_wrapper`, not something this run proved.
+
+Two product defects did come out of the pass and are fixed:
 
 - **A job that exhausts its attempts left the task `pending` forever** with
   `error_message = NULL`, so the user watched a spinner and the reservation was never
   released. The worker now marks the task failed through the same refund path the inline
-  failure uses (both the exception and timeout branches), with tests. The three sandbox rows
-  were repaired through that path: all three are `failed` and the wallet returned from 20 to
-  **448** as the reservations released.
+  failure uses (both the exception and timeout branches), with tests. The three stuck sandbox
+  rows were repaired through that path: all three are `failed` and the wallet returned from 20
+  to **448** as the reservations released.
 - **The failure was invisible in the run**: the matrix recorded `401` on a status read and
   `no source generation` for the dependent rows, but the cause lived only in `job_queue`.
-  That is why this took several attempts to attribute.
 
 ## What is needed to close D4
 
-1. **A provider account that completes generations in this environment**, either by
-   activating the premier account (a data change I will not make on my own: it routes real
-   generations through a different person's account) or by providing a key/account that
-   generates promptly.
-2. Re-run the same command. Row 1 is the only row that can spend; the rest are dependent.
-   `--timeout` can be raised above the 900 s default if the provider is merely slow, and the
-   runner now survives a run longer than one token lifetime.
+1. **Make the generation submit reach the configured host.** The evidence above says the
+   request never arrives at `http://127.0.0.1:4003` even though the key entry is active, the
+   blob decrypts to the key musicapi accepts, and both databases agree on the base URL. Until
+   that is fixed, every attempt fails at the door with `401 submit_task` and refunds.
+2. Then re-run the same command. Row 1 is the only row that can spend; the rest are
+   dependent on its task id, and the runner now survives a run longer than one token
+   lifetime.
 
-A second attempt was launched on the same account with a 30-minute window
-(`--only generate --timeout 1800`); it hit the same silent `PENDING`. A third attempt runs
-with `PLATFORM_STUDIO_MODEL=V6`, the only model that has completed here. Each generation
-costs 10 credits; the dependent rows are free against a completed task.
+Nineteen generations were attempted across runs 1–7 and **none was charged in the end**: every
+failure refunded, and the wallet is back at 448. The runner records each attempt under
+`docs/studio/reports/provider-matrix/`.
 
 ## Runner changes in this pass
 

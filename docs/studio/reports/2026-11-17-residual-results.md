@@ -94,24 +94,27 @@ The single BLOCKED row (**C-47**) is environmental: the local mirror refuses a l
 callback, so the sentence path was proven against a controlled result instead. C-196 was
 re-classified as intended behaviour: `sync` is omitted when the mirror cannot answer.
 
-## D4 — provider matrix · **BLOCKED by the provider account (run 1 executed, 0 credits spent)**
+## D4 — provider matrix · **BLOCKED: the submit never reaches the configured host**
 
-`node scripts/dev/provider-matrix.mjs --budget 320 --execute` ran the full 14-row plan on
-2026-11-17. Every row is red for one reason: the source generation stayed `PENDING` for
-18 minutes with no error, so the 13 dependent rows had nothing to act on. **The accepted
-generation was charged 10 credits** (wallet 448 → 438); the runner’s own “spent: 0” line was
-wrong because its reconciliation call used the expired token, and that is fixed too. The
-request path is healthy end to end (the platform accepted the generate, musicapi opened an
-upstream task, both polled with 200, `active_accounts=1`); the account in the pool is a
-free-plan account and the sandbox's `premier` account is inactive.
+Seven attempts (2026-11-17) spent nothing in the end — every failure refunded, wallet back at
+**448** — and every one is red for the same reason. `job_queue` is the ledger that explains it:
 
-The run also exposed a runner defect, now fixed: the login JWT lives 900 s, the poll window
-was also 900 s, and the runner ignored the `refresh_token` — row 1 was cancelled by a `401`
-at the exact expiry instant. The client now refreshes and retries once.
+1. the first three jobs died on an **orphaned worker** (`No module named
+   platform_api.services.credit_service`, its package path pointed at a deleted worktree), so
+   nothing was submitted and `external_task_id` stayed `NULL`;
+2. with a worker from this checkout the job reaches a provider that answers
+   `Suno API error 401: submit_task` — while the key entry is `active`, its blob decrypts to
+   `sk-test-123`, musicapi accepts that bearer, and **no `/v1/music/generate` request appears
+   in musicapi's log at all**. The submit is going somewhere else.
+
+One product defect is fixed and tested: a generate job that exhausts its attempts used to
+leave the task `pending` forever with no error (permanent spinner, reservation held); the
+worker now fails the task through the refund path, and the three stuck sandbox rows were
+repaired through it.
 
 Detail: `docs/studio/reports/2026-11-17-provider-matrix-run-1.md` (prerequisites dry run:
-`2026-11-17-provider-matrix-dry-run.md`). Closing D4 needs a provider account that completes
-generations here, then the same command again.
+`2026-11-17-provider-matrix-dry-run.md`). Closing D4 needs the submit routed to the configured
+musicapi, then the same command again.
 
 ## Final gates on the fixed build
 

@@ -13,10 +13,10 @@ Nothing here deploys. Production stays at `985ccf00` until explicitly released.
 
 > **Status 2026-11-17:** D1 **PASS** (3,500 pytest) · D2 **PASS** (185/2 on the real-mirror
 > commit; 0×5xx) · D3 **PASS with three recorded divergences** (W9b re-adjudication; see
-> `CLONE_DEFINITION.md` §5) · D4 **BLOCKED by the provider account** (run 1 executed the full
-> 14-row plan: one generation charged 10 credits and never left `PENDING`, so the dependent
-> rows had nothing to act on; runner token-expiry and spend-reconciliation bugs fixed — see
-> `reports/2026-11-17-provider-matrix-run-1.md`) · D5 **DONE** (demo and MIDI
+> `CLONE_DEFINITION.md` §5) · D4 **BLOCKED: the generation submit never reaches the configured
+> musicapi** (seven attempts, nothing charged after refunds: the job dies on a 401 from
+> somewhere else while the local key is valid; the worker now fails the task instead of
+> leaving a spinner — see `reports/2026-11-17-provider-matrix-run-1.md`) · D5 **DONE** (demo and MIDI
 > overview shipped; other two recorded) · D6 **PASS** (509/510 checks; one row blocked by
 > the local mirror; nine product defects fixed with regressions — see
 > `docs/studio/reports/2026-11-17-residual-results.md`).

@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "stamp": "2026-11-17T09-18-18-534Z",
+    "baseUrl": "http://127.0.0.1:8100",
+    "execute": true,
+    "budget": 320,
+    "model": "V6",
+    "wallet": 448,
+    "spent": 0,
+    "walletAfter": 448,
+    "walletDelta": 0
+  },
+  "prices": {
+    "studio_edit": 12,
+    "stems_2": 12,
+    "stems_12": 60,
+    "music": 10
+  },
+  "preconditions": [
+    {
+      "key": "callback_public",
+      "ok": true,
+      "detail": "https://cat-politics-beliefs-hayes.trycloudflare.com is public",
+      "blocking": true
+    },
+    {
+      "key": "readiness.tables",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "readiness.pricing",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "readiness.storage",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "readiness.internal_token",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "readiness.suno_api_base_url",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "readiness.suno_callback_base_url",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "readiness.musicapi",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "readiness.musicapi_accounts",
+      "ok": true,
+      "detail": "ok",
+      "blocking": true
+    },
+    {
+      "key": "price.studio_edit",
+      "ok": true,
+      "detail": "12 credits",
+      "blocking": true
+    },
+    {
+      "key": "price.stems_2",
+      "ok": true,
+      "detail": "12 credits",
+      "blocking": true
+    },
+    {
+      "key": "price.stems_12",
+      "ok": true,
+      "detail": "60 credits",
+      "blocking": true
+    },
+    {
+      "key": "price.music",
+      "ok": true,
+      "detail": "10 credits",
+      "blocking": true
+    },
+    {
+      "key": "musicapi.health",
+      "ok": true,
+      "detail": "accounts=1 active=1",
+      "blocking": true
+    }
+  ],
+  "rows": [
+    {
+      "id": "generate",
+      "title": "Generate a song",
+      "method": "POST",
+      "endpoint": "/web-music/generate",
+      "cost": 10,
+      "provider": "musicapi POST /v1/music/generate → Suno",
+      "poll": "GET /web-music/generations/{task_id}",
+      "status": "error",
+      "credits": 0,
+      "ids": {},
+      "evidence": {},
+      "error": "generation 39550cee-dfa1-4282-bc0d-7165ac8448d3 ended FAILED: Could not start this song. Credits were refunded.",
+      "note": null,
+      "finished_at": "2026-11-17T09:18:23.879Z",
+      "started_at": "2026-11-17T09:18:18.535Z"
+    }
+  ]
+}
