@@ -194,10 +194,50 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function createClient({ baseUrl, accessToken }) {
+function createClient({ baseUrl, accessToken, refreshToken = null, onToken = null }) {
   const root = `${baseUrl}${API_PREFIX}`;
+  let token = accessToken;
+  let refresh = refreshToken;
+
+  /**
+   * Exchange the refresh token for a new access token. The login JWT lives 900 s and the
+   * matrix's own poll window is up to 900 s, so a long generation row is guaranteed to
+   * outlive its token (measured: a generation poll 401'd at the 15-minute mark and the row
+   * was recorded as an error instead of a provider result).
+   */
+  async function renew() {
+    if (!refresh) return false;
+    try {
+      const response = await fetch(`${root}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!response.ok) return false;
+      const payload = await response.json();
+      if (!payload || !payload.access_token) return false;
+      token = payload.access_token;
+      if (payload.refresh_token) refresh = payload.refresh_token;
+      if (onToken) onToken(token, refresh);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   async function call(pathname, options = {}) {
+    try {
+      return await attempt(pathname, options);
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 401 && options.auth !== false) {
+        if (await renew()) return await attempt(pathname, options);
+      }
+      throw err;
+    }
+  }
+
+  async function attempt(pathname, options = {}) {
     const {
       method = 'GET',
       json,
@@ -208,7 +248,7 @@ function createClient({ baseUrl, accessToken }) {
     } = options;
     const url = pathname.startsWith('http') ? pathname : `${root}${pathname}`;
     const headers = {};
-    if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    if (auth && token) headers.Authorization = `Bearer ${token}`;
     let body;
     if (form) {
       body = form;
@@ -755,7 +795,7 @@ async function runMashup(ctx) {
 // ---------------------------------------------------------------------------
 
 async function login(env) {
-  if (env.accessToken) return env.accessToken;
+  if (env.accessToken) return { accessToken: env.accessToken, refreshToken: null };
   if (!env.email || !env.password) {
     throw new Error('PLATFORM_TEST_EMAIL / PLATFORM_TEST_PASSWORD are required unless PLATFORM_ACCESS_TOKEN is set');
   }
@@ -768,7 +808,8 @@ async function login(env) {
   });
   const token = payload && payload.access_token;
   if (!token) throw new Error('login returned no access_token');
-  return token;
+  // The refresh token lets a 15-minute matrix poll past its 900 s access token.
+  return { accessToken: token, refreshToken: payload.refresh_token || null };
 }
 
 async function probeMusicapi(env) {
@@ -966,8 +1007,8 @@ async function main() {
     blocking: true,
   });
 
-  const token = await login(env);
-  const client = createClient({ baseUrl: env.baseUrl, accessToken: token });
+  const { accessToken, refreshToken } = await login(env);
+  const client = createClient({ baseUrl: env.baseUrl, accessToken, refreshToken });
 
   let readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
   // The first cross-process connection to MusicAPI on this host can stall for seconds

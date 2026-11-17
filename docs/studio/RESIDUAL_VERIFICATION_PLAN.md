@@ -13,9 +13,9 @@ Nothing here deploys. Production stays at `985ccf00` until explicitly released.
 
 > **Status 2026-11-17:** D1 **PASS** (3,500 pytest) · D2 **PASS** (185/2 on the real-mirror
 > commit; 0×5xx) · D3 **PASS with three recorded divergences** (W9b re-adjudication; see
-> `CLONE_DEFINITION.md` §5) · D4 **READY, blocked on the cap** (14 rows / 188 credits; all 14
-> preconditions pass with a public callback tunnel — see
-> `reports/2026-11-17-provider-matrix-dry-run.md`) · D5 **DONE** (demo and MIDI
+> `CLONE_DEFINITION.md` §5) · D4 **BLOCKED by the provider account** (run 1 executed the full
+> 14-row plan, 0 credits spent: the generation never left `PENDING`; runner token-expiry bug
+> fixed — see `reports/2026-11-17-provider-matrix-run-1.md`) · D5 **DONE** (demo and MIDI
 > overview shipped; other two recorded) · D6 **PASS** (509/510 checks; one row blocked by
 > the local mirror; nine product defects fixed with regressions — see
 > `docs/studio/reports/2026-11-17-residual-results.md`).

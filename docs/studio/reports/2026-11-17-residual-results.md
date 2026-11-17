@@ -94,13 +94,22 @@ The single BLOCKED row (**C-47**) is environmental: the local mirror refuses a l
 callback, so the sentence path was proven against a controlled result instead. C-196 was
 re-classified as intended behaviour: `sync` is omitted when the mirror cannot answer.
 
-## D4 — provider matrix · **BLOCKED (runner verified by dry run)**
+## D4 — provider matrix · **BLOCKED by the provider account (run 1 executed, 0 credits spent)**
 
-`node scripts/dev/provider-matrix.mjs --budget 320` prints a 14-row plan totalling **188
-credits** read from the live pricing table. With a quick tunnel in place and an idle host,
-**all 14 preconditions pass and the dry run exits 0**; the only thing left is the cap itself
-(320 recommended — 188 plan plus retries). No provider call was made and no credit was
-spent. Detail: `docs/studio/reports/2026-11-17-provider-matrix-dry-run.md`.
+`node scripts/dev/provider-matrix.mjs --budget 320 --execute` ran the full 14-row plan on
+2026-11-17. Every row is red for one reason: the source generation stayed `PENDING` for
+18 minutes with no error, so the 13 dependent rows had nothing to act on. **0 credits were
+spent.** The request path is healthy end to end (the platform accepted the generate, musicapi
+opened an upstream task, both polled with 200, `active_accounts=1`); the account in the pool
+is a free-plan account and the sandbox's `premier` account is inactive.
+
+The run also exposed a runner defect, now fixed: the login JWT lives 900 s, the poll window
+was also 900 s, and the runner ignored the `refresh_token` — row 1 was cancelled by a `401`
+at the exact expiry instant. The client now refreshes and retries once.
+
+Detail: `docs/studio/reports/2026-11-17-provider-matrix-run-1.md` (prerequisites dry run:
+`2026-11-17-provider-matrix-dry-run.md`). Closing D4 needs a provider account that completes
+generations here, then the same command again.
 
 ## Final gates on the fixed build
 
