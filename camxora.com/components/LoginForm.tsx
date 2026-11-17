@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { Icon } from "@/components/Icon";
 import TurnstileWidget from "@/components/TurnstileWidget";
-import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { AuthProviders } from "@/components/AuthProviders";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/AuthProvider";
 
@@ -60,6 +60,7 @@ export function LoginForm() {
 
   return (
     <form className="auth-form" onSubmit={onSubmit}>
+      <AuthProviders />
       <div className="auth-field">
         <label htmlFor="email">Email</label>
         <input
@@ -118,12 +119,6 @@ export function LoginForm() {
       >
         <Icon name="fa-arrow-right-to-bracket" /> {busy ? "Signing in…" : "Sign in"}
       </button>
-      {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
-        <>
-          <div className="auth-divider">or</div>
-          <GoogleSignInButton />
-        </>
-      ) : null}
       <p className="auth-alt">
         New here? <Link href="/signup">Create an account</Link>
       </p>

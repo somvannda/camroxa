@@ -1,42 +1,25 @@
 "use client";
 
-import Script from "next/script";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "./AuthProvider";
-
-declare global {
-  interface Window {
-    google?: {
-      accounts?: {
-        id?: {
-          initialize: (options: {
-            client_id: string;
-            callback: (response: { credential: string }) => void;
-          }) => void;
-          renderButton: (
-            container: HTMLElement,
-            options: Record<string, unknown>
-          ) => void;
-        };
-      };
-    };
-  }
-}
-
-const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
-
-/** Google Identity Services caps the rendered button at 400px. We keep the
- *  control compact and centred under the OR divider. */
-const GIS_BUTTON_WIDTH = 280;
+import { useEffect, useState } from "react";
+import {
+  GOOGLE_NEXT_KEY,
+  GOOGLE_REFERRAL_KEY,
+  GOOGLE_STATE_KEY,
+  GoogleUnavailableError,
+  googleRedirectUri,
+  requestGoogleAuthUrl,
+  safeNextPath,
+  type GoogleUnavailableReason,
+} from "@/lib/google-auth";
 
 /**
- * Google's official multicolour "G". Kept inline so the button inherits the
- * auth card typography instead of embedding Google's fixed-size iframe chrome.
+ * Google's official multicolour "G". Inline so the button matches the other
+ * auth controls instead of embedding Google's fixed-size iframe chrome.
  */
-function GoogleGlyph() {
+export function GoogleGlyph({ className = "auth-provider-glyph" }: { className?: string }) {
   return (
     <svg
-      className="auth-google-glyph"
+      className={className}
       viewBox="0 0 48 48"
       aria-hidden="true"
       focusable="false"
@@ -51,127 +34,131 @@ function GoogleGlyph() {
       />
       <path
         fill="#FBBC05"
-        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+        d="M10.53 28.59A14.5 14.5 0 0 1 9.77 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.94 23.94 0 0 0 0 24c0 3.86.92 7.51 2.56 10.78l7.97-6.19z"
       />
       <path
         fill="#34A853"
-        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.31-8.16 2.31-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
       />
     </svg>
   );
 }
 
+type Availability = "checking" | "ready" | GoogleUnavailableReason;
+
+function unavailableTitle(reason: GoogleUnavailableReason): string {
+  switch (reason) {
+    case "not-configured":
+      return "Google sign-in is not configured in this build";
+    case "origin-not-allowed":
+      return "Google sign-in is not enabled for this address";
+    default:
+      return "Google sign-in is unavailable right now";
+  }
+}
+
+function unavailableMessage(reason: GoogleUnavailableReason, detail: string): string {
+  switch (reason) {
+    case "not-configured":
+      return "Google sign-in is not configured in this build. Use email and password below.";
+    case "origin-not-allowed":
+      return "Google sign-in is not enabled for this address. Use email and password below.";
+    default:
+      return detail || "Google sign-in is unavailable right now. Use email and password below.";
+  }
+}
+
+/**
+ * "Continue with Google" — real round-trip through the API.
+ *
+ * The API decides whether Google is configured. This button asks it up front
+ * (so it can be honestly disabled with a reason) and again on click (so the
+ * signed state is fresh).
+ */
 export function GoogleSignInButton() {
-  const { refresh } = useAuth();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const initializedRef = useRef(false);
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [availability, setAvailability] = useState<Availability>("checking");
+  const [detail, setDetail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
 
-  const handleCredential = useCallback(
-    async (credential: string) => {
-      setBusy(true);
-      setError("");
-      try {
-        const response = await fetch("/api/v3/auth/google", {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Portal-Context": "user",
-          },
-          body: JSON.stringify({ credential }),
-        });
-        if (!response.ok) {
-          let message = `Google sign-in failed (${response.status})`;
-          try {
-            const data = (await response.json()) as { detail?: string };
-            if (data.detail) message = data.detail;
-          } catch {
-            /* keep fallback */
-          }
-          throw new Error(message);
-        }
-        await refresh();
-        window.location.href = "/";
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Google sign-in failed");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [refresh]
-  );
-
-  // The GIS script is only loaded once per document. Navigating between
-  // /login and /signup remounts this component without re-firing onLoad, so
-  // also detect an already-loaded client.
   useEffect(() => {
-    if (window.google?.accounts?.id) setReady(true);
+    let cancelled = false;
+    requestGoogleAuthUrl(googleRedirectUri())
+      .then(() => {
+        if (!cancelled) setAvailability("ready");
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (error instanceof GoogleUnavailableError) {
+          setAvailability(error.reason);
+          setDetail(error.message);
+        } else {
+          setAvailability("unreachable");
+          setDetail("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!CLIENT_ID || !ready || !window.google?.accounts?.id) return;
-    const container = containerRef.current;
-    if (!container || initializedRef.current) return;
+  async function signIn() {
+    setBusy(true);
+    try {
+      const { url, state } = await requestGoogleAuthUrl(googleRedirectUri());
+      const params = new URLSearchParams(window.location.search);
+      const ref = (params.get("ref") ?? params.get("invite") ?? "")
+        .trim()
+        .toUpperCase();
 
-    initializedRef.current = true;
-    window.google.accounts.id.initialize({
-      client_id: CLIENT_ID,
-      callback: (response) => {
-        if (response.credential) void handleCredential(response.credential);
-      },
-    });
+      window.localStorage.setItem(GOOGLE_STATE_KEY, state);
+      window.localStorage.setItem(
+        GOOGLE_NEXT_KEY,
+        safeNextPath(params.get("next"))
+      );
+      if (ref) {
+        window.localStorage.setItem(
+          GOOGLE_REFERRAL_KEY,
+          ref.replace(/[^A-Z0-9]/g, "").slice(0, 32)
+        );
+      } else {
+        window.localStorage.removeItem(GOOGLE_REFERRAL_KEY);
+      }
 
-    container.replaceChildren();
-    window.google.accounts.id.renderButton(container, {
-      type: "standard",
-      theme: "filled_black",
-      size: "large",
-      text: "continue_with",
-      shape: "pill",
-      logo_alignment: "center",
-      width: GIS_BUTTON_WIDTH,
-      locale: "en",
-    });
-  }, [ready, handleCredential]);
+      window.location.assign(url);
+    } catch (error) {
+      if (error instanceof GoogleUnavailableError) {
+        setAvailability(error.reason);
+        setDetail(error.message);
+      } else {
+        setAvailability("unreachable");
+        setDetail("");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  if (!CLIENT_ID) return null;
+  const ready = availability === "ready";
+  const unavailable =
+    availability === "checking" ? null : (availability as GoogleUnavailableReason);
 
   return (
     <>
-      <Script
-        src="https://accounts.google.com/gsi/client?hl=en"
-        strategy="afterInteractive"
-        onReady={() => setReady(true)}
-        onError={() => setFailed(true)}
-      />
-      <div className="auth-google">
-        {/* Visual button — the real Google iframe sits invisibly on top so
-            clicks still go through Google Identity Services. */}
-        <span
-          className={`auth-google-btn${busy ? " is-busy" : ""}${ready ? "" : " is-loading"}`}
-          aria-hidden="true"
-        >
-          <GoogleGlyph />
-          {busy ? "Signing in…" : "Continue with Google"}
-        </span>
-        <div
-          ref={containerRef}
-          className="auth-google-gis"
-          data-failed={failed || undefined}
-        />
-      </div>
-      {failed ? (
-        <p className="auth-error" role="alert">
-          Google sign-in is unavailable right now. Use email instead.
-        </p>
-      ) : null}
-      {error ? (
-        <p className="auth-error" role="alert">
-          {error}
+      <button
+        type="button"
+        className="auth-btn google auth-provider"
+        onClick={signIn}
+        disabled={!ready || busy}
+        aria-disabled={!ready || undefined}
+        aria-busy={busy || undefined}
+        title={unavailable ? unavailableTitle(unavailable) : undefined}
+      >
+        <GoogleGlyph />
+        {busy ? "Opening Google…" : "Continue with Google"}
+      </button>
+      {unavailable ? (
+        <p className="auth-provider-note is-error" role="status">
+          {unavailableMessage(unavailable, detail)}
         </p>
       ) : null}
     </>
