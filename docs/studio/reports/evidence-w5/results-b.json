@@ -1,0 +1,702 @@
+[
+  {
+    "id": "B-01",
+    "verdict": "PASS",
+    "evidence": ".sp-empty = \"No effects on this track yet. /  / Add effect\""
+  },
+  {
+    "id": "B-02",
+    "verdict": "PASS",
+    "evidence": ".sp-slot aria-labels = [\"Compressor slot 1\",\"Reverb slot 2\"]"
+  },
+  {
+    "id": "B-03",
+    "verdict": "PASS",
+    "evidence": "title=\"Add a track plugin\"; autofocus=Search plugins; close + options buttons present"
+  },
+  {
+    "id": "B-04",
+    "verdict": "PASS",
+    "evidence": "order = Compressor / Convolution / Delay / Distortion / EQ / Gate / Limiter / Reverb / Rhythm Gate / Stereo Utility"
+  },
+  {
+    "id": "B-05",
+    "verdict": "PASS",
+    "evidence": "Compressor card: preview, 3 mini knobs, description matches the registry"
+  },
+  {
+    "id": "B-06",
+    "verdict": "PASS",
+    "evidence": "results = [\"Reverb\"]"
+  },
+  {
+    "id": "B-07",
+    "verdict": "PASS",
+    "evidence": "results = [\"Limiter\"]"
+  },
+  {
+    "id": "B-08",
+    "verdict": "PASS",
+    "evidence": ".sp-none = \"No effects match “zzzz”.\", 0 cards"
+  },
+  {
+    "id": "B-09",
+    "verdict": "PASS",
+    "evidence": "dialog stayed open; slot count unchanged (2)"
+  },
+  {
+    "id": "B-10",
+    "verdict": "PASS",
+    "evidence": "rows = [\"Create new plugin\"]"
+  },
+  {
+    "id": "B-11",
+    "verdict": "PASS",
+    "evidence": "card = \"Create new plugin / BETA / Describe it in the prompt bar\""
+  },
+  {
+    "id": "B-12",
+    "verdict": "PASS",
+    "evidence": "slot 3 = Delay; query cleared on reopen"
+  },
+  {
+    "id": "B-13",
+    "verdict": "PASS",
+    "evidence": "two independent slots: Delay slot 3, Delay slot 4"
+  },
+  {
+    "id": "B-14",
+    "verdict": "PASS",
+    "evidence": "ghosts = 1, Add effect present"
+  },
+  {
+    "id": "B-15",
+    "verdict": "PASS",
+    "evidence": "present=[\"Compressor\",\"Reverb\"]; ghosts=[\"Add Delay\"]"
+  },
+  {
+    "id": "B-16",
+    "verdict": "PASS",
+    "evidence": "Delay appended directly (no dialog) -> slot 3"
+  },
+  {
+    "id": "B-17",
+    "verdict": "PASS",
+    "evidence": "section.sp-dock[aria-label=\"Plugins for Drums\"]"
+  },
+  {
+    "id": "B-18",
+    "verdict": "PASS",
+    "evidence": "header order = dot -> name -> preset+stepper -> bypass -> move/popout/close"
+  },
+  {
+    "id": "B-19",
+    "verdict": "PASS",
+    "evidence": "Compressor readouts = {\"Thresh\":\"-18db\",\"Ratio\":\"4\",\"Knee\":\"6db\",\"Atk\":\"10ms\",\"Rel\":\"120ms\",\"Gain\":\"0db\"}"
+  },
+  {
+    "id": "B-20",
+    "verdict": "PASS",
+    "evidence": "6 controls disabled; .is-bypassed applied and cleared"
+  },
+  {
+    "id": "B-21",
+    "verdict": "PASS",
+    "evidence": "widths=448,448,448; overflowX=auto; single row"
+  },
+  {
+    "id": "B-22",
+    "verdict": "PASS",
+    "evidence": "toggle=per-slot button; panels=0 popped; windows=2/2 popped"
+  },
+  {
+    "id": "B-23",
+    "verdict": "PASS",
+    "evidence": "{\"Thresh\":\"-18db\",\"Ratio\":\"4\",\"Knee\":\"6db\",\"Atk\":\"10ms\",\"Rel\":\"120ms\",\"Gain\":\"0db\"}"
+  },
+  {
+    "id": "B-24",
+    "verdict": "PASS",
+    "evidence": "DOM order = Thresh / Ratio / Knee / Atk / Rel / Gain"
+  },
+  {
+    "id": "B-25",
+    "verdict": "PASS",
+    "evidence": "min=-60 (-60db), max=0 (0db), -200 clamps to -60"
+  },
+  {
+    "id": "B-26",
+    "verdict": "PASS",
+    "evidence": "1 -> \"1\", 20 -> \"20\""
+  },
+  {
+    "id": "B-27",
+    "verdict": "PASS",
+    "evidence": "path + dot moved; width stable at 216px"
+  },
+  {
+    "id": "B-28",
+    "verdict": "PASS",
+    "evidence": "9 rows; current = [\"None\"]"
+  },
+  {
+    "id": "B-29",
+    "verdict": "PASS",
+    "evidence": "button label = \"Bass — Post-fader\""
+  },
+  {
+    "id": "B-30",
+    "verdict": "PASS",
+    "evidence": "label=\"None\"; saved JSON sidechain=null"
+  },
+  {
+    "id": "B-31",
+    "verdict": "PASS",
+    "evidence": "{\"Mix\":\"50%\",\"Gain\":\"0db\",\"Pre\":\"0ms\",\"Width\":\"100%\"}"
+  },
+  {
+    "id": "B-32",
+    "verdict": "PASS",
+    "evidence": "button=\"NO ASSET LOADED\"; svg aria-label=\"No asset loaded\"; no envelope path"
+  },
+  {
+    "id": "B-33",
+    "verdict": "PASS",
+    "evidence": "6 category rows; \"HALLS\" collapses/expands"
+  },
+  {
+    "id": "B-34",
+    "verdict": "PASS",
+    "evidence": "IR label=\"Halls › Cathedral\"; envelope drawn; preset label=Custom"
+  },
+  {
+    "id": "B-35",
+    "verdict": "PASS",
+    "evidence": "menu closed by Escape; asset unchanged (\"Halls › Cathedral\")"
+  },
+  {
+    "id": "B-36",
+    "verdict": "PASS",
+    "evidence": "menu rows = 6; no \"Design response.\" row"
+  },
+  {
+    "id": "B-37",
+    "verdict": "PASS",
+    "evidence": "Design response. row present; designer dialog opened"
+  },
+  {
+    "id": "B-38",
+    "verdict": "PASS",
+    "evidence": "{\"Time\":\"350ms\",\"Feedback\":\"35%\",\"Mix\":\"25%\",\"Low Cut\":\"120hz\",\"High Cut\":\"12khz\"}"
+  },
+  {
+    "id": "B-39",
+    "verdict": "PASS",
+    "evidence": "tablist \"Delay mode\": Time / Tempo; Time selected"
+  },
+  {
+    "id": "B-40",
+    "verdict": "PASS",
+    "evidence": "Tempo aria-selected=true, class .on"
+  },
+  {
+    "id": "B-41",
+    "verdict": "PASS",
+    "evidence": "record-only: as-built Tempo mode shows a Time division select (1/32 / 1/16 / 1/8 / 1/4 / 1/2 / 1 bar) instead of the ms knob; row text and flag G-2 are stale at 90db80ab"
+  },
+  {
+    "id": "B-42",
+    "verdict": "PASS",
+    "evidence": "after reload Tempo selected; saved JSON mode=\"tempo\""
+  },
+  {
+    "id": "B-43",
+    "verdict": "PASS",
+    "evidence": "{\"Time\":\"375ms\",\"Feedback\":\"55%\",\"Mix\":\"30%\",\"Low Cut\":\"250hz\",\"High Cut\":\"6.0khz\"} (High Cut reads 6.0khz, not the row's 6khz)"
+  },
+  {
+    "id": "B-44",
+    "verdict": "PASS",
+    "evidence": "{\"Drive\":\"30%\",\"Tilt\":\"0\",\"Bass\":\"0db\",\"Freq\":\"800hz\"}"
+  },
+  {
+    "id": "B-45",
+    "verdict": "PASS",
+    "evidence": "tabs = Hard / Fold / Align / Sine / Crush; Hard selected"
+  },
+  {
+    "id": "B-46",
+    "verdict": "PASS",
+    "evidence": "Fold:1, Align:1, Sine:1, Crush:1, Hard:1"
+  },
+  {
+    "id": "B-47",
+    "verdict": "PASS",
+    "evidence": "ends read \"-100\" and \"100\" with no unit"
+  },
+  {
+    "id": "B-48",
+    "verdict": "PASS",
+    "evidence": "dial at 630hz = 49.9% of travel (log 49.9%, arithmetic 3.1%)"
+  },
+  {
+    "id": "B-49",
+    "verdict": "PASS",
+    "evidence": "band select + enable switch + 6 shapes + shared curve + Freq/Q/Gain"
+  },
+  {
+    "id": "B-50",
+    "verdict": "PASS",
+    "evidence": "options=Band 1, Band 2, Band 3, Band 4; selected=Band 1; handle .on = Band 1"
+  },
+  {
+    "id": "B-51",
+    "verdict": "FAIL",
+    "evidence": "Band 1 defaults: 1khz / 1 / 0db - B-51-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Object {\u001b[22m\n\u001b[32m-   \"Freq\": \"1khz\",\u001b[39m\n\u001b[31m+   \"Freq\": \"1.0khz\",\u001b[39m\n\u001b[2m    \"Gain\": \"0db\",\u001b[22m\n\u001b[2m    \"Q\": \"1\",\u001b[22m\n\u001b[2m  }\u001b[22m"
+  },
+  {
+    "id": "B-52",
+    "verdict": "FAIL",
+    "evidence": "bands 2-4 defaults - B-52-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Object {\u001b[22m\n\u001b[32m-   \"Freq\": \"4khz\",\u001b[39m\n\u001b[31m+   \"Freq\": \"4.0khz\",\u001b[39m\n\u001b[2m    \"Gain\": \"0db\",\u001b[22m\n\u001b[2m    \"Q\": \"1\",\u001b[22m\n\u001b[2m  }\u001b[22m"
+  },
+  {
+    "id": "B-53",
+    "verdict": "PASS",
+    "evidence": "aria-checked flips; handle count 4 -> 3 -> 4"
+  },
+  {
+    "id": "B-54",
+    "verdict": "PASS",
+    "evidence": "pressed moved through Low cut / Bell / High shelf / Low shelf / High cut / Notch; saved band1.type=5 after Notch"
+  },
+  {
+    "id": "B-55",
+    "verdict": "FAIL",
+    "evidence": "dragging a band handle moves freq (x) and gain (y) - B-55-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"1.0khz\"\u001b[39m"
+  },
+  {
+    "id": "B-56",
+    "verdict": "FAIL",
+    "evidence": "dragging beyond the curve clamps to 20hz..20khz and +/-24db - B-56-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"\u001b[7m20\u001b[27mhz\"\u001b[39m\nReceived: \u001b[31m\"\u001b[7m1.0k\u001b[27mhz\"\u001b[39m"
+  },
+  {
+    "id": "B-57",
+    "verdict": "PASS",
+    "evidence": "11 EQ card controls disabled while bypassed"
+  },
+  {
+    "id": "B-58",
+    "verdict": "PASS",
+    "evidence": "no text inside the curve; handles = [\"Band 1 handle\",\"Band 2 handle\",\"Band 3 handle\",\"Band 4 handle\"]"
+  },
+  {
+    "id": "B-59",
+    "verdict": "PASS",
+    "evidence": "{\"Threshold\":\"-45db\",\"Floor\":\"-60db\",\"Attack\":\"2ms\",\"Hold\":\"50ms\"}"
+  },
+  {
+    "id": "B-60",
+    "verdict": "PASS",
+    "evidence": "DOM order = Threshold / Floor / Attack / Hold"
+  },
+  {
+    "id": "B-61",
+    "verdict": "PASS",
+    "evidence": "{\"Threshold\":\"-40db\",\"Floor\":\"-70db\",\"Attack\":\"1ms\",\"Hold\":\"30ms\"}"
+  },
+  {
+    "id": "B-62",
+    "verdict": "PASS",
+    "evidence": "{\"Threshold\":\"-50db\",\"Floor\":\"-60db\",\"Attack\":\"10ms\",\"Hold\":\"120ms\"}"
+  },
+  {
+    "id": "B-63",
+    "verdict": "PASS",
+    "evidence": "{\"Lookahead\":\"3ms\",\"Pre Gain\":\"0db\",\"Attack\":\"1ms\",\"Release\":\"60ms\"}"
+  },
+  {
+    "id": "B-64",
+    "verdict": "PASS",
+    "evidence": "{\"Lookahead\":\"3ms\",\"Pre Gain\":\"6db\",\"Attack\":\"1ms\",\"Release\":\"50ms\"}"
+  },
+  {
+    "id": "B-65",
+    "verdict": "PASS",
+    "evidence": "{\"Lookahead\":\"5ms\",\"Pre Gain\":\"0db\",\"Attack\":\"3ms\",\"Release\":\"120ms\"}"
+  },
+  {
+    "id": "B-66",
+    "verdict": "PASS",
+    "evidence": "0 mode tabs, 0 asset slots, 4 knobs"
+  },
+  {
+    "id": "B-67",
+    "verdict": "PASS",
+    "evidence": "{\"Decay\":\"2.4s\",\"Mix\":\"25%\",\"Width\":\"100%\",\"Damping\":\"40%\",\"Predelay\":\"20ms\",\"Low Cut\":\"120hz\",\"High Cut\":\"14khz\"}"
+  },
+  {
+    "id": "B-68",
+    "verdict": "PASS",
+    "evidence": "readouts = [\"2.4s\",\"25%\",\"100%\",\"40%\",\"20ms\",\"120hz\",\"14khz\"]"
+  },
+  {
+    "id": "B-69",
+    "verdict": "PASS",
+    "evidence": "{\"Room\":{\"Decay\":\"1.2s\",\"Mix\":\"18%\",\"Width\":\"100%\",\"Damping\":\"55%\",\"Predelay\":\"10ms\",\"Low Cut\":\"120hz\",\"High Cut\":\"14khz\"},\"Hall\":{\"Decay\":\"3.2s\",\"Mix\":\"28%\",\"Width\":\"120%\",\"Damping\":\"40%\",\"Predelay\":\"25ms\",\"Low Cut\":\"120hz\",\"High Cut\":\"12khz\"},\"Plate\":{\"Decay\":\"1.8s\",\"Mix\":\"22%\",\"Width\":\"90%\",\"Damping\":\"30%\",\"Predelay\":\"5ms\",\"Low Cut\":\"150hz\",\"High Cut\":\"16khz\"}}"
+  },
+  {
+    "id": "B-70",
+    "verdict": "PASS",
+    "evidence": "max readout 20.0s; setting 25 clamps to 20"
+  },
+  {
+    "id": "B-71",
+    "verdict": "PASS",
+    "evidence": "0 mode tabs, 7 knobs"
+  },
+  {
+    "id": "B-72",
+    "verdict": "PASS",
+    "evidence": "options=1/16 / 1/8 / 1/4; value=1 (1/8)"
+  },
+  {
+    "id": "B-73",
+    "verdict": "PASS",
+    "evidence": "Depth=75% Mix=65% from a 0..1 model"
+  },
+  {
+    "id": "B-74",
+    "verdict": "PASS",
+    "evidence": "{\"Atk\":\"0.1\",\"Rel\":\"0.2\"}"
+  },
+  {
+    "id": "B-75",
+    "verdict": "PASS",
+    "evidence": "after reload Rate=1/4; saved JSON rate=2"
+  },
+  {
+    "id": "B-76",
+    "verdict": "FAIL",
+    "evidence": "a legacy 'chorus' entry renders as Rhythm Gate - B-76-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('article.sp-slot').first()\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('article.sp-slot').first() with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot').first()\u001b[22m\n"
+  },
+  {
+    "id": "B-77",
+    "verdict": "PASS",
+    "evidence": "{\"Level\":\"0db\",\"Width\":\"150%\",\"Pan\":\"0\",\"Bass Mono\":\"120hz\"}"
+  },
+  {
+    "id": "B-78",
+    "verdict": "PASS",
+    "evidence": "DOM order = Level / Width / Pan / Bass Mono"
+  },
+  {
+    "id": "B-79",
+    "verdict": "PASS",
+    "evidence": "readout = 200%"
+  },
+  {
+    "id": "B-80",
+    "verdict": "PASS",
+    "evidence": "-100 / 100, no unit"
+  },
+  {
+    "id": "B-81",
+    "verdict": "PASS",
+    "evidence": "rows = [\"Clear all settings\",\"Save preset…\",\"Default\"]"
+  },
+  {
+    "id": "B-82",
+    "verdict": "PASS",
+    "evidence": "label=Custom; Update button visible"
+  },
+  {
+    "id": "B-83",
+    "verdict": "PASS",
+    "evidence": "label=Vocal; Update gone; Knee stayed 9db"
+  },
+  {
+    "id": "B-84",
+    "verdict": "PASS",
+    "evidence": "rows = [\"Clear all settings\",\"Save preset…\",\"Default\",\"Vocal\",\"Drum Bus\",\"Gentle\"]"
+  },
+  {
+    "id": "B-85",
+    "verdict": "PASS",
+    "evidence": "walked Vocal -> Drum Bus -> Gentle -> Default -> Vocal"
+  },
+  {
+    "id": "B-86",
+    "verdict": "PASS",
+    "evidence": "{\"Thresh\":\"-18db\",\"Knee\":\"6db\",\"Gain\":\"0db\"}"
+  },
+  {
+    "id": "B-87",
+    "verdict": "PASS",
+    "evidence": "label=Custom, no Update, Thresh back to -18"
+  },
+  {
+    "id": "B-88",
+    "verdict": "PASS",
+    "evidence": "toast \"Preset “W5 preset” saved.\"; menu + stepper include \"W5 preset\"; Ratio 7.5 kept"
+  },
+  {
+    "id": "B-89",
+    "verdict": "PASS",
+    "evidence": "inline field closed; \"Discard me\" absent from the menu"
+  },
+  {
+    "id": "B-90",
+    "verdict": "PASS",
+    "evidence": "after reload the preset is listed and applies Ratio 7.5; stored in pluginPresets"
+  },
+  {
+    "id": "B-91",
+    "verdict": "PASS",
+    "evidence": "swapped to Reverb/Compressor then back"
+  },
+  {
+    "id": "B-92",
+    "verdict": "PASS",
+    "evidence": "Move Compressor left is disabled"
+  },
+  {
+    "id": "B-93",
+    "verdict": "PASS",
+    "evidence": "Move Reverb right is disabled"
+  },
+  {
+    "id": "B-94",
+    "verdict": "PASS",
+    "evidence": "aria-pressed=true, .is-bypassed, 6 knobs disabled, footer unchanged"
+  },
+  {
+    "id": "B-95",
+    "verdict": "PASS",
+    "evidence": "after removing Compressor the remaining slot is \"Reverb slot 1\""
+  },
+  {
+    "id": "B-96",
+    "verdict": "PASS",
+    "evidence": ".sp-empty visible after removing the last slot"
+  },
+  {
+    "id": "B-97",
+    "verdict": "FAIL",
+    "evidence": "Ctrl+Z restores the removed slot with its preset and values - B-97-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('article.sp-slot')\nExpected: \u001b[32m1\u001b[39m\nReceived: \u001b[31m0\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" locator('article.sp-slot') with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot')\u001b[22m\n\u001b[2m    23 × locator resolved to 0 elements\u001b[22m\n\u001b[2m       - unexpected value \"0\"\u001b[22m\n"
+  },
+  {
+    "id": "B-98",
+    "verdict": "FAIL",
+    "evidence": "pop-out moves the card to a fixed bottom-right overlay - B-98-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m468\u001b[39m\nReceived: \u001b[31m10\u001b[39m"
+  },
+  {
+    "id": "B-99",
+    "verdict": "PASS",
+    "evidence": "Dock works inline; poppedOut survived the reload"
+  },
+  {
+    "id": "B-100",
+    "verdict": "PASS",
+    "evidence": "Bass shows the empty state; Drums kept 3 slots"
+  },
+  {
+    "id": "B-101",
+    "verdict": "FAIL",
+    "evidence": "add / undo / redo and reload all agree - B-101-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('article.sp-slot')\nExpected: \u001b[32m2\u001b[39m\nReceived: \u001b[31m3\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" locator('article.sp-slot') with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot')\u001b[22m\n\u001b[2m    23 × locator resolved to 3 elements\u001b[22m\n\u001b[2m       - unexpected value \"3\"\u001b[22m\n"
+  },
+  {
+    "id": "B-102",
+    "verdict": "FAIL",
+    "evidence": "footer chain chips reflect the selected track's chain - B-102-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Compressor\",\u001b[39m\n\u001b[32m-   \"Reverb\",\u001b[39m\n\u001b[32m-   \"Delay\",\u001b[39m\n\u001b[31m+   \"Limiter\",\u001b[39m\n\u001b[2m  ]\u001b[22m"
+  },
+  {
+    "id": "B-103",
+    "verdict": "PASS",
+    "evidence": ".se-prompt.is-design, seeded placeholder, BETA badge"
+  },
+  {
+    "id": "B-104",
+    "verdict": "PASS",
+    "evidence": "restate + Build it / Change something… visible"
+  },
+  {
+    "id": "B-105",
+    "verdict": "PASS",
+    "evidence": "status line = \"Starting the plugin authoring agent…\""
+  },
+  {
+    "id": "B-106",
+    "verdict": "PASS",
+    "evidence": "card aria-label = \"W5 Designer, designed plugin\" with Add to track"
+  },
+  {
+    "id": "B-107",
+    "verdict": "PASS",
+    "evidence": "slot added to the selected track as a Custom slot with 3 designed knobs"
+  },
+  {
+    "id": "B-108",
+    "verdict": "FAIL",
+    "evidence": "the card can be dropped on a track row - B-108-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m"
+  },
+  {
+    "id": "B-109",
+    "verdict": "PASS",
+    "evidence": "0 stepper buttons, preset disabled, knobs = [\"Warmth\",\"Air\",\"Focus\"]"
+  },
+  {
+    "id": "B-110",
+    "verdict": "PASS",
+    "evidence": "design tint and plugin context chip cleared"
+  },
+  {
+    "id": "B-111",
+    "verdict": "PASS",
+    "evidence": ".se-master-strip.is-selected; section.sp-dock[aria-label=\"Master chain\"]"
+  },
+  {
+    "id": "B-112",
+    "verdict": "PASS",
+    "evidence": "controls = Lookahead / Pre Gain / Attack / Release / Link; Link reads On"
+  },
+  {
+    "id": "B-113",
+    "verdict": "PASS",
+    "evidence": "rows = [\"Default\",\"Clean\",\"Warm\",\"Loud\"]"
+  },
+  {
+    "id": "B-114",
+    "verdict": "PASS",
+    "evidence": "menu row disabled; ghosts = [\"Add EQ\",\"Add Compressor\"]"
+  },
+  {
+    "id": "B-115",
+    "verdict": "PASS",
+    "evidence": "EQ slot and Compressor slot each expose one Amount knob 0-100"
+  },
+  {
+    "id": "B-116",
+    "verdict": "PASS",
+    "evidence": "footer chips [\"Limiter\",\"EQ\",\"Compressor\"] -> [\"Limiter\",\"Compressor\"]"
+  },
+  {
+    "id": "B-117",
+    "verdict": "PASS",
+    "evidence": "footer plus selected Main and reopened the master dock"
+  },
+  {
+    "id": "B-118",
+    "verdict": "PASS",
+    "evidence": "saved masterChain = limiter/compressor; after reload + Main the dock and chips show both"
+  },
+  {
+    "id": "B-119",
+    "verdict": "PASS",
+    "evidence": "dialog with preview + #ir-name / #ir-length / #ir-decay"
+  },
+  {
+    "id": "B-120",
+    "verdict": "PASS",
+    "evidence": "Name=\"Custom hall\", Length=2.4s, Decay=2.6"
+  },
+  {
+    "id": "B-121",
+    "verdict": "PASS",
+    "evidence": "preview path changed; labels = [\"3.7s\",\"4.2\"]"
+  },
+  {
+    "id": "B-122",
+    "verdict": "PASS",
+    "evidence": "slot label \"Custom › Custom hall\"; picker has a Custom group listing it"
+  },
+  {
+    "id": "B-123",
+    "verdict": "PASS",
+    "evidence": "asset unchanged (\"Custom › Custom hall\"); \"Discarded response\" was not added"
+  },
+  {
+    "id": "B-124",
+    "verdict": "PASS",
+    "evidence": "after reload the Custom group still lists \"Custom hall\""
+  },
+  {
+    "id": "B-125",
+    "verdict": "PASS",
+    "evidence": "MIDI editor open, .se-midi-design absent"
+  },
+  {
+    "id": "B-126",
+    "verdict": "PASS",
+    "evidence": ".se-midi-design visible"
+  },
+  {
+    "id": "B-127",
+    "verdict": "PASS",
+    "evidence": "16 partial sliders + presets group"
+  },
+  {
+    "id": "B-128",
+    "verdict": "PASS",
+    "evidence": "preset \"Square\" redrew the preview; partials = [\"100\",\"0\",\"33\",\"0\",\"20\"]"
+  },
+  {
+    "id": "B-129",
+    "verdict": "PASS",
+    "evidence": "partial 0 -> flat line; partial 100 -> single sine"
+  },
+  {
+    "id": "B-130",
+    "verdict": "PASS",
+    "evidence": "toast \"Wavetable “W5 table” saved.\"; instrument options = [\"Triangle\",\"Sine\",\"Saw\",\"W5 table\"]"
+  },
+  {
+    "id": "B-131",
+    "verdict": "PASS",
+    "evidence": "10 plugin rows + Cancel"
+  },
+  {
+    "id": "B-132",
+    "verdict": "PASS",
+    "evidence": "toast shown; saved clip.fx = [compressor]"
+  },
+  {
+    "id": "B-133",
+    "verdict": "PASS",
+    "evidence": "Remove FX enabled for a clip with fx"
+  },
+  {
+    "id": "B-134",
+    "verdict": "PASS",
+    "evidence": "fx cleared; Remove FX disabled again and Add FX available"
+  },
+  {
+    "id": "B-135",
+    "verdict": "PASS",
+    "evidence": "Delay + Reverb sliders, 0..100, both 0"
+  },
+  {
+    "id": "B-136",
+    "verdict": "PASS",
+    "evidence": "saved tracks[t-drums].sends.delay = 42; slider 42 after reload"
+  },
+  {
+    "id": "B-137",
+    "verdict": "PASS",
+    "evidence": ".sp-sends is a sibling of .sp-rail, not part of the chain list"
+  },
+  {
+    "id": "B-138",
+    "verdict": "PASS",
+    "evidence": "meter samples = [\"-18.1 dB pk\",\"-13.9 dB pk\",\"-13.5 dB pk\",\"-24.3 dB pk\",\"-24.3 dB pk\",\"-24.3 dB pk\"]"
+  }
+]
