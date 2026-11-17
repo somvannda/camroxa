@@ -56,8 +56,9 @@
   },
   {
     "id": "E-12",
-    "verdict": "PASS",
-    "evidence": "clock display=block; bar/beat=none"
+    "verdict": "FAIL",
+    "evidence": "clock visible, bar/beat hidden - E-12-768x1024.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
   },
   {
     "id": "E-13",
@@ -118,7 +119,7 @@
   {
     "id": "E-24",
     "verdict": "FAIL",
-    "evidence": "no clipping or overlap at the four viewports - E-24-768x1024.png",
-    "detail": "768x1024 header overlaps\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   \"se-head-group se-time x se-head-group se-tempo\",\u001b[39m\n\u001b[31m+ ]\u001b[39m"
+    "evidence": "no clipping or overlap at the four viewports - E-24-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m5\u001b[39m"
   }
 ]

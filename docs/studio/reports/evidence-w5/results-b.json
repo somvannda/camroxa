@@ -106,8 +106,9 @@
   },
   {
     "id": "B-22",
-    "verdict": "PASS",
-    "evidence": "toggle=per-slot button; panels=0 popped; windows=2/2 popped"
+    "verdict": "FAIL",
+    "evidence": "window modes: toggle / panels / windows - B-22-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31m0\u001b[39m"
   },
   {
     "id": "B-23",
@@ -211,8 +212,9 @@
   },
   {
     "id": "B-43",
-    "verdict": "PASS",
-    "evidence": "{\"Time\":\"375ms\",\"Feedback\":\"55%\",\"Mix\":\"30%\",\"Low Cut\":\"250hz\",\"High Cut\":\"6.0khz\"} (High Cut reads 6.0khz, not the row's 6khz)"
+    "verdict": "FAIL",
+    "evidence": "applying Dub sets its five values and clears dirty - B-43-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Object {\u001b[22m\n\u001b[2m    \"Feedback\": \"55%\",\u001b[22m\n\u001b[32m-   \"High Cut\": \"6.0khz\",\u001b[39m\n\u001b[31m+   \"High Cut\": \"6khz\",\u001b[39m\n\u001b[2m    \"Low Cut\": \"250hz\",\u001b[22m\n\u001b[2m    \"Mix\": \"30%\",\u001b[22m\n\u001b[2m    \"Time\": \"375ms\",\u001b[22m\n\u001b[2m  }\u001b[22m"
   },
   {
     "id": "B-44",
@@ -251,15 +253,13 @@
   },
   {
     "id": "B-51",
-    "verdict": "FAIL",
-    "evidence": "Band 1 defaults: 1khz / 1 / 0db - B-51-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Object {\u001b[22m\n\u001b[32m-   \"Freq\": \"1khz\",\u001b[39m\n\u001b[31m+   \"Freq\": \"1.0khz\",\u001b[39m\n\u001b[2m    \"Gain\": \"0db\",\u001b[22m\n\u001b[2m    \"Q\": \"1\",\u001b[22m\n\u001b[2m  }\u001b[22m"
+    "verdict": "PASS",
+    "evidence": "{\"Freq\":\"1khz\",\"Q\":\"1\",\"Gain\":\"0db\"}"
   },
   {
     "id": "B-52",
-    "verdict": "FAIL",
-    "evidence": "bands 2-4 defaults - B-52-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Object {\u001b[22m\n\u001b[32m-   \"Freq\": \"4khz\",\u001b[39m\n\u001b[31m+   \"Freq\": \"4.0khz\",\u001b[39m\n\u001b[2m    \"Gain\": \"0db\",\u001b[22m\n\u001b[2m    \"Q\": \"1\",\u001b[22m\n\u001b[2m  }\u001b[22m"
+    "verdict": "PASS",
+    "evidence": "{\"Band 2\":{\"Freq\":\"200hz\",\"Q\":\"1\",\"Gain\":\"0db\"},\"Band 3\":{\"Freq\":\"4khz\",\"Q\":\"1\",\"Gain\":\"0db\"},\"Band 4\":{\"Freq\":\"10khz\",\"Q\":\"1\",\"Gain\":\"0db\"}}"
   },
   {
     "id": "B-53",
@@ -273,15 +273,14 @@
   },
   {
     "id": "B-55",
-    "verdict": "FAIL",
-    "evidence": "dragging a band handle moves freq (x) and gain (y) - B-55-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"1.0khz\"\u001b[39m"
+    "verdict": "PASS",
+    "evidence": "Freq=3.6khz; Gain=12db; saved band1.freq=3557"
   },
   {
     "id": "B-56",
     "verdict": "FAIL",
     "evidence": "dragging beyond the curve clamps to 20hz..20khz and +/-24db - B-56-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"\u001b[7m20\u001b[27mhz\"\u001b[39m\nReceived: \u001b[31m\"\u001b[7m1.0k\u001b[27mhz\"\u001b[39m"
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"\u001b[7m20\u001b[27mhz\"\u001b[39m\nReceived: \u001b[31m\"\u001b[7m68\u001b[27mhz\"\u001b[39m"
   },
   {
     "id": "B-57",
@@ -382,7 +381,7 @@
     "id": "B-76",
     "verdict": "FAIL",
     "evidence": "a legacy 'chorus' entry renders as Rhythm Gate - B-76-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('article.sp-slot').first()\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('article.sp-slot').first() with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot').first()\u001b[22m\n"
+    "detail": "locator.getAttribute: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('article.sp-slot[aria-label^=\"Rhythm Gate slot\"]').first().locator('input[aria-label=\"Rate\"]').first()\u001b[22m\n"
   },
   {
     "id": "B-77",
@@ -486,31 +485,32 @@
   },
   {
     "id": "B-97",
-    "verdict": "FAIL",
-    "evidence": "Ctrl+Z restores the removed slot with its preset and values - B-97-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('article.sp-slot')\nExpected: \u001b[32m1\u001b[39m\nReceived: \u001b[31m0\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" locator('article.sp-slot') with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot')\u001b[22m\n\u001b[2m    23 × locator resolved to 0 elements\u001b[22m\n\u001b[2m       - unexpected value \"0\"\u001b[22m\n"
+    "verdict": "PASS",
+    "evidence": "slot restored with preset Vocal and Thresh -20"
   },
   {
     "id": "B-98",
     "verdict": "FAIL",
     "evidence": "pop-out moves the card to a fixed bottom-right overlay - B-98-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m468\u001b[39m\nReceived: \u001b[31m10\u001b[39m"
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveClass\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('article.sp-slot[aria-label^=\"Compressor slot\"]').first()\nExpected pattern: \u001b[32m/is-popped/\u001b[39m\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toHaveClass\" locator('article.sp-slot[aria-label^=\"Compressor slot\"]').first() with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot[aria-label^=\"Compressor slot\"]').first()\u001b[22m\n"
   },
   {
     "id": "B-99",
-    "verdict": "PASS",
-    "evidence": "Dock works inline; poppedOut survived the reload"
+    "verdict": "FAIL",
+    "evidence": "Dock returns the card inline and the state persists - B-99-1689x1277.png",
+    "detail": "locator.click: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\\'Dock Compressor\\']')\u001b[22m\n"
   },
   {
     "id": "B-100",
-    "verdict": "PASS",
-    "evidence": "Bass shows the empty state; Drums kept 3 slots"
+    "verdict": "FAIL",
+    "evidence": "chains are per track - B-100-1689x1277.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.sp-dialog[role=\\'dialog\\']')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.sp-dialog[role=\\'dialog\\']') with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('.sp-dialog[role=\\'dialog\\']')\u001b[22m\n"
   },
   {
     "id": "B-101",
     "verdict": "FAIL",
     "evidence": "add / undo / redo and reload all agree - B-101-1689x1277.png",
-    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('article.sp-slot')\nExpected: \u001b[32m2\u001b[39m\nReceived: \u001b[31m3\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" locator('article.sp-slot') with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('article.sp-slot')\u001b[22m\n\u001b[2m    23 × locator resolved to 3 elements\u001b[22m\n\u001b[2m       - unexpected value \"3\"\u001b[22m\n"
+    "detail": "locator.click: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"Remove Delay\"]').first()\u001b[22m\n"
   },
   {
     "id": "B-102",
@@ -697,6 +697,6 @@
   {
     "id": "B-138",
     "verdict": "PASS",
-    "evidence": "meter samples = [\"-18.1 dB pk\",\"-13.9 dB pk\",\"-13.5 dB pk\",\"-24.3 dB pk\",\"-24.3 dB pk\",\"-24.3 dB pk\"]"
+    "evidence": "meter samples = [\"-17.1 dB pk\",\"-12.6 dB pk\",\"-14.3 dB pk\",\"-23.8 dB pk\",\"-23.8 dB pk\",\"-23.8 dB pk\"]"
   }
 ]
