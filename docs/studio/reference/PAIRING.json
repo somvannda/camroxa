@@ -9,8 +9,8 @@
     "S02": {
       "title": "Sign-in modal",
       "spec": "navigation-smoke.spec.ts",
-      "note": "we use a /login route, not a modal (brand/page pattern)",
-      "capture": "ours-sign-in.png"
+      "note": "Our sign-in is a route, not a modal (recorded page-pattern divergence); the capture is the full page.",
+      "capture": "ours-signin.png"
     },
     "S03": {
       "title": "Signed-in entry reopened",
@@ -267,7 +267,7 @@
     "S61": {
       "title": "Insufficient credits",
       "spec": "studio-transforms.spec.ts",
-      "capture": "ours-insufficient-credits.png"
+      "capture": "ours-credits-modal.png"
     },
     "S62": {
       "title": "Offline cold load",

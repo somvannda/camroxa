@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T05:38:46.504Z",
+  "generatedAt": "2026-11-17T05:43:26.473Z",
   "tolerancePct": 0.2,
   "pixelThreshold": 0.1,
   "scaler": "nearest-neighbour",
@@ -47,33 +47,33 @@
     {
       "id": "S02",
       "title": "Sign-in modal",
-      "evidence": "capture:ours-sign-in.png",
-      "capture": "ours-sign-in.png",
+      "evidence": "capture:ours-signin.png",
+      "capture": "ours-signin.png",
       "frame": "S02-sign-in-modal.jpeg",
       "refSize": "1250x1245",
-      "oursSize": "1250x1245",
+      "oursSize": "1440x900",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 49.19,
+      "diffPct": 43.96,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S02.png",
       "bands": {
-        "headerPct": 31.56,
-        "bodyPct": 50.64,
-        "footerPct": 36.29
+        "headerPct": 30.52,
+        "bodyPct": 44.87,
+        "footerPct": 37.79
       },
       "comparability": {
-        "kind": "full-viewport",
-        "wholeFrameComparable": true,
+        "kind": "different-viewport",
+        "wholeFrameComparable": false,
         "refAspect": 1,
-        "oursAspect": 1,
-        "aspectDeltaPct": 0
+        "oursAspect": 1.6,
+        "aspectDeltaPct": 37.25
       },
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
       "sharedWith": null,
-      "differingPixels": 765474,
-      "edgeScore": 0.27
+      "differingPixels": 684073,
+      "edgeScore": 0.55
     },
     {
       "id": "S03",
@@ -1768,20 +1768,20 @@
     {
       "id": "S61",
       "title": "Insufficient credits",
-      "evidence": "capture:ours-insufficient-credits.png",
-      "capture": "ours-insufficient-credits.png",
+      "evidence": "capture:ours-credits-modal.png",
+      "capture": "ours-credits-modal.png",
       "frame": "S61-insufficient-credits.jpeg",
       "refSize": "1440x900",
       "oursSize": "1440x900",
       "verdict": "REVIEW",
       "reason": null,
-      "diffPct": 12.67,
+      "diffPct": 11.25,
       "identicalPixels": false,
       "diffImage": "docs/studio/reports/pixel-diff/S61.png",
       "bands": {
-        "headerPct": 13.71,
-        "bodyPct": 12.39,
-        "footerPct": 17.26
+        "headerPct": 11.94,
+        "bodyPct": 11.26,
+        "footerPct": 10.53
       },
       "comparability": {
         "kind": "full-viewport",
@@ -1793,8 +1793,8 @@
       "specNature": "visual",
       "specDetail": "asserts boundingBox",
       "sharedWith": null,
-      "differingPixels": 164252,
-      "edgeScore": 0.58
+      "differingPixels": 145845,
+      "edgeScore": 0.37
     },
     {
       "id": "S62",
