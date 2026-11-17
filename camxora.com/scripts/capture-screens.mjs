@@ -174,6 +174,9 @@ async function createProject(page, { title, tracks, open = true }) {
             volume: 1,
             pan: 0,
             ...(clip.audioUrl ? { audioUrl: clip.audioUrl } : {}),
+            // Provenance is what resolves the clip-info rail's source song (S27):
+            // without `songId` the inspector gets `source: null` (no artwork, no date).
+            ...(clip.songId ? { songId: clip.songId } : {}),
             ...(clip.midi ? { midi: clip.midi } : {}),
           });
         }
@@ -274,8 +277,8 @@ const mock = {
             {
               variant: "v1",
               title: takeTitle,
-              audio_url: "/demo-loop.wav",
-              download_url: "/demo-loop.wav",
+              audio_url: "/seed/demo-loop.wav",
+              download_url: "/seed/demo-loop.wav",
               duration_seconds: 4,
             },
           ],
@@ -351,7 +354,7 @@ const SCENARIOS = {
         {
           id: "track-1",
           name: "Drums",
-          clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }],
+          clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }],
         },
       ],
     });
@@ -365,7 +368,7 @@ const SCENARIOS = {
   async clipColor(page, { screen }) {
     await createProject(page, {
       title: "Capture · Clip colour",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
     });
     const clip = SEL(page, ".se-clip").first();
     await must(screen, "clip", clip, ".se-clip");
@@ -386,7 +389,7 @@ const SCENARIOS = {
         {
           id: "track-1",
           name: "Drums",
-          clips: [{ id: "base-clip", title: "Base Loop", audioUrl: "/demo-loop.wav" }],
+          clips: [{ id: "base-clip", title: "Base Loop", audioUrl: "/seed/demo-loop.wav" }],
         },
       ],
     });
@@ -414,7 +417,7 @@ const SCENARIOS = {
   async promptIdle(page, { screen }) {
     await createProject(page, {
       title: "Capture · Prompt bar idle",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
     await must(screen, "prompt bar", SEL(page, ".se-prompt"), ".se-prompt");
@@ -430,7 +433,7 @@ const SCENARIOS = {
         {
           id: "track-1",
           name: "Drums",
-          clips: [{ id: "clip-1", title: "Drum Kit Main", audioUrl: "/demo-loop.wav" }],
+          clips: [{ id: "clip-1", title: "Drum Kit Main", audioUrl: "/seed/demo-loop.wav" }],
         },
       ],
     });
@@ -446,7 +449,7 @@ const SCENARIOS = {
   async masterSingle(page, { screen }) {
     await createProject(page, {
       title: "Capture · Master chain one slot",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
     await page.getByRole("button", { name: "Main", exact: true }).click();
@@ -461,7 +464,7 @@ const SCENARIOS = {
       title: "Capture · Preset menu",
       // Named "Track 1" so the plan's literal `click Track 1` and the dock's
       // `Plugins for Track 1` label both resolve; the frame crops the card only.
-      tracks: [{ id: "track-1", name: "Track 1", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [{ id: "track-1", name: "Track 1", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
     await page.getByRole("button", { name: "Track 1", exact: true }).click();
@@ -482,7 +485,7 @@ const SCENARIOS = {
     await createProject(page, {
       title: "Capture · Compressor sidechain",
       tracks: [
-        { id: "track-1", name: "Brass Section", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] },
+        { id: "track-1", name: "Brass Section", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] },
         { id: "track-2", name: "Long Vocal" },
         { id: "track-3", name: "Bass Line" },
         { id: "track-4", name: "Bass Answer" },
@@ -515,7 +518,7 @@ const SCENARIOS = {
         model_label: "v6",
         status: "complete",
         created_at: day(0),
-        clips: [{ variant: "ok", label: "cover", audio_url: "/demo-loop.wav", duration_seconds: 4 }],
+        clips: [{ variant: "ok", label: "cover", audio_url: "/seed/demo-loop.wav", duration_seconds: 4 }],
       },
       {
         id: "song-2",
@@ -524,7 +527,7 @@ const SCENARIOS = {
         model_label: "v6",
         status: "complete",
         created_at: day(1),
-        clips: [{ variant: "ok", label: "extend", audio_url: "/demo-loop.wav", duration_seconds: 4 }],
+        clips: [{ variant: "ok", label: "extend", audio_url: "/seed/demo-loop.wav", duration_seconds: 4 }],
       },
       {
         id: "song-3",
@@ -533,7 +536,7 @@ const SCENARIOS = {
         model_label: "v5",
         status: "complete",
         created_at: day(3),
-        clips: [{ variant: "ok", label: "cover", audio_url: "/demo-loop.wav", duration_seconds: 4 }],
+        clips: [{ variant: "ok", label: "cover", audio_url: "/seed/demo-loop.wav", duration_seconds: 4 }],
       },
     ]);
     await createProject(page, {
@@ -559,7 +562,7 @@ const SCENARIOS = {
       content_type: "audio/wav",
       size_bytes: 176_444,
       duration_seconds: 214,
-      url: "/demo-loop.wav",
+      url: "/seed/demo-loop.wav",
       created_at: new Date(Date.now() - daysAgo * 86_400_000).toISOString(),
       minutes,
     });
@@ -597,7 +600,7 @@ const SCENARIOS = {
           {
             variant: "ok",
             label: "cover",
-            audio_url: "/demo-loop.wav",
+            audio_url: "/seed/demo-loop.wav",
             duration_seconds: 4,
             image_url: "",
           },
@@ -623,7 +626,7 @@ const SCENARIOS = {
   async takeLanesEmpty(page, { screen }) {
     await createProject(page, {
       title: "Capture · Take lanes empty",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
     await SEL(page, ".se-clip").first().click();
@@ -662,7 +665,7 @@ const SCENARIOS = {
     await mock.refusal(page);
     await createProject(page, {
       title: "Capture · Generation refused",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
     await page.getByLabel("Describe a part to generate").fill("A refused loop");
@@ -714,7 +717,7 @@ const SCENARIOS = {
     await createProject(page, {
       title: "Capture · 1280 px",
       tracks: [
-        { id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] },
+        { id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] },
         {
           id: "track-2",
           name: "MIDI 1",
@@ -760,6 +763,181 @@ const SCENARIOS = {
     await must(screen, "MIDI editor", page.getByRole("region", { name: "MIDI editor" }), 'role=region[name="MIDI editor"]');
   },
 
+  /* S03 — the start overlay re-opened from the project menu on a signed-in project. */
+  async startOverlayReopened(page, { screen }) {
+    await createProject(page, {
+      title: "Capture · Entry reopened",
+      tracks: [
+        { id: "track-1", name: "Audio Track", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] },
+      ],
+    });
+    await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
+    // The frame's prompt bar carries the project's track as a chip; selecting the
+    // track is what renders it (`.se-prompt-context`, StudioEditorShell).
+    await page.getByRole("button", { name: "Audio Track", exact: true }).click();
+    await must(screen, "track chip", SEL(page, ".se-prompt-context"), ".se-prompt-context (Audio Track chip)");
+    // "Reopened" is the screen: the overlay comes back from the project menu, not
+    // from a first run (which is S06).
+    await SEL(page, ".se-project .se-chip").first().click();
+    const projectMenu = page.getByRole("menu", { name: "Project options" });
+    await must(screen, "project menu", projectMenu, 'role=menu[name="Project options"]');
+    await projectMenu.getByRole("menuitem", { name: /Show Quick Start again/ }).click();
+    await must(screen, "start overlay", page.getByRole("dialog", { name: "How do you want to start?" }), 'role=dialog[name="How do you want to start?"]');
+  },
+
+  /* S06 — the first-run start overlay on a brand-new empty project. */
+  async startOverlayFirstRun(page, { screen }) {
+    await createProject(page, { title: "Capture · Onboarding overlay", tracks: [] });
+    await must(
+      screen,
+      "start overlay",
+      page.getByRole("dialog", { name: "How do you want to start?" }),
+      'role=dialog[name="How do you want to start?"]'
+    );
+    await must(screen, "fifth tile", SEL(page, ".se-onboard-tile").nth(4), ".se-onboard-tile (5th)");
+  },
+
+  /* S14 — the Keyboard Shortcuts dialog with its search field and grouped rows. */
+  async keyboardShortcuts(page, { screen }) {
+    await createProject(page, {
+      title: "Capture · Keyboard shortcuts",
+      tracks: [{ id: "track-1", name: "Audio Track", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
+    });
+    await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
+    await SEL(page, ".se-learn-pill").first().click();
+    const learn = page.getByRole("menu", { name: "Learn" });
+    await must(screen, "learn menu", learn, 'role=menu[name="Learn"]');
+    await learn.getByRole("menuitem", { name: /Keyboard Shortcuts/ }).click();
+    await must(screen, "shortcuts dialog", page.getByRole("dialog", { name: "Keyboard Shortcuts" }), 'role=dialog[name="Keyboard Shortcuts"]');
+    // The captured dialog shows the full grouped list, not a filtered one.
+    if (await SEL(page, '[aria-label="Search shortcuts"]').first().inputValue().catch(() => "")) {
+      await SEL(page, '[aria-label="Search shortcuts"]').first().fill("");
+    }
+  },
+
+  /* S19 — the per-track options menu, Bounce appended after the captured rows. */
+  async trackOptions(page, { screen }) {
+    await createProject(page, {
+      title: "Capture · Track options",
+      tracks: [
+        { id: "track-1", name: "Audio Track", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] },
+      ],
+    });
+    await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
+    await page.getByRole("button", { name: "Options for Audio Track" }).click();
+    await must(screen, "track menu", page.getByRole("menu", { name: "Audio Track options" }), 'role=menu[name="Audio Track options"]');
+  },
+
+  /* S27 — the clip-info rail with artwork and the like/dislike header cluster. */
+  async clipInfoRail(page, { screen }) {
+    const art = Buffer.from(
+      [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320">',
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
+        '<stop offset="0" stop-color="#5b21b6"/><stop offset="1" stop-color="#1e1b4b"/>',
+        "</linearGradient></defs>",
+        '<rect width="320" height="320" fill="url(#g)"/>',
+        '<path d="M160 60 L186 134 L264 134 L200 180 L224 254 L160 208 L96 254 L120 180 L56 134 L134 134 Z"',
+        ' fill="#e9d5ff" opacity="0.85"/>',
+        "</svg>",
+      ].join("")
+    ).toString("base64");
+    await mock.generations(page, [
+      {
+        id: "song-clip",
+        title: "131-Audio 0001",
+        style: "khmer pop, warm bass",
+        model_label: "v6",
+        status: "complete",
+        created_at: "2026-08-05T00:00:00Z",
+        clips: [
+          {
+            variant: "v4",
+            label: "cover",
+            audio_url: "/seed/demo-loop.wav",
+            download_url: "/seed/demo-loop.wav",
+            duration_seconds: 4,
+            image_url: `data:image/svg+xml;base64,${art}`,
+          },
+        ],
+      },
+    ]);
+    await createProject(page, {
+      title: "Capture · Clip info",
+      tracks: [
+        {
+          id: "track-1",
+          name: "Vocal Cuts",
+          clips: [{ id: "clip-1", title: "131-Audio 0001", audioUrl: "/seed/demo-loop.wav", songId: "song-clip" }],
+        },
+      ],
+    });
+    const clip = SEL(page, ".se-clip").first();
+    await must(screen, "clip", clip, ".se-clip");
+    const box = await clip.boundingBox();
+    if (!box) throw new CaptureError(screen, "right-click clip", ".se-clip has no bounding box");
+    await page.mouse.click(box.x + 30, box.y + 40, { button: "right" });
+    const menu = page.getByRole("menu", { name: "Clip options" });
+    await must(screen, "clip menu", menu, 'role=menu[name="Clip options"]');
+    await menu.getByRole("menuitem", { name: /Clip Info/ }).click();
+    await must(screen, "clip info rail", page.getByRole("complementary", { name: "Clip info" }), 'role=complementary[name="Clip info"]');
+  },
+
+  /* S39 — the Add a track plugin catalogue with its header options menu open. */
+  async pluginCatalog(page, { screen }) {
+    await createProject(page, {
+      title: "Capture · Plugin catalog",
+      tracks: [{ id: "track-1", name: "Track 1", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
+    });
+    await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
+    await page.getByRole("button", { name: "Track 1", exact: true }).click();
+    const dock = page.getByRole("region", { name: "Plugins for Track 1" });
+    await must(screen, "plugin dock", dock, 'role=region[name="Plugins for Track 1"]');
+    await dock.getByRole("button", { name: "Add effect", exact: true }).first().click();
+    await must(screen, "plugin catalog", page.getByRole("dialog", { name: "Add a track plugin" }), 'role=dialog[name="Add a track plugin"]');
+    await page.getByRole("button", { name: "Plugin catalogue options" }).click();
+    await must(screen, "catalogue options", page.getByRole("menu", { name: "Catalogue options" }), 'role=menu[name="Catalogue options"]');
+  },
+
+  /* S44 — the Convolution card with an empty impulse slot ("NO ASSET LOADED"). */
+  async convolutionCard(page, { screen }) {
+    await createProject(page, {
+      title: "Capture · Convolution",
+      tracks: [{ id: "track-1", name: "Track 1", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
+    });
+    await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
+    await page.getByRole("button", { name: "Track 1", exact: true }).click();
+    const dock = page.getByRole("region", { name: "Plugins for Track 1" });
+    await must(screen, "plugin dock", dock, 'role=region[name="Plugins for Track 1"]');
+    await dock.getByRole("button", { name: "Add effect", exact: true }).first().click();
+    const catalog = page.getByRole("dialog", { name: "Add a track plugin" });
+    await must(screen, "plugin catalog", catalog, 'role=dialog[name="Add a track plugin"]');
+    await catalog.getByRole("button", { name: /^Convolution/ }).first().click();
+    await must(screen, "convolution slot", page.getByRole("article", { name: "Convolution slot 1" }), 'role=article[name="Convolution slot 1"]');
+    await must(screen, "empty impulse slot", page.getByText("NO ASSET LOADED"), "text NO ASSET LOADED");
+  },
+
+  /* S64 — the editor at 1024 px, with the bar/beat readout still in the header. */
+  async editorAt1024(page, { screen }) {
+    await createProject(page, {
+      title: "Capture · 1024 px",
+      tracks: [
+        { id: "track-1", name: "Soft Piano", clips: [{ id: "clip-1", title: "Soft Piano", audioUrl: "/seed/demo-loop.wav" }] },
+        { id: "track-2", name: "Brass Section", clips: [{ id: "clip-2", title: "Brass Section", audioUrl: "/seed/demo-loop.wav" }] },
+        { id: "track-3", name: "Vocal Cuts", clips: [{ id: "clip-3", title: "Vocal Cuts", audioUrl: "/seed/demo-loop.wav" }] },
+        { id: "track-4", name: "Bass Line", clips: [{ id: "clip-4", title: "Bass Line", audioUrl: "/seed/demo-loop.wav" }] },
+      ],
+    });
+    await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
+    // The clip carries the track's title, so the track strip has to be the scope.
+    await page
+      .getByRole("complementary", { name: "Tracks" })
+      .getByRole("button", { name: "Bass Line", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Automation" }).click();
+    await must(screen, "automation band", page.getByRole("region", { name: "Track automation" }), 'role=region[name="Track automation"]');
+  },
+
   /* S01 — signed-out marketing page. */
   async marketingSignedOut(page, { screen }) {
     await page.goto("/studio");
@@ -778,7 +956,7 @@ const SCENARIOS = {
     await signIn(page);
     const projectId = await createProject(page, {
       title: "Capture · Shared link",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/seed/demo-loop.wav" }] }],
       open: false,
     });
     const token = await page.evaluate(async (id) => {
@@ -1064,6 +1242,161 @@ const ROWS = [
     current: "ours-take-lanes-empty.png",
     capture: "ours-take-lanes-empty-clean.png",
     scenario: "takeLanesEmpty",
+  },
+
+  /* ---- 8 stale captures: the pairing predates the fix that changed the screen ---- */
+  {
+    id: "S03",
+    title: "Signed-in entry reopened",
+    frame: "S03-signed-in-entry-reopened.jpeg",
+    frameKind: "full",
+    wrong: "Stale capture: the compact 3-tile dialog predates a97f2c14, which rebuilt the overlay to 5 tiles + browse pill + ✕.",
+    state: "Signed-in project with the start overlay re-opened from the project menu (5 tiles, browse pill), track chip in the prompt bar.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1094, height: 1245 },
+    expect: [
+      { loc: (page) => page.getByRole("dialog", { name: "How do you want to start?" }), describe: 'role=dialog[name="How do you want to start?"]' },
+      { loc: (page) => SEL(page, ".se-onboard-tile").nth(4), describe: ".se-onboard-tile (5th)" },
+      { loc: (page) => page.getByRole("link", { name: /Browse Studio projects/ }), describe: 'link[name="Browse Studio projects ›"]' },
+      { loc: (page) => SEL(page, ".se-prompt-context"), describe: ".se-prompt-context (track chip)" },
+    ],
+    mode: "replace",
+    current: "ours-entry-overlay.png",
+    capture: "ours-entry-overlay-reopened.png",
+    scenario: "startOverlayReopened",
+  },
+  {
+    id: "S06",
+    title: "Onboarding overlay",
+    frame: "S06-onboarding-overlay.jpeg",
+    frameKind: "full",
+    wrong: "Same stale capture as S03: it predates a97f2c14, so the 5-tile overlay is not evidenced.",
+    state: "First run on a brand-new empty project: the 5-tile start overlay with the Browse Studio projects pill.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1094, height: 1245 },
+    expect: [
+      { loc: (page) => page.getByRole("dialog", { name: "How do you want to start?" }), describe: 'role=dialog[name="How do you want to start?"]' },
+      { loc: (page) => SEL(page, ".se-onboard-tile").nth(4), describe: ".se-onboard-tile (5th)" },
+      { loc: (page) => page.getByRole("link", { name: /Browse Studio projects/ }), describe: 'link[name="Browse Studio projects ›"]' },
+    ],
+    mode: "replace",
+    current: "ours-entry-overlay.png",
+    capture: "ours-entry-overlay.png",
+    scenario: "startOverlayFirstRun",
+  },
+  {
+    id: "S14",
+    title: "Keyboard shortcuts",
+    frame: "S14-keyboard-shortcuts.jpeg",
+    frameKind: "full",
+    wrong: "Stale capture: 7 rows and no search field; HEAD renders the search field, header ✕ and grouped two-column rows.",
+    state: "Keyboard Shortcuts dialog open from the Learn menu: search field, unfiltered grouped rows.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1115, height: 1245 },
+    expect: [
+      { loc: (page) => page.getByRole("dialog", { name: "Keyboard Shortcuts" }), describe: 'role=dialog[name="Keyboard Shortcuts"]' },
+      { loc: (page) => SEL(page, '[aria-label="Search shortcuts"]'), describe: 'input[aria-label="Search shortcuts"]' },
+      { loc: (page) => SEL(page, ".se-shortcut-groups"), describe: ".se-shortcut-groups (two-column groups)" },
+    ],
+    mode: "replace",
+    current: "ours-shortcuts.png",
+    capture: "ours-shortcuts.png",
+    scenario: "keyboardShortcuts",
+  },
+  {
+    id: "S19",
+    title: "Track options menu",
+    frame: "S19-track-options-menu.jpeg",
+    frameKind: "full",
+    wrong: "Stale capture: Bounce was the 4th row; HEAD appends it after the captured rows (StudioTrackPanel.tsx:349-366).",
+    state: "Per-track options menu open: the six captured rows in order, then Bounce track last.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1094, height: 1245 },
+    expect: [
+      { loc: (page) => page.getByRole("menu", { name: "Audio Track options" }), describe: 'role=menu[name="Audio Track options"]' },
+      { loc: (page) => page.getByRole("menuitem", { name: /Rename track/ }), describe: 'menuitem[name="Rename track"]' },
+      { loc: (page) => page.getByRole("menuitem", { name: /Bounce track/ }), describe: 'menuitem[name="Bounce track"] (appended last)' },
+    ],
+    mode: "replace",
+    current: "ours-track-options.png",
+    capture: "ours-track-options.png",
+    scenario: "trackOptions",
+  },
+  {
+    id: "S27",
+    title: "Clip info rail",
+    frame: "S27-clip-info-panel.jpeg",
+    frameKind: "full",
+    wrong: "Stale capture: it predates f8918ce4, so the like/dislike cluster in the rail header is not evidenced; the hero was a colour block.",
+    state: "Clip info rail open for a clip with source provenance: artwork hero, like/dislike in the header, Info/Stems tabs.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1920, height: 1277 },
+    expect: [
+      { loc: (page) => page.getByRole("complementary", { name: "Clip info" }), describe: 'role=complementary[name="Clip info"]' },
+      { loc: (page) => SEL(page, "img.se-clip-art"), describe: "img.se-clip-art (artwork hero)" },
+      { loc: (page) => page.getByRole("button", { name: "Like song" }), describe: 'button[name="Like song"]' },
+      { loc: (page) => page.getByRole("button", { name: "Dislike song" }), describe: 'button[name="Dislike song"]' },
+    ],
+    mode: "replace",
+    current: "ours-clip-info.png",
+    capture: "ours-clip-info.png",
+    scenario: "clipInfoRail",
+  },
+  {
+    id: "S39",
+    title: "Plugin catalog",
+    frame: "S39-plugin-catalog.jpeg",
+    frameKind: "full",
+    wrong: "Stale capture: the nameless 10th tile cannot be produced from HEAD's data (lib/studio-plugins.ts:234-245); recapture to confirm.",
+    state: "Add a track plugin dialog with its header options menu open and all ten named plugins.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1689, height: 1277 },
+    expect: [
+      { loc: (page) => page.getByRole("dialog", { name: "Add a track plugin" }), describe: 'role=dialog[name="Add a track plugin"]' },
+      { loc: (page) => page.getByRole("menu", { name: "Catalogue options" }), describe: 'role=menu[name="Catalogue options"]' },
+      { loc: (page) => page.getByRole("button", { name: /^Stereo Utility/ }), describe: "card[name=Stereo Utility] (the 10th named plugin)" },
+    ],
+    mode: "replace",
+    current: "ours-plugin-catalog.png",
+    capture: "ours-plugin-catalog.png",
+    scenario: "pluginCatalog",
+  },
+  {
+    id: "S44",
+    title: "Convolution card",
+    frame: "S44-convolution-card.jpeg",
+    frameKind: "crop",
+    wrong: "Stale capture: it shows “No impulse response”; HEAD renders the frame's NO ASSET LOADED (StudioPluginDock.tsx:297).",
+    state: "Convolution card in the track dock with an empty impulse slot reading NO ASSET LOADED.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1689, height: 1277 },
+    expect: [
+      { loc: (page) => page.getByRole("article", { name: "Convolution slot 1" }), describe: 'role=article[name="Convolution slot 1"]' },
+      { loc: (page) => page.getByText("NO ASSET LOADED"), describe: "text NO ASSET LOADED" },
+      { loc: (page) => SEL(page, '[aria-label="No asset loaded"]'), describe: 'svg[aria-label="No asset loaded"]' },
+    ],
+    mode: "replace",
+    current: "ours-plugin-dock-eq-convolution.png",
+    capture: "ours-plugin-dock-convolution.png",
+    scenario: "convolutionCard",
+  },
+  {
+    id: "S64",
+    title: "1024 px",
+    frame: "S64-1024px.jpeg",
+    frameKind: "full",
+    wrong: "Stale capture: the bar/beat readout only hides below 900 px (globals.css:4982), so HEAD keeps it at 1024.",
+    state: "Editor at 1024×900 with the automation band open and the bar/beat readout in the header.",
+    route: "/studio/editor?project=<seeded>",
+    viewport: { width: 1024, height: 900 },
+    expect: [
+      { loc: (page) => SEL(page, '[aria-label="Bar and beat"]'), describe: 'span[aria-label="Bar and beat"]' },
+      { loc: (page) => page.getByRole("region", { name: "Track automation" }), describe: 'role=region[name="Track automation"]' },
+    ],
+    mode: "replace",
+    current: "ours-editor-1024.png",
+    capture: "ours-editor-1024.png",
+    scenario: "editorAt1024",
   },
 
   /* ---- 14 previously "cannot judge" screens without a paired capture ---- */
