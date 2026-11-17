@@ -7,7 +7,7 @@ This is the verdict per criterion, with the evidence produced by workstreams W1�
 
 ## D1 — backend green after the refresh backoff · **PASS**
 
-- `platform_api/tests`: **3,500 passed, 0 failed** (4m09s) on the merged tree, after the
+- `platform_api/tests`: **3,510 passed, 0 failed** (3m48s) on the final tree, after the
   backoff, the image-prompt merge and today's changes. One stale test
   (`test_refresh_rearms_a_mirror_that_never_reached_musicapi`) encoded the removed contract;
   it was retired and replaced by `test_refresh_returns_pending_without_rearming_the_mirror`.

@@ -11,7 +11,7 @@ pixel-identical. This plan closes the six gaps named in the 2026-11-16 hand-over
 
 Nothing here deploys. Production stays at `985ccf00` until explicitly released.
 
-> **Status 2026-11-17:** D1 **PASS** (3,500 pytest) · D2 **PASS** (185/2 on the real-mirror
+> **Status 2026-11-17:** D1 **PASS** (3,510 pytest) · D2 **PASS** (185/2 on the real-mirror
 > commit; 0×5xx) · D3 **PASS with three recorded divergences** (W9b re-adjudication; see
 > `CLONE_DEFINITION.md` §5) · D4 **PASS** (fourteen rows green, 188 credits of a 320 cap, every
 > row traced from platform id to musicapi job — see
