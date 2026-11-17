@@ -268,12 +268,11 @@ API:
 
 ### 8.1 Settings / Image page
 
-Per kind — one combined source dropdown:
+Per kind — one combined source dropdown with three choices:
 
-- **Category + My prompt** (`category` / `custom`)
-- **Category + Admin library** (`category` / `admin_library`)
-- **Prompt only + My prompt** (`prompt_only` / `custom`)
-- **Prompt only + Admin library** (`prompt_only` / `admin_library`)
+- **Prompt only** (`prompt_only` / `custom`) — manual app prompt, no sample.
+- **Category** (`category` / `custom`) — admin sample image plus the manual app prompt.
+- **Admin library** (`prompt_only` / `admin_library`) — prompt comes from the admin library.
 - Thumbnail only: text source is the selected admin style’s `text_template` when library is active; custom mode keeps the existing prompt-token behavior.
 
 Thumbnail generation:

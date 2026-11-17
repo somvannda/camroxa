@@ -300,8 +300,8 @@ def test_create_profile_posts_name_only_payload(
 
 
 def test_combined_source_values_map_to_both_settings(qapp: QApplication) -> None:
-    assert SettingsView._source_selection("category:admin_library") == (
-        "category",
+    assert SettingsView._source_selection("prompt_only:admin_library") == (
+        "prompt_only",
         "admin_library",
     )
     assert SettingsView._source_selection("prompt_only:custom") == (
@@ -316,8 +316,7 @@ def test_combined_source_values_map_to_both_settings(qapp: QApplication) -> None
         for index in range(view._pref_background_source.count())
     ]
     assert values == [
-        "category:custom",
-        "category:admin_library",
         "prompt_only:custom",
+        "category:custom",
         "prompt_only:admin_library",
     ]

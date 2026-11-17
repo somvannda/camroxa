@@ -1399,18 +1399,16 @@ class SettingsView(QWidget):
         self._pref_image_source.addItem("User Provided", "manual")
         self._pref_background_source = QComboBox()
         for label, value in (
-            ("Category + My prompt", "category:custom"),
-            ("Category + Admin library", "category:admin_library"),
-            ("Prompt only + My prompt", "prompt_only:custom"),
-            ("Prompt only + Admin library", "prompt_only:admin_library"),
+            ("Prompt only", "prompt_only:custom"),
+            ("Category", "category:custom"),
+            ("Admin library", "prompt_only:admin_library"),
         ):
             self._pref_background_source.addItem(label, value)
         self._pref_thumbnail_source = QComboBox()
         for label, value in (
-            ("Category + My prompt", "category:custom"),
-            ("Category + Admin library", "category:admin_library"),
-            ("Prompt only + My prompt", "prompt_only:custom"),
-            ("Prompt only + Admin library", "prompt_only:admin_library"),
+            ("Prompt only", "prompt_only:custom"),
+            ("Category", "category:custom"),
+            ("Admin library", "prompt_only:admin_library"),
         ):
             self._pref_thumbnail_source.addItem(label, value)
         self._pref_thumbnail_mode = QComboBox()
@@ -3436,12 +3434,16 @@ class SettingsView(QWidget):
             else draft.image_thumbnail_prompt_source
         )
         bg_source_index = self._pref_background_source.findData(
-            f"{draft.image_background_source_mode}:{bg_prompt_source}"
+            self._combined_value(
+                draft.image_background_source_mode, bg_prompt_source
+            )
         )
         if bg_source_index >= 0:
             self._pref_background_source.setCurrentIndex(bg_source_index)
         th_source_index = self._pref_thumbnail_source.findData(
-            f"{draft.image_thumbnail_source_mode}:{th_prompt_source}"
+            self._combined_value(
+                draft.image_thumbnail_source_mode, th_prompt_source
+            )
         )
         if th_source_index >= 0:
             self._pref_thumbnail_source.setCurrentIndex(th_source_index)
@@ -3785,33 +3787,41 @@ class SettingsView(QWidget):
 
     def _configure_source_combos(self, library_only: bool) -> None:
         options = (
-            (
-                ("Category + Admin library", "category:admin_library"),
-                ("Prompt only + Admin library", "prompt_only:admin_library"),
-            )
+            (("Admin library", "prompt_only:admin_library"),)
             if library_only
             else (
-                ("Category + My prompt", "category:custom"),
-                ("Category + Admin library", "category:admin_library"),
-                ("Prompt only + My prompt", "prompt_only:custom"),
-                ("Prompt only + Admin library", "prompt_only:admin_library"),
+                ("Prompt only", "prompt_only:custom"),
+                ("Category", "category:custom"),
+                ("Admin library", "prompt_only:admin_library"),
             )
         )
         for combo in (self._pref_background_source, self._pref_thumbnail_source):
-            raw = str(combo.currentData() or "category:custom")
+            raw = str(combo.currentData() or "prompt_only:custom")
             mode, _, prompt = raw.partition(":")
             normalized_mode = "prompt_only" if mode == "prompt_only" else "category"
             normalized_prompt = (
                 "admin_library" if library_only or prompt == "admin_library" else "custom"
             )
+            target = (
+                "prompt_only:admin_library"
+                if normalized_prompt == "admin_library"
+                else f"{normalized_mode}:custom"
+            )
             blocked = combo.blockSignals(True)
             combo.clear()
             for label, value in options:
                 combo.addItem(label, value)
-            index = combo.findData(f"{normalized_mode}:{normalized_prompt}")
+            index = combo.findData(target)
             if index >= 0:
                 combo.setCurrentIndex(index)
             combo.blockSignals(blocked)
+
+    @staticmethod
+    def _combined_value(mode: str, prompt: str) -> str:
+        if str(prompt or "").strip().lower() == "admin_library":
+            return "prompt_only:admin_library"
+        normalized = "prompt_only" if str(mode or "") == "prompt_only" else "category"
+        return f"{normalized}:custom"
 
     @staticmethod
     def _source_selection(value: object) -> tuple[str, str]:

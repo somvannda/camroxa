@@ -195,7 +195,10 @@ def test_source_selection_combines_reference_and_prompt(qapp: QApplication) -> N
 
     card.set_source_mode("category")
     card.set_prompt_source("admin_library")
-    assert (card.source_mode(), card.prompt_source()) == ("category", "admin_library")
+    assert (card.source_mode(), card.prompt_source()) == (
+        "prompt_only",
+        "admin_library",
+    )
 
     card.set_source_mode("prompt_only")
     assert (card.source_mode(), card.prompt_source()) == (
@@ -372,4 +375,4 @@ def test_global_admin_library_only_forces_sources_and_hides_prompts(
         view._background_preview._source_mode.itemData(index)
         for index in range(view._background_preview._source_mode.count())
     ]
-    assert values == ["category:admin_library", "prompt_only:admin_library"]
+    assert values == ["prompt_only:admin_library"]

@@ -19,10 +19,13 @@ from features.create.widgets.studio_panel import StudioPanel
 
 
 _SOURCE_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("Category + My prompt", "category:custom"),
-    ("Category + Admin library", "category:admin_library"),
-    ("Prompt only + My prompt", "prompt_only:custom"),
-    ("Prompt only + Admin library", "prompt_only:admin_library"),
+    ("Prompt only", "prompt_only:custom"),
+    ("Category", "category:custom"),
+    ("Admin library", "prompt_only:admin_library"),
+)
+
+_LIBRARY_ONLY_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("Admin library", "prompt_only:admin_library"),
 )
 
 _EMPTY_BY_KIND = {
@@ -136,9 +139,8 @@ class PreviewCard(StudioPanel):
         current_mode, current_prompt = self._selection()
         blocked = self._source_mode.blockSignals(True)
         self._source_mode.clear()
-        for label, value in _SOURCE_OPTIONS:
-            if self._library_only and value.endswith(":custom"):
-                continue
+        options = _LIBRARY_ONLY_OPTIONS if self._library_only else _SOURCE_OPTIONS
+        for label, value in options:
             self._source_mode.addItem(label, value)
         self._source_mode.sync_item_tooltips()
         self._source_mode.blockSignals(blocked)
@@ -154,7 +156,7 @@ class PreviewCard(StudioPanel):
         self._populate_options()
 
     def _selection(self) -> tuple[str, str]:
-        raw = str(self._source_mode.currentData() or "category:custom")
+        raw = str(self._source_mode.currentData() or "prompt_only:custom")
         source_mode, _, prompt_source = raw.partition(":")
         source_mode = (
             "prompt_only" if source_mode in {"prompt", "prompt_only"} else "category"
@@ -175,9 +177,11 @@ class PreviewCard(StudioPanel):
             if str(prompt_source or "").strip().lower() == "admin_library"
             else "custom"
         )
-        index = self._source_mode.findData(
-            f"{normalized_mode}:{normalized_prompt}"
-        )
+        if normalized_prompt == "admin_library":
+            value = "prompt_only:admin_library"
+        else:
+            value = f"{normalized_mode}:custom"
+        index = self._source_mode.findData(value)
         if index < 0:
             return
         blocked = self._source_mode.blockSignals(True)
