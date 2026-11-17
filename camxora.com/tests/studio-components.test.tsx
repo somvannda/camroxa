@@ -964,7 +964,7 @@ describe("StudioSongDetail", () => {
     const menu = screen.getByRole("menu", { name: "Song options" });
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(3);
 
-    await user.click(within(menu).getByRole("menuitem", { name: /Download WAV/ }));
+    await user.click(within(menu).getByRole("menuitem", { name: /Download \.WAV/ }));
     expect(onDownloadWav).toHaveBeenCalledWith(detailSong);
 
     await user.click(screen.getByRole("button", { name: "More song options" }));

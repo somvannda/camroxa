@@ -111,7 +111,7 @@ Each entry names the ledger row it closes and the test that pins it.
 
 ### B5 part 2 — clip and export menus put captured rows first
 
-- **Clip menu:** Get Stems · Download WAV · Get MIDI · Remove FX now run in capture order;
+- **Clip menu:** Get Stems · Download .WAV · Get MIDI · Remove FX now run in capture order;
   the transforms, Download MIDI and Add FX follow them after a separator.
 - **Export menu:** Full Song · Selected Time Range · Multitrack come first; the WAV/MP3 format
   group, Normalise and Project (JSON) are additive rows below a separator.
@@ -131,7 +131,11 @@ Each entry names the ledger row it closes and the test that pins it.
 - The captured **…** in the catalogue header now opens a **Catalogue options** menu with the one
   real action it can offer: **Create new plugin** (closes the catalogue, opens the designer).
 - The empty impulse slot reads **NO ASSET LOADED** as captured; the corpus transcription said
-  “No impulse response”, so the list was corrected from S44 (same rule as “Download WAV”).
+  "No impulse response", so the list was corrected from S44.
+- **Correction (2026-11-17):** the earlier "Download WAV" corpus change was wrong. A zoomed
+  crop of S26 shows **Download .WAV**; the UI now matches the frame and the corpus says so.
+  The corpus also lists our additive operations separately instead of presenting them as
+  captured (see `docs/studio/reports/2026-11-17-corpus-audit.md`).
 - Stereo Utility gets its own preview trace instead of the flat fallback.
 
 ### B10 (part 1) — Clip Settings

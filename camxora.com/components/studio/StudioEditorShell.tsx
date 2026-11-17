@@ -6641,7 +6641,7 @@ export function StudioEditorShell() {
                   disabled={!clip.audioUrl}
                   onClick={() => void downloadClipWav(clip.id)}
                 >
-                  <Icon name="fa-download" /> Download WAV
+                  <Icon name="fa-download" /> Download .WAV
                 </button>
                 
                 <button

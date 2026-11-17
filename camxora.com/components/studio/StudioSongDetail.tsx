@@ -277,7 +277,7 @@ export function StudioSongDetail(props: StudioSongDetailProps) {
                   setMoreOpen(false);
                 }}
               >
-                <Icon name="fa-download" /> Download WAV
+                <Icon name="fa-download" /> Download .WAV
               </button>
               <button
                 type="button"

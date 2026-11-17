@@ -25,8 +25,13 @@ A build is clone-complete only when all seven hold:
    shipped UI — matched against `.ts`/`.tsx`/`.css` source **with comments removed by the
    TypeScript parser**, so neither a document nor a code comment can satisfy a string — and
    every captured menu row exists in the same order (YouTube Tutorials is the one sanctioned
-   absence). The captured frames override the transcription: S26 reads "Download WAV", so the
-   list says that, not the "Download .WAV" that the implementation spec had recorded.
+   absence). The captured frames override the transcription **and the shipped UI**: S26 reads
+   "Download .WAV" and S44 reads "NO ASSET LOADED". A gate that only proves *presence* cannot
+   catch a label that was silently changed to match our own button, so any correction here
+   must be read off the frame, not inferred from passing tests.
+   `FUNCTIONAL_STRINGS.json` also carries an `additive` list: strings for our own operations
+   (JSON export, normalise, transforms, import, wavetable designer) that no frame shows —
+   checked for presence, never presented as captured.
 4. **Behaviour.** Each captured interaction reproduces the reference behaviour; an addition
    may only *add* surfaces, never replace or move a captured control.
 5. **Allowed divergence.** Brand wordmark/logo, palette tokens, our own help/marketing
