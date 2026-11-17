@@ -1020,12 +1020,12 @@ test("clip colour opens the captured submenu", async ({ page }) => {
   await page.locator(".se-clip").first().click({ button: "right" });
   const menu = page.getByRole("menu", { name: "Clip options" });
   await menu.getByRole("menuitem", { name: "Clip Color" }).click();
-  const flyout = menu.locator(".se-clip-menu-colors");
+  const flyout = page.locator(".se-clip-menu-colors");
   await expect(flyout).toBeVisible();
   const info = await flyout.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    const menuBox = element.closest(".se-clip-menu")?.getBoundingClientRect();
+    const menuBox = document.querySelector(".se-clip-menu")?.getBoundingClientRect();
     return {
       width: Math.round(rect.width),
       radius: style.borderTopLeftRadius,

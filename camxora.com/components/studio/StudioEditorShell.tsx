@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
+import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
@@ -419,7 +420,10 @@ export function StudioEditorShell() {
     fadeOut?: number;
   } | null>(null);
   /** Clip context menu (S26/§47): anchored at the click point, built from clip state. */
-  const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);  const [clipColorOpen, setClipColorOpen] = useState(false);
+  const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  const [clipColorOpen, setClipColorOpen] = useState(false);
+  /** Fixed position for the colour flyout: it portals out of the scrolling menu. */
+  const [clipColorPos, setClipColorPos] = useState<{ left: number; top: number } | null>(null);
   /** §34: clip whose own insert chain is being edited (null = picker closed). */
   const [clipFxTarget, setClipFxTarget] = useState<string | null>(null);
   /** N-14: Wavetable Designer, and the MIDI clip that will use the saved table. */
@@ -1942,6 +1946,9 @@ export function StudioEditorShell() {
     const data = entry.data as Record<string, unknown>;
     setProjectData(data);
     setLocalTracks(null);
+    // The rail reads localChains; without this reset, undo/redo reverts the document but
+    // leaves the plugin slots stale until a reload (W5 B-97/B-101).
+    setLocalChains(null);
     syncHistory();
     persist(
       (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
@@ -3209,7 +3216,12 @@ export function StudioEditorShell() {
 
   const derivedChains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
-    return (data.chains as Record<string, PluginChainEntry[]>) || {};
+    const raw = (data.chains ?? {}) as Record<string, unknown>;
+    const out: Record<string, PluginChainEntry[]> = {};
+    // Sanitising on load drops entries for plugins that no longer exist (legacy `chorus`)
+    // instead of rendering a slot with no card (W5 B-76).
+    for (const [trackId, chain] of Object.entries(raw)) out[trackId] = sanitizeChain(chain);
+    return out;
   }, [project]);
 
   /** Designed plugins saved in this project's library (S45). */
@@ -6590,42 +6602,60 @@ export function StudioEditorShell() {
                     role="menuitem"
                     aria-haspopup="true"
                     aria-expanded={clipColorOpen}
-                    onClick={() => setClipColorOpen((open) => !open)}
+                    onClick={(event) => {
+                      const row = event.currentTarget.getBoundingClientRect();
+                      const menuRect = event.currentTarget
+                        .closest(".se-clip-menu")
+                        ?.getBoundingClientRect();
+                      setClipColorPos({
+                        left: (menuRect?.right ?? row.right) + 12,
+                        top: Math.max(8, row.top - 6),
+                      });
+                      setClipColorOpen((open) => !open);
+                    }}
                   >
                     <Icon name="fa-circle" /> Clip Color <Icon name="fa-chevron-right" />
                   </button>
-                  {clipColorOpen ? (
-                    <div className="se-clip-menu-colors" role="group" aria-label="Clip colour">
-                      <button
-                        type="button"
-                        className="se-color-auto"
-                        aria-pressed={!clip.color}
-                        onClick={() => {
-                          setClipColor(clip.id, "");
-                          setClipMenu(null);
-                        }}
-                      >
-                        <span className="se-color-dot" aria-hidden="true" />
-                        Auto
-                        {!clip.color ? <Icon name="fa-check" /> : null}
-                      </button>
-                      <div className="se-color-grid">
-                        {CLIP_COLORS.map((color) => (
+                  {clipColorOpen && clipColorPos
+                    ? createPortal(
+                        <div
+                          className="se-clip-menu-colors se-colors-portal"
+                          role="group"
+                          aria-label="Clip colour"
+                          style={{ left: clipColorPos.left, top: clipColorPos.top }}
+                        >
                           <button
-                            key={color}
                             type="button"
-                            aria-label={`Clip colour ${color}`}
-                            style={{ background: color }}
-                            className={clip.color === color ? "on" : undefined}
+                            className="se-color-auto"
+                            aria-pressed={!clip.color}
                             onClick={() => {
-                              setClipColor(clip.id, color);
+                              setClipColor(clip.id, "");
                               setClipMenu(null);
                             }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                          >
+                            <span className="se-color-dot" aria-hidden="true" />
+                            Auto
+                            {!clip.color ? <Icon name="fa-check" /> : null}
+                          </button>
+                          <div className="se-color-grid">
+                            {CLIP_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                type="button"
+                                aria-label={`Clip colour ${color}`}
+                                style={{ background: color }}
+                                className={clip.color === color ? "on" : undefined}
+                                onClick={() => {
+                                  setClipColor(clip.id, color);
+                                  setClipMenu(null);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>,
+                        document.body
+                      )
+                    : null}
                 </div>
                 <div className="se-clip-menu-sep" />
                 <button
@@ -7427,7 +7457,21 @@ export function StudioEditorShell() {
         </div>
       ) : null}
 
-      {error ? <div className="se-error" role="alert">{error}</div> : null}
+      {!loading && !project && error ? (
+        <div className="se-load-failed" role="alert">
+          <strong>Could not open this project</strong>
+          <p>{error}</p>
+          <details>
+            <summary>Details</summary>
+            <pre>{projectId ?? "No project id"}</pre>
+          </details>
+          <button type="button" className="se-pill on" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+        </div>
+      ) : error ? (
+        <div className="se-error" role="alert">{error}</div>
+      ) : null}
       {transformNotice ? (
         <div className={`se-transform-notice ${transformNotice.kind}`} role="alert">
           <strong>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useEffect,
@@ -444,7 +444,8 @@ function EqCard({
 }: {
   params: Record<string, number>;
   disabled: boolean;
-  onChange: (key: string, value: number) => void;
+  /** Apply several param writes in one chain update; two calls would race the snapshot. */
+  onChange: (updates: Record<string, number>) => void;
 }) {
   const [selected, setSelected] = useState(1);
   const [dragging, setDragging] = useState<number | null>(null);
@@ -485,8 +486,10 @@ function EqCard({
     const ty = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
     const freq = Math.round(EQ_F_MIN * Math.pow(EQ_F_MAX / EQ_F_MIN, tx));
     const gain = Math.round((0.5 - ty) * 2 * EQ_DB * 10) / 10;
-    onChange(`band${band}.freq`, Math.min(EQ_F_MAX, Math.max(EQ_F_MIN, freq)));
-    onChange(`band${band}.gain`, Math.min(EQ_DB, Math.max(-EQ_DB, gain)));
+    onChange({
+      [`band${band}.freq`]: Math.min(EQ_F_MAX, Math.max(EQ_F_MIN, freq)),
+      [`band${band}.gain`]: Math.min(EQ_DB, Math.max(-EQ_DB, gain)),
+    });
   };
 
   return (
@@ -512,7 +515,7 @@ function EqCard({
           aria-label={`Band ${selected} enabled`}
           disabled={disabled}
           className={`sp-band-toggle${current.on ? " on" : ""}`}
-          onClick={() => onChange(`band${selected}.on`, current.on ? 0 : 1)}
+          onClick={() => onChange({ [`band${selected}.on`]: current.on ? 0 : 1 })}
         />
       </div>
 
@@ -525,7 +528,7 @@ function EqCard({
             aria-pressed={current.type === shape.id}
             disabled={disabled}
             className={current.type === shape.id ? "on" : undefined}
-            onClick={() => onChange(`band${selected}.type`, shape.id)}
+            onClick={() => onChange({ [`band${selected}.type`]: shape.id })}
           >
             <svg viewBox="0 0 28 18" aria-hidden="true">
               <path d={shape.path} />
@@ -595,7 +598,7 @@ function EqCard({
           unit="hz"
           log
           disabled={disabled}
-          onChange={(next) => onChange(`band${selected}.freq`, next)}
+          onChange={(next) => onChange({ [`band${selected}.freq`]: next })}
         />
         <ParamKnob
           label="Q"
@@ -604,7 +607,7 @@ function EqCard({
           max={18}
           step={0.1}
           disabled={disabled}
-          onChange={(next) => onChange(`band${selected}.q`, next)}
+          onChange={(next) => onChange({ [`band${selected}.q`]: next })}
         />
         <ParamKnob
           label="Gain"
@@ -614,7 +617,7 @@ function EqCard({
           step={0.5}
           unit="db"
           disabled={disabled}
-          onChange={(next) => onChange(`band${selected}.gain`, next)}
+          onChange={(next) => onChange({ [`band${selected}.gain`]: next })}
         />
       </div>
     </div>
@@ -1044,7 +1047,13 @@ export function StudioPluginDock({
                 <EqCard
                   params={entry.params}
                   disabled={Boolean(entry.bypassed)}
-                  onChange={(key, value) => onChange(setParam(chain, entry.entryId, key, value))}
+                  onChange={(updates) => {
+                    let next = chain;
+                    for (const [key, value] of Object.entries(updates)) {
+                      next = setParam(next, entry.entryId, key, value);
+                    }
+                    onChange(next);
+                  }}
                 />
               ) : plugin.id === "convolution" ? (
                 <ConvolutionCard

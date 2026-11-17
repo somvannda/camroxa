@@ -750,7 +750,8 @@ describe("StudioLibrary", () => {
       />
     );
     expect(screen.getByText("take-1.wav")).toBeTruthy();
-    expect(screen.getByText("2:07")).toBeTruthy();
+    expect(screen.getByText(/2:07/)).toBeTruthy();
+    expect(screen.getByText(/WAV/)).toBeTruthy();
     await user.click(screen.getByLabelText("Add take-1.wav"));
     expect(onAddUpload).toHaveBeenCalledWith(upload());
   });

@@ -35,6 +35,24 @@ test("a moved clip is saved and still moved after a reload", async ({ page }) =>
   expect(persisted).toBeGreaterThan(0);
 });
 
+test("a failed project load offers Try again and Details", async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = await createStudioProject(page, { title: "Load failure" });
+  await page.route("**/api/v3/web-music/studio/projects/*", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ status: 500, contentType: "application/json", body: "{}" })
+      : route.continue()
+  );
+
+  await page.goto(`/studio/editor?project=${projectId}`);
+  const panel = page.getByRole("alert").filter({ hasText: "Could not open this project" });
+  await expect(panel).toBeVisible({ timeout: 30_000 });
+  await expect(panel.getByText("Details")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Try again" })).toBeVisible();
+  // The start overlay must not cover a failed load.
+  await expect(page.getByRole("dialog", { name: "How do you want to start?" })).toHaveCount(0);
+});
+
 test("editing while the project is still loading cannot erase it", async ({ page }) => {
   test.setTimeout(120_000);
 

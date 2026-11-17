@@ -93,6 +93,13 @@ export type StudioLibraryProps = {
 const ROOT_ROWS = 4;
 
 /** "2:07" for a known length, "—" when the upload did not report one. */
+export function uploadSize(bytes: number | null | undefined): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) return "";
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 export function formatUploadLength(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return "—";
   const total = Math.round(seconds);
@@ -874,7 +881,13 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                             <span className="se-lib-song-body">
                               <span className="se-lib-title">{upload.filename}</span>
                               <span className="se-lib-meta">
-                                {formatUploadLength(upload.duration_seconds)}
+                                {[
+                                  formatUploadLength(upload.duration_seconds),
+                                  upload.content_type?.split("/")[1]?.toUpperCase(),
+                                  uploadSize(upload.size_bytes),
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
                               </span>
                             </span>
                             <span className="se-lib-song-actions">
