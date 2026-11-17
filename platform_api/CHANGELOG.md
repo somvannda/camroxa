@@ -8,6 +8,14 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2026-11-17] - Removed CALA provider
 
+### Added
+
+- Image-job hold recovery: `hold_units`, `hold_state`, and `provider_invoked`
+  on `image_jobs`; the worker now requeues/fails stale `RUNNING` jobs and stale
+  dependent thumbnails, refunding the exact hold by `job.id`.
+- FAL `flux-dev-image-to-image` thumbnail pricing (25 credits, 100% markup over
+  FAL's $0.03/MP list price).
+
 ### Removed
 
 - Deleted the CALA HTTP client and removed CALA from image routing, the provider
