@@ -289,6 +289,21 @@ Behavior:
 - If fewer than two active styles for a kind, warn that both channels may reuse one style.
 - Include the new settings in `_current_settings_patch()` and `build_system_settings_patch()`.
 
+### 8.1.1 Thumbnail text presets
+
+Admin → **Thumbnail Texts** stores the exact words separately from the prompt style:
+
+- `title`, `subtitle`, `subline`
+- `placement` (`top_center`, `center`, `bottom_center`)
+- `alignment` (`center`, `left`, `right`)
+- optional `style_hint`
+- active / sort order / notes
+
+Selection is per user cycle (`image_thumbnail_text_rotation`), so a user does not
+repeat a text until all active texts have been used. The composed prompt appends
+one strict lockup instruction; the prompt style must contain no hardcoded text.
+The migration also seeds 12 text-free `text_mode='lockup'` thumbnail styles.
+
 ### 8.2 Image queue
 
 - Job detail shows the actual selected prompt (already returned by the API).

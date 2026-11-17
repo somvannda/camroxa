@@ -23,6 +23,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
   blocks generation when the selected admin library is empty.
 - **Import prompts in admin.** CSV/XLS/XLSX/JSON uploads with duplicate prompt
   detection and no overwrites.
+- **Thumbnail text library.** Admin → Thumbnail Texts stores Title / Subtitle /
+  Subline separately, with placement and alignment. One text is picked per user
+  cycle without repeating until the cycle is exhausted. Admin-library thumbnails
+  use a strict text lockup and clean text-free typography styles instead of
+  hardcoded words in the prompt.
 
 ### Changed
 
