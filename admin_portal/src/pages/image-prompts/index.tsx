@@ -1,5 +1,15 @@
 import { useMemo, useRef, useState } from 'react';
-import { Edit3, Loader2, Plus, RefreshCcw, Trash2, Upload } from 'lucide-react';
+import {
+  Download,
+  Edit3,
+  FileJson,
+  FileSpreadsheet,
+  Loader2,
+  Plus,
+  RefreshCcw,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 
 import {
   useCreateImagePrompt,
@@ -510,14 +520,51 @@ export default function ImagePromptsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
+            <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+              <p className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <Download className="h-3.5 w-3.5" />
+                Start from a template
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <a href="/templates/image-prompts-template.csv" download>
+                    <FileSpreadsheet className="h-3.5 w-3.5" />
+                    CSV
+                  </a>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <a href="/templates/image-prompts-template.xlsx" download>
+                    <FileSpreadsheet className="h-3.5 w-3.5" />
+                    Excel .xlsx
+                  </a>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <a href="/templates/image-prompts-template.xls" download>
+                    <FileSpreadsheet className="h-3.5 w-3.5" />
+                    Excel .xls
+                  </a>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <a href="/templates/image-prompts-template.json" download>
+                    <FileJson className="h-3.5 w-3.5" />
+                    JSON
+                  </a>
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">
+                Each template has columns <code>#, background, thumbnail</code>. Replace or
+                delete the EXAMPLE row before importing.
+              </p>
+            </div>
             <Input
               ref={importFileRef}
               type="file"
               accept=".csv,.xls,.xlsx,.json,text/csv,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             />
             <p className="text-xs text-slate-400">
-              CSV example: <code>#,background,thumbnail</code> then rows. JSON example:
-              <code>{'[{"background":"…","thumbnail":"…"}]'}</code>.
+              Duplicate prompt text is skipped; existing rows are never overwritten. Thumbnail
+              prompts may use <code>{'{title}'}</code>, <code>{'{album}'}</code>, and{' '}
+              <code>{'{channel}'}</code>.
             </p>
           </div>
           <DialogFooter>
