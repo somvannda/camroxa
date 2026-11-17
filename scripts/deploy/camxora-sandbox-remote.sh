@@ -258,7 +258,11 @@ NEXT_PUBLIC_CAMXORA_ENV=sandbox
 NEXT_PUBLIC_SITE_URL=https://sandbox.camxora.com
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.sandbox.camxora.com
 ENVEOF
-  npm run build
+  attempt=1
+  until npm run build; do
+    if [ \"\$attempt\" -ge 3 ]; then echo 'ERROR: website build failed after retries'; exit 1; fi
+    attempt=\$((attempt+1)); echo 'website build failed; retrying in 15s'; sleep 15
+  done
 "
 
 log "Building user portal..."
@@ -275,7 +279,11 @@ NEXT_PUBLIC_CAMXORA_ENV=sandbox
 NEXT_PUBLIC_WEBSITE_URL=https://sandbox.camxora.com
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.sandbox.camxora.com
 ENVEOF
-    npm run build
+    attempt=1
+    until npm run build; do
+      if [ \"\$attempt\" -ge 3 ]; then echo 'ERROR: user portal build failed after retries'; exit 1; fi
+      attempt=\$((attempt+1)); echo 'user portal build failed; retrying in 15s'; sleep 15
+    done
   "
 fi
 
@@ -283,11 +291,16 @@ log "Building music web (public streaming)..."
 sudo -u camxora -H bash -lc "
   set -e
   cd '${REPO_DIR}/music_web'
-  npm ci --no-audit --no-fund
+  npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+  [ -x node_modules/.bin/next ] || { echo 'ERROR: next binary missing after dependency install in music_web'; exit 1; }
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_API_BASE_URL=https://api.sandbox.camxora.com
 ENVEOF
-  npm run build
+  attempt=1
+  until npm run build; do
+    if [ \"\$attempt\" -ge 3 ]; then echo 'ERROR: music_web build failed after retries'; exit 1; fi
+    attempt=\$((attempt+1)); echo 'music_web build failed; retrying in 15s'; sleep 15
+  done
 "
 
 log "Installing systemd units..."
