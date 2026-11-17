@@ -1325,7 +1325,7 @@ export function StudioPluginDock({
                 <Icon name="fa-ellipsis" />
               </button>
               {catalogMenu ? (
-                <div className="sp-ir-menu" role="menu" aria-label="Catalogue options">
+                <div className="sp-ir-menu sp-catalog-menu" role="menu" aria-label="Catalogue options">
                   <button
                     type="button"
                     role="menuitem"
