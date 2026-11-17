@@ -467,11 +467,15 @@ class ControlsQueueCard(StudioPanel):
             widget.setVisible(visible)
 
     def set_prompt_library_mode(self, *, background: bool, thumbnail: bool) -> None:
-        """Lock the local prompt boxes when the admin library supplies the prompt."""
+        """Hide the local prompt boxes when the admin library supplies the prompt."""
         self._background_prompt.setReadOnly(bool(background))
         self._thumbnail_prompt.setReadOnly(bool(thumbnail))
         self._background_prompt.setEnabled(not background)
         self._thumbnail_prompt.setEnabled(not thumbnail)
+        self._bg_header.setVisible(not background)
+        self._background_prompt.setVisible(not background)
+        self._th_header.setVisible(not thumbnail)
+        self._thumbnail_prompt.setVisible(not thumbnail)
         self._background_prompt.setPlaceholderText(
             "Using admin prompt library — a different style is chosen per channel."
             if background

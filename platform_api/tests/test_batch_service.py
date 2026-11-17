@@ -205,7 +205,16 @@ async def test_prompt_library_gives_different_styles_per_channel(
     }
 
     class _FakeLibrary:
-        async def pick_style(self, *, user_id, kind, batch_id, exclude_ids=None, previous_batch_id=None):
+        async def pick_style(
+            self,
+            *,
+            user_id,
+            kind,
+            batch_id,
+            exclude_ids=None,
+            previous_batch_id=None,
+            text_mode=None,
+        ):
             excluded = set(exclude_ids or [])
             for style in styles[kind.value]:
                 if style.id not in excluded:

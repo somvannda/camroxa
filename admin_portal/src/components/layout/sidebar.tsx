@@ -32,6 +32,7 @@ import {
   Activity,
   Wallet,
   AlertTriangle,
+  Type,
 } from 'lucide-react';
 import { Mail } from 'lucide-react';
 import { RefreshCw } from 'lucide-react';
@@ -93,6 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Remix Staff Picks', path: '/remix-staff-picks', icon: Sparkles },
       { label: 'Image Packs', path: '/image-sample-packs', icon: Image },
       { label: 'Image Prompts', path: '/image-prompts', icon: Sparkles },
+      { label: 'Thumbnail Texts', path: '/thumbnail-texts', icon: Type },
       { label: 'Marketplace', path: '/marketplace', icon: Store },
     ],
   },

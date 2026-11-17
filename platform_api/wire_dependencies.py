@@ -376,6 +376,20 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[image_prompts_get_repo] = real_image_prompt_repo
     app.dependency_overrides[admin_image_prompts_get_repo] = real_image_prompt_repo
 
+    # --- admin_thumbnail_texts.py ---
+    from platform_api.routers.admin_thumbnail_texts import (
+        _get_thumbnail_text_repo as admin_thumbnail_texts_get_repo,
+    )
+
+    async def real_thumbnail_text_repo():
+        from platform_api.dependencies import get_thumbnail_text_repo
+
+        return get_thumbnail_text_repo()
+
+    app.dependency_overrides[
+        admin_thumbnail_texts_get_repo
+    ] = real_thumbnail_text_repo
+
     # --- credits.py ---
     from platform_api.routers.credits import (
         _get_credit_repo as credits_get_repo,
