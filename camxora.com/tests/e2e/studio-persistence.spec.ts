@@ -55,6 +55,8 @@ test("editing while the project is still loading cannot erase it", async ({ page
 
   await page.goto(`/studio/editor?project=${projectId}`);
   await expect(page.getByText(/Loading project/i)).toBeVisible();
+  // While the document is in flight the timeline must not claim the session is empty.
+  await expect(page.getByText("Your session is empty")).toHaveCount(0);
   // The shortcut that used to wipe the document while the skeleton was showing.
   await page.keyboard.press("a");
   // Let the delayed load finish before removing the route, or the pending request is

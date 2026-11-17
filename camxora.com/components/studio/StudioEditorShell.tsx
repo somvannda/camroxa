@@ -2842,7 +2842,7 @@ export function StudioEditorShell() {
         chain: [],
         clipIds: [lane.id],
       };
-      const nextTracks = [...tracks, track];
+      const nextTracks = [...tracksRef.current, track];
       writeProjectData(
         { ...data, lanes: [...clipsRef.current, lane], tracks: nextTracks },
         "the mashup",
@@ -2965,7 +2965,7 @@ export function StudioEditorShell() {
         id: `track-midi-${stamp}`,
         name: "MIDI",
         color: colorForTrackName("midi"),
-        index: tracks.length,
+        index: tracksRef.current.length,
         volume: 80,
         pan: 0,
         muted: false,
@@ -2977,7 +2977,7 @@ export function StudioEditorShell() {
       };
       const data = currentData() as Record<string, unknown>;
       const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
-      const nextTracks = [...tracks, track];
+      const nextTracks = [...tracksRef.current, track];
       writeProjectData(
         { ...data, lanes: [...lanes, midiClip], tracks: nextTracks },
         "the MIDI transcription",
@@ -5910,6 +5910,7 @@ export function StudioEditorShell() {
         ) : null}
 
         <StudioTimeline
+          loading={loading}
           tracks={tracks}
           clips={clips}
           barWidth={barWidth}
@@ -6377,7 +6378,7 @@ export function StudioEditorShell() {
 
       <StudioOnboarding
         projectId={projectId}
-        isEmpty={!loading && tracks.length === 0 && clips.length === 0}
+        isEmpty={!loading && !error && tracks.length === 0 && clips.length === 0}
         reopenToken={quickStartToken}
         onOpenLibrary={(tab) => {
           setLibraryOpen(true);

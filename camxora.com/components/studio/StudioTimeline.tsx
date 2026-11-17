@@ -71,6 +71,8 @@ function labelOn(fill: string): string {
 }
 
 export type StudioTimelineProps = {
+  /** True until the project document arrives; suppresses the empty-session placeholder. */
+  loading?: boolean;
   tracks: StudioTrack[];
   clips: TimelineClip[];
   barWidth: number;
@@ -139,6 +141,7 @@ export type StudioTimelineProps = {
 
 export function StudioTimeline(props: StudioTimelineProps) {
   const {
+    loading = false,
     tracks,
     clips,
     barWidth,
@@ -512,7 +515,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
           ) : null}
         </div>
 
-        {!tracks.length ? (
+        {!loading && !tracks.length ? (
           <div className="se-empty">
             <strong>Your session is empty</strong>
             <span>Add a track to start arranging.</span>

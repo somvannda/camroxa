@@ -244,7 +244,8 @@
     "S56": {
       "title": "Shared link logged out",
       "capture": "ours-shared-link-readonly.png",
-      "spec": "studio-share-page.spec.ts"
+      "spec": "studio-share-page.spec.ts",
+      "referenceGap": "The reference frame for this screen was a marketing hero, not a shared project; re-filed as S01. Evidence is the capture plus studio-share-page.spec.ts."
     },
     "S57": {
       "title": "Project loading blank",

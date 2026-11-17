@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-11-17T02:26:16.395Z",
+  "generatedAt": "2026-11-17T03:09:24.074Z",
   "tolerancePct": 0.2,
   "pixelThreshold": 0.1,
   "scaler": "nearest-neighbour",
   "totalScreens": 73,
-  "diffable": 64,
+  "diffable": 63,
   "counts": {
     "IDENTICAL": 0,
     "WITHIN": 0,
     "STRUCTURAL": 9,
-    "REVIEW": 55,
-    "NO-FRAME": 9
+    "REVIEW": 54,
+    "NO-FRAME": 10
   },
   "screens": [
     {
@@ -1639,31 +1639,19 @@
       "title": "Shared link logged out",
       "evidence": "capture:ours-shared-link-readonly.png",
       "capture": "ours-shared-link-readonly.png",
-      "frame": "S56-shared-link-logged-out.jpeg",
-      "refSize": "1920x1211",
+      "frame": null,
+      "refSize": null,
       "oursSize": "1920x1211",
-      "verdict": "REVIEW",
-      "reason": null,
-      "diffPct": 39.12,
-      "identicalPixels": false,
-      "diffImage": "docs/studio/reports/pixel-diff/S56.png",
-      "bands": {
-        "headerPct": 11.72,
-        "bodyPct": 39.25,
-        "footerPct": 60.15
-      },
-      "comparability": {
-        "kind": "full-viewport",
-        "wholeFrameComparable": true,
-        "refAspect": 1.59,
-        "oursAspect": 1.59,
-        "aspectDeltaPct": 0
-      },
+      "verdict": "NO-FRAME",
+      "reason": "no reference frame starts with \"S56\"",
+      "diffPct": null,
+      "identicalPixels": null,
+      "diffImage": null,
+      "bands": null,
+      "comparability": null,
       "specNature": "behavioural",
       "specDetail": "no screenshot/CSS/geometry assertion",
-      "sharedWith": null,
-      "differingPixels": 909522,
-      "edgeScore": 0.43
+      "sharedWith": null
     },
     {
       "id": "S57",
