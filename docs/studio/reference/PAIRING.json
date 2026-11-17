@@ -3,12 +3,14 @@
   "screens": {
     "S01": {
       "title": "Marketing signed out",
-      "spec": "navigation-smoke.spec.ts"
+      "spec": "navigation-smoke.spec.ts",
+      "capture": "ours-marketing-signed-out.png"
     },
     "S02": {
       "title": "Sign-in modal",
       "spec": "navigation-smoke.spec.ts",
-      "note": "we use a /login route, not a modal (brand/page pattern)"
+      "note": "we use a /login route, not a modal (brand/page pattern)",
+      "capture": "ours-sign-in.png"
     },
     "S03": {
       "title": "Signed-in entry reopened",
@@ -62,8 +64,7 @@
     },
     "S15": {
       "title": "What's This? card",
-      "capture": "ours-editor-1689.png",
-      "sharedWith": "S17"
+      "capture": "ours-whats-this.png"
     },
     "S16": {
       "title": "Empty editor",
@@ -105,7 +106,7 @@
     },
     "S25": {
       "title": "Clip selected / trim grips",
-      "capture": "ours-clip-selected.png",
+      "capture": "ours-clip-selected-master.png",
       "spec": "studio-trim.spec.ts"
     },
     "S26": {
@@ -123,7 +124,7 @@
     },
     "S29": {
       "title": "Take lanes",
-      "capture": "ours-take-lanes.png",
+      "capture": "ours-take-lanes-populated.png",
       "spec": "studio-takes.spec.ts"
     },
     "S30": {
@@ -145,11 +146,11 @@
     },
     "S34": {
       "title": "Prompt bar idle",
-      "capture": "ours-magicbar.png"
+      "capture": "ours-magicbar-idle.png"
     },
     "S35": {
       "title": "Prompt bar attachment",
-      "capture": "ours-prompt-attachment.png"
+      "capture": "ours-magicbar-attached.png"
     },
     "S36": {
       "title": "Prompt conversation dock",
@@ -171,27 +172,26 @@
     },
     "S40": {
       "title": "Plugin dock · one slot",
-      "capture": "ours-plugin-dock-eq-convolution.png"
+      "capture": "ours-plugin-dock-master-eq.png"
     },
     "S41": {
       "title": "Plugin dock · multiple",
-      "capture": "ours-plugin-dock-eq-convolution.png",
-      "sharedWith": "S40"
+      "capture": "ours-plugin-dock-eq-convolution.png"
     },
     "S42": {
       "title": "EQ card",
       "capture": "ours-plugin-dock-eq-convolution.png",
-      "sharedWith": "S40"
+      "sharedWith": "S41"
     },
     "S43": {
       "title": "Compressor sidechain",
-      "capture": "ours-compressor-sidechain.png",
+      "capture": "ours-compressor-sidechain-routing.png",
       "spec": "studio-plugins.spec.ts"
     },
     "S44": {
       "title": "Convolution card",
       "capture": "ours-plugin-dock-eq-convolution.png",
-      "sharedWith": "S40"
+      "sharedWith": "S41"
     },
     "S45": {
       "title": "Plugin designer",
@@ -199,8 +199,7 @@
     },
     "S46": {
       "title": "Preset menu / stepper",
-      "capture": "ours-plugin-dock-eq-convolution.png",
-      "sharedWith": "S40"
+      "capture": "ours-plugin-preset-menu.png"
     },
     "S47": {
       "title": "No mixer tool cluster",
@@ -231,7 +230,7 @@
     },
     "S53": {
       "title": "Library songs",
-      "capture": "ours-library-songs.png"
+      "capture": "ours-library-songs-tags.png"
     },
     "S54": {
       "title": "Share permission copy",
@@ -244,12 +243,13 @@
     },
     "S56": {
       "title": "Shared link logged out",
-      "capture": "ours-share-page-logged-out.png",
+      "capture": "ours-shared-link-readonly.png",
       "spec": "studio-share-page.spec.ts"
     },
     "S57": {
       "title": "Project loading blank",
-      "spec": "studio-smoke.spec.ts"
+      "spec": "studio-smoke.spec.ts",
+      "capture": "ours-project-loading-1094.png"
     },
     "S58": {
       "title": "Empty library",
@@ -262,19 +262,22 @@
     },
     "S60": {
       "title": "Moderation refusal",
-      "spec": "create-sample.spec.ts"
+      "spec": "create-sample.spec.ts",
+      "capture": "ours-moderation-refusal.png"
     },
     "S61": {
       "title": "Insufficient credits",
-      "spec": "studio-transforms.spec.ts"
+      "spec": "studio-transforms.spec.ts",
+      "capture": "ours-insufficient-credits.png"
     },
     "S62": {
       "title": "Offline cold load",
-      "spec": "studio-offline.spec.ts"
+      "spec": "studio-offline.spec.ts",
+      "capture": "ours-offline-cold-load.png"
     },
     "S63": {
       "title": "1280 px",
-      "capture": "ours-editor-1280-audit.png"
+      "capture": "ours-editor-1280-midi.png"
     },
     "S64": {
       "title": "1024 px",
@@ -287,27 +290,32 @@
     },
     "EXTRA-generation-refused": {
       "title": "Generation refused (legacy copy)",
-      "spec": "studio-transforms.spec.ts"
+      "spec": "studio-transforms.spec.ts",
+      "capture": "ours-generation-refused.png"
     },
     "EXTRA-generation-refused-legacy": {
       "title": "Generation refused (legacy copy)",
-      "spec": "studio-transforms.spec.ts"
+      "spec": "studio-transforms.spec.ts",
+      "capture": "ours-generation-refused.png",
+      "sharedWith": "EXTRA-generation-refused"
     },
     "EXTRA-library-uploads": {
-      "capture": "ours-library-uploads.png",
+      "capture": "ours-library-uploads-resolved.png",
       "spec": "studio-library.spec.ts"
     },
     "EXTRA-library-song-detail": {
-      "spec": "studio-components.test.tsx"
+      "capture": "ours-library-song-detail.png"
     },
     "EXTRA-project-load-error": {
-      "spec": "studio-smoke.spec.ts"
+      "spec": "studio-smoke.spec.ts",
+      "capture": "ours-project-load-error.png"
     },
     "EXTRA-restoring-last-project": {
-      "spec": "studio-smoke.spec.ts"
+      "spec": "studio-smoke.spec.ts",
+      "capture": "ours-restoring-last-project.png"
     },
     "EXTRA-take-lanes-empty": {
-      "capture": "ours-take-lanes-empty.png"
+      "capture": "ours-take-lanes-empty-clean.png"
     },
     "RESPONSIVE-gate-319px": {
       "spec": "studio-pixel.spec.ts"

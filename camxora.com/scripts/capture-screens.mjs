@@ -401,6 +401,13 @@ const SCENARIOS = {
     await must(screen, "generation result", assistant.getByText(/Created/), "assistant generation result");
     await assistant.locator(".se-assistant-take").first().getByRole("button", { name: "Commit" }).click();
     await must(screen, "second take", page.getByRole("button", { name: "Use take 2" }), 'role=button[name="Use take 2"]');
+    // The assistant is a docked column; leaving it open squeezes the arrangement and
+    // pushes the take band below the fold, so the two rows cannot be evidenced in the
+    // frame. The reference shows the finished takes with the panel collapsed.
+    await assistant.getByRole("button", { name: "Close assistant" }).click();
+    // The toast floats over the take band and is only dismissed by hand.
+    const dismissToast = page.getByRole("button", { name: "Dismiss export message" });
+    if (await dismissToast.count()) await dismissToast.first().click();
   },
 
   /* S34 — idle prompt bar: no menu, no attachment, no docked panel. */
@@ -452,7 +459,9 @@ const SCENARIOS = {
   async presetMenu(page, { screen }) {
     await createProject(page, {
       title: "Capture · Preset menu",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      // Named "Track 1" so the plan's literal `click Track 1` and the dock's
+      // `Plugins for Track 1` label both resolve; the frame crops the card only.
+      tracks: [{ id: "track-1", name: "Track 1", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
     await page.getByRole("button", { name: "Track 1", exact: true }).click();
@@ -480,9 +489,11 @@ const SCENARIOS = {
       ],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
-    await page.getByRole("button", { name: "Track 1", exact: true }).click();
-    const dock = page.getByRole("region", { name: "Plugins for Track 1" });
-    await must(screen, "plugin dock", dock, 'role=region[name="Plugins for Track 1"]');
+    // The dock's accessible name is `Plugins for <track name>`, so select by the
+    // seeded name rather than the plan's generic "Track 1".
+    await page.getByRole("button", { name: "Brass Section", exact: true }).click();
+    const dock = page.getByRole("region", { name: "Plugins for Brass Section" });
+    await must(screen, "plugin dock", dock, 'role=region[name="Plugins for Brass Section"]');
     await dock.getByRole("button", { name: "Add effect", exact: true }).first().click();
     const catalog = page.getByRole("dialog", { name: "Add a track plugin" });
     await must(screen, "plugin catalog", catalog, 'role=dialog[name="Add a track plugin"]');
@@ -696,15 +707,57 @@ const SCENARIOS = {
 
   /* S63 — 1280 px with the MIDI editor docked and the master chain selected. */
   async midiAt1280(page, { screen }) {
+    // Seeded with the MIDI part already in the document: creating it through
+    // "Add new track ▸ MIDI" races the project save (the write can land after the
+    // load effect replaces the clip list, which closes the editor). The state the
+    // screen is about is a MIDI clip open in the dock, so seed it directly.
     await createProject(page, {
       title: "Capture · 1280 px",
-      tracks: [{ id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] }],
+      tracks: [
+        { id: "track-1", name: "Drums", clips: [{ id: "clip-1", title: "Loop", audioUrl: "/demo-loop.wav" }] },
+        {
+          id: "track-2",
+          name: "MIDI 1",
+          clips: [
+            {
+              id: "midi-1",
+              title: "MIDI clip",
+              midi: {
+                notes: [
+                  { id: "n1", pitch: 60, start: 0, length: 2, velocity: 100 },
+                  { id: "n2", pitch: 63, start: 2, length: 1, velocity: 90 },
+                  { id: "n3", pitch: 67, start: 3, length: 2, velocity: 105 },
+                  { id: "n4", pitch: 72, start: 5, length: 3, velocity: 95 },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
     await must(screen, "editor loaded", SEL(page, ".se-clip"), ".se-clip");
-    await page.getByRole("button", { name: /Add new track/ }).click();
-    await page.getByRole("menuitem", { name: /MIDI/ }).click();
-    await must(screen, "MIDI editor", page.getByRole("region", { name: "MIDI editor" }), 'role=region[name="MIDI editor"]');
+    // The bottom dock is a single slot (`takeLanes ? … : midiClip ? … : master ? …`),
+    // so the master *dock* and the MIDI editor are mutually exclusive. The reference's
+    // master chain at 1280 is the footer chip row (`Wavetable · Compressor · EQ · +`),
+    // which stays visible while the editor is docked: populate the chain, then open
+    // the editor and let the dock hand over to it.
     await page.getByRole("button", { name: "Main", exact: true }).click();
+    const master = page.getByRole("region", { name: "Master chain" });
+    await must(screen, "master dock", master, 'role=region[name="Master chain"]');
+    await master.getByRole("button", { name: "Add EQ" }).click();
+    await master.getByRole("button", { name: "Add Compressor" }).click();
+    const midiClip = SEL(page, ".se-clip").filter({ hasText: "MIDI clip" }).first();
+    await must(screen, "MIDI clip", midiClip, ".se-clip (MIDI clip)");
+    // The editor opens on select, but a late project-load response can reset the
+    // selection right after the first click. Re-selecting is idempotent, so retry
+    // until the dock is actually mounted instead of racing the load once.
+    let open = false;
+    for (let attempt = 0; attempt < 6 && !open; attempt += 1) {
+      await midiClip.click();
+      open = await SEL(page, ".se-midi").first().isVisible().catch(() => false);
+      if (!open) await page.waitForTimeout(700);
+    }
+    await must(screen, "MIDI editor", page.getByRole("region", { name: "MIDI editor" }), 'role=region[name="MIDI editor"]');
   },
 
   /* S01 — signed-out marketing page. */
@@ -963,12 +1016,12 @@ const ROWS = [
     frame: "S63-1280px.jpeg",
     frameKind: "full",
     wrong: "Both fit at 1280, but the frames compare different bottom surfaces: the reference has a docked MIDI editor + master chips.",
-    state: "1280×900, MIDI clip open in the docked editor, master chain selected.",
+    state: "1280×900, MIDI clip open in the docked editor with the master chain chips in the footer.",
     route: "/studio/editor?project=<seeded>",
     viewport: { width: 1280, height: 900 },
     expect: [
       { loc: (page) => page.getByRole("region", { name: "MIDI editor" }), describe: 'role=region[name="MIDI editor"]' },
-      { loc: (page) => page.getByRole("region", { name: "Master chain" }), describe: 'role=region[name="Master chain"]' },
+      { loc: (page) => SEL(page, ".se-chain-chip").first(), describe: ".se-chain-chip (master chain footer chips)" },
     ],
     mode: "replace",
     current: "ours-editor-1280-audit.png",

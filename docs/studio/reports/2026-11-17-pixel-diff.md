@@ -94,6 +94,9 @@ To keep the split honest, each delta is classified:
 
 ## 3. Headline result
 
+> **Superseded by §10 (after W3):** these are the W2 numbers, before the 13 re-shoots and the
+> 14 unjudged screens were captured. Current: **64 diffable / 9 `NO-FRAME`**.
+
 | Metric | Count |
 |---|---|
 | Reference screens | **73** |
@@ -337,3 +340,57 @@ Next: `S22` 34.61 (REGION), `S52` 29.77 (LAYOUT), `S24` 28.75 (LAYOUT).
 - Only `scripts/pixel-diff.mjs`, `package.json` / `package-lock.json`, the diff PNGs and this
   report were added or changed. No product component, capture or reference frame was edited.
 - Reproduce with `cd camxora.com && npm run check:pixels`.
+
+---
+
+## 10. After W3 — the 13 re-shoots and the 14 unjudged screens
+
+**Run:** 2026-11-17, branch `qa/capture-run`, base `origin/main` `0551b6fc`, stack on
+`:3103` (moto :9000, platform API :8100 sandbox, musicapi :4003, web dev). Captures from
+`camxora.com/scripts/capture-screens.mjs`; PAIRING per the capture plan §6.1; S43's frame is
+the renamed `S43-compressor-routing-list.jpeg` (already in `origin/main` as `32b0323c`).
+Full detail: `2026-11-17-capture-run.md`.
+
+| Metric | Before (W2) | After W3 |
+|---|---|---|
+| Reference screens | 73 | 73 |
+| Paired captures (`check:clone`) | 53 | **64** |
+| Diffable (capture **and** frame) | 52 | **64** |
+| `NO-FRAME` | 21 (18 spec-only, 2 negative, **1** no frame) | **9** (7 spec-only, 2 negative, **0** no frame) |
+| `WITHIN` (≤ 0.2 %) | 0 | 0 |
+| `DELTA` | 52 | 64 |
+
+`npm run check:clone` → **passes** (73/73 evidenced; 64 paired captures, 31 spec-covered,
+2 negative; metrics 8/8; strings 70/70). `npm run check:pixels` still exits **1**, as
+required while deltas exist.
+
+### 10.1 The 13 `STATE` rows
+
+Twelve produced the state the plan names. Eleven of them now diff below their old
+wrong-state number, and what remains is layout/brand/content, not a different app state:
+
+| Screen | Before | After | Reading after the re-shoot |
+|---|---|---|---|
+| S15 | 23.66 | **4.48** | Hover card now present under `120 BPM`; the rest is card chrome. |
+| S25 | 19.57 | **17.44** | Master chain dock present (empty chain vs the reference's Delay+Compressor — content). |
+| S29 | 12.98 | **12.22** | Take band now shows rows `2`/`1` with take 2 active. |
+| S34 | 23.68 | **22.01** | Idle bar with BETA badge, no menu, no MIDI editor. |
+| S35 | 21.64 | **22.72** | Attachment chip `Drum Kit Main` + × present. |
+| S40 | 18.24 | **16.89** | Master chain with one EQ slot + ghost rail. |
+| S46 | 45.73 | **41.27** | Preset popover open (Clear all settings / Save preset… / presets). |
+| S53 | 18.46 | **17.45** | Date groups + tag strip present; the measured `key`/`BPM` tags stay absent (soft, audio-derived). |
+| S63 | 21.4 | **21.69** | MIDI editor docked + master chain chips in the footer. |
+| EXTRA-library-uploads | 10.38 | **9.27** | Uploads resolved: day headings + dated rows. |
+| EXTRA-take-lanes-empty | 14.09 | **13.73** | Empty band clean, no first-run card. |
+
+**Still `STATE`, and blocked rather than re-shot:**
+
+| Screen | % | Why it stays STATE |
+|---|---|---|
+| S28 | 50.20 | **BLOCKED — product defect.** The Clip Color submenu *is* opened, but `.se-clip-menu` is `overflow:auto`, so the absolutely-positioned swatch group is clipped by its own menu and never paints. No viewport or step can evidence it; the capture showing the open menu is kept as `ours-clip-color-open.png` but S28 stays paired to the old capture. |
+| S56 | 39.12 | **BLOCKED — reference frame.** The frame `S56-shared-link-logged-out.jpeg` is the marketing hero and contains no share surface. Our capture is now the correct read-only share page (`ours-shared-link-readonly.png`), so the row is no longer a wrong-state capture on our side — but the 39.12 % is a frame defect, not a layout claim. Needs the W0 corpus decision. |
+
+Both are decisions, not capture work: S28 needs a one-line CSS fix (product change, own
+branch); S56 needs a real share-surface frame in the corpus.
+
+
