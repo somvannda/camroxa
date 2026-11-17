@@ -26,9 +26,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **One source dropdown per image kind.** Category or Prompt only is combined
-  with My prompt or Admin prompt library in a single selection. The separate
-  Prompt source dropdown is gone from the Image page and Settings.
+- **One source dropdown per image kind.** Choose **Prompt only**, **Category**,
+  or **Admin library**. The separate Prompt source dropdown is gone from the
+  Image page and Settings.
 - **Manual prompts lock automatically.** Selecting an Admin library option locks
   the prompt boxes; the admin can force library-only globally so the app prompt
   editors are hidden and users cannot override it.
