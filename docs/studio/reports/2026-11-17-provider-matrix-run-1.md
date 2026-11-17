@@ -63,8 +63,8 @@ The account in use is `somvannda@gmail.com` (`credits_left 1438`, **`plan: null`
 sandbox also holds a `premier` account with 3120 credits, but it is **inactive**
 (`is_active = false`) and therefore not in the pool.
 
-**The discriminating variable is the model, not the plan.** Listing every web-music
-generation in the sandbox:
+**The discriminating variable turned out to be the key pool, not the model.** Listing every
+web-music generation in the sandbox was suggestive:
 
 | Model | Status | Count |
 |---|---|---|
@@ -72,14 +72,45 @@ generation in the sandbox:
 | `V6` | `SUCCESS` | 4 (all 2026-11-14) |
 | `V6` | `FAILED` (with an `error_message`) | 5 |
 
-`V6_MINI` has never produced audio here, while `V6` has produced four completed songs. The
-runner's `DEFAULT_MODEL` is `V6_MINI`, so run 1 and the first retry both picked the one model
-this environment has never completed. The third attempt therefore runs with
-`PLATFORM_STUDIO_MODEL=V6`, which is what the successful rows used.
+but a `V6` attempt then failed too, with `Suno API error 401: submit_task`, which ruled the
+model out. The real chain is below (`job_queue.last_error` is what names it).
 
-A `V6` failure is at least *legible* (it carries `error_message`), unlike the silent
-`V6_MINI` `PENDING`, which is itself a useful signal: a model that cannot be served should
-surface an error rather than holding a row forever.
+### 3. The queue worker was orphaned, then the provider key was rejected
+
+`job_queue` is the ledger of truth here. The first three generations came from a worker that
+had been started from a worktree that no longer exists: its `platform_api` package path
+pointed at the deleted directory, so every job died with
+
+```
+status = failed, attempts = 3
+last_error = No module named 'platform_api.services.credit_service'
+```
+
+Nothing was ever submitted, `external_task_id` stayed `NULL`, and `_refresh_pending_from_suno`
+had nothing to poll — the `PENDING` was never a slow queue. Restarting a worker from this
+checkout made the job reach the provider, which answered:
+
+```
+last_error = Suno API error 401: submit_task
+```
+
+`api_key_entries` shows why: the `local musicapi` key was `rate_limited` since
+`auth_rejected_401_unknown`, so the pool had no usable key and every submit failed at the
+door. musicapi accepts `sk-test-123` (verified directly: a request with that bearer returns
+`404` for an unknown task rather than `401`), so the entry was re-seeded with the key musicapi
+knows and set back to `active` (`scripts/dev/seed-local-suno-key.py --database-url …`).
+
+Two product defects came out of this and are fixed:
+
+- **A job that exhausts its attempts left the task `pending` forever** with
+  `error_message = NULL`, so the user watched a spinner and the reservation was never
+  released. The worker now marks the task failed through the same refund path the inline
+  failure uses (both the exception and timeout branches), with tests. The three sandbox rows
+  were repaired through that path: all three are `failed` and the wallet returned from 20 to
+  **448** as the reservations released.
+- **The failure was invisible in the run**: the matrix recorded `401` on a status read and
+  `no source generation` for the dependent rows, but the cause lived only in `job_queue`.
+  That is why this took several attempts to attribute.
 
 ## What is needed to close D4
 
