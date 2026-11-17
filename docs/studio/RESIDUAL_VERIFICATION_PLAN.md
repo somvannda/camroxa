@@ -11,6 +11,12 @@ pixel-identical. This plan closes the six gaps named in the 2026-11-16 hand-over
 
 Nothing here deploys. Production stays at `985ccf00` until explicitly released.
 
+> **Status 2026-11-17:** D1 **PASS** (3,500 pytest) · D2 **PASS** (185/2 on the real-mirror
+> commit; 0×5xx) · D3 **PASS with three recorded divergences** (W9b re-adjudication; see
+> `CLONE_DEFINITION.md` §5) · D4 **BLOCKED** on a credit cap · D5 **DONE** (demo and MIDI
+> overview shipped; other two recorded) · D6 **PARTIAL** (B/E/C/ADF runs, see
+> `docs/studio/reports/2026-11-17-residual-results.md`).
+
 ---
 
 ## 1. Definition of done
