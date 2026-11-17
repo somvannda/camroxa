@@ -60,3 +60,33 @@ test("clicking the timeline while playing moves the playback position", async ({
   await expect.poll(seconds, { timeout: 10_000, intervals: [200] }).toBeGreaterThan(landed + 0.5);
   await page.getByLabel("Pause", { exact: true }).click();
 });
+
+test("the loop range has a flag at each end and the left flag drags", async ({ page }) => {
+  test.setTimeout(120_000);
+  const projectId = await createStudioProject(page, { title: "Loop flags" });
+
+  await page.locator(".se-head").getByRole("button", { name: "Loop", exact: true }).click();
+  const start = page.getByRole("button", { name: "Loop start" });
+  const end = page.getByRole("button", { name: "Loop end" });
+  await expect(start).toBeVisible();
+  await expect(end).toBeVisible();
+
+  const box = await start.boundingBox();
+  if (!box) throw new Error("loop start flag has no box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (id) => {
+          const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+          const body = (await response.json()) as { data?: { loopStart?: number } };
+          return body.data?.loopStart ?? 0;
+        }, projectId),
+      { timeout: 15_000 }
+    )
+    .toBeGreaterThan(0);
+});

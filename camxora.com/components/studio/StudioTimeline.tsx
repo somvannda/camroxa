@@ -137,6 +137,8 @@ export type StudioTimelineProps = {
     edge: "in" | "out"
   ) => void;
   onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  /** Drag the loop's left flag (S24). */
+  onLoopStartDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
 
 export function StudioTimeline(props: StudioTimelineProps) {
@@ -183,6 +185,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
     onTrimPointerDown,
     onFadePointerDown,
     onLoopHandleDown,
+  onLoopStartDown,
   } = props;
 
   const range =
@@ -474,7 +477,14 @@ export function StudioTimeline(props: StudioTimelineProps) {
               />
               <button
                 type="button"
-                className="se-loop-handle"
+                className="se-loop-handle start"
+                aria-label="Loop start"
+                style={{ left: (loopStart / secondsPerBar) * barWidth }}
+                onPointerDown={onLoopStartDown}
+              />
+              <button
+                type="button"
+                className="se-loop-handle end"
                 aria-label="Loop end"
                 style={{ left: (loopEnd / secondsPerBar) * barWidth }}
                 onPointerDown={onLoopHandleDown}

@@ -68,6 +68,7 @@ project JSON import, clip comments, presence, supersaw audition speed.
 | Start overlay has **Video Tutorial** (S03/S06) | Same content as the dropped YouTube row; recorded absence |
 | Clip rail header sits **inside the floating card** (S27) | The captured controls are all present (back, title, like/dislike, art, Remix, player, tabs); the card layout is ours, not a replacement |
 | MIDI editor has **no overview strip** | The grid zooms 1–12× instead of scrolling a mini-map; an overview with no scroll position to reflect would be decorative |
+| Footer strip shows the **master chain**, not the selected track’s (S26) | Deliberate: the capture’s footer centre is the master rack; per-track chains live in the dock |
 
 The start overlay ships **Edit Your Song, Upload Audio, Create a song, Open a project and
 Empty Project**, plus the captured ✕ and "Browse Studio projects ›" pill.

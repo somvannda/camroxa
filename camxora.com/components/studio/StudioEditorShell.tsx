@@ -787,6 +787,8 @@ export function StudioEditorShell() {
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(0);
   const loopDragRef = useRef(false);
+  /** Dragging the loop's left flag (S24): the capture has a flag at each end. */
+  const loopStartDragRef = useRef(false);
   /** Reversed source buffers, keyed by clip id + URL so Reverse is computed once. */
   const reversedBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   /** Time selection (N-01), created by dragging on the bar ruler; not persisted. */
@@ -2223,6 +2225,33 @@ export function StudioEditorShell() {
       window.removeEventListener("pointerup", up);
     };
   });
+  /** Drag the loop's left flag on the ruler (S24 shows a flag at each end). */
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      if (!loopStartDragRef.current) return;
+      const lanes = document.querySelector(".se-lanes-inner");
+      if (!lanes) return;
+      const rect = lanes.getBoundingClientRect();
+      const seconds = ((event.clientX - rect.left) / barWidth) * secondsPerBar;
+      const snapped = snapToGrid(seconds, secondsPerBar, gridDivisions);
+      setLoopStart(Math.max(0, Math.min(loopEnd - secondsPerBar / beatsPerBar, snapped)));
+    };
+    const up = () => {
+      if (!loopStartDragRef.current) return;
+      loopStartDragRef.current = false;
+      setLoopStart((start) => {
+        commitLoopRange(start, loopEnd);
+        return start;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  });
+
   /** Convert a pointer position into a project time, using the lane grid. */
   function timeAtClientX(clientX: number): number | null {
     const lanes = document.querySelector(".se-lanes-inner");
@@ -5978,6 +6007,10 @@ export function StudioEditorShell() {
           onLoopHandleDown={(event) => {
             event.stopPropagation();
             loopDragRef.current = true;
+          }}
+          onLoopStartDown={(event) => {
+            event.stopPropagation();
+            loopStartDragRef.current = true;
           }}
         />
 
