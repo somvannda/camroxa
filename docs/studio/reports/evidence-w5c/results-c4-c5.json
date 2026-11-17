@@ -1,0 +1,223 @@
+[
+  {
+    "id": "C-64",
+    "verdict": "PASS",
+    "evidence": "opens at the pointer (clip x=260), box 356,125 163×1076 within 1689×1277; maxHeight=1144px; overflow-y=auto; rows past the viewport=0"
+  },
+  {
+    "id": "C-65",
+    "verdict": "PASS",
+    "evidence": "first six rows = Copy ctrl C | Paste ctrl V | Duplicate ctrl D | Delete backspace | Copy settings | Paste settings"
+  },
+  {
+    "id": "C-66",
+    "verdict": "PASS",
+    "evidence": "after a reload (empty clipboard) Paste is disabled"
+  },
+  {
+    "id": "C-67",
+    "verdict": "PASS",
+    "evidence": "Copy → Paste enabled in the re-opened menu"
+  },
+  {
+    "id": "C-68",
+    "verdict": "PASS",
+    "evidence": "no settings copied: Paste settings disabled"
+  },
+  {
+    "id": "C-69",
+    "verdict": "PASS",
+    "evidence": "toast \"Clip settings copied.\"; Paste settings enabled on another clip"
+  },
+  {
+    "id": "C-70",
+    "verdict": "PASS",
+    "evidence": "toast \"Settings pasted to 1 clip.\"; fadeIn=0.5, fadeOut=0.75, audio copied"
+  },
+  {
+    "id": "C-71",
+    "verdict": "PASS",
+    "evidence": "Heal Edits disabled, title=\"No generated edits to heal\""
+  },
+  {
+    "id": "C-72",
+    "verdict": "PASS",
+    "evidence": "P2 clip: Heal Edits enabled, title=\"Restore the audio from before the generated edits\""
+  },
+  {
+    "id": "C-73",
+    "verdict": "PASS",
+    "evidence": "toast \"Edits healed to the original clip.\"; take-lane bands visible = 0"
+  },
+  {
+    "id": "C-74",
+    "verdict": "PASS",
+    "evidence": "playhead at the clip start: Split disabled"
+  },
+  {
+    "id": "C-75",
+    "verdict": "PASS",
+    "evidence": "playhead inside: Split enabled, label \"Split ctrl E\""
+  },
+  {
+    "id": "C-76",
+    "verdict": "FAIL",
+    "evidence": "see C-76.png",
+    "detail": "first toast was \"No transients found in this clip.\", not \"Finding transients…\" — no split happened (clips 5)"
+  },
+  {
+    "id": "C-77",
+    "verdict": "PASS",
+    "evidence": "MIDI clip: disabled, title=\"This clip has no audio to analyse\""
+  },
+  {
+    "id": "C-78",
+    "verdict": "PASS",
+    "evidence": "toast \"Clip moved to the bar line at 2.00s.\"; start now 2s"
+  },
+  {
+    "id": "C-79",
+    "verdict": "PASS",
+    "evidence": "toast \"This clip already starts on a bar line.\""
+  },
+  {
+    "id": "C-80",
+    "verdict": "PASS",
+    "evidence": "marker on the ruler labelled \"Drums A\""
+  },
+  {
+    "id": "C-81",
+    "verdict": "PASS",
+    "evidence": "Enter saves, Escape discards, an empty name is ignored"
+  },
+  {
+    "id": "C-82",
+    "verdict": "PASS",
+    "evidence": "library was open (1) and closed; Clip info inspector opened"
+  },
+  {
+    "id": "C-83",
+    "verdict": "PASS",
+    "evidence": "group opened: Auto + 20 swatches (checklist says 5; the palette was widened to 20 in b3d718f4)"
+  },
+  {
+    "id": "C-84",
+    "verdict": "PASS",
+    "evidence": "Clip colour #1d4ed8 applied; clip background rgb(56, 189, 248); menu closed; 1 clip stays selected"
+  },
+  {
+    "id": "C-85",
+    "verdict": "PASS",
+    "evidence": "Auto pressed; clip falls back to the track colour (rgb(56, 189, 248)); stored colour cleared"
+  },
+  {
+    "id": "C-86",
+    "verdict": "PASS",
+    "evidence": "song-backed clip: dialog \"Separate stems\" opened and cancelled"
+  },
+  {
+    "id": "C-87",
+    "verdict": "PASS",
+    "evidence": "uploaded clip: disabled, title=\"No source generation for this clip\""
+  },
+  {
+    "id": "C-88",
+    "verdict": "PASS",
+    "evidence": "MIDI clip disabled=true (\"Download .WAV\"); audio clip started \"Drums A.wav\""
+  },
+  {
+    "id": "C-89",
+    "verdict": "PASS",
+    "evidence": "disabled without songId; toast \"Transcribing MIDI...\" → \"MIDI added as a track (3 notes).\" (4 tracks)"
+  },
+  {
+    "id": "C-90",
+    "verdict": "PASS",
+    "evidence": "Remove FX disabled with no fx; Add FX… opened the clip-effect dialog (closed with Cancel — no Escape handler)"
+  },
+  {
+    "id": "C-91",
+    "verdict": "PASS",
+    "evidence": "uploaded clip without songId → Extend:disabled (No source generation for this clip); Cover…:disabled (No source generation for this clip); Remaster:disabled (No source generation for this clip); Vocals…:disabled (No source generation for this clip); Instrumental…:disabled (No source generation for this clip); Mashup…:disabled (Select two clips that have a source generation); Replace…:disabled (Select a time range over this clip first)"
+  },
+  {
+    "id": "C-92",
+    "verdict": "PASS",
+    "evidence": "one clip selected: Mashup disabled, title=\"Select two clips that have a source generation\""
+  },
+  {
+    "id": "C-93",
+    "verdict": "PASS",
+    "evidence": "no range: Replace disabled, title=\"Select a time range over this clip first\""
+  },
+  {
+    "id": "C-94",
+    "verdict": "PASS",
+    "evidence": "audio clip selected: Download MIDI disabled, title=\"Select a MIDI clip with notes first\""
+  },
+  {
+    "id": "C-95",
+    "verdict": "PASS",
+    "evidence": "inspector closed via \"Back to arrangement\"; selection kept (1)"
+  },
+  {
+    "id": "C-96",
+    "verdict": "PASS",
+    "evidence": "Escape closed the menu without an action (clips=6)"
+  },
+  {
+    "id": "C-97",
+    "verdict": "PASS",
+    "evidence": "pointerdown outside closed the menu"
+  },
+  {
+    "id": "C-98",
+    "verdict": "PASS",
+    "evidence": "menu moved from x=356 to x=548 and now targets Vox (Get Stems disabled)"
+  },
+  {
+    "id": "C-99",
+    "verdict": "PASS",
+    "evidence": "menu with range header \"00:02 – 00:04\""
+  },
+  {
+    "id": "C-101",
+    "verdict": "PASS",
+    "evidence": "loop band covers the range and the Loop toggle is pressed"
+  },
+  {
+    "id": "C-105",
+    "verdict": "PASS",
+    "evidence": "no focused track (0) → disabled, title=\"Focus a track first\""
+  },
+  {
+    "id": "C-100",
+    "verdict": "PASS",
+    "evidence": "right-click with no range opened no menu"
+  },
+  {
+    "id": "C-107",
+    "verdict": "PASS",
+    "evidence": "Clear selection removed the range"
+  },
+  {
+    "id": "C-102",
+    "verdict": "PASS",
+    "evidence": "\"Arrangement split at the playhead.\"; clips 5 → 7"
+  },
+  {
+    "id": "C-103",
+    "verdict": "PASS",
+    "evidence": "clips c-d1:0,c-d2:8,c-bass:0,c-vox:4,c-scratch:0 → c-d1:0,c-d1~d:4,c-d1~m:2,c-d2:10,c-bass:0,c-bass~d:4,c-bass~m:2,c-bass~r:6,c-vox:6,c-scratch:0"
+  },
+  {
+    "id": "C-104",
+    "verdict": "PASS",
+    "evidence": "Drums B start 8 → 6s (ripple-left); 6 clips remain"
+  },
+  {
+    "id": "C-106",
+    "verdict": "PASS",
+    "evidence": "range export downloaded \"W5C C5 export - selection.wav\""
+  }
+]

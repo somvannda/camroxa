@@ -1,0 +1,321 @@
+[
+  {
+    "id": "C-01",
+    "verdict": "PASS",
+    "evidence": "menu \"Project options\", 11 rows: New Project | Open Project | Rename | Duplicate Project | Version History | Share Project | Open a copy in v1 | Studio Settings ctrl shift , | Show Quick Start again | Import project… | Send to Suno Sync"
+  },
+  {
+    "id": "C-02",
+    "verdict": "PASS",
+    "evidence": "order = New Project → Open Project → Rename → Duplicate Project → Version History → Share Project → Open a copy in v1 → Studio Settings ctrl shift , → Show Quick Start again → Import project… → Send to Suno Sync"
+  },
+  {
+    "id": "C-03",
+    "verdict": "PASS",
+    "evidence": "disabled=true, title=\"There is no v1 Studio in this product\""
+  },
+  {
+    "id": "C-04",
+    "verdict": "PASS",
+    "evidence": "hint = \"ctrl shift ,\""
+  },
+  {
+    "id": "C-05",
+    "verdict": "PASS",
+    "evidence": "Escape closed the menu; 0 dialogs opened"
+  },
+  {
+    "id": "C-06",
+    "verdict": "PASS",
+    "evidence": "pointerdown outside the chip closed the menu"
+  },
+  {
+    "id": "C-07",
+    "verdict": "PASS",
+    "evidence": "aria-expanded true → false, menu toggled closed"
+  },
+  {
+    "id": "C-08",
+    "verdict": "FAIL",
+    "evidence": "see C-08.png",
+    "detail": "hardware key \"<\" opened=0; Playwright's synthetic key \",\" opened=1  \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m "
+  },
+  {
+    "id": "C-09",
+    "verdict": "PASS",
+    "evidence": "focus in the rename field: Settings did not open"
+  },
+  {
+    "id": "C-10",
+    "verdict": "PASS",
+    "evidence": "rename dialog open: Settings did not stack"
+  },
+  {
+    "id": "C-11",
+    "verdict": "FAIL",
+    "evidence": "see C-11.png",
+    "detail": "menu still open=0, visible error notes=0  \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed "
+  },
+  {
+    "id": "C-12",
+    "verdict": "PASS",
+    "evidence": "after reload the menu is closed (aria-expanded=false)"
+  },
+  {
+    "id": "C-13",
+    "verdict": "PASS",
+    "evidence": "new id 668c90fd-71e0-465a-8be1-b26edfa59e08; empty state \"Your session is empty Add a track to start arranging.\""
+  },
+  {
+    "id": "C-14",
+    "verdict": "PASS",
+    "evidence": "h2=\"My Projects\", tabs=1, search=1, Filters disabled=true, sort=1"
+  },
+  {
+    "id": "C-15",
+    "verdict": "PASS",
+    "evidence": "tabs = Projects / Recently Deleted, selected = Projects"
+  },
+  {
+    "id": "C-16",
+    "verdict": "PASS",
+    "evidence": "first card is-new=true; 20 project cards; sample \"Untitled project\" / 11/17/2026"
+  },
+  {
+    "id": "C-17",
+    "verdict": "PASS",
+    "evidence": "filtered to W5C Versions; no-match note = \"No projects match that search.\""
+  },
+  {
+    "id": "C-18",
+    "verdict": "PASS",
+    "evidence": "Filters disabled, title=\"Project filters are not built\""
+  },
+  {
+    "id": "C-19",
+    "verdict": "PASS",
+    "evidence": "Newest First [Untitled project, Master dvv2tk, Spectrum probe…] reversed under Oldest First"
+  },
+  {
+    "id": "C-20",
+    "verdict": "PASS",
+    "evidence": "card \"W5C Versions\" navigated to http://127.0.0.1:3105/studio/editor?project=f42f72d7-4344-47a0-a2f7-72fe4dd2b7dc (chip \"W5C Versions\")"
+  },
+  {
+    "id": "C-21",
+    "verdict": "PASS",
+    "evidence": "deleted card \"Restore W5C Deleted\" shows \"W W5C Deleted Deleted 11/17/2026 Restore\""
+  },
+  {
+    "id": "C-22",
+    "verdict": "PASS",
+    "evidence": "tab returned to Projects; restored card present (first card = W5C Deleted)"
+  },
+  {
+    "id": "C-23",
+    "verdict": "PASS",
+    "evidence": "empty deleted view note = \"Nothing here. Deleted projects stay restorable.\" (shared DB has other runs' deletions, so the note was reached through the search filter)"
+  },
+  {
+    "id": "C-24",
+    "verdict": "PASS",
+    "evidence": "dialog closed; project unchanged (\"W5C P1\")"
+  },
+  {
+    "id": "C-25",
+    "verdict": "PASS",
+    "evidence": "prefilled with \"W5C P1\""
+  },
+  {
+    "id": "C-26",
+    "verdict": "PASS",
+    "evidence": "inline error \"A project title is required.\", 0 writes issued"
+  },
+  {
+    "id": "C-27",
+    "verdict": "PASS",
+    "evidence": "chip \"W5C P1 renamed\"; next-edit save chip = \"Saved\""
+  },
+  {
+    "id": "C-28",
+    "verdict": "PASS",
+    "evidence": "Escape closed without saving; chip still \"W5C P1 renamed\""
+  },
+  {
+    "id": "C-29",
+    "verdict": "PASS",
+    "evidence": "fork opened: id ca58c605-c0b2-4b02-9361-83be156041e1, chip \"W5C Fork Source copy\""
+  },
+  {
+    "id": "C-30",
+    "verdict": "PASS",
+    "evidence": "original still has 4 tracks / 5 clips"
+  },
+  {
+    "id": "C-31",
+    "verdict": "PASS",
+    "evidence": "panel opened; first note \"Loading versions…\" → \"History Projects are saved automatically No versions yet. Versions are captured automatically as you edit.\""
+  },
+  {
+    "id": "C-32",
+    "verdict": "PASS",
+    "evidence": "no-version note = \"No versions yet. Versions are captured automatically as you edit.\""
+  },
+  {
+    "id": "C-33",
+    "verdict": "PASS",
+    "evidence": "1 version row(s) under \"11/17/2026\" with ‹ › stepper"
+  },
+  {
+    "id": "C-34",
+    "verdict": "PASS",
+    "evidence": "Restore version from 12:21 PM restored: reload produced 4 tracks (3 visible rows; Scratch stays hidden)"
+  },
+  {
+    "id": "C-35",
+    "verdict": "FAIL",
+    "evidence": "see C-35.png",
+    "detail": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m  Expected: \u001b[32m\"Restoring replaces the arrangement and reloads the editor.\"\u001b[39m Received: \u001b[31m\"Projects are saved automatically\"\u001b[39m"
+  },
+  {
+    "id": "C-36",
+    "verdict": "PASS",
+    "evidence": "gate \"Name project before sharing\" shown for an unnamed project"
+  },
+  {
+    "id": "C-37",
+    "verdict": "PASS",
+    "evidence": "Skip opened share for \"Share “Untitled project”\""
+  },
+  {
+    "id": "C-38",
+    "verdict": "PASS",
+    "evidence": "name saved, share opened for \"Share “W5C Shared Name”\""
+  },
+  {
+    "id": "C-39",
+    "verdict": "PASS",
+    "evidence": "named project: Share opened with no naming gate"
+  },
+  {
+    "id": "C-40",
+    "verdict": "PASS",
+    "evidence": "lead = \"Anyone with the link can view this project and create their own editable copy.\""
+  },
+  {
+    "id": "C-41",
+    "verdict": "PASS",
+    "evidence": "readonly link /studio/shared/tlkcVUjHwtoOMF1vGP7Vub6ArUI1xeH8… ; note \"The link is view-and-copy only; it is not live collaboration. It expires on Nov \""
+  },
+  {
+    "id": "C-42",
+    "verdict": "PASS",
+    "evidence": "label \"Copied\"; clipboard = http://127.0.0.1:3105/studio/shared/tlkcVUjHwtoOMF1vGP7V…"
+  },
+  {
+    "id": "C-43",
+    "verdict": "PASS",
+    "evidence": "clipboard denied: \"Could not reach the clipboard — select and copy the link above.\""
+  },
+  {
+    "id": "C-44",
+    "verdict": "PASS",
+    "evidence": "re-opened share reuses the same live link (ub6ArUI1xeH8)"
+  },
+  {
+    "id": "C-45",
+    "verdict": "PASS",
+    "evidence": "Done closed the share dialog"
+  },
+  {
+    "id": "C-46",
+    "verdict": "PASS",
+    "evidence": "opened with \"Pushing this project to Suno…\""
+  },
+  {
+    "id": "C-47",
+    "verdict": "BLOCKED",
+    "evidence": "real push refused: \"The Suno Studio mirror did not accept this project.\" (C-47-1689x1277.png); with a mocked queued result the sentence renders \"Queued — Suno picks it up in the background.\"",
+    "detail": "ENVIRONMENT — the local mirror rejects a localhost callback, so a real push result never arrives."
+  },
+  {
+    "id": "C-48",
+    "verdict": "PASS",
+    "evidence": "skipped-clips note = \"2 clips stay local: no Suno asset yet.\""
+  },
+  {
+    "id": "C-49",
+    "verdict": "PASS",
+    "evidence": "Close cleared the result (a reopened dialog starts without a status row: true)"
+  },
+  {
+    "id": "C-50",
+    "verdict": "PASS",
+    "evidence": "native chooser opened; accept=\"application/json,.json\""
+  },
+  {
+    "id": "C-51",
+    "verdict": "PASS",
+    "evidence": "imported and opened: chip \"W5C Import (imported)\""
+  },
+  {
+    "id": "C-52",
+    "verdict": "PASS",
+    "evidence": "title \"Studio Settings\", nav = Performance / Window management / Content"
+  },
+  {
+    "id": "C-53",
+    "verdict": "PASS",
+    "evidence": "default pane = Performance"
+  },
+  {
+    "id": "C-54",
+    "verdict": "PASS",
+    "evidence": "checked=true; copy mentions the apply-on-drop behaviour"
+  },
+  {
+    "id": "C-55",
+    "verdict": "PASS",
+    "evidence": "Count-in before recording default = off"
+  },
+  {
+    "id": "C-56",
+    "verdict": "PASS",
+    "evidence": "radiogroup = Panels / Windows / Show toggle; default = Show toggle"
+  },
+  {
+    "id": "C-57",
+    "verdict": "PASS",
+    "evidence": "Panels mode: 0 pop-out buttons, 0 popped slots"
+  },
+  {
+    "id": "C-58",
+    "verdict": "PASS",
+    "evidence": "Windows mode: 0 popped card(s) + 2 rail placeholder(s) for 2 slot(s)"
+  },
+  {
+    "id": "C-59",
+    "verdict": "PASS",
+    "evidence": "Auto-stretch on; Advanced content off"
+  },
+  {
+    "id": "C-60",
+    "verdict": "PASS",
+    "evidence": "Advanced content on without reload: .se-midi-design visible"
+  },
+  {
+    "id": "C-61",
+    "verdict": "PASS",
+    "evidence": "localStorage keys persist after reload: advancedContent=true, windowMode=windows"
+  },
+  {
+    "id": "C-62",
+    "verdict": "PASS",
+    "evidence": "✕ closed the dialog"
+  },
+  {
+    "id": "C-63",
+    "verdict": "PASS",
+    "evidence": "same preference on a different project (browser-scoped), advancedContent=true"
+  }
+]

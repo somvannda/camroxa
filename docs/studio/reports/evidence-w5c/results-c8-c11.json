@@ -1,0 +1,242 @@
+[
+  {
+    "id": "C-139",
+    "verdict": "PASS",
+    "evidence": "3 rows: Keyboard Shortcuts shift ? | Learning Center | What's This? Off; no YouTube row"
+  },
+  {
+    "id": "C-140",
+    "verdict": "PASS",
+    "evidence": "dialog with search + 5 groups: Playback / Tracks / Editing / View / Project"
+  },
+  {
+    "id": "C-141",
+    "verdict": "PASS",
+    "evidence": "3 filtered row(s): Zoom the roll in / out MIDI editor · Ctrl/⌘ + = / − | Zoom to the selected notes MIDI editor · Z | Zoom in / out Ctrl/⌘ + + / −"
+  },
+  {
+    "id": "C-142",
+    "verdict": "PASS",
+    "evidence": "? opened the shortcut dialog with the search focused"
+  },
+  {
+    "id": "C-143",
+    "verdict": "PASS",
+    "evidence": "typing \"?\" into the rename field inserted it and opened no dialog (value=\"W5C C8?\")"
+  },
+  {
+    "id": "C-144",
+    "verdict": "PASS",
+    "evidence": "5 numbered steps (Start an arrangement / Create a part / Shape the sound / Edit the timeline / Save and mirror) + Close"
+  },
+  {
+    "id": "C-145",
+    "verdict": "PASS",
+    "evidence": "row reads \"What's This? Off\"; hovering the tempo shows no card"
+  },
+  {
+    "id": "C-146",
+    "verdict": "PASS",
+    "evidence": "card \"Tempo Sets the song's BPM. Bar width on the canvas follows it, so clips keep their musical position when you change it.\"; hidden on leave; page scrollable=false (the editor shell is height:100dvh/overflow:hidden, so the scroll dismissal cannot be exercised here)"
+  },
+  {
+    "id": "C-147",
+    "verdict": "PASS",
+    "evidence": "Undo and Redo both disabled at load"
+  },
+  {
+    "id": "C-148",
+    "verdict": "PASS",
+    "evidence": "undo/redo states tracked the stack (edit → undo → redo)"
+  },
+  {
+    "id": "C-149",
+    "verdict": "PASS",
+    "evidence": "parked 00:08.000 → song start 00:04.000 → beat 1 00:00.000"
+  },
+  {
+    "id": "C-150",
+    "verdict": "PASS",
+    "evidence": "no armed track: disabled, title=\"Arm a track first\""
+  },
+  {
+    "id": "C-151",
+    "verdict": "PASS",
+    "evidence": "armed + Record → \"Stop recording\" aria-pressed=true; clock 00:00.008 → 00:01.541"
+  },
+  {
+    "id": "C-152",
+    "verdict": "PASS",
+    "evidence": "\"System default\" + 3 device row(s) + \"Count-in (1 bar)\" (Escape does not close this menu)"
+  },
+  {
+    "id": "C-153",
+    "verdict": "PASS",
+    "evidence": "status \"Count-in 1\" appears and Record is disabled during the count (true)"
+  },
+  {
+    "id": "C-154",
+    "verdict": "PASS",
+    "evidence": "Stop froze the transport at 00:02.696"
+  },
+  {
+    "id": "C-155",
+    "verdict": "PASS",
+    "evidence": "Play ↔ Pause swapped; meter samples -inf dB pk → -27.0 dB pk → -26.7 dB pk → -26.6 dB pk → -39.7 dB pk"
+  },
+  {
+    "id": "C-156",
+    "verdict": "PASS",
+    "evidence": "aria-pressed false → true; loop band covers the first four bars (0–8s)"
+  },
+  {
+    "id": "C-157",
+    "verdict": "PASS",
+    "evidence": "label \"Metronome (click track)\" → \"Metronome (click track) — beat 1\" (data-beat=1)"
+  },
+  {
+    "id": "C-158",
+    "verdict": "PASS",
+    "evidence": "999 → 300, 5 → 20; project saved bpm=20"
+  },
+  {
+    "id": "C-159",
+    "verdict": "PASS",
+    "evidence": "2/4,3/4,4/4,6/8; chose 4/4, saved; 0 bar labels re-drawn"
+  },
+  {
+    "id": "C-160",
+    "verdict": "PASS",
+    "evidence": "cycle 1× → 0.5× → 2× → 1×"
+  },
+  {
+    "id": "C-161",
+    "verdict": "PASS",
+    "evidence": "no track selected: Plugins and Automation disabled, Clip editor enabled"
+  },
+  {
+    "id": "C-162",
+    "verdict": "PASS",
+    "evidence": "with Drums selected the bottom panel opened \"Plugins for Drums\""
+  },
+  {
+    "id": "C-163",
+    "verdict": "PASS",
+    "evidence": "automation band opened: \"Drums Volume Pan Clear Click to add a volume point - ←/→ and ↑/↓ nudge the selected one, d\""
+  },
+  {
+    "id": "C-164",
+    "verdict": "PASS",
+    "evidence": "toast \"Select a clip to edit.\""
+  },
+  {
+    "id": "C-165",
+    "verdict": "PASS",
+    "evidence": "MIDI clip → MIDI editor; audio clip → Clip Settings (warp) editor"
+  },
+  {
+    "id": "C-166",
+    "verdict": "PASS",
+    "evidence": "take-lane band opened; automation band closed (0)"
+  },
+  {
+    "id": "C-167",
+    "verdict": "PASS",
+    "evidence": "empty state \"Add master effect\"; with effects chips = Limiter + compact +"
+  },
+  {
+    "id": "C-168",
+    "verdict": "PASS",
+    "evidence": "ruler widths 11520 → in 17280 → out 7680 → fit 23040 (bars 0)"
+  },
+  {
+    "id": "C-169",
+    "verdict": "PASS",
+    "evidence": "All projects → http://127.0.0.1:3105/studio"
+  },
+  {
+    "id": "C-170",
+    "verdict": "PASS",
+    "evidence": "3 radios (Vocals + instrumental (12 credits) | Core stems (12 credits) | Full 12-stem split (60 credits)); cost shown = yes"
+  },
+  {
+    "id": "C-171",
+    "verdict": "PASS",
+    "evidence": "default selection = Core stems (\"Core stems (12 credits)\")"
+  },
+  {
+    "id": "C-172",
+    "verdict": "PASS",
+    "evidence": "dialog closed; tracks 3 → 6 (Vocals, Drums, Bass); .se-stem-status rendered = false"
+  },
+  {
+    "id": "C-173",
+    "verdict": "PASS",
+    "evidence": "Cancel closed the stems dialog"
+  },
+  {
+    "id": "C-174",
+    "verdict": "PASS",
+    "evidence": "dialog with one text field + \"Generate cover\"; credit note = shown (G-11)"
+  },
+  {
+    "id": "C-175",
+    "verdict": "PASS",
+    "evidence": "Vocals dialog (action 1) and Instrumental dialog (action 1) opened with their own copy"
+  },
+  {
+    "id": "C-176",
+    "verdict": "PASS",
+    "evidence": "5 clips selected (2 with a source generation) → Mashup enabled; dialog action count 1"
+  },
+  {
+    "id": "C-177",
+    "verdict": "PASS",
+    "evidence": "dialog with a lyrics textarea, optional Persona select and the Replace section action (1)"
+  },
+  {
+    "id": "C-178",
+    "verdict": "PASS",
+    "evidence": "notice = \"That edit did not run The operation failed before anything was placed. Replace section needs lyrics.\""
+  },
+  {
+    "id": "C-179",
+    "verdict": "PASS",
+    "evidence": "persona created and listed in #se-persona-select: No persona,W5C Persona,Voice check 26489"
+  },
+  {
+    "id": "C-180",
+    "verdict": "PASS",
+    "evidence": "Escape and Cancel closed both dialogs; 0 generation requests issued"
+  },
+  {
+    "id": "C-181",
+    "verdict": "PASS",
+    "evidence": "10 plugin rows + Cancel; Cancel closed the dialog"
+  },
+  {
+    "id": "C-182",
+    "verdict": "PASS",
+    "evidence": "dialog \"Suno has newer changes\" with 4 actions: Decide later / Duplicate locally / Keep mine / Load Suno version"
+  },
+  {
+    "id": "C-183",
+    "verdict": "PASS",
+    "evidence": "Decide later closed the prompt; sync state still conflict"
+  },
+  {
+    "id": "C-184",
+    "verdict": "PASS",
+    "evidence": "Keep mine closed the dialog; sync dot synced → synced (synced after the push)"
+  },
+  {
+    "id": "C-185",
+    "verdict": "PASS",
+    "evidence": "two-tab write produced \"This project changed in another tab. This project changed since you loaded it. Reload before saving. Reload theirs Keep mine\""
+  },
+  {
+    "id": "C-186",
+    "verdict": "PASS",
+    "evidence": "Reload theirs cleared the banner; save chip = \"Saved\""
+  }
+]
