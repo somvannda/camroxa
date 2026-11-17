@@ -325,9 +325,12 @@ class Settings(BaseSettings):
         "https://music.camxora.com/auth/callback,"
         "https://music.sandbox.camxora.com/auth/callback,"
         "http://localhost:3001/auth/callback,"
-        # The canonical web app (camxora.com) runs on 3103 locally.
+        # The canonical web app (camxora.com) runs on 3103 locally and is served
+        # from the apex in production.
         "http://localhost:3103/auth/callback,"
-        "http://127.0.0.1:3103/auth/callback"
+        "http://127.0.0.1:3103/auth/callback,"
+        "https://camxora.com/auth/callback,"
+        "https://www.camxora.com/auth/callback"
     )
     # Shared secret the edge proxy (nginx) sets as `X-Origin-Verify`. When set,
     # music-web geo enforcement requires it and fails closed without it, so a
