@@ -105,11 +105,30 @@ That 401 is **not** the key being wrong, and it is not musicapi rejecting it:
   the attempts** — every other call (health, record-info, internal routes) is logged there.
 
 So the submit is being sent to some host other than the configured local musicapi, carrying a
-key that host rejects. The most likely cause is provider selection in the platform's key pool:
-the entry is registered as provider `suno`, while AI routing can assign `camxora_music_api`,
-and a pool lookup that matches the provider id exactly would find no key and fall back to the
-default upstream (`api.sunoapi.org`) with the local key. That is a hypothesis to confirm
-against `_music_pool_wrapper`, not something this run proved.
+key that host rejects. The worker's traceback names the host outright:
+
+```
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url
+'https://musicapi.camxora.com/api/v1/generate'
+```
+
+It was posting to **production**. `platform_api/.env` does not define
+`PLATFORM_SUNO_API_BASE_URL`, so any process that is not started by
+`scripts/dev/studio-stack.ps1` silently falls back to the production host in settings. The
+API process had the local override only because it was exported into its environment; the
+worker I started by hand did not. Production musicapi correctly rejected a sandbox key,
+which is also what the `auth_rejected_401_unknown` key events were recording.
+
+With the worker started the way the stack script starts it —
+`PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003` plus the callback tunnel — the whole chain
+points at one environment and the generate row goes green:
+
+```
+[ ok  ] Generate a song -> SUCCESS (10 credits)
+Spent 10 credits (wallet delta 10). 0 row(s) not green.
+```
+
+Evidence: `docs/studio/reports/provider-matrix/run-8-generate-v6/`.
 
 Two product defects did come out of the pass and are fixed:
 
@@ -124,17 +143,17 @@ Two product defects did come out of the pass and are fixed:
 
 ## What is needed to close D4
 
-1. **Make the generation submit reach the configured host.** The evidence above says the
-   request never arrives at `http://127.0.0.1:4003` even though the key entry is active, the
-   blob decrypts to the key musicapi accepts, and both databases agree on the base URL. Until
-   that is fixed, every attempt fails at the door with `401 submit_task` and refunds.
-2. Then re-run the same command. Row 1 is the only row that can spend; the rest are
-   dependent on its task id, and the runner now survives a run longer than one token
-   lifetime.
+**Nothing but the remaining rows.** With the worker started through the stack script the
+submit reaches the configured host and the generate row is green
+(`docs/studio/reports/provider-matrix/run-8-generate-v6/`); the thirteen dependent rows then
+run against that task id for 178 credits. The one operational rule that cost this pass most of
+its time: every process that submits to the provider needs
+`PLATFORM_SUNO_API_BASE_URL=http://127.0.0.1:4003` in its own environment, because
+`platform_api/.env` does not set it and the fallback is production.
 
-Nineteen generations were attempted across runs 1–7 and **none was charged in the end**: every
-failure refunded, and the wallet is back at 448. The runner records each attempt under
-`docs/studio/reports/provider-matrix/`.
+Eight generations were attempted before the wiring was right and **none was charged in the
+end**: every failure refunded, and the wallet was back at 448 before run 8 spent its 10.
+Evidence for each attempt is under `docs/studio/reports/provider-matrix/`.
 
 ## Runner changes in this pass
 
