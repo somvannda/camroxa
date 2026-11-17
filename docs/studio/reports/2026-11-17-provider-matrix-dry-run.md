@@ -70,8 +70,15 @@ node scripts/dev/provider-matrix.mjs --budget 320
 
 The two conditions that were failing before are therefore supplied by the operator, not by
 code: the public base must be set in **both** the runner and the running API (the readiness
-row reads it from the API), and the MusicAPI probe needs an idle host — the 10 s timeout is
-the runner's own guard, and the endpoint answers in ~23 ms standalone.
+row reads it from the API).
+
+The MusicAPI rows failed intermittently for a different reason, now fixed in the runner: the
+**first** Node fetch to MusicAPI on this host stalls past the 10 s guard and every later call
+answers in ~1 ms (measured directly: attempt 0 timed out at 10 007 ms, attempt 1 took 4 965 ms,
+attempts 2–7 took ≤1 ms). A single negative snapshot used to refuse an otherwise healthy
+stack, so both the readiness call and `musicapi.health` now re-read once (readiness) and
+retry three times with their own timeouts (health), and the error text names the attempt
+count. A genuinely broken stack still fails every attempt.
 
 ## What is required to close D4
 

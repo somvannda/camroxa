@@ -773,16 +773,25 @@ async function login(env) {
 
 async function probeMusicapi(env) {
   if (!env.musicapiBase) return { skipped: true };
-  try {
-    const response = await fetch(`${env.musicapiBase}/internal/studio/health`, {
-      headers: { 'x-internal-token': env.token },
-      signal: AbortSignal.timeout(10000),
-    });
-    const payload = await response.json();
-    return { skipped: false, ok: response.ok && Boolean(payload.ok), payload };
-  } catch (err) {
-    return { skipped: false, ok: false, error: err.message };
+  // A cold Node -> MusicAPI connection on this host has been measured stalling past the
+  // 10 s guard and then answering in ~1 ms on the next attempt, so the probe retries
+  // instead of refusing a healthy stack. Each attempt keeps its own timeout.
+  let last = { skipped: false, ok: false, error: 'no attempt made' };
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(`${env.musicapiBase}/internal/studio/health`, {
+        headers: { 'x-internal-token': env.token },
+        signal: AbortSignal.timeout(10000),
+      });
+      const payload = await response.json();
+      last = { skipped: false, ok: response.ok && Boolean(payload.ok), payload, attempt };
+      if (last.ok) return last;
+    } catch (err) {
+      last = { skipped: false, ok: false, error: `${err.message} (attempt ${attempt}/3)`, attempt };
+    }
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+  return last;
 }
 
 async function readPrices(client) {
@@ -960,7 +969,15 @@ async function main() {
   const token = await login(env);
   const client = createClient({ baseUrl: env.baseUrl, accessToken: token });
 
-  const readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
+  let readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
+  // The first cross-process connection to MusicAPI on this host can stall for seconds
+  // (measured once at the 10 s guard, then ~1 ms on every retry), and a readiness
+  // snapshot is not a load test. One negative snapshot is re-read before it can block a
+  // run; a genuinely broken stack still fails twice.
+  if (readiness && readiness.checks && Object.values(readiness.checks).some((ok) => !ok)) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    readiness = await client.call('/web-music/studio/readiness', { timeoutMs: 60000 });
+  }
   const checks = readiness && readiness.checks ? readiness.checks : {};
   for (const [key, ok] of Object.entries(checks)) {
     preconditions.push({ key: `readiness.${key}`, ok: Boolean(ok), detail: ok ? 'ok' : 'failed', blocking: true });
