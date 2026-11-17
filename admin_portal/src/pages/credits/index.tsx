@@ -127,6 +127,10 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'flux-schnell', label: 'flux-schnell (~$0.003/img)' },
     { value: 'flux-dev', label: 'flux-dev (~$0.025/img)' },
     { value: 'flux-pro', label: 'flux-pro (~$0.05/img)' },
+    {
+      value: 'flux-dev-image-to-image',
+      label: 'flux-dev-image-to-image (~$0.03/img)',
+    },
   ],
   slai: [
     { value: 'xiaomi/mimo-v2.5-pro', label: 'xiaomi/mimo-v2.5-pro (SLAI MiMo text)' },

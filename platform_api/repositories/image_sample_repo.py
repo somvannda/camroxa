@@ -23,12 +23,14 @@ class ImageSampleRepository:
         exclude: list[str] | None = None,
         batch_id: UUID | None = None,
         previous_batch_id: UUID | None = None,
+        lock_key: str | None = None,
     ) -> str:
         """Return the least-used candidate and increment its counter.
 
         ``batch_id`` records which batch consumed the value. ``previous_batch_id``
         lets callers avoid repeating the immediately previous batch when another
-        candidate exists.
+        candidate exists. When ``lock_key`` is set and the pool supports
+        transactions, a PostgreSQL advisory lock serialises concurrent pickers.
         """
         kind_key = str(kind or "").strip()
         candidates = [str(value).strip() for value in values if str(value).strip()]
@@ -38,7 +40,39 @@ class ImageSampleRepository:
         if not kind_key or not candidates:
             return candidates[0] if candidates else (values[0] if values else "")
 
-        rows = await self._pool.fetch(
+        acquire = getattr(self._pool, "acquire", None)
+        if lock_key and callable(acquire):
+            async with acquire() as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext($1))",
+                        str(lock_key),
+                    )
+                    return await self._pick_on(
+                        conn,
+                        kind_key=kind_key,
+                        candidates=candidates,
+                        batch_id=batch_id,
+                        previous_batch_id=previous_batch_id,
+                    )
+        return await self._pick_on(
+            self._pool,
+            kind_key=kind_key,
+            candidates=candidates,
+            batch_id=batch_id,
+            previous_batch_id=previous_batch_id,
+        )
+
+    async def _pick_on(
+        self,
+        db: Any,
+        *,
+        kind_key: str,
+        candidates: list[str],
+        batch_id: UUID | None,
+        previous_batch_id: UUID | None,
+    ) -> str:
+        rows = await db.fetch(
             """
             SELECT value, used_count, used_at, last_batch_id
             FROM image_random_history
@@ -90,7 +124,7 @@ class ImageSampleRepository:
                 best_at = used_at
 
         chosen = str(best or candidates[0]).strip()
-        await self._pool.execute(
+        await db.execute(
             """
             INSERT INTO image_random_history
                 (kind, value, used_count, used_at, last_batch_id)

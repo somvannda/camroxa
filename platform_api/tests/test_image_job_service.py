@@ -548,7 +548,10 @@ async def test_run_pending_jobs_background_text_sends_background_as_base_image(t
     )
     routing_service = AsyncMock()
     routing_service.resolve_image_chain = AsyncMock(
-        return_value=[SimpleNamespace(provider="slai", sub_model="cx/gpt-image-2.5")]
+        return_value=[
+            SimpleNamespace(provider="slai", sub_model="cx/gpt-image-2.5"),
+            SimpleNamespace(provider="fal", sub_model="flux-pro"),
+        ]
     )
     enforcement_service = AsyncMock()
     hold = SimpleNamespace(held_units=0, plan_covered=True)
@@ -585,7 +588,10 @@ async def test_run_pending_jobs_background_text_sends_background_as_base_image(t
     assert generation_request.prompt == "Add the text Night Drive"
     assert (
         generation_service.submit_image_outcome.await_args.kwargs["provider_chain"]
-        == [("slai", "cx/gpt-image-2.5")]
+        == [
+            ("slai", "cx/gpt-image-2.5"),
+            ("fal", "flux-dev-image-to-image"),
+        ]
     )
 
 @pytest.mark.asyncio

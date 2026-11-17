@@ -26,6 +26,7 @@ class _Repo:
 class _History:
     def __init__(self):
         self.seen: list[str] = []
+        self.lock_keys: list[str | None] = []
 
     async def pick_least_used_value(
         self,
@@ -35,11 +36,13 @@ class _History:
         exclude=None,
         batch_id=None,
         previous_batch_id=None,
+        lock_key=None,
     ):
         excluded = set(exclude or [])
         candidates = [value for value in values if value not in excluded] or list(values)
         chosen = candidates[0]
         self.seen.append(chosen)
+        self.lock_keys.append(lock_key)
         return chosen
 
 
@@ -69,6 +72,10 @@ async def test_pick_style_avoids_ids_used_in_same_batch() -> None:
 
     assert first.id != second.id
     assert history.seen == [first.id, second.id]
+    assert history.lock_keys == [
+        "image_prompt_style:background",
+        "image_prompt_style:background",
+    ]
 
 
 def test_resolve_text_template_tokens_and_fallback() -> None:

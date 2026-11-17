@@ -26,6 +26,7 @@ class ImageRandomHistoryProtocol(Protocol):
         exclude: list[str] | None = None,
         batch_id: UUID | None = None,
         previous_batch_id: UUID | None = None,
+        lock_key: str | None = None,
     ) -> str: ...
 
 
@@ -79,6 +80,7 @@ class ImagePromptLibraryService:
             values=list(by_id.keys()),
             batch_id=batch_id,
             previous_batch_id=previous_batch_id,
+            lock_key=f"image_prompt_style:{kind_value}",
         )
         chosen = by_id.get(str(chosen_id)) or candidates[0]
         return chosen

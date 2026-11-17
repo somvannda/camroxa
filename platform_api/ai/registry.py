@@ -142,6 +142,11 @@ FAL_IMAGE_MODELS: dict[str, ModelSpec] = {
         api_id="fal-ai/flux-pro/v1.1",
         cost_tier="~$0.05/img",
     ),
+    "flux-dev-image-to-image": ModelSpec(
+        api_id="fal-ai/flux/dev/image-to-image",
+        cost_tier="~$0.03/img",
+        supports_reference_image=True,
+    ),
 }
 
 SLAI_IMAGE_MODELS: dict[str, ModelSpec] = {

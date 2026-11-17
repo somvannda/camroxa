@@ -127,6 +127,9 @@ class FalClient:
         }
         if extra_params:
             payload.update(extra_params)
+        if payload.get("image_url"):
+            # FAL image-to-image endpoints take image_url/strength, not image_size.
+            payload.pop("image_size", None)
 
         try:
             response = await client.post(f"/{model_id}", json=payload)
