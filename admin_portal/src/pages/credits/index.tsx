@@ -127,9 +127,10 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'flux-schnell', label: 'flux-schnell (~$0.003/img)' },
     { value: 'flux-dev', label: 'flux-dev (~$0.025/img)' },
     { value: 'flux-pro', label: 'flux-pro (~$0.05/img)' },
+    { value: 'flux-2/edit', label: 'flux-2/edit (~$0.012/MP)' },
     {
-      value: 'flux-dev-image-to-image',
-      label: 'flux-dev-image-to-image (~$0.03/img)',
+      value: 'flux-2-pro/edit',
+      label: 'flux-2-pro/edit (~$0.03 first MP + $0.015 extra)',
     },
   ],
   slai: [

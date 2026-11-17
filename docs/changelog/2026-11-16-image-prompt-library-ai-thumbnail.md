@@ -28,9 +28,12 @@ Thumbnail generation also gains `thumbnailReferenceMode=background_text`:
 - `background_text` is the new default; composite remains the explicit legacy
   mode. Migration `205` updates an existing `thumbnailReferenceMode=composite`
   system setting to `background_text`.
-- Migration `206` seeds `fal/flux-dev-image-to-image` thumbnail pricing:
-  FAL list price $0.03/MP, 1920x1080 = $0.062208 cost, 100% markup = $0.124416,
-  rounded to 25 credits (250,000 micro-units).
+- Migration `206` seeded Flux.1 image-to-image pricing; live tests showed it does
+  not render text, so migration `208` removes it and seeds FLUX.2 edit instead:
+  - `fal/flux-2/edit`: $0.012/MP, 1920x1080 = $0.0248832, 100% markup =
+    $0.0497664, rounded to 10 credits (100,000 micro-units).
+  - `fal/flux-2-pro/edit`: $0.045 for 1920x1080, 100% markup = $0.09, 18 credits
+    (180,000 micro-units).
 - Migration `207` adds image-job hold recovery fields (`hold_units`,
   `hold_state`, `provider_invoked`). The worker now sweeps stale `RUNNING`
   image jobs and stale dependent thumbnails, refunding the exact hold by

@@ -142,10 +142,17 @@ FAL_IMAGE_MODELS: dict[str, ModelSpec] = {
         api_id="fal-ai/flux-pro/v1.1",
         cost_tier="~$0.05/img",
     ),
-    "flux-dev-image-to-image": ModelSpec(
-        api_id="fal-ai/flux/dev/image-to-image",
-        cost_tier="~$0.03/img",
+    "flux-2/edit": ModelSpec(
+        api_id="fal-ai/flux-2/edit",
+        cost_tier="~$0.012/MP",
         supports_reference_image=True,
+        supports_text_render=True,
+    ),
+    "flux-2-pro/edit": ModelSpec(
+        api_id="fal-ai/flux-2-pro/edit",
+        cost_tier="~$0.03 first MP + $0.015 extra",
+        supports_reference_image=True,
+        supports_text_render=True,
     ),
 }
 
@@ -155,6 +162,7 @@ SLAI_IMAGE_MODELS: dict[str, ModelSpec] = {
         api_id="cx/gpt-image-2.5",
         cost_tier="~$0.0067/img",
         supports_reference_image=True,
+        supports_text_render=True,
     ),
     # GPT-6 "sol" image model on the same SLAI image endpoint. Cost tier mirrors
     # the sibling SLAI image rate until the provider publishes a separate price.
@@ -162,6 +170,7 @@ SLAI_IMAGE_MODELS: dict[str, ModelSpec] = {
         api_id="cx/gpt-6-sol-image",
         cost_tier="~$0.0067/img",
         supports_reference_image=True,
+        supports_text_render=True,
     ),
 }
 
@@ -367,6 +376,15 @@ def image_model_supports_reference(provider: str, model: str | None) -> bool:
         return bool(spec.supports_reference_image)
     # Unknown legacy sub-model ids for a provider that supports image editing
     # (e.g. stored routing rows with ``slai/cx/gpt-image-2.5`` aliases).
+    return provider_key == "slai"
+
+
+def image_model_supports_text_render(provider: str, model: str | None) -> bool:
+    """True when the model reliably renders requested text in an edited image."""
+    provider_key = str(provider or "").strip().lower()
+    spec = get_image_model_spec(provider_key, model)
+    if spec is not None:
+        return bool(spec.supports_text_render)
     return provider_key == "slai"
 
 

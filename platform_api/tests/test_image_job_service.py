@@ -550,7 +550,7 @@ async def test_run_pending_jobs_background_text_sends_background_as_base_image(t
     routing_service.resolve_image_chain = AsyncMock(
         return_value=[
             SimpleNamespace(provider="slai", sub_model="cx/gpt-image-2.5"),
-            SimpleNamespace(provider="fal", sub_model="flux-dev-image-to-image"),
+            SimpleNamespace(provider="fal", sub_model="flux-2/edit"),
         ]
     )
     enforcement_service = AsyncMock()
@@ -590,7 +590,7 @@ async def test_run_pending_jobs_background_text_sends_background_as_base_image(t
         generation_service.submit_image_outcome.await_args.kwargs["provider_chain"]
         == [
             ("slai", "cx/gpt-image-2.5"),
-            ("fal", "flux-dev-image-to-image"),
+            ("fal", "flux-2/edit"),
         ]
     )
 

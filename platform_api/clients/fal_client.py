@@ -127,8 +127,8 @@ class FalClient:
         }
         if extra_params:
             payload.update(extra_params)
-        if payload.get("image_url"):
-            # FAL image-to-image endpoints take image_url/strength, not image_size.
+        if payload.get("image_url") or payload.get("image_urls"):
+            # FAL image-to-image/edit endpoints take image_url(s)/strength, not image_size.
             payload.pop("image_size", None)
 
         try:

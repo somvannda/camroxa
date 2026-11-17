@@ -567,7 +567,10 @@ class ImageJobService:
                     kind == ImageKind.THUMBNAIL
                     and thumbnail_mode == "background_text"
                 ):
-                    from platform_api.ai.registry import image_model_supports_reference
+                    from platform_api.ai.registry import (
+                        image_model_supports_reference,
+                        image_model_supports_text_render,
+                    )
 
                     routing_chain = [
                         item
@@ -576,13 +579,17 @@ class ImageJobService:
                             str(getattr(item, "provider", "") or ""),
                             getattr(item, "sub_model", None),
                         )
+                        and image_model_supports_text_render(
+                            str(getattr(item, "provider", "") or ""),
+                            getattr(item, "sub_model", None),
+                        )
                     ]
                     if not routing_chain:
                         raise ValidationError(
-                            "Thumbnail: AI text on background needs an image provider that "
-                            "accepts a reference image. Set the thumbnail_image AI Routing "
-                            "primary/fallback to a reference-capable model (SLAI or "
-                            "fal/flux-dev-image-to-image), or switch Thumbnail generation to Composite.",
+                            "Thumbnail: AI text on background needs an image model that "
+                            "accepts a reference image and reliably renders text. Set the "
+                            "thumbnail_image AI Routing primary/fallback to SLAI or "
+                            "fal/flux-2/edit, or switch Thumbnail generation to Composite.",
                             details={
                                 "job_id": str(job.id),
                                 "operation": operation_type,

@@ -13,8 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Image-job hold recovery: `hold_units`, `hold_state`, and `provider_invoked`
   on `image_jobs`; the worker now requeues/fails stale `RUNNING` jobs and stale
   dependent thumbnails, refunding the exact hold by `job.id`.
-- FAL `flux-dev-image-to-image` thumbnail pricing (25 credits, 100% markup over
-  FAL's $0.03/MP list price).
+- FAL `flux-2/edit` thumbnail pricing (10 credits, 100% markup over FAL's
+  $0.012/MP rate) and `flux-2-pro/edit` (18 credits). Flux.1 image-to-image
+  pricing/model was removed because it did not render requested text.
 
 ### Removed
 

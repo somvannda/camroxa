@@ -3517,11 +3517,18 @@ class GenerationService:
         self, request: ImageRequest, width: int, height: int
     ) -> bytes:
         """Generate an image via Fal AI and return PNG bytes."""
+        from platform_api.ai.registry import resolve_image_model_id
+
         extra_params: dict[str, Any] = {}
         if request.base_image is not None:
             reference_b64 = base64.b64encode(request.base_image).decode()
-            extra_params["image_url"] = f"data:image/png;base64,{reference_b64}"
-            extra_params["strength"] = request.style_strength
+            data_uri = f"data:image/png;base64,{reference_b64}"
+            model = resolve_image_model_id("fal", request.model_id)
+            if model in {"flux-2/edit", "flux-2-pro/edit", "flux-2/flash/edit"}:
+                extra_params["image_urls"] = [data_uri]
+            else:
+                extra_params["image_url"] = data_uri
+                extra_params["strength"] = request.style_strength
             extra_params["output_format"] = "png"
 
         response = await self._get_image_gateway().generate_fal(

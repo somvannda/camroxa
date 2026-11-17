@@ -789,7 +789,10 @@ class BatchService:
             except Exception:
                 chain = []
             if isinstance(chain, (list, tuple)) and chain:
-                from platform_api.ai.registry import image_model_supports_reference
+                from platform_api.ai.registry import (
+                    image_model_supports_reference,
+                    image_model_supports_text_render,
+                )
 
                 capable = [
                     item
@@ -798,12 +801,16 @@ class BatchService:
                         str(getattr(item, "provider", "") or ""),
                         getattr(item, "sub_model", None),
                     )
+                    and image_model_supports_text_render(
+                        str(getattr(item, "provider", "") or ""),
+                        getattr(item, "sub_model", None),
+                    )
                 ]
                 if not capable:
                     return (
-                        "Thumbnail: AI text on background needs an image provider that "
-                        "accepts a reference image. Ask an admin to route thumbnail_image "
-                        "to SLAI (verified reference-capable), or switch Thumbnail generation to Composite."
+                        "Thumbnail: AI text on background needs an image model that accepts "
+                        "a reference image and reliably renders text. Set thumbnail_image AI "
+                        "Routing to SLAI or fal/flux-2/edit, or switch Thumbnail generation to Composite."
                     )
         return None
 
