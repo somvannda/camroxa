@@ -190,6 +190,40 @@ def test_preflight_blocks_prompt_only_empty(qapp: QApplication) -> None:
     assert "Background:" in message
 
 
+def test_source_selection_combines_reference_and_prompt(qapp: QApplication) -> None:
+    card = PreviewCard("Background Preview", "", source_label="Background source")
+
+    card.set_source_mode("category")
+    card.set_prompt_source("admin_library")
+    assert (card.source_mode(), card.prompt_source()) == ("category", "admin_library")
+
+    card.set_source_mode("prompt_only")
+    assert (card.source_mode(), card.prompt_source()) == (
+        "prompt_only",
+        "admin_library",
+    )
+
+    card.set_prompt_source("custom")
+    assert (card.source_mode(), card.prompt_source()) == ("prompt_only", "custom")
+
+
+def test_admin_library_locks_prompt_boxes(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = ImageView(PlatformApi())
+    monkeypatch.setattr(view, "_refresh_prompt_library_counts", lambda: None)
+
+    view._background_preview.set_prompt_source("admin_library")
+    view._thumbnail_preview.set_prompt_source("custom")
+    view._apply_prompt_source_state()
+
+    assert view._controls_card._background_prompt.isReadOnly()
+    assert not view._controls_card._background_prompt.isEnabled()
+    assert not view._controls_card._thumbnail_prompt.isReadOnly()
+    assert view._controls_card._thumbnail_prompt.isEnabled()
+
+
 def test_prompt_library_source_binds_and_blocks_empty(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,

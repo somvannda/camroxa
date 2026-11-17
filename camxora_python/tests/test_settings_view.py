@@ -297,3 +297,27 @@ def test_create_profile_posts_name_only_payload(
     assert "logo_path" not in payload
     assert "logo_base64" not in payload
     assert "cover_images" not in payload
+
+
+def test_combined_source_values_map_to_both_settings(qapp: QApplication) -> None:
+    assert SettingsView._source_selection("category:admin_library") == (
+        "category",
+        "admin_library",
+    )
+    assert SettingsView._source_selection("prompt_only:custom") == (
+        "prompt_only",
+        "custom",
+    )
+    assert SettingsView._source_selection(None) == ("category", "custom")
+
+    view = SettingsView(PlatformApi())
+    values = [
+        view._pref_background_source.itemData(index)
+        for index in range(view._pref_background_source.count())
+    ]
+    assert values == [
+        "category:custom",
+        "category:admin_library",
+        "prompt_only:custom",
+        "prompt_only:admin_library",
+    ]

@@ -437,6 +437,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._background_preview.set_prompt_source(bg_source)
         self._thumbnail_preview.set_prompt_source(th_source)
         self._prompt_sources_initialized = True
+        self._apply_prompt_source_state()
         # The mode is stored for the save patch; it has no dedicated preview control.
         self._settings_raw["thumbnailReferenceMode"] = mode
         self._refresh_prompt_library_counts()

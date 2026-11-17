@@ -1397,17 +1397,21 @@ class SettingsView(QWidget):
         self._pref_image_source.addItem("AI Generated", "ai")
         self._pref_image_source.addItem("User Provided", "manual")
         self._pref_background_source = QComboBox()
-        self._pref_background_source.addItem("Category", "category")
-        self._pref_background_source.addItem("Prompt only", "prompt_only")
+        for label, value in (
+            ("Category + My prompt", "category:custom"),
+            ("Category + Admin library", "category:admin_library"),
+            ("Prompt only + My prompt", "prompt_only:custom"),
+            ("Prompt only + Admin library", "prompt_only:admin_library"),
+        ):
+            self._pref_background_source.addItem(label, value)
         self._pref_thumbnail_source = QComboBox()
-        self._pref_thumbnail_source.addItem("Category", "category")
-        self._pref_thumbnail_source.addItem("Prompt only", "prompt_only")
-        self._pref_background_prompt_source = QComboBox()
-        self._pref_background_prompt_source.addItem("My prompt", "custom")
-        self._pref_background_prompt_source.addItem("Admin prompt library", "admin_library")
-        self._pref_thumbnail_prompt_source = QComboBox()
-        self._pref_thumbnail_prompt_source.addItem("My prompt", "custom")
-        self._pref_thumbnail_prompt_source.addItem("Admin prompt library", "admin_library")
+        for label, value in (
+            ("Category + My prompt", "category:custom"),
+            ("Category + Admin library", "category:admin_library"),
+            ("Prompt only + My prompt", "prompt_only:custom"),
+            ("Prompt only + Admin library", "prompt_only:admin_library"),
+        ):
+            self._pref_thumbnail_source.addItem(label, value)
         self._pref_thumbnail_mode = QComboBox()
         self._pref_thumbnail_mode.addItem("AI text on background", "background_text")
         self._pref_thumbnail_mode.addItem("Composite (legacy)", "composite")
@@ -1421,18 +1425,12 @@ class SettingsView(QWidget):
         rendering_panel.add_widget(self._bg_source_row)
         rendering_panel.add_widget(self._th_source_row)
         rendering_panel.add_widget(
-            form_row("Background prompt", self._pref_background_prompt_source)
-        )
-        rendering_panel.add_widget(
-            form_row("Thumbnail prompt", self._pref_thumbnail_prompt_source)
-        )
-        rendering_panel.add_widget(
             form_row("Thumbnail generation", self._pref_thumbnail_mode)
         )
         rendering_panel.add_widget(
             note_box(
                 "AI Generated uses Background/Thumbnail source: Category (admin samples) "
-                "or Prompt only (text, no sample). Prompt source can use My prompt or the "
+                "or Prompt only (text, no sample). Pair either one with My prompt or the "
                 "Admin prompt library (a different style per channel). "
                 "AI text on background sends the generated background to the image model "
                 "and asks it to render the thumbnail text. "
@@ -1531,8 +1529,6 @@ class SettingsView(QWidget):
         self._pref_resolution.currentTextChanged.connect(self._on_system_field_changed)
         self._pref_background_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
         self._pref_thumbnail_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
-        self._pref_background_prompt_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
-        self._pref_thumbnail_prompt_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
         self._pref_thumbnail_mode.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
         self._update_ai_reference_controls_visibility()
 
@@ -3424,22 +3420,16 @@ class SettingsView(QWidget):
         source_index = self._pref_image_source.findData(draft.image_source_mode)
         if source_index >= 0:
             self._pref_image_source.setCurrentIndex(source_index)
-        bg_source_index = self._pref_background_source.findData(draft.image_background_source_mode)
+        bg_source_index = self._pref_background_source.findData(
+            f"{draft.image_background_source_mode}:{draft.image_background_prompt_source}"
+        )
         if bg_source_index >= 0:
             self._pref_background_source.setCurrentIndex(bg_source_index)
-        th_source_index = self._pref_thumbnail_source.findData(draft.image_thumbnail_source_mode)
+        th_source_index = self._pref_thumbnail_source.findData(
+            f"{draft.image_thumbnail_source_mode}:{draft.image_thumbnail_prompt_source}"
+        )
         if th_source_index >= 0:
             self._pref_thumbnail_source.setCurrentIndex(th_source_index)
-        bg_prompt_index = self._pref_background_prompt_source.findData(
-            draft.image_background_prompt_source
-        )
-        if bg_prompt_index >= 0:
-            self._pref_background_prompt_source.setCurrentIndex(bg_prompt_index)
-        th_prompt_index = self._pref_thumbnail_prompt_source.findData(
-            draft.image_thumbnail_prompt_source
-        )
-        if th_prompt_index >= 0:
-            self._pref_thumbnail_prompt_source.setCurrentIndex(th_prompt_index)
         thumb_mode_index = self._pref_thumbnail_mode.findData(draft.thumbnail_reference_mode)
         if thumb_mode_index >= 0:
             self._pref_thumbnail_mode.setCurrentIndex(thumb_mode_index)
@@ -3778,12 +3768,26 @@ class SettingsView(QWidget):
         )
         self._refresh_footer()
 
+    @staticmethod
+    def _source_selection(value: object) -> tuple[str, str]:
+        raw = str(value or "category:custom")
+        mode, _, prompt = raw.partition(":")
+        normalized_mode = "prompt_only" if mode in {"prompt", "prompt_only"} else "category"
+        normalized_prompt = "admin_library" if prompt == "admin_library" else "custom"
+        return normalized_mode, normalized_prompt
+
     def _on_system_field_changed(self) -> None:
         chunk_text = self._pref_youtube_chunk.currentText().split()[0]
         try:
             chunk_size = int(chunk_text)
         except ValueError:
             chunk_size = self._system_draft.youtube_upload_chunk_size_mb
+        bg_source_mode, bg_prompt_source = self._source_selection(
+            self._pref_background_source.currentData()
+        )
+        th_source_mode, th_prompt_source = self._source_selection(
+            self._pref_thumbnail_source.currentData()
+        )
         self._system_draft = SystemSettingsDraft(
             ffmpeg_path=self._pref_ffmpeg.text(),
             # Downloads / merged / image output are auto-defaults (not shown in Preferences).
@@ -3814,10 +3818,10 @@ class SettingsView(QWidget):
             style_strength=self._pref_style_strength.value(),
             image_source_mode=self._pref_image_source.currentData() or "ai",
             output_resolution=self._pref_resolution.currentText(),
-            image_background_source_mode=self._pref_background_source.currentData() or "category",
-            image_thumbnail_source_mode=self._pref_thumbnail_source.currentData() or "category",
-            image_background_prompt_source=self._pref_background_prompt_source.currentData() or "custom",
-            image_thumbnail_prompt_source=self._pref_thumbnail_prompt_source.currentData() or "custom",
+            image_background_source_mode=bg_source_mode,
+            image_thumbnail_source_mode=th_source_mode,
+            image_background_prompt_source=bg_prompt_source,
+            image_thumbnail_prompt_source=th_prompt_source,
             thumbnail_reference_mode=self._pref_thumbnail_mode.currentData() or "background_text",
             thumbnail_overlay_mode=self._pref_thumbnail_overlay_mode or "ai",
             image_bg_random=self._system_draft.image_bg_random if SERVER_MANAGED_SAMPLE_PACKS else self._pref_bg_random.isChecked(),
