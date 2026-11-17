@@ -61,9 +61,25 @@ authenticates the account live, so this is not “configured but dead”).
 
 The account in use is `somvannda@gmail.com` (`credits_left 1438`, **`plan: null`**). The
 sandbox also holds a `premier` account with 3120 credits, but it is **inactive**
-(`is_active = false`) and therefore not in the pool. A free-tier queue with no terminal
-state for 18 minutes is the most likely explanation; it is a provider/account property, not
-a code path in either codebase.
+(`is_active = false`) and therefore not in the pool.
+
+**The discriminating variable is the model, not the plan.** Listing every web-music
+generation in the sandbox:
+
+| Model | Status | Count |
+|---|---|---|
+| `V6_MINI` | `PENDING`, never terminal | 2 (both from this pass) |
+| `V6` | `SUCCESS` | 4 (all 2026-11-14) |
+| `V6` | `FAILED` (with an `error_message`) | 5 |
+
+`V6_MINI` has never produced audio here, while `V6` has produced four completed songs. The
+runner's `DEFAULT_MODEL` is `V6_MINI`, so run 1 and the first retry both picked the one model
+this environment has never completed. The third attempt therefore runs with
+`PLATFORM_STUDIO_MODEL=V6`, which is what the successful rows used.
+
+A `V6` failure is at least *legible* (it carries `error_message`), unlike the silent
+`V6_MINI` `PENDING`, which is itself a useful signal: a model that cannot be served should
+surface an error rather than holding a row forever.
 
 ## What is needed to close D4
 
@@ -76,9 +92,9 @@ a code path in either codebase.
    runner now survives a run longer than one token lifetime.
 
 A second attempt was launched on the same account with a 30-minute window
-(`--only generate --timeout 1800`). It is the same spend as run 1 (10 credits) and it either
-produces a source task that the dependent rows can use for free, or it confirms the upstream
-block.
+(`--only generate --timeout 1800`); it hit the same silent `PENDING`. A third attempt runs
+with `PLATFORM_STUDIO_MODEL=V6`, the only model that has completed here. Each generation
+costs 10 credits; the dependent rows are free against a completed task.
 
 ## Runner changes in this pass
 
