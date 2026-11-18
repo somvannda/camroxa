@@ -3158,7 +3158,12 @@ class BatchService:
                     enrich_thumbnail_background_text_prompt,
                 )
 
-                composed = enrich_thumbnail_background_text_prompt(composed, thumbnail_text)
+                if prompt_style is not None:
+                    # Standalone admin-library thumbnail prompt: send it as-is
+                    # with the generated background as the reference image.
+                    pass
+                else:
+                    composed = enrich_thumbnail_background_text_prompt(composed, thumbnail_text)
             elif thumbnail_mode == "composite":
                 composed = enrich_thumbnail_prompt(
                     composed,
@@ -4259,7 +4264,7 @@ class BatchService:
             thumbnail_text = ""
             thumbnail_lockup = None
             if is_admin_prompt_source(settings, job.kind):
-                style = await self._pick_admin_prompt_style(
+                style, lockup_mode = await self._pick_admin_prompt_style_with_lockup_fallback(
                     kind=job.kind,
                     batch=batch,
                     used_prompt_ids=used_prompt_ids,
@@ -4269,7 +4274,7 @@ class BatchService:
                 )
                 ui_prompt = style.prompt_text
                 if job.kind == ImageKind.THUMBNAIL:
-                    if use_text_for_kind:
+                    if lockup_mode:
                         record = await self._pick_thumbnail_text(batch, used_text_ids)
                         if record is not None:
                             from platform_api.services.thumbnail_composite import (
@@ -4318,6 +4323,10 @@ class BatchService:
 
                 if thumbnail_lockup is not None:
                     prompt = enrich_thumbnail_text_lockup(prompt, thumbnail_lockup)
+                elif style is not None and is_admin_prompt_source(settings, job.kind):
+                    # Standalone admin-library thumbnail prompt: send it as-is
+                    # with the generated background as the reference image.
+                    pass
                 else:
                     prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
             elif thumbnail_mode == "composite":
@@ -6077,7 +6086,7 @@ class BatchService:
                 and thumbnail_mode == "background_text"
             )
             if is_admin_prompt_source(settings, kind):
-                style = await self._pick_admin_prompt_style(
+                style, lockup_mode = await self._pick_admin_prompt_style_with_lockup_fallback(
                     kind=kind,
                     batch=batch,
                     used_prompt_ids=prompt_usage,
@@ -6087,7 +6096,7 @@ class BatchService:
                 )
                 ui_prompt = style.prompt_text
                 if kind == ImageKind.THUMBNAIL:
-                    if use_text_preset_for_kind:
+                    if lockup_mode:
                         record = await self._pick_thumbnail_text(batch, text_usage)
                         if record is not None:
                             from platform_api.services.thumbnail_composite import (
@@ -6136,6 +6145,10 @@ class BatchService:
 
                 if thumbnail_lockup is not None:
                     prompt = enrich_thumbnail_text_lockup(prompt, thumbnail_lockup)
+                elif style is not None and is_admin_prompt_source(settings, kind):
+                    # Standalone admin-library thumbnail prompt: send it as-is
+                    # with the generated background as the reference image.
+                    pass
                 else:
                     prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
             elif thumbnail_mode == "composite":
@@ -6209,6 +6222,54 @@ class BatchService:
         )
         used_prompt_ids.setdefault(kind, []).append(style.id)
         return style
+
+    async def _pick_admin_prompt_style_with_lockup_fallback(
+        self,
+        *,
+        kind: ImageKind,
+        batch: Batch,
+        used_prompt_ids: dict[ImageKind, list[str]],
+        previous_batch_id: UUID | None,
+        text_mode: str | None = None,
+        tag: str | None = None,
+    ) -> tuple[Any, bool]:
+        """Pick an admin style, falling back to legacy when no lockup style exists.
+
+        Returns ``(style, lockup_applied)``. When the caller asks for lockup
+        text but the library has no active lockup thumbnail styles, a legacy
+        thumbnail prompt is used instead. This keeps standalone thumbnail
+        prompts usable while the thumbnail text library remains populated for
+        future lockup styles.
+        """
+        from platform_api.exceptions import ValidationError
+
+        if text_mode == "lockup":
+            try:
+                style = await self._pick_admin_prompt_style(
+                    kind=kind,
+                    batch=batch,
+                    used_prompt_ids=used_prompt_ids,
+                    previous_batch_id=previous_batch_id,
+                    text_mode="lockup",
+                    tag=tag,
+                )
+                return style, True
+            except ValidationError:
+                logger.info(
+                    "No active lockup thumbnail styles; falling back to legacy "
+                    "thumbnail prompts for batch %s.",
+                    batch.id,
+                )
+
+        style = await self._pick_admin_prompt_style(
+            kind=kind,
+            batch=batch,
+            used_prompt_ids=used_prompt_ids,
+            previous_batch_id=previous_batch_id,
+            text_mode=None,
+            tag=tag,
+        )
+        return style, False
 
     def _resolve_style_text(
         self,

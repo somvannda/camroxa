@@ -7,6 +7,26 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.7.1] - 2026-11-18
+
+### Fixed
+
+- **Matched background and thumbnail prompt library.** The production prompt
+  library was replaced with matched background/thumbnail pairs. The image
+  pipeline now:
+  - uses all active background prompts instead of the old `jbl_speaker`
+    collection filter;
+  - falls back to legacy thumbnail prompts when no lockup thumbnail styles are
+    active;
+  - sends standalone legacy admin-library thumbnail prompts as-is with the
+    generated background as the reference image.
+- **Thumbnail compatibility.** The thumbnail text library remains available for
+  future lockup styles, but no longer blocks generation when the active
+  thumbnail styles are all legacy prompts.
+
+The generation fix is server-side; 1.7.1 is published as a forced desktop
+update so clients are on the current release.
+
 ## [1.7.0] - 2026-11-17
 
 ### Added
