@@ -22,6 +22,8 @@ class ImagePromptStyleRepositoryProtocol(Protocol):
 
     async def count_active(self) -> dict[str, int]: ...
 
+    async def get_by_id(self, style_id: str) -> ImagePromptStyleRecord | None: ...
+
     async def pick_rotating_style(
         self,
         *,
@@ -105,6 +107,32 @@ class ImagePromptLibraryService:
                 if style.id == str(chosen_id):
                     return style
         return active[0]
+
+    async def pick_paired_thumbnail(
+        self,
+        *,
+        background_sort_order: int,
+        exclude_ids: list[str] | None = None,
+        text_mode: str | None = None,
+    ) -> ImagePromptStyleRecord | None:
+        """Return the thumbnail style paired with a background sort order.
+
+        The current admin library imports background and thumbnail prompts as
+        matched rows, so equal ``sort_order`` is the pair key. Returns ``None``
+        when no matching active style exists or it was already used in this
+        batch, allowing the caller to fall back to normal rotation.
+        """
+        active = await self._repo.list_active(
+            kind="thumbnail", text_mode=text_mode
+        )
+        excluded = {str(value) for value in (exclude_ids or [])}
+        for style in active:
+            if int(style.sort_order) == int(background_sort_order) and style.id not in excluded:
+                return style
+        return None
+
+    async def get_style(self, style_id: Any) -> ImagePromptStyleRecord | None:
+        return await self._repo.get_by_id(str(style_id))
 
     async def active_counts(self) -> dict[str, int]:
         return await self._repo.count_active()

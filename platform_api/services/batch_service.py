@@ -3085,6 +3085,7 @@ class BatchService:
             ImageKind.BACKGROUND: [],
             ImageKind.THUMBNAIL: [],
         }
+        background_style: Any | None = None
         for job_kind in (ImageKind.BACKGROUND, ImageKind.THUMBNAIL):
             prompt_style = None
             thumbnail_text = ""
@@ -3114,18 +3115,35 @@ class BatchService:
             if target_override:
                 user_prompt = override_prompt
             elif is_admin_prompt_source(settings, job_kind):
-                prompt_style = await self._pick_admin_prompt_style(
-                    kind=job_kind,
-                    batch=batch,
-                    used_prompt_ids=used_prompt_ids,
-                    previous_batch_id=None,
-                    tag=(
-                        str(settings.get("imageBackgroundCollection") or "").strip()
-                        or None
-                        if job_kind == ImageKind.BACKGROUND
-                        else None
-                    ),
-                )
+                paired_style = None
+                if (
+                    job_kind == ImageKind.THUMBNAIL
+                    and background_style is not None
+                    and self._image_prompt_library is not None
+                ):
+                    paired_style = await self._image_prompt_library.pick_paired_thumbnail(
+                        background_sort_order=int(background_style.sort_order),
+                        exclude_ids=used_prompt_ids.get(ImageKind.THUMBNAIL, []),
+                        text_mode="legacy",
+                    )
+                if paired_style is not None:
+                    prompt_style = paired_style
+                    used_prompt_ids.setdefault(job_kind, []).append(prompt_style.id)
+                else:
+                    prompt_style = await self._pick_admin_prompt_style(
+                        kind=job_kind,
+                        batch=batch,
+                        used_prompt_ids=used_prompt_ids,
+                        previous_batch_id=None,
+                        tag=(
+                            str(settings.get("imageBackgroundCollection") or "").strip()
+                            or None
+                            if job_kind == ImageKind.BACKGROUND
+                            else None
+                        ),
+                    )
+                if job_kind == ImageKind.BACKGROUND:
+                    background_style = prompt_style
                 user_prompt = prompt_style.prompt_text
                 if job_kind == ImageKind.THUMBNAIL:
                     thumbnail_text = self._resolve_style_text(
@@ -3156,12 +3174,13 @@ class BatchService:
             elif thumbnail_mode == "background_text":
                 from platform_api.services.thumbnail_composite import (
                     enrich_thumbnail_background_text_prompt,
+                    enrich_thumbnail_reference_prompt,
                 )
 
                 if prompt_style is not None:
-                    # Standalone admin-library thumbnail prompt: send it as-is
-                    # with the generated background as the reference image.
-                    pass
+                    # Legacy admin-library thumbnail prompt: force the supplied
+                    # background to remain the exact base image.
+                    composed = enrich_thumbnail_reference_prompt(composed)
                 else:
                     composed = enrich_thumbnail_background_text_prompt(composed, thumbnail_text)
             elif thumbnail_mode == "composite":
@@ -4223,6 +4242,22 @@ class BatchService:
             )
             used_prompt_ids.setdefault(kind, []).append(style_id)
 
+        def _job_kind(job: Any) -> ImageKind:
+            value = getattr(job, "kind", ImageKind.BACKGROUND)
+            return value if isinstance(value, ImageKind) else ImageKind(str(value).strip().lower())
+
+        jobs = sorted(
+            jobs,
+            key=lambda job: 0 if _job_kind(job) == ImageKind.BACKGROUND else 1,
+        )
+        paired_background_styles: dict[tuple[Any, Any, Any], Any] = {}
+        background_job_by_slot: dict[tuple[Any, Any, Any], Any] = {}
+        for sibling in all_jobs:
+            if _job_kind(sibling) == ImageKind.BACKGROUND:
+                background_job_by_slot[
+                    (sibling.batch_id, sibling.profile_id, sibling.channel_role)
+                ] = sibling
+
         for job in jobs:
             if job.song_id is None or job.profile_id is None or job.batch_id is None:
                 continue
@@ -4264,14 +4299,61 @@ class BatchService:
             thumbnail_text = ""
             thumbnail_lockup = None
             if is_admin_prompt_source(settings, job.kind):
-                style, lockup_mode = await self._pick_admin_prompt_style_with_lockup_fallback(
-                    kind=job.kind,
-                    batch=batch,
-                    used_prompt_ids=used_prompt_ids,
-                    previous_batch_id=None,
-                    text_mode="lockup" if use_text_for_kind else None,
-                    tag=background_collection if job.kind == ImageKind.BACKGROUND else None,
-                )
+                paired_style = None
+                slot = (job.batch_id, job.profile_id, job.channel_role)
+                if job.kind == ImageKind.THUMBNAIL and self._image_prompt_library is not None:
+                    background_style = paired_background_styles.get(slot)
+                    if background_style is None:
+                        background_job = background_job_by_slot.get(slot)
+                        background_style_id = (
+                            str(getattr(background_job, "prompt_style_id", "") or "").strip()
+                            if background_job is not None
+                            else ""
+                        )
+                        if background_style_id:
+                            background_style = await self._image_prompt_library.get_style(
+                                background_style_id
+                            )
+                    if background_style is not None:
+                        if use_text_for_kind:
+                            paired_style = (
+                                await self._image_prompt_library.pick_paired_thumbnail(
+                                    background_sort_order=int(background_style.sort_order),
+                                    exclude_ids=used_prompt_ids.get(
+                                        ImageKind.THUMBNAIL, []
+                                    ),
+                                    text_mode="lockup",
+                                )
+                            )
+                        if paired_style is None:
+                            paired_style = (
+                                await self._image_prompt_library.pick_paired_thumbnail(
+                                    background_sort_order=int(background_style.sort_order),
+                                    exclude_ids=used_prompt_ids.get(
+                                        ImageKind.THUMBNAIL, []
+                                    ),
+                                    text_mode="legacy",
+                                )
+                            )
+                if paired_style is not None:
+                    style = paired_style
+                    lockup_mode = bool(
+                        use_text_for_kind
+                        and str(getattr(style, "text_mode", "") or "").strip().lower()
+                        == "lockup"
+                    )
+                    used_prompt_ids.setdefault(job.kind, []).append(style.id)
+                else:
+                    style, lockup_mode = await self._pick_admin_prompt_style_with_lockup_fallback(
+                        kind=job.kind,
+                        batch=batch,
+                        used_prompt_ids=used_prompt_ids,
+                        previous_batch_id=None,
+                        text_mode="lockup" if use_text_for_kind else None,
+                        tag=background_collection if job.kind == ImageKind.BACKGROUND else None,
+                    )
+                if job.kind == ImageKind.BACKGROUND:
+                    paired_background_styles[slot] = style
                 ui_prompt = style.prompt_text
                 if job.kind == ImageKind.THUMBNAIL:
                     if lockup_mode:
@@ -4318,15 +4400,16 @@ class BatchService:
             elif thumbnail_mode == "background_text":
                 from platform_api.services.thumbnail_composite import (
                     enrich_thumbnail_background_text_prompt,
+                    enrich_thumbnail_reference_prompt,
                     enrich_thumbnail_text_lockup,
                 )
 
                 if thumbnail_lockup is not None:
                     prompt = enrich_thumbnail_text_lockup(prompt, thumbnail_lockup)
                 elif style is not None and is_admin_prompt_source(settings, job.kind):
-                    # Standalone admin-library thumbnail prompt: send it as-is
-                    # with the generated background as the reference image.
-                    pass
+                    # Legacy admin-library thumbnail prompt: force the supplied
+                    # background to remain the exact base image.
+                    prompt = enrich_thumbnail_reference_prompt(prompt)
                 else:
                     prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
             elif thumbnail_mode == "composite":
@@ -6029,6 +6112,7 @@ class BatchService:
 
         jobs: list[ImageJob] = []
         background_job_id: UUID | None = None
+        background_style: Any | None = None
         routed_bg_provider = await self._routed_image_provider("background_image")
         routed_thumb_provider = await self._routed_image_provider("thumbnail_image")
         for kind in kinds:
@@ -6037,6 +6121,13 @@ class BatchService:
             if existing_job is not None:
                 if kind == ImageKind.BACKGROUND:
                     background_job_id = existing_job.id
+                    if (
+                        getattr(existing_job, "prompt_style_id", None)
+                        and self._image_prompt_library is not None
+                    ):
+                        background_style = await self._image_prompt_library.get_style(
+                            existing_job.prompt_style_id
+                        )
                 continue
 
             style = None
@@ -6086,14 +6177,43 @@ class BatchService:
                 and thumbnail_mode == "background_text"
             )
             if is_admin_prompt_source(settings, kind):
-                style, lockup_mode = await self._pick_admin_prompt_style_with_lockup_fallback(
-                    kind=kind,
-                    batch=batch,
-                    used_prompt_ids=prompt_usage,
-                    previous_batch_id=previous_batch_id,
-                    text_mode="lockup" if use_text_preset_for_kind else None,
-                    tag=background_collection if kind == ImageKind.BACKGROUND else None,
-                )
+                paired_style = None
+                if (
+                    kind == ImageKind.THUMBNAIL
+                    and background_style is not None
+                    and self._image_prompt_library is not None
+                ):
+                    if use_text_preset_for_kind:
+                        paired_style = await self._image_prompt_library.pick_paired_thumbnail(
+                            background_sort_order=int(background_style.sort_order),
+                            exclude_ids=prompt_usage.get(ImageKind.THUMBNAIL, []),
+                            text_mode="lockup",
+                        )
+                    if paired_style is None:
+                        paired_style = await self._image_prompt_library.pick_paired_thumbnail(
+                            background_sort_order=int(background_style.sort_order),
+                            exclude_ids=prompt_usage.get(ImageKind.THUMBNAIL, []),
+                            text_mode="legacy",
+                        )
+                if paired_style is not None:
+                    style = paired_style
+                    lockup_mode = bool(
+                        use_text_preset_for_kind
+                        and str(getattr(style, "text_mode", "") or "").strip().lower()
+                        == "lockup"
+                    )
+                    prompt_usage.setdefault(kind, []).append(style.id)
+                else:
+                    style, lockup_mode = await self._pick_admin_prompt_style_with_lockup_fallback(
+                        kind=kind,
+                        batch=batch,
+                        used_prompt_ids=prompt_usage,
+                        previous_batch_id=previous_batch_id,
+                        text_mode="lockup" if use_text_preset_for_kind else None,
+                        tag=background_collection if kind == ImageKind.BACKGROUND else None,
+                    )
+                if kind == ImageKind.BACKGROUND:
+                    background_style = style
                 ui_prompt = style.prompt_text
                 if kind == ImageKind.THUMBNAIL:
                     if lockup_mode:
@@ -6140,15 +6260,16 @@ class BatchService:
             elif thumbnail_mode == "background_text":
                 from platform_api.services.thumbnail_composite import (
                     enrich_thumbnail_background_text_prompt,
+                    enrich_thumbnail_reference_prompt,
                     enrich_thumbnail_text_lockup,
                 )
 
                 if thumbnail_lockup is not None:
                     prompt = enrich_thumbnail_text_lockup(prompt, thumbnail_lockup)
                 elif style is not None and is_admin_prompt_source(settings, kind):
-                    # Standalone admin-library thumbnail prompt: send it as-is
-                    # with the generated background as the reference image.
-                    pass
+                    # Legacy admin-library thumbnail prompt: force the supplied
+                    # background to remain the exact base image.
+                    prompt = enrich_thumbnail_reference_prompt(prompt)
                 else:
                     prompt = enrich_thumbnail_background_text_prompt(prompt, thumbnail_text)
             elif thumbnail_mode == "composite":

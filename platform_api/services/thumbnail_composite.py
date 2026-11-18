@@ -302,6 +302,30 @@ def enrich_thumbnail_background_text_prompt(prompt: str, text: str) -> str:
     return f"{base}\n\n{instruction}".strip()
 
 
+THUMBNAIL_REFERENCE_INSTRUCTION = (
+    "Use the supplied image as the exact background. Keep its scene, composition, colors, "
+    "lighting, objects, and framing unchanged. Do not redraw, recolor, crop, or move anything.\n\n"
+    "Apply only the typography/text described in the prompt above, exactly as written and "
+    "spelled correctly. Do not add extra words, letters, numbers, logos, watermarks, captions, "
+    "signage, or decorations that were not requested."
+)
+
+
+def enrich_thumbnail_reference_prompt(prompt: str) -> str:
+    """Force a legacy thumbnail prompt to edit the supplied background image.
+
+    Legacy admin thumbnail prompts describe a complete thumbnail design. When
+    used with a generated background, they must not be allowed to replace that
+    background with a different scene.
+    """
+    base = str(prompt or "").strip()
+    if "Use the supplied image as the exact background." in base:
+        return base
+    if not base:
+        return THUMBNAIL_REFERENCE_INSTRUCTION
+    return f"{base}\n\n{THUMBNAIL_REFERENCE_INSTRUCTION}".strip()
+
+
 def enrich_background_prompt(prompt: str) -> str:
     base = str(prompt or "").strip()
     if BACKGROUND_NO_TEXT_INSTRUCTION in base:
