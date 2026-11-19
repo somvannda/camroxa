@@ -2,7 +2,7 @@
 
 > **Integrator worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Integrator branch:** `desktop/electron-v1`
-> **Base commit:** `1bfcaae`
+> **Base commit:** `454e9c8`
 > **Updated:** 2026-11-19 (wave 10)
 
 The project follows the repo rule: **one agent per worktree**. Agents do not share a
