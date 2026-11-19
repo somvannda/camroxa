@@ -46,8 +46,8 @@ Settings and the pipeline service.
 | Shell | Window chrome, sidebar, header, footer, command palette, notifications, background coordinators |
 | Dashboard | KPIs, weekly chart, quotas, recent activity |
 | Profile | Account, membership, channel profiles, activity |
-| Progress | Filters, stats, operational table, live render/merge/reel stages, existing upload flow, manual recovery, downloads |
-| Music | Composer, draft/polish, channel pairs, automation toggles, credits, generate, history, downloads |
+| Progress | Filters, stats, operational table, live render/merge stages, manual upload, manual recovery, live download queue |
+| Music | Composer, draft/polish, channel pairs, automation toggles, credits, generate, history, background downloads |
 | Image | Queue, previews, retry, clear, prompt autosave |
 | Vizzy | Full editor, project I/O, media, manual export, pipeline template authoring, Renders panel |
 | Vizzy content | All built-in presets, spectrum catalogue, particle presets, Butterchurn presets, community/user presets and templates work as-is |
@@ -126,8 +126,8 @@ A 2.0.0 candidate ships only when:
 
 ### 5.1 Current evidence (2026-11-19)
 
-- 14 E2E suites pass, including login/gates, all pages, Vizzy host, export, save/preview/render
-  and the 91-template library.
+- 16 E2E suites pass, including login/gates, all pages, downloads, Vizzy host, export,
+  save/preview/render, templates, library and batch.
 - 249 unit tests pass; `api:check` and `npm audit --omit=dev` pass.
 - All 91 templates import through the real editor (0 failures, 0 skipped) and one exports to a
   validated MP4.
@@ -140,6 +140,8 @@ A 2.0.0 candidate ships only when:
   (1.97 s) through the same offscreen queue.
 - All eight Settings tabs are live and covered by the settings suite (prompt CRUD, pools pager,
   Suno bounds, deterministic save-all).
+- The download coordinator writes exact-byte files to the device root: dedupe, 3-attempt retry,
+  cancel with no `.part`, traversal rejection and completion sync are covered by the downloads E2E.
 
 Still open for release: manual YouTube upload port, installer size and asset clearance, a
 clean-VM gate, accessibility and signing.
