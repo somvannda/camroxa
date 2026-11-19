@@ -138,6 +138,8 @@ A 2.0.0 candidate ships only when:
   the cancelled row.
 - Reel branch verified: a 1080×1920/30 reel template rendered a 1080×1920 H.264/AAC MP4
   (1.97 s) through the same offscreen queue.
+- All eight Settings tabs are live and covered by the settings suite (prompt CRUD, pools pager,
+  Suno bounds, deterministic save-all).
 
 Still open for release: upload flow, installer size and asset clearance, a clean-VM gate,
 accessibility and signing.
