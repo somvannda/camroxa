@@ -8,7 +8,6 @@ import { classNames } from "../../lib/format";
 import { copyText } from "./progress-clipboard";
 import { missingAssetHint, type ManualInspection } from "./manual-assets";
 import {
-  P7_COPY,
   failureStageLabel,
   formatAbsoluteTime,
   localVideoState,
@@ -424,7 +423,7 @@ export function ProgressDetail({
 
       {video.source === "none" ? (
         <p className="mt-3 text-caption text-text-muted">
-          Converter and merge have no local output or API value for this run. {P7_COPY}.
+          Converter and merge have no local output or API value for this run.
         </p>
       ) : null}
 

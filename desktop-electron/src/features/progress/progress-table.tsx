@@ -5,7 +5,7 @@ import { Badge } from "../../components/status";
 import { TBody, TD, TH, THead, TR } from "../../components/table";
 import { classNames } from "../../lib/format";
 import {
-  P7_COPY,
+  PIPELINE_MISSING,
   channelCellText,
   imageCellText,
   localVideoState,
@@ -187,7 +187,7 @@ export function ProgressTable({
                     {video.converter ? (
                       <span className="block truncate">{video.converter}</span>
                     ) : (
-                      <span className="block text-text-muted" title={P7_COPY}>
+                      <span className="block text-text-muted" title={PIPELINE_MISSING}>
                         Not reported
                       </span>
                     )}
@@ -196,7 +196,7 @@ export function ProgressTable({
                     {video.merge ? (
                       <span className="block truncate">{video.merge}</span>
                     ) : (
-                      <span className="block text-text-muted" title={P7_COPY}>
+                      <span className="block text-text-muted" title={PIPELINE_MISSING}>
                         Not reported
                       </span>
                     )}
@@ -241,7 +241,7 @@ export function ProgressTable({
       </div>
 
       {!loading && rows.length > 0 && hasUnreportedVideo ? (
-        <p className="border-t border-border px-4 py-2 text-caption text-text-muted">{P7_COPY}.</p>
+        <p className="border-t border-border px-4 py-2 text-caption text-text-muted">{PIPELINE_MISSING}.</p>
       ) : null}
     </Card>
   );

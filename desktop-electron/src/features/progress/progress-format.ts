@@ -24,7 +24,7 @@ export const STAGE_FILTERS = [
 export type StageFilter = (typeof STAGE_FILTERS)[number]["value"];
 export type ProgressTone = "neutral" | "success" | "warning" | "danger" | "accent";
 
-export const P7_COPY = "Pipeline integration arrives in P7";
+export const PIPELINE_MISSING = "No pipeline stage reported";
 
 const ACTIVE_HIDDEN_STAGES = new Set(["done", "completed"]);
 const CONVERTER_STAGES = new Set(["converter", "export"]);
@@ -261,7 +261,7 @@ export function summaryText(data: ProgressListResponse | null, rows: ProgressRow
   const suffix =
     local > 0
       ? `${local} run${local === 1 ? "" : "s"} report local video output.`
-      : `${P7_COPY}.`;
+      : `${PIPELINE_MISSING}.`;
   return `${base} ${suffix}`;
 }
 
@@ -512,8 +512,8 @@ export function stageTimeline(row: ProgressRow, manualMode: boolean): TimelineSt
     [
       { key: "music", label: "Music", detail: musicCellText(row).primary },
       { key: "image", label: "Image", detail: imageCellText(row, manualMode).primary },
-      { key: "converter", label: "Converter", detail: video.converter ?? P7_COPY },
-      { key: "merge", label: "Merge", detail: video.merge ?? P7_COPY },
+      { key: "converter", label: "Converter", detail: video.converter ?? PIPELINE_MISSING },
+      { key: "merge", label: "Merge", detail: video.merge ?? PIPELINE_MISSING },
       { key: "youtube", label: "YouTube", detail: youtubeCellText(row).primary },
     ] as const
   ).map((step) => {

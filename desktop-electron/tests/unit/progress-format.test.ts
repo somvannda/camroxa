@@ -209,7 +209,7 @@ describe("row presentation", () => {
     expect(steps[0].state).toBe("passed");
     expect(steps[1].state).toBe("current");
     expect(steps[2].state).toBe("unavailable");
-    expect(steps[2].detail).toBe("Pipeline integration arrives in P7");
+    expect(steps[2].detail).toBe("No pipeline stage reported");
   });
 
   it("names the failed stage when the row text allows it", () => {
@@ -232,7 +232,7 @@ describe("row presentation", () => {
   it("builds the summary and meta lines without inventing local output", () => {
     const rows = [row({ stage: "music" })];
     expect(summaryText({ rows, summary: "Ready", updated_at: null }, rows)).toContain(
-      "Pipeline integration arrives in P7",
+      "No pipeline stage reported",
     );
     const withLocal = [row({ stage: "merge", meta: { long_ready: true } })];
     expect(summaryText({ rows: withLocal, summary: "Ready", updated_at: null }, withLocal)).toContain(
