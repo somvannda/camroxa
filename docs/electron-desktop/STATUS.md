@@ -3,7 +3,7 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1 auth complete; P2–P6 pages merged; P7 editor, library, templates, render, Renders and batch orchestration merged; upload and P8–P9 remain
+> **Phase:** P1–P8 complete (pages, Vizzy editor, templates, export, render, batch, settings tabs); music download coordinator and packaging remain
 
 ---
 
@@ -37,7 +37,7 @@
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
-| **P8 settings** | Descriptions, Structures, Moods, Pools and Suno tabs are **running** in `desktop/settings-p8` |
+| **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **P4 downloads** | Main-process music download coordinator and live Progress queue are **running** in `desktop/downloads`; the shell currently only displays pending items |
 
 ### Verification
@@ -54,9 +54,8 @@ npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
 ```
 
-P8 branch verification (`desktop/settings-p8`, not merged): `npm ci`, `npm run typecheck`, `npm run lint`,
-`npm test` (296/296), `npm run build` and `node tests/e2e/settings.mjs` all pass. The full
-`test:e2e` chain also needs `vizzy-dist`, which this branch does not build.
+P8 was merged after the settings suite passed; the branch’s only extra requirement was the
+`vizzy-dist` bundle used by the full chain.
 
 E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates; settings; vizzy shell/editor, library, save dialog, templates, rendered preview; batch progress/complete).
 
@@ -115,17 +114,17 @@ This is a backend contract decision, not a renderer bug.
 - Templates merge `6881f13` (`e707508` … `581779f` on `desktop/templates`), `ab09985` strip fit
 - Batch merge `21b4fe3` (`cdad89e` + `258330f` on `desktop/batch`) — offscreen render host,
   orchestrator, pipeline IPC, Music trigger, Progress table, `pipeline-batch` E2E
+- P8 merge `4c7fb96` (`f2bc591` + `56174ae` on `desktop/settings-p8`) — five Settings tabs
 
 ## Remaining
 
 - P1: startup/bootstrap polish only.
-- P7: editor, 91-template library, save-as-template, single-template render, Renders and batch
-  orchestration (offscreen render, merge, reel branch, cancel/retry, Music trigger, Progress
-  table) are merged. **Upload is the remaining P7 gap**: Auto-Upload stays disabled exactly as
-  1.7.1 and no publish IPC exists for the pipeline.
-- P8 settings catalogs are implemented on `desktop/settings-p8`: five new tabs, prompt CRUD,
-  read-only pools and Suno defaults; not merged to `desktop/electron-v1` yet.
-- P8–P9 remain otherwise.
+- P7: editor, library, templates, render, Renders and batch orchestration are merged. Upload is
+  intentionally the existing manual flow; Auto-Upload stays disabled exactly as 1.7.1.
+- P8: all eight Settings tabs are merged.
+- P4 downloads: coordinator running in `desktop/downloads`; it is the last functional gap before
+  packaging.
+- P9: installer/signing/clean-VM gate and the 91-template bundle-size decision.
 
 ### Settings follow-ups
 
@@ -155,7 +154,7 @@ This is a backend contract decision, not a renderer bug.
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; “Render videos” queues the profile's saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
-| Settings | **Merged** — Profiles (create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics), deep link; **P8 on `desktop/settings-p8`** — Descriptions, Structures, Moods (defaults + user prompt CRUD), Pools (read-only), Suno (bounded defaults) |
+| Settings | **Merged** — all eight tabs: Profiles, Publication, Preferences, Descriptions, Structures, Moods, Pools, Suno; template pickers and deep link |
 | Vizzy | **Merged** — real Rea editor in a `WebContentsView`, `camxora-vizzy://`, native open/save, crash recovery, shell strip, templates, native export, renders, offscreen batch rendering |
 
 Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /
