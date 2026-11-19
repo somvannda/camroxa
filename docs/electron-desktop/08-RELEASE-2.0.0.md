@@ -52,7 +52,7 @@ Settings and the pipeline service.
 | Vizzy | Full editor, project I/O, media, manual export, pipeline template authoring, Renders panel |
 | Vizzy content | All built-in presets, spectrum catalogue, particle presets, Butterchurn presets, community/user presets and templates work as-is |
 | Vizzy templates | All 91 templates are available to users, open/preview/save/reopen/export, and can be saved as video templates; staged in a reproducible library and currently bundled (installer-size decision pending) |
-| Pipeline | Single-template render is live; headless/batch render, long/reel merge, retry/resume are in progress; YouTube upload stays the existing manual flow |
+| Pipeline | Single-template render and offscreen batch render/merge are live; reel branch, retry and Progress are wired. YouTube upload stays the existing manual flow |
 | Marketplace | Catalog, filters, search, pagination, install/reinstall, pipeline template kind/compatibility |
 | Settings | Profiles, publication, preferences, descriptions, structures, moods, pools, Suno, template pickers |
 | Packaging | Signed Windows installer, auto-update, uninstall |
@@ -133,9 +133,12 @@ A 2.0.0 candidate ships only when:
   validated MP4.
 - A real library template (`candy-wave`) completed save → render at 640×360/60 with a run track.
 - Old Camxora templates are refused; Auto-Upload remains disabled and is E2E-pinned.
+- Offscreen batch rendering runs without `/vizzy` open: two songs rendered in 4.8–5.9 s at
+  320×180/2 s, merged to a 4.0 s/120-frame MP4; cancel left no partial file and retry reran only
+  the cancelled row.
 
-Still open for release: batch/merge/reel wiring, headless/batch evidence, installer size and
-asset clearance, a clean-VM gate, accessibility and signing.
+Still open for release: reel branch evidence, upload flow, installer size and asset clearance,
+a clean-VM gate, accessibility and signing.
 
 ### 5.2 Gate checklist
 

@@ -2,8 +2,8 @@
 
 > **Integrator worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Integrator branch:** `desktop/electron-v1`
-> **Base commit:** `ab09985`
-> **Updated:** 2026-11-19 (wave 6)
+> **Base commit:** `21b4fe3`
+> **Updated:** 2026-11-19 (wave 7)
 
 The project follows the repo rule: **one agent per worktree**. Agents do not share a
 directory and do not push. The integrator reviews and merges each branch in order.
@@ -15,7 +15,7 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | Worktree | Branch | Agent scope | Status |
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
-| `Camxora Desktop Batch` | `desktop/batch` | Offscreen render host, queue wiring, Progress/Music triggers, merge/reel | Running |
+| ~~`Camxora Desktop Batch`~~ | ~~`desktop/batch`~~ | Offscreen render host, queue wiring, Progress/Music triggers, merge | **Merged** |
 | ~~`Camxora Desktop Templates`~~ | ~~`desktop/templates`~~ | Save-as-template, template rail, single-template render | **Merged** |
 | ~~`Camxora Desktop Pipeline`~~ | ~~`desktop/pipeline`~~ | Native export + Renders | **Merged** |
 | ~~`Camxora Desktop Vizzy`~~ | ~~`desktop/vizzy`~~ | P7 real editor host, native project I/O, save/open bridge | **Merged** |
@@ -25,8 +25,8 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | ~~`Camxora Desktop Image Marketplace`~~ | ~~`desktop/image-marketplace`~~ | P5 Image + P6 Marketplace | **Merged** |
 
 Wave 1 (Auth, Account, Vizzy Host), wave 2 (Progress, Music, Image/Marketplace), Settings,
-the Vizzy editor host, export/Renders and save-as-template are merged and removed. There is no
-active page worktree; the next workstream (batch orchestration) starts from `ab09985`.
+the Vizzy editor host, export/Renders, save-as-template and batch orchestration are merged and
+removed. There is no active page worktree; new work starts from `21b4fe3`.
 
 Create future worktrees from the latest integrator commit, not from an older page branch.
 

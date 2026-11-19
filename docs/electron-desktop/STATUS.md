@@ -33,7 +33,6 @@
 | **P7 template pickers** | Publication selects saved long/reel templates and persists `video_template_id`/`reel_template_id`; shell-only list/read/delete IPC |
 | **P7 export + renders** | Native export through the editor's exporter, chunked to `renders/`, progress/cancel, inline Renders panel with confirmed delete; `vizzy-export` E2E |
 | **P7 save + render templates** | “Save template” dialog with detected/overridable bindings and PNG thumbnail; saved-template rail with preview/render/delete; a saved template renders a real 1080p MP4 with the run audio; `candy-wave` also completed save → render at 640×360/60 |
-| **P7 batch** | Offscreen render host and Music/Progress wiring are **running** in `desktop/batch` |
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open) |
@@ -106,8 +105,8 @@ This is a backend contract decision, not a renderer bug.
 - `f13aabc` pipeline queue, `1a427ae` sequential runner
 - `a5a0afa` real FFmpeg merge test, `a090213` library export matrix
 - Templates merge `6881f13` (`e707508` … `581779f` on `desktop/templates`), `ab09985` strip fit
-- Batch orchestration on `desktop/batch` — offscreen render host, orchestrator, pipeline IPC,
-  Music trigger, Progress table, `pipeline-batch` E2E
+- Batch merge `21b4fe3` (`cdad89e` + `258330f` on `desktop/batch`) — offscreen render host,
+  orchestrator, pipeline IPC, Music trigger, Progress table, `pipeline-batch` E2E
 
 ## Remaining
 
