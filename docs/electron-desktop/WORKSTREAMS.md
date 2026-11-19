@@ -2,8 +2,8 @@
 
 > **Integrator worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Integrator branch:** `desktop/electron-v1`
-> **Base commit:** `2b0cc7b`
-> **Updated:** 2026-11-19 (wave 5)
+> **Base commit:** `ab09985`
+> **Updated:** 2026-11-19 (wave 6)
 
 The project follows the repo rule: **one agent per worktree**. Agents do not share a
 directory and do not push. The integrator reviews and merges each branch in order.
@@ -15,7 +15,7 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | Worktree | Branch | Agent scope | Status |
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
-| `Camxora Desktop Templates` | `desktop/templates` | P7 save-as-template, template panel, single-template render | Running |
+| ~~`Camxora Desktop Templates`~~ | ~~`desktop/templates`~~ | Save-as-template, template rail, single-template render | **Merged** |
 | ~~`Camxora Desktop Pipeline`~~ | ~~`desktop/pipeline`~~ | Native export + Renders | **Merged** |
 | ~~`Camxora Desktop Vizzy`~~ | ~~`desktop/vizzy`~~ | P7 real editor host, native project I/O, save/open bridge | **Merged** |
 | ~~`Camxora Desktop Settings`~~ | ~~`desktop/settings`~~ | P2 Settings core: Profiles, Publication, Preferences | **Merged** |
@@ -23,9 +23,9 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | ~~`Camxora Desktop Music`~~ | ~~`desktop/music`~~ | P4 Music page | **Merged** |
 | ~~`Camxora Desktop Image Marketplace`~~ | ~~`desktop/image-marketplace`~~ | P5 Image + P6 Marketplace | **Merged** |
 
-Wave 1 (Auth, Account, Vizzy Host), wave 2 (Progress, Music, Image/Marketplace), Settings
-and the Vizzy editor host are merged and removed. There is no active page worktree; the next
-workstream (pipeline/templates) starts from `0bd869d`.
+Wave 1 (Auth, Account, Vizzy Host), wave 2 (Progress, Music, Image/Marketplace), Settings,
+the Vizzy editor host, export/Renders and save-as-template are merged and removed. There is no
+active page worktree; the next workstream (batch orchestration) starts from `ab09985`.
 
 Create future worktrees from the latest integrator commit, not from an older page branch.
 

@@ -3,7 +3,7 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1 auth complete; P2–P6 pages merged; P7 editor, library, export and renders merged; save-as-template running
+> **Phase:** P1 auth complete; P2–P6 pages merged; P7 editor, library, templates, render and Renders merged; batch wiring next
 
 ---
 
@@ -32,6 +32,7 @@
 | **P7 pipeline contract** | Validated `pipeline.json`, conservative binding detection, run-input application, atomic video-template store with PNG thumbnails, render-plan builder |
 | **P7 template pickers** | Publication selects saved long/reel templates and persists `video_template_id`/`reel_template_id`; shell-only list/read/delete IPC |
 | **P7 export + renders** | Native export through the editor's exporter, chunked to `renders/`, progress/cancel, inline Renders panel with confirmed delete; `vizzy-export` E2E |
+| **P7 save + render templates** | “Save template” dialog with detected/overridable bindings and PNG thumbnail; saved-template rail with preview/render/delete; a saved template renders a real 1080p MP4 with the run audio |
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 
@@ -40,15 +41,15 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               239/239 PASS
+npm test               249/249 PASS
 npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
-npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy, vizzy-export)
+npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy, vizzy-export, vizzy-templates, vizzy-library)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
 ```
 
-E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates; settings; vizzy shell/editor).
+E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates; settings; vizzy shell/editor, library, save dialog, templates, rendered preview).
 
 The Vizzy editor bundle is not committed. Build it once with `npm --prefix vizzy ci` then
 `npm run vizzy:build` (or `npm run vizzy`); `vizzy-dist/` is required for `test:e2e` and
@@ -102,13 +103,14 @@ This is a backend contract decision, not a renderer bug.
 - `8009d68` 91-template import matrix, `8af3ef7` FFmpeg merge groundwork
 - `f13aabc` pipeline queue, `1a427ae` sequential runner
 - `a5a0afa` real FFmpeg merge test, `a090213` library export matrix
+- Templates merge `6881f13` (`e707508` … `581779f` on `desktop/templates`), `ab09985` strip fit
 
 ## Remaining
 
 - P1: startup/bootstrap polish only.
-- P7: editor host, 91-template library, export and Renders are merged. “Save as video template”
-  and the single-template render are **running** in `desktop/templates`; batch wiring and
-  merge/reel orchestration follow.
+- P7: editor, 91-template library, save-as-template, single-template render and Renders are
+  merged. The next milestone wires the durable queue into Music Auto-Video/Auto-Merge/Auto-Reel
+  and Progress; batch/merge/reel UI and upload remain.
 - P8–P9 remain.
 
 ### Settings follow-ups
