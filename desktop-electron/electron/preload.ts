@@ -7,6 +7,7 @@ function invoke<T>(channel: string, payload?: unknown): Promise<T> {
 const bridge = {
   app: {
     info: () => invoke("app:info"),
+    openExternal: (url: string) => invoke("app:open-external", { url }),
   },
   window: {
     minimize: () => invoke("window:minimize"),
@@ -16,6 +17,9 @@ const bridge = {
   auth: {
     login: (email: string, password: string, remember = true) =>
       invoke("auth:login", { email, password, remember }),
+    google: (remember = true) => invoke("auth:google", { remember }),
+    cancelGoogle: () => invoke("auth:google-cancel"),
+    bootstrap: () => invoke("auth:bootstrap"),
     restore: () => invoke("auth:restore"),
     logout: () => invoke("auth:logout"),
     savedAccounts: () => invoke("auth:saved-accounts"),
