@@ -39,9 +39,16 @@ const jobs = new Map<string, ChildProcessWithoutNullStreams>();
 
 function bundledTool(name: string): string | null {
   const file = process.platform === "win32" ? `${name}.exe` : name;
+  let appPath = "";
+  try {
+    appPath = app.getAppPath();
+  } catch {
+    // Unit/integration tests import this module without an Electron app.
+    appPath = "";
+  }
   const candidates = [
     path.join(process.resourcesPath ?? "", "ffmpeg", file),
-    path.join(app.getAppPath(), "resources", "ffmpeg", file),
+    ...(appPath ? [path.join(appPath, "resources", "ffmpeg", file)] : []),
     path.join(process.cwd(), "resources", "ffmpeg", file),
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
