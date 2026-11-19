@@ -34,10 +34,18 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: desktop-electron/package-lock.json
+          cache-dependency-path: |
+            desktop-electron/package-lock.json
+            desktop-electron/vizzy/package-lock.json
 
       - name: Install
         run: npm ci
+
+      - name: Install Vizzy editor dependencies
+        run: npm --prefix vizzy ci
+
+      - name: Build Vizzy editor
+        run: npm run vizzy:build
 
       - name: API schema drift
         run: npm run api:check

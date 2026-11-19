@@ -3,7 +3,7 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1 auth complete (update gate shipped); P2 Dashboard/Profile/Settings merged; P3–P6 pages merged
+> **Phase:** P1 auth complete; P2–P6 pages merged; P7 Vizzy editor host merged (pipeline next)
 
 ---
 
@@ -27,21 +27,26 @@
 | **Shell guard** | Unsaved settings block sidebar navigation with a Stay / Discard-and-leave confirm |
 | **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
+| **P7 Vizzy host** | Vendored Rea editor served from `camxora-vizzy://`, sandboxed `WebContentsView`, native open/save, crash recovery, shell strip; see [`vizzy/INTEGRATION-STATUS.md`](vizzy/INTEGRATION-STATUS.md) |
 
 ### Verification
 
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               151/151 PASS
+npm test               175/175 PASS
 npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
-npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update)
+npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
 ```
 
-E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates).
+E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates; settings; vizzy shell/editor).
+
+The Vizzy editor bundle is not committed. Build it once with `npm --prefix vizzy ci` then
+`npm run vizzy:build` (or `npm run vizzy`); `vizzy-dist/` is required for `test:e2e` and
+packaging.
 
 ## Brand alignment
 
@@ -81,11 +86,14 @@ This is a backend contract decision, not a renderer bug.
 - `1e70f6a` Settings brand sweep + settings E2E in the chain
 - `9f8aac7` shell unsaved-navigation guard
 - `b80c649` device-local FFmpeg/Suno paths
+- `652e6aa` template library audit
+- Vizzy merge `0bd869d` (`df46fe8` … `f999121` on `desktop/vizzy`)
 
 ## Remaining
 
-- P1: startup/bootstrap polish only; the mandatory update gate is complete.
-- P5/P6/P7: Vizzy integration (real editor host, project I/O, pipeline) — **running** in `desktop/vizzy`.
+- P1: startup/bootstrap polish only.
+- P7: Vizzy editor host is merged. Pipeline automation (saved video templates, binding,
+  headless render, merge/reel) and the 91-template pack remain.
 - P8–P9 remain.
 
 ### Settings follow-ups
@@ -105,7 +113,7 @@ This is a backend contract decision, not a renderer bug.
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
 | Settings | **Merged** — Profiles (create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics), deep link |
-| Vizzy | **Running** — real Rea editor host, native project open/save; host spike merged |
+| Vizzy | **Merged** — real Rea editor in a `WebContentsView`, `camxora-vizzy://`, native open/save, crash recovery, shell strip; pipeline/templates/export remain |
 
 Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /
 #0f1322 / #a855f7 palette, 28 px page titles, gradient primary CTA. Pages are lazy-loaded; the
