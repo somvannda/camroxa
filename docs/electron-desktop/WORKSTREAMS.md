@@ -2,8 +2,8 @@
 
 > **Integrator worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Integrator branch:** `desktop/electron-v1`
-> **Base commit:** `0bd869d`
-> **Updated:** 2026-11-19 (wave 4)
+> **Base commit:** `2b0cc7b`
+> **Updated:** 2026-11-19 (wave 5)
 
 The project follows the repo rule: **one agent per worktree**. Agents do not share a
 directory and do not push. The integrator reviews and merges each branch in order.
@@ -15,7 +15,8 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | Worktree | Branch | Agent scope | Status |
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
-| `Camxora Desktop Pipeline` | `desktop/pipeline` | P7 native export + Renders panel | Running |
+| `Camxora Desktop Templates` | `desktop/templates` | P7 save-as-template, template panel, single-template render | Running |
+| ~~`Camxora Desktop Pipeline`~~ | ~~`desktop/pipeline`~~ | Native export + Renders | **Merged** |
 | ~~`Camxora Desktop Vizzy`~~ | ~~`desktop/vizzy`~~ | P7 real editor host, native project I/O, save/open bridge | **Merged** |
 | ~~`Camxora Desktop Settings`~~ | ~~`desktop/settings`~~ | P2 Settings core: Profiles, Publication, Preferences | **Merged** |
 | ~~`Camxora Desktop Progress`~~ | ~~`desktop/progress`~~ | P3 Progress page | **Merged** |

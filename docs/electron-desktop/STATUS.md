@@ -3,7 +3,7 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1 auth complete; P2–P6 pages merged; P7 Vizzy editor host merged (pipeline next)
+> **Phase:** P1 auth complete; P2–P6 pages merged; P7 editor, library, export and renders merged; save-as-template running
 
 ---
 
@@ -31,15 +31,16 @@
 | **P7 template library** | All 91 templates staged with a manifest (`vizzy-library/`, 263.4 MB), safe slug-only reader, thumbnails allowed through `camxora-media://`; the editor's Creations browser lists and previews all 91 |
 | **P7 pipeline contract** | Validated `pipeline.json`, conservative binding detection, run-input application, atomic video-template store with PNG thumbnails, render-plan builder |
 | **P7 template pickers** | Publication selects saved long/reel templates and persists `video_template_id`/`reel_template_id`; shell-only list/read/delete IPC |
+| **P7 export + renders** | Native export through the editor's exporter, chunked to `renders/`, progress/cancel, inline Renders panel with confirmed delete; `vizzy-export` E2E |
 
 ### Verification
 
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               204/204 PASS
+npm test               223/223 PASS
 npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
-npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy)
+npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy, vizzy-export)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
@@ -95,12 +96,13 @@ This is a backend contract decision, not a renderer bug.
 - `0941d40` pipeline contract, `943f027` video-template store, `c32e438` run bindings
 - `653a34c` creations-layout staging, `ef60e25` library served to the editor (91 browsable/previewable)
 - `2cd7e14` per-profile template pickers, `5d907cd` pipeline render plan
+- Export merge `2b0cc7b` (`208da89` + `1291682` on `desktop/pipeline`)
 
 ## Remaining
 
 - P1: startup/bootstrap polish only.
-- P7: editor host merged. Native export + Renders is **running** in `desktop/pipeline`; the
-  library UI, template pickers, batch render and merge/reel follow.
+- P7: editor host, 91-template library, export and Renders are merged. “Save as video template”
+  and the batch pipeline (render/merge/reel) are the next milestone.
 - P8–P9 remain.
 
 ### Settings follow-ups

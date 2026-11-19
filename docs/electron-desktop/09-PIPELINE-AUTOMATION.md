@@ -32,6 +32,26 @@ a video template.
 video templates are not migrated in 2.0.0**; the pipeline uses Vizzy-native pipeline templates
 only. See §9.
 
+### 1.1 Implementation status (2026-11-19)
+
+| Area | State |
+|---|---|
+| Editor host | Merged — real Rea editor in a sandboxed `WebContentsView` |
+| 91-template library | Merged — all 91 browsable and previewable in the editor's Creations browser |
+| `pipeline.json` + template store | Merged — validated schema, atomic store, thumbnails |
+| Binding detection + run application | Merged — conservative auto-detect, explicit overrides, loud missing-node errors |
+| Native export | Merged — the editor's own exporter streams chunks to `renders/`; progress/cancel; ffprobe validation |
+| Renders panel | Merged — inline playback, reveal, confirmed delete |
+| Save as video template | In progress (template milestone) |
+| Single-template render | In progress (template milestone) |
+| Batch render / merge / reel / upload | Not built |
+
+**Renderer note:** the current implementation renders through the **attached editor's own
+exporter** (`runExport`), so preview parity is structural: same project, same renderer, same
+analyser settings. §5.1 describes a separate offscreen worker as the scale-out target; 2.0.0
+does not need it for correctness, and adding it must keep the same project/analyser path.
+Native FFmpeg remains the merge/reel/validation tool.
+
 ---
 
 ## 2. Pipeline flow
@@ -178,6 +198,11 @@ templates/<template-id>/
 
 - An **offscreen Electron render host** (`BrowserWindow` with `show: false` or
   `WebContentsView`) loads the Vizzy bundle and the project.
+
+> **Current 2.0.0 implementation:** the attached editor renders and encodes in its own
+> `runExport` path and streams chunks to the main process. This is the same renderer and
+> analyser as the preview. The offscreen host below remains the throughput target for batch
+> rendering, not a correctness requirement.
 - WebGL2/Three.js is the renderer; `gl.readPixels` (or `capturePage`) returns RGBA frames.
 - Audio analysis uses the existing Vizzy analyser (WASM/JS fallback) with **project time**,
   not wall clock.
