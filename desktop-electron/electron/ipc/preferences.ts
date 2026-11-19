@@ -5,8 +5,8 @@ import { ok } from "../shared/types";
 import { toError } from "./errors";
 
 const devicePreferencesSchema = z.object({
-  ffmpegPath: z.string().optional(),
-  sunoOutputDir: z.string().optional(),
+  ffmpegPath: z.string().max(4096).optional(),
+  sunoOutputDir: z.string().max(4096).optional(),
 });
 
 export function registerPreferencesIpc(): void {
