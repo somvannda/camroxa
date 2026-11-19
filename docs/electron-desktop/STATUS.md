@@ -28,7 +28,7 @@
 | **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 | **P7 Vizzy host** | Vendored Rea editor served from `camxora-vizzy://`, sandboxed `WebContentsView`, native open/save, crash recovery, shell strip; see [`vizzy/INTEGRATION-STATUS.md`](vizzy/INTEGRATION-STATUS.md) |
-| **P7 template library** | All 91 templates staged with a manifest (`vizzy-library/`, 263.9 MB), safe slug-only reader, thumbnails allowed through `camxora-media://` |
+| **P7 template library** | All 91 templates staged with a manifest (`vizzy-library/`, 263.4 MB), safe slug-only reader, thumbnails allowed through `camxora-media://`; the editor's Creations browser lists and previews all 91 |
 | **P7 pipeline contract** | Validated `pipeline.json`, conservative binding detection, run-input application, atomic video-template store with PNG thumbnails |
 
 ### Verification
@@ -36,7 +36,7 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               196/196 PASS
+npm test               199/199 PASS
 npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
 npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy)
 npm run api:check      PASS
@@ -92,6 +92,7 @@ This is a backend contract decision, not a renderer bug.
 - Vizzy merge `0bd869d` (`df46fe8` … `f999121` on `desktop/vizzy`)
 - `c80dabc` …, `3c3f033` 91-template staging + reader
 - `0941d40` pipeline contract, `943f027` video-template store, `c32e438` run bindings
+- `653a34c` creations-layout staging, `ef60e25` library served to the editor (91 browsable/previewable)
 
 ## Remaining
 

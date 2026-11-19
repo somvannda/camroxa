@@ -93,8 +93,9 @@ npm run vizzy:library:check    # manifest + file presence gate
   The user can load their own track in the editor, and the pipeline binds the run audio.
 - `electron-builder.yml` ships the folder as `extraResources/vizzy-library`; the app reads it
   from `process.resourcesPath` (packaged) or `desktop-electron/vizzy-library` (dev).
-- The `camxora-vizzy://` handler must map `/creations/*` to the staged library (next milestone);
-  then the editor's built-in Creations browser lists all 91 with thumbnails.
+- The `camxora-vizzy://` handler maps `/creations/*` to the staged library; the editor's
+  built-in Creations browser lists all 91 with thumbnails (verified: manifest 200, thumbnail
+  200, and a full template load).
 - The release build requires the staged library; `package:win` runs the check first.
 
 | Option | Behaviour | Trade-off |
