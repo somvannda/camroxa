@@ -29,14 +29,15 @@
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 | **P7 Vizzy host** | Vendored Rea editor served from `camxora-vizzy://`, sandboxed `WebContentsView`, native open/save, crash recovery, shell strip; see [`vizzy/INTEGRATION-STATUS.md`](vizzy/INTEGRATION-STATUS.md) |
 | **P7 template library** | All 91 templates staged with a manifest (`vizzy-library/`, 263.4 MB), safe slug-only reader, thumbnails allowed through `camxora-media://`; the editor's Creations browser lists and previews all 91 |
-| **P7 pipeline contract** | Validated `pipeline.json`, conservative binding detection, run-input application, atomic video-template store with PNG thumbnails |
+| **P7 pipeline contract** | Validated `pipeline.json`, conservative binding detection, run-input application, atomic video-template store with PNG thumbnails, render-plan builder |
+| **P7 template pickers** | Publication selects saved long/reel templates and persists `video_template_id`/`reel_template_id`; shell-only list/read/delete IPC |
 
 ### Verification
 
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               199/199 PASS
+npm test               204/204 PASS
 npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
 npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy)
 npm run api:check      PASS
@@ -93,6 +94,7 @@ This is a backend contract decision, not a renderer bug.
 - `c80dabc` …, `3c3f033` 91-template staging + reader
 - `0941d40` pipeline contract, `943f027` video-template store, `c32e438` run bindings
 - `653a34c` creations-layout staging, `ef60e25` library served to the editor (91 browsable/previewable)
+- `2cd7e14` per-profile template pickers, `5d907cd` pipeline render plan
 
 ## Remaining
 
@@ -105,7 +107,8 @@ This is a backend contract decision, not a renderer bug.
 
 - Diagnostics prepare a local reference; upload is not enabled.
 - No IPC yet to measure/clear the analysis cache.
-- `PUT /profiles/{id}` treats `null` as “leave unchanged”, so logo/cover cannot be removed.
+- `PUT /profiles/{id}` treats `null` as “leave unchanged”, so logo/cover and template ids
+  cannot be cleared; replacing a template works.
 
 ## Merged pages
 
