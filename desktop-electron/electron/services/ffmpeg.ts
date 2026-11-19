@@ -237,8 +237,12 @@ export function cancelJob(jobId: string): boolean {
   return true;
 }
 
-export function checkFfmpeg(): Promise<boolean> {
-  const tool = resolveTool("ffmpeg");
+/** Resolve the effective ffmpeg binary (env → device setting → bundled → PATH). */
+export function ffmpegExecutable(): string {
+  return resolveTool("ffmpeg");
+}
+
+export function checkFfmpeg(): Promise<boolean> {  const tool = resolveTool("ffmpeg");
   if (path.isAbsolute(tool) && !fs.existsSync(tool)) return Promise.resolve(false);
   return new Promise((resolve) => {
     const child = spawn(tool, ["-version"], { windowsHide: true });
