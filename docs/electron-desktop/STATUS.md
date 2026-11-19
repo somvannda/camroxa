@@ -76,14 +76,19 @@ This is a backend contract decision, not a renderer bug.
 - P2: Settings core (profiles, publication, preferences) — next workstream.
 - P3–P6, P7 integration and P8–P9 remain.
 
-## Active wave 2
+## Merged pages
 
-| Worktree | Branch | Scope |
-|---|---|---|
-| `Camxora Desktop Settings` | `desktop/settings` | P2 Settings core: Profiles, Publication, Preferences |
-| `Camxora Desktop Progress` | `desktop/progress` | P3 Progress |
-| `Camxora Desktop Music` | `desktop/music` | P4 Music |
-| `Camxora Desktop Image Marketplace` | `desktop/image-marketplace` | P5 Image + P6 Marketplace |
+| Page | Status |
+|---|---|
+| Dashboard | Merged, 47-test baseline, fixture E2E |
+| Profile | Merged, fixture E2E |
+| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, downloads, polling, 200-row E2E |
+| Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history |
+| Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
+| Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
+| Settings | **Running** — Profiles, Publication, Preferences |
+| Vizzy | Host spike merged; full port remains P7 |
 
-Wave 2 branches from `fa82fda`. Wave 1 is merged and removed. Merge order: Settings → Progress
-→ Music → Image/Marketplace.
+Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /
+#0f1322 / #a855f7 palette, 28 px page titles, gradient primary CTA. Pages are lazy-loaded; the
+shell chunk is ~328 kB (102 kB gzip).

@@ -16,14 +16,13 @@ directory and do not push. The integrator reviews and merges each branch in orde
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
 | `Camxora Desktop Settings` | `desktop/settings` | P2 Settings core: Profiles, Publication, Preferences | Running |
-| `Camxora Desktop Progress` | `desktop/progress` | P3 Progress page | Running |
-| `Camxora Desktop Music` | `desktop/music` | P4 Music page | Running |
-| `Camxora Desktop Image Marketplace` | `desktop/image-marketplace` | P5 Image + P6 Marketplace | Running |
+| ~~`Camxora Desktop Progress`~~ | ~~`desktop/progress`~~ | P3 Progress page | **Merged** |
+| ~~`Camxora Desktop Music`~~ | ~~`desktop/music`~~ | P4 Music page | **Merged** |
+| ~~`Camxora Desktop Image Marketplace`~~ | ~~`desktop/image-marketplace`~~ | P5 Image + P6 Marketplace | **Merged** |
 
-Wave 1 (Auth, Account, Vizzy Host) is merged and removed. Wave 2 branches from `fa82fda`.
-
-**Merge order:** Settings → Progress → Music → Image/Marketplace. Settings lands the profile
-and settings contracts first; the other pages can use them.
+Wave 1 (Auth, Account, Vizzy Host) and wave 2 (Progress, Music, Image/Marketplace) are merged
+and removed. Settings remains, then the next wave starts from the latest
+`desktop/electron-v1` commit.
 
 Create future worktrees from the latest integrator commit, not from an older page branch.
 
