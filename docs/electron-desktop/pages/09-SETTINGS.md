@@ -196,6 +196,13 @@ These three tabs share one component with a different `kind`.
 | ST-92 | Empty | "No user prompts yet." + Create | P0 |
 | ST-93 | Error | Inline error; the editor keeps the typed value | P0 |
 
+**Status (P8, `desktop/settings-p8`):**
+
+- [x] ST-82–ST-93 implemented for Descriptions, Structures and Moods (`prompt-catalog-tab.tsx`)
+- [x] Workspace defaults read/patch `defaultDescriptionId`, `defaultStructureId`, `defaultMoodId` and apply on Save all
+- [x] User CRUD against `/prompts/me/{kind}`; admin entries are labelled read-only
+- [x] Covered by `tests/unit/settings-prompts.test.ts` and `tests/e2e/settings.mjs`
+
 ---
 
 ## 7. Pools tab
@@ -210,6 +217,13 @@ These three tabs share one component with a different `kind`.
 | ST-99 | Error | "Pool counts are unavailable right now." | P0 |
 | ST-100 | Refresh | Manual refresh of counts/table | P1 |
 
+**Status (P8, `desktop/settings-p8`):**
+
+- [x] ST-94–ST-100 implemented in `pools-tab.tsx`
+- [x] Page size 50 with `Previous`/`Next`, range + page labels and bounds disabled
+- [x] Read-only: no form controls; the tab explains that editing is in the Admin Portal
+- [x] The stats endpoint has no per-user ownership counts, so the summary says “Account-wide”
+
 ---
 
 ## 8. Suno tab
@@ -223,6 +237,13 @@ These three tabs share one component with a different `kind`.
 | ST-105 | Retry count | Bounded | P0 |
 | ST-106 | Validation | Invalid values block save with a field error | P0 |
 | ST-107 | Supported note | Explains only supported defaults are shown | P0 |
+
+**Status (P8, `desktop/settings-p8`):**
+
+- [x] ST-101–ST-107 implemented in `suno-tab.tsx`
+- [x] Bounds: timeout 1000–600000 ms, retries 0–20, merge group 0–20; out-of-range values block the save
+- [x] Patches only changed `suno*` keys and leaves unknown settings keys untouched
+- [x] An unsupported stored version is shown as “not supported” and must be changed before saving
 
 ---
 
@@ -280,10 +301,11 @@ These three tabs share one component with a different `kind`.
 ## 12. Definition of Done
 
 - [ ] ST-01 … ST-120 implemented; all `P0` verified against sandbox.
+- [x] ST-82 … ST-107 (Descriptions, Structures, Moods, Pools, Suno) implemented and verified with the fixture API.
+- [x] All eight tabs have loading/error/empty/dirty states.
 - [ ] Video/Reel template pickers only offer compatible pipeline templates.
-- [ ] All eight tabs have loading/error/empty/dirty states.
 - [ ] Profile CRUD and publication round-trip verified.
-- [ ] Prompt CRUD round-trip verified.
+- [x] Prompt CRUD round-trip verified (Descriptions/Structures/Moods, fixture API).
 - [ ] YouTube OAuth verified end-to-end.
 - [ ] Diagnostics redaction verified.
 - [ ] ST-T1 … ST-T15 pass.
