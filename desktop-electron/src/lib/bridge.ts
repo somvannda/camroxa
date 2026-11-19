@@ -10,6 +10,8 @@ import type {
   PickFileRequest,
   SavedAccount,
   TemplateChangedEvent,
+  UpdateCheckResult,
+  UpdateOffer,
 } from "../../electron/shared/types";
 
 export interface CamxoraBridge {
@@ -71,6 +73,10 @@ export interface CamxoraBridge {
   };
   diagnostics: {
     send(note?: string): Promise<IpcResult<{ uploadId: string }>>;
+  };
+  updates: {
+    check(): Promise<IpcResult<UpdateCheckResult>>;
+    open(offer: UpdateOffer): Promise<IpcResult<boolean>>;
   };
 }
 

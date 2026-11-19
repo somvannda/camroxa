@@ -21,6 +21,7 @@
 | CI | Windows workflow: typecheck/lint/test/build/E2E |
 | Packaging | unpacked Windows build launched |
 | **P1 auth** | Email/password, remember-me, Google OAuth loopback, paid gate, email-confirmation gate, onboarding gate, sign-out, dev/E2E bypass |
+| **P1 updates** | HTTPS release manifest, mandatory blocking gate, optional update card, download hand-off, unit + E2E coverage |
 | **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 
@@ -72,8 +73,8 @@ This is a backend contract decision, not a renderer bug.
 
 ## Remaining
 
-- P1: mandatory update gate + startup/bootstrap polish.
-- P2: Settings core (profiles, publication, preferences) — next workstream.
+- P1: startup/bootstrap polish only; the mandatory update gate is complete.
+- P2: Settings core (profiles, publication, preferences) — **running** in `desktop/settings`.
 - P3–P6, P7 integration and P8–P9 remain.
 
 ## Merged pages

@@ -82,6 +82,20 @@ export interface AppInfo {
   portalUrl: string;
 }
 
+export interface UpdateOffer {
+  version: string;
+  mandatory: boolean;
+  notes?: string;
+  url?: string;
+  publishedAt?: string;
+}
+
+export interface UpdateCheckResult {
+  currentVersion: string;
+  offer: UpdateOffer | null;
+  message?: string;
+}
+
 export interface PickFileRequest {
   kind: "file" | "directory";
   title?: string;

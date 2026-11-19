@@ -71,6 +71,10 @@ const bridge = {
   diagnostics: {
     send: (note?: string) => invoke("diagnostics:send", { note }),
   },
+  updates: {
+    check: () => invoke("updates:check"),
+    open: (offer: unknown) => invoke("updates:open", offer),
+  },
 };
 
 contextBridge.exposeInMainWorld("camxora", bridge);

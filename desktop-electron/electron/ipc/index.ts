@@ -4,6 +4,7 @@ import { registerAuthIpc } from "./auth";
 import { registerFfmpegIpc } from "./ffmpeg";
 import { registerFilesIpc } from "./files";
 import { registerSystemIpc } from "./system";
+import { registerUpdatesIpc } from "./updates";
 import { registerTemplatesIpc } from "./templates";
 
 let registered = false;
@@ -17,6 +18,7 @@ export function registerIpc(): void {
   registerApiIpc();
   registerFilesIpc();
   registerFfmpegIpc();
+  registerUpdatesIpc();
   registerTemplatesIpc();
 
   logger.info("ipc registered");
