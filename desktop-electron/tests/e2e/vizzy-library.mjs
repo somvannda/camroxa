@@ -26,6 +26,15 @@ const libraryRoot = path.resolve(
   process.env.CAMXORA_VIZZY_LIBRARY_DIR ?? path.join(root, "vizzy-library"),
 );
 if (!fs.existsSync(path.join(libraryRoot, "manifest.json"))) {
+  if (process.env.CI === "true" || process.env.CAMXORA_SKIP_VIZZY_LIBRARY === "1") {
+    console.log(
+      JSON.stringify({
+        library: "skipped",
+        reason: `No staged Vizzy library at ${libraryRoot}; run npm run vizzy:library for the full gate.`,
+      }),
+    );
+    process.exit(0);
+  }
   throw new Error(
     `The Vizzy library is not staged at ${libraryRoot}. Set CAMXORA_VIZZY_LIBRARY_DIR to a ` +
       "staged desktop-electron/vizzy-library folder (npm run vizzy:library).",
