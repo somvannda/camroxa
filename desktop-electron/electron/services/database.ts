@@ -263,8 +263,11 @@ export class Store {
       );
   }
 
-  listJobs(): PipelineJobRecord[] {
-    const rows = this.db.prepare("SELECT * FROM pipeline_jobs ORDER BY created_at DESC").all();
+  deleteJob(id: string): void {
+    this.db.prepare("DELETE FROM pipeline_jobs WHERE id = ?").run(id);
+  }
+
+  listJobs(): PipelineJobRecord[] {    const rows = this.db.prepare("SELECT * FROM pipeline_jobs ORDER BY created_at DESC").all();
     return (rows as Array<Record<string, unknown>>).map((row) => ({
       id: String(row.id),
       batchId: String(row.batch_id),
