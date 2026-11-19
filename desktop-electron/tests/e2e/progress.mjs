@@ -203,42 +203,46 @@ function successRows() {
   ];
 }
 
-const DOWNLOADS = {
-  items: [
-    {
-      task_id: "task-1",
-      song_id: "song-1",
-      batch_id: "NS-2601",
-      title: "Night Drive",
-      track_number: 2,
-      primary: {
-        download_url: "https://example.test/1.mp3",
-        downloaded: false,
-        output_dir: RUN_READY,
-        target_path: path.join(RUN_READY, "01 Night Drive.mp3"),
+const MP3_BYTES = Buffer.concat([Buffer.from("ID3"), Buffer.alloc(2048, 7)]);
+
+function downloadsFor(root, origin) {
+  return {
+    items: [
+      {
+        task_id: "task-1",
+        song_id: "song-1",
+        batch_id: "NS-2601",
+        title: "Night Drive",
+        track_number: 2,
+        primary: {
+          download_url: `${origin}/downloads/1.mp3`,
+          downloaded: false,
+          output_dir: root,
+          target_path: path.join(root, "01 Night Drive.mp3"),
+        },
+        secondary: {
+          download_url: null,
+          downloaded: false,
+          output_dir: root,
+          target_path: path.join(root, "02 Night Drive.mp3"),
+        },
       },
-      secondary: {
-        download_url: null,
-        downloaded: false,
-        output_dir: RUN_READY,
-        target_path: path.join(RUN_READY, "02 Night Drive.mp3"),
+      {
+        task_id: "task-2",
+        song_id: "song-2",
+        batch_id: "NS-2602",
+        title: "After Hours",
+        track_number: 1,
+        primary: {
+          download_url: `${origin}/downloads/2.mp3`,
+          downloaded: true,
+          output_dir: root,
+          target_path: path.join(root, "01 After Hours.mp3"),
+        },
       },
-    },
-    {
-      task_id: "task-2",
-      song_id: "song-2",
-      batch_id: "NS-2602",
-      title: "After Hours",
-      track_number: 1,
-      primary: {
-        download_url: "https://example.test/2.mp3",
-        downloaded: true,
-        output_dir: RUN_READY,
-        target_path: path.join(RUN_READY, "01 After Hours.mp3"),
-      },
-    },
-  ],
-};
+    ],
+  };
+}
 
 const PROFILE = {
   id: "profile-1",
@@ -325,6 +329,7 @@ async function openApp(name, apiPort) {
     env: {
       ...process.env,
       CAMXORA_DEV_AUTH: "0",
+      CAMXORA_E2E: "1",
       CAMXORA_USER_DATA_DIR: userData,
       CAMXORA_API_BASE_URL: `http://127.0.0.1:${apiPort}/api/v3`,
     },
@@ -376,6 +381,7 @@ async function successWithManualRecovery() {
   let progressRequests = 0;
   const syncBodies = [];
   const rows = successRows();
+  let pendingDownloads = { items: [] };
   const { server, port } = await startApi({
     ...baseRoutes,
     "GET /progress": (_request, response) => {
@@ -386,7 +392,15 @@ async function successWithManualRecovery() {
         updated_at: "2026-11-19T10:00:00Z",
       });
     },
-    "GET /music/downloads/pending": (_request, response) => json(response, 200, DOWNLOADS),
+    "GET /music/downloads/pending": (_request, response) => json(response, 200, pendingDownloads),
+    "POST /music/downloads/sync": (_request, response) => json(response, 200, { updated: 0 }),
+    "GET /downloads/1.mp3": (_request, response) => {
+      response.writeHead(200, {
+        "content-type": "audio/mpeg",
+        "content-length": MP3_BYTES.length,
+      });
+      response.end(MP3_BYTES);
+    },
     "POST /image-jobs/sync-manual": (request, response) => {
       let body = "";
       request.on("data", (chunk) => {
@@ -398,6 +412,8 @@ async function successWithManualRecovery() {
       });
     },
   });
+  const downloadsRoot = path.join(artifacts, "e2e-progress-success", "downloads");
+  pendingDownloads = downloadsFor(downloadsRoot, `http://127.0.0.1:${port}`);
 
   const { app, page } = await openApp("success", port);
   try {
@@ -432,20 +448,51 @@ async function successWithManualRecovery() {
 
     const rowsLocator = page.locator('[data-testid="progress-row"]');
     assert((await rowsLocator.count()) === 7, "Expected seven operational rows");
+
+    // The main-process coordinator polls independently, so wait for its first
+    // snapshot before reading the download count.
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="progress-download-row"]').length === 2,
+      undefined,
+      { timeout: 30000 },
+    );
     const meta = await page.locator('[data-testid="progress-meta"]').innerText();
     assert(meta.includes("7 visible rows"), `Unexpected meta line: ${meta}`);
-    assert(meta.includes("2 pending downloads"), `Pending downloads missing: ${meta}`);
+    assert(meta.includes("2 downloads"), `Download count missing: ${meta}`);
     assert(meta.includes("All stages"), `Stage filter missing: ${meta}`);
 
     const downloadRows = page.locator('[data-testid="progress-download-row"]');
-    assert((await downloadRows.count()) === 2, "Download queue must show two tasks");    const downloadText = await page.locator('[data-testid="progress-download-card"]').innerText();
+    assert((await downloadRows.count()) === 2, "Download queue must show two targets");
+    let downloadText = await page.locator('[data-testid="progress-download-card"]').innerText();
     assert(downloadText.includes("Night Drive") && downloadText.includes("Night Shift"), "Download identity missing");
-    assert(downloadText.includes("0/2 targets ready"), "Download progress missing");
-    assert(downloadText.includes("Ready"), "Download ready state missing");
-    assert(downloadText.includes("Open folder") || downloadText.includes("Reveal"), "Download path action missing");
+    assert(downloadText.includes("Saving to"), "Download root is not shown");
+    assert(!downloadText.includes("P4"), "Placeholder copy must be gone");
+    assert((await page.getByRole("button", { name: "Pause" }).count()) === 1, "Pause control missing");
+
+    // The coordinator downloads the real file; the target with no URL is a
+    // specific failure rather than a silent skip.
+    const downloadTarget = path.join(downloadsRoot, "01 Night Drive.mp3");
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="progress-download-card"]')?.textContent?.includes("Done"),
+      undefined,
+      { timeout: 30000 },
+    );
+    await page.waitForTimeout(200);
+    assert(fs.existsSync(downloadTarget), "The coordinator did not write the MP3");
+    assert(fs.statSync(downloadTarget).size === MP3_BYTES.length, "The downloaded file has the wrong size");
+    assert(
+      !fs.readdirSync(downloadsRoot).some((name) => name.includes(".camxora-part-")),
+      "A partial file was left behind",
+    );
+    downloadText = await page.locator('[data-testid="progress-download-card"]').innerText();
+    assert(downloadText.includes("Done"), "Download state did not reach Done");
+    assert(
+      downloadText.includes("The server did not provide a download link"),
+      "A missing URL must be reported specifically",
+    );
     assert(
       await page.getByRole("button", { name: "Retry" }).first().isDisabled(),
-      "Download retry must stay disabled until the shell downloader exists",
+      "Retry must stay disabled when there is nothing to retry",
     );
     await page.locator('[data-testid="progress-download-card"]').scrollIntoViewIfNeeded();
     await page.waitForTimeout(200);
@@ -593,7 +640,7 @@ async function staleAfterError() {
       }
       json(response, 503, { detail: "Progress unavailable" });
     },
-    "GET /music/downloads/pending": (_request, response) => json(response, 200, DOWNLOADS),
+    "GET /music/downloads/pending": (_request, response) => json(response, 200, { items: [] }),
   });
   const { app, page } = await openApp("stale", port);
   try {

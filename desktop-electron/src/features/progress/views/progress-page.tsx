@@ -22,6 +22,7 @@ import {
   type StageFilter,
 } from "../progress-format";
 import type { ImageJobsRetryResponse, ImageJobsSyncManualResponse, ProgressRow } from "../progress-types";
+import { useDownloadQueue } from "../use-download-queue";
 import { useManualInspections } from "../use-manual-inspections";
 import { useProgressFeed } from "../use-progress-feed";
 
@@ -50,6 +51,7 @@ export function ProgressPage() {
   const [syncingBatch, setSyncingBatch] = useState<string | null>(null);
 
   const feed = useProgressFeed({ from, to, activeOnly, limit });
+  const downloadsFeed = useDownloadQueue();
   const sourceMode = feed.settings?.imageSourceMode ?? feed.settings?.image_source_mode;
   const manualMode = String(sourceMode ?? "").toLowerCase() === "manual";
   const manual = useManualInspections(manualMode, feed.rows);
@@ -67,8 +69,8 @@ export function ProgressPage() {
     [statsRows, manualMode, manual.waitingKeys],
   );
   const downloads = useMemo(
-    () => downloadQueueRows(feed.downloads, feed.rows),
-    [feed.downloads, feed.rows],
+    () => downloadQueueRows(downloadsFeed.snapshot?.items ?? [], feed.rows),
+    [downloadsFeed.snapshot, feed.rows],
   );
 
   const selectedRow = useMemo(
@@ -159,8 +161,54 @@ export function ProgressPage() {
     [feed],
   );
 
-  const clearFilters = useCallback(() => {
-    const today = todayYmd();
+  const retryDownload = useCallback(
+    async (key: string) => {
+      const failure = await downloadsFeed.retry(key);
+      setNotice(
+        failure
+          ? { tone: "danger", text: failure }
+          : { tone: "success", text: "Download re-queued." },
+      );
+    },
+    [downloadsFeed],
+  );
+
+  const cancelDownload = useCallback(
+    async (key: string) => {
+      const failure = await downloadsFeed.cancel(key);
+      setNotice(
+        failure
+          ? { tone: "danger", text: failure }
+          : { tone: "warning", text: "Download cancelled. The partial file was removed." },
+      );
+    },
+    [downloadsFeed],
+  );
+
+  const revealDownload = useCallback(
+    async (key: string) => {
+      const failure = await downloadsFeed.reveal(key);
+      if (failure) setNotice({ tone: "danger", text: failure });
+    },
+    [downloadsFeed],
+  );
+
+  const toggleDownloads = useCallback(
+    async (paused: boolean) => {
+      const failure = await downloadsFeed.setPaused(paused);
+      setNotice(
+        failure
+          ? { tone: "danger", text: failure }
+          : {
+              tone: paused ? "warning" : "success",
+              text: paused ? "Automatic downloads paused." : "Automatic downloads resumed.",
+            },
+      );
+    },
+    [downloadsFeed],
+  );
+
+  const clearFilters = useCallback(() => {    const today = todayYmd();
     setFrom(today);
     setTo(today);
     setActiveOnly(false);
@@ -169,7 +217,7 @@ export function ProgressPage() {
   }, []);
 
   const stale = Boolean(feed.error) && feed.rows.length > 0;
-  const pendingDownloads = feed.downloadsLoaded ? downloads.length : null;
+  const pendingDownloads = downloadsFeed.snapshot ? downloads.length : null;
 
   return (
     <div className="pb-6">
@@ -304,12 +352,26 @@ export function ProgressPage() {
 
         <DownloadQueue
           rows={downloads}
-          error={feed.downloadsError}
-          onReveal={(path) => {
-            void revealPath(path);
+          error={downloadsFeed.error}
+          paused={downloadsFeed.snapshot?.paused ?? false}
+          active={downloadsFeed.snapshot?.active ?? 0}
+          concurrency={downloadsFeed.snapshot?.concurrency ?? 2}
+          root={downloadsFeed.snapshot?.root ?? null}
+          busy={downloadsFeed.busy}
+          onRetry={(key) => {
+            void retryDownload(key);
+          }}
+          onCancel={(key) => {
+            void cancelDownload(key);
+          }}
+          onReveal={(key) => {
+            void revealDownload(key);
           }}
           onOpenFolder={(path) => {
             void runFolder(path);
+          }}
+          onTogglePause={(paused) => {
+            void toggleDownloads(paused);
           }}
         />
 

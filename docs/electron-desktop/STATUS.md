@@ -3,7 +3,7 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1–P8 complete (pages, Vizzy editor, templates, export, render, batch, settings tabs); music download coordinator and packaging remain
+> **Phase:** P1–P8 complete; music download coordinator merged; manual YouTube upload running; packaging remains
 
 ---
 
@@ -24,7 +24,7 @@
 | **P1 updates** | HTTPS release manifest, mandatory blocking gate, optional update card, download hand-off, unit + E2E coverage |
 | **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
 | **P2 settings** | Profiles (list/create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics) |
-| **P8 settings catalogs** | Descriptions/Structures/Moods workspace defaults + user prompt CRUD, read-only Pools viewer, Suno defaults with bounds validation; save-all order covers all seven writable tabs (`desktop/settings-p8`) |
+| **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **Shell guard** | Unsaved settings block sidebar navigation with a Stay / Discard-and-leave confirm |
 | **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
@@ -37,8 +37,7 @@
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
-| **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
-| **P4 downloads** | Main-process music download coordinator and live Progress queue are **running** in `desktop/downloads`; the shell currently only displays pending items |
+| **P4 downloads** | Main-process coordinator (`download-coordinator.ts` + `download-targets.ts` + `download-io.ts`, `electron/ipc/downloads.ts`): 12 s/4 s polling, bounded concurrency, atomic temp→rename, 3-attempt backoff, dedupe, skip-if-present, cancel/pause/retry/reveal, completion sync; Progress shows live bytes and real actions; unit + `downloads` E2E |
 | **P7 manual upload** | Manual YouTube upload from a completed Progress batch is **running** in `desktop/youtube-upload`; Auto-Upload remains disabled |
 
 ### Verification
@@ -46,9 +45,9 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               296/296 PASS
+npm test               301/301 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
-npm run test:e2e       PASS (15 suites incl. pipeline-batch)
+npm run test:e2e       PASS (16 suites incl. pipeline-batch and downloads)
 node tests/e2e/settings.mjs PASS (8 tabs, prompt CRUD, pools pager, Suno bounds, save-all order)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
@@ -86,6 +85,25 @@ degrade to `null` and fall back to `/users/me` + `/stats/dashboard`; plan expiry
 “Not provided” until the endpoint exists or the licence fields move to an existing endpoint.
 This is a backend contract decision, not a renderer bug.
 
+The music **history** payload (`MusicHistorySong`) exposes output folders and
+`downloaded_ok/alt` but **no per-song download URL**, so Music does not get a Download action:
+the shell can only reveal a file that already exists. The download queue
+(`/music/downloads/pending`) is the only source of download URLs. Completion is acknowledged
+through `POST /music/downloads/sync`, which exists in the contract and matches 1.7.1; a
+download URL therefore never needs the session token.
+
+## P4 download coordinator
+
+| Concern | Implementation |
+|---|---|
+| Entry points | `electron/ipc/downloads.ts` (shell-only `list`, `start`, `stop`, `retry`, `cancel`, `reveal`, `downloads:changed`), started at app boot, stopped in `before-quit` |
+| Files | `download-targets.ts` (containment + URL guard, pure), `download-coordinator.ts` (state machine), `download-io.ts` (part file → rename) |
+| Renderer | `use-download-queue.ts` (5 s visible poll, hidden-aware, single-flight, change events), `download-queue.tsx` (live bytes, retry/cancel/reveal/pause) |
+| Output | Device Suno folder, else `<userData>/downloads`; `..`, absolute escapes and folder targets are rejected |
+| Concurrency / retry | 2 (max 3); 3 attempts with 0.75 s/2 s backoff; permanent errors for 404/410, 401/403, unsupported URLs |
+| Dedupe | `task_id::role`; repeated pending items and existing non-empty files are never re-downloaded |
+| Measured (`downloads` E2E) | 4 real files written with exact bytes; repeated item fetched once; 500 retried 3× then manual retry succeeded; cancel left no `.part`; traversal target never fetched; 4 completions synced |
+
 ## Merge history
 
 - `10993c2` foundation
@@ -120,11 +138,13 @@ This is a backend contract decision, not a renderer bug.
 ## Remaining
 
 - P1: startup/bootstrap polish only.
-- P7: editor, library, templates, render, Renders and batch orchestration are merged. **Manual
-  YouTube upload is not yet ported**; Auto-Upload stays disabled exactly as 1.7.1 either way.
+- P4: the download coordinator is merged and writes real audio, with live Progress and completion
+  sync. Music has no per-song Download action because the history contract exposes no URL (see
+  “Open API gap”); folder reveal remains the honest action for existing files.
+- P7: editor, 91-template library, save-as-template, single-template render, Renders and batch
+  orchestration are merged. **Manual YouTube upload is the remaining P7 gap** and is running;
+  Auto-Upload stays disabled exactly as 1.7.1.
 - P8: all eight Settings tabs are merged.
-- P4 downloads: coordinator running in `desktop/downloads`; it is the last functional gap before
-  packaging.
 - P9: installer/signing/clean-VM gate and the 91-template bundle-size decision.
 
 ### Settings follow-ups
@@ -151,7 +171,7 @@ This is a backend contract decision, not a renderer bug.
 |---|---|
 | Dashboard | Merged — KPIs, chart, quota, activity, fixture E2E |
 | Profile | Merged, fixture E2E |
-| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, downloads, polling, 200-row E2E; **Video pipeline** table (durable queue, cancel/retry/reveal, merged output) |
+| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, download queue, polling, 200-row E2E; **Download queue** now driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output) |
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; “Render videos” queues the profile's saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |

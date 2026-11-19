@@ -1,10 +1,6 @@
 import { formatCount } from "../../lib/format";
-import type {
-  PendingDownloadItem,
-  PendingDownloadTarget,
-  ProgressListResponse,
-  ProgressRow,
-} from "./progress-types";
+import type { DownloadItemInfo, DownloadItemState } from "../../../electron/shared/types";
+import type { ProgressListResponse, ProgressRow } from "./progress-types";
 
 export const PROGRESS_POLL_MS = 12_000;
 export const PROGRESS_ACTIVE_POLL_MS = 4_000;
@@ -272,12 +268,12 @@ export function summaryText(data: ProgressListResponse | null, rows: ProgressRow
 export function metaLine(
   visible: number,
   loaded: number,
-  pendingDownloads: number | null,
+  downloads: number | null,
   stage: StageFilter,
   limit: number,
 ): string {
   const stageText = STAGE_FILTERS.find((item) => item.value === stage)?.label ?? "All stages";
-  const downloads = pendingDownloads == null ? "--" : formatCount(pendingDownloads);
+  const count = downloads == null ? "--" : formatCount(downloads);
   const parts = [
     `${formatCount(visible)} visible row${visible === 1 ? "" : "s"}`,
     `${formatCount(loaded)} loaded`,
@@ -285,7 +281,7 @@ export function metaLine(
   if (limit > API_ROW_CAP && loaded <= API_ROW_CAP) {
     parts.push(`API cap ${API_ROW_CAP}`);
   }
-  parts.push(`${downloads} pending download${pendingDownloads === 1 ? "" : "s"}`);
+  parts.push(`${count} download${downloads === 1 ? "" : "s"}`);
   parts.push(stageText);
   return parts.join(" · ");
 }
@@ -554,6 +550,83 @@ export function failureStageLabel(row: ProgressRow): string | null {
   return stage === "converter" ? "Converter" : stage === "merge" ? "Merge" : stage.charAt(0).toUpperCase() + stage.slice(1);
 }
 
+/* ------------------------------------------------------------------ */
+/* Download queue (PG-39…PG-43)                                        */
+/* ------------------------------------------------------------------ */
+
+export function downloadStateLabel(state: DownloadItemState): string {
+  switch (state) {
+    case "queued":
+      return "Queued";
+    case "downloading":
+      return "Downloading";
+    case "done":
+      return "Done";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+  }
+}
+
+export function downloadStateTone(state: DownloadItemState): ProgressTone {
+  switch (state) {
+    case "downloading":
+      return "accent";
+    case "done":
+      return "success";
+    case "failed":
+      return "danger";
+    case "cancelled":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return "--";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"] as const;
+  let value = bytes / 1024;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+export function downloadProgressText(item: DownloadItemInfo): string {
+  switch (item.state) {
+    case "downloading": {
+      if (item.totalBytes && item.totalBytes > 0) {
+        const percent =
+          item.percent ?? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100));
+        return `${formatBytes(item.receivedBytes)} / ${formatBytes(item.totalBytes)} · ${percent}%`;
+      }
+      return item.receivedBytes > 0 ? `${formatBytes(item.receivedBytes)} downloaded` : "Starting…";
+    }
+    case "done":
+      if (item.totalBytes && item.totalBytes > 0) return formatBytes(item.totalBytes);
+      if (item.receivedBytes > 0) return formatBytes(item.receivedBytes);
+      return "Saved";
+    case "failed":
+      return "Not saved";
+    case "cancelled":
+      return "Stopped";
+    default:
+      return "Waiting for a slot";
+  }
+}
+
+export function parentFolder(filePath: string | null | undefined): string | null {
+  const trimmed = filePath?.trim().replace(/[\\/]+$/, "") ?? "";
+  if (!trimmed) return null;
+  const index = Math.max(trimmed.lastIndexOf("\\"), trimmed.lastIndexOf("/"));
+  return index > 0 ? trimmed.slice(0, index) : null;
+}
+
 export interface DownloadQueueRow {
   key: string;
   taskId: string;
@@ -561,29 +634,21 @@ export interface DownloadQueueRow {
   subtitle: string | null;
   channel: string;
   path: string;
-  secondaryPath: string | null;
+  folderPath: string | null;
   state: string;
   stateTone: ProgressTone;
   progress: string;
-  readyTargets: number;
-  totalTargets: number;
-  revealPath: string | null;
-  folderPath: string | null;
-  hasDownloadUrl: boolean;
+  error: string | null;
+  showRetry: boolean;
+  canRetry: boolean;
+  canCancel: boolean;
+  canReveal: boolean;
+  hasUrl: boolean;
 }
 
-function downloadTargets(item: PendingDownloadItem): PendingDownloadTarget[] {
-  return [item.primary, item.secondary].filter(
-    (target): target is PendingDownloadTarget => Boolean(target),
-  );
-}
-
-function targetPath(target: PendingDownloadTarget): string | null {
-  return meaningful(target.target_path) ?? meaningful(target.output_dir);
-}
-
+/** PG-40: one row per pending target, merged with the coordinator's live state. */
 export function downloadQueueRows(
-  items: PendingDownloadItem[],
+  items: DownloadItemInfo[],
   progressRows: ProgressRow[],
 ): DownloadQueueRow[] {
   const channels = new Map<string, string>();
@@ -591,36 +656,28 @@ export function downloadQueueRows(
     if (row.batch && row.channel) channels.set(row.batch, row.channel);
   }
 
-  return items.map((item, index) => {
-    const targets = downloadTargets(item);
-    const ready = targets.filter((target) => target.downloaded).length;
-    const primary = targets[0];
-    const secondary = targets[1];
-    const path = primary ? targetPath(primary) : null;
-    const secondaryPath = secondary ? targetPath(secondary) : null;
-    const state = targets.length === 0 ? "Pending" : ready === targets.length ? "Ready" : ready > 0 ? "Partial" : "Pending";
-    const downloaded = targets.find((target) => target.downloaded);
-    const revealPath = (downloaded ? targetPath(downloaded) : null) ?? null;
-    const folderPath = meaningful(primary?.output_dir) ?? meaningful(secondary?.output_dir);
-    const batch = meaningful(item.batch_id);
+  return items.map((item) => {
+    const batch = meaningful(item.batchId);
+    const track = item.trackNumber != null ? `Track ${item.trackNumber}` : null;
+    const subtitle =
+      [track, batch].filter((part): part is string => Boolean(part)).join(" · ") || null;
     return {
-      key: `${item.task_id}-${index}`,
-      taskId: item.task_id,
-      song: meaningful(item.title) ?? meaningful(item.song_id) ?? item.task_id,
-      subtitle: item.track_number != null ? `Track ${item.track_number}` : batch,
+      key: item.key,
+      taskId: item.taskId,
+      song: meaningful(item.title) ?? meaningful(item.songId) ?? item.taskId,
+      subtitle,
       channel: (batch && channels.get(batch)) || batch || "Unknown channel",
-      path: path ?? "Not reported",
-      secondaryPath: secondaryPath && secondaryPath !== path ? secondaryPath : null,
-      state,
-      stateTone: state === "Ready" ? "success" : state === "Partial" ? "warning" : "neutral",
-      progress: targets.length
-        ? `${ready}/${targets.length} target${targets.length === 1 ? "" : "s"} ready`
-        : "No target",
-      readyTargets: ready,
-      totalTargets: targets.length,
-      revealPath,
-      folderPath,
-      hasDownloadUrl: targets.some((target) => Boolean(meaningful(target.download_url))),
+      path: meaningful(item.targetPath) ?? "Not reported",
+      folderPath: parentFolder(item.targetPath),
+      state: downloadStateLabel(item.state),
+      stateTone: downloadStateTone(item.state),
+      progress: downloadProgressText(item),
+      error: meaningful(item.error),
+      showRetry: item.state === "failed" || item.state === "cancelled",
+      canRetry: (item.state === "failed" || item.state === "cancelled") && item.hasUrl,
+      canCancel: item.state === "queued" || item.state === "downloading",
+      canReveal: item.state === "done" && Boolean(item.targetPath),
+      hasUrl: item.hasUrl,
     };
   });
 }

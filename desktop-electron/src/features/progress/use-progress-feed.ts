@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, errorMessage } from "../../lib/api";
 import {
-  DOWNLOADS_POLL_MS,
   PROGRESS_ACTIVE_POLL_MS,
   PROGRESS_POLL_MS,
   progressQuery,
@@ -9,14 +8,13 @@ import {
   prepareRows,
 } from "./progress-format";
 import { PollController } from "./progress-poll";
-import type {
-  PendingDownloadItem,
-  PendingDownloadsResponse,
-  ProgressListResponse,
-  ProgressRow,
-  ProgressSettings,
-} from "./progress-types";
+import type { ProgressListResponse, ProgressRow, ProgressSettings } from "./progress-types";
 
+/**
+ * Progress rows only. Music downloads are owned by the main-process coordinator
+ * (see `use-download-queue`), so this feed no longer fetches the pending list:
+ * the shell is the single reader of `/music/downloads/pending`.
+ */
 export interface ProgressFeedOptions {
   from: string;
   to: string;
@@ -29,9 +27,6 @@ export interface ProgressFeed {
   rows: ProgressRow[];
   settings: ProgressSettings | null;
   settingsError: string | null;
-  downloads: PendingDownloadItem[];
-  downloadsLoaded: boolean;
-  downloadsError: string | null;
   error: string | null;
   rangeMessage: string | null;
   loading: boolean;
@@ -53,22 +48,10 @@ async function fetchProgress(options: ProgressFeedOptions): Promise<ProgressList
   };
 }
 
-async function fetchDownloads(): Promise<PendingDownloadItem[]> {
-  const response = await apiRequest<PendingDownloadsResponse>({
-    method: "GET",
-    path: "/music/downloads/pending",
-    query: { limit: 12 },
-  });
-  return Array.isArray(response.items) ? response.items : [];
-}
-
 export function useProgressFeed(options: ProgressFeedOptions): ProgressFeed {
   const [data, setData] = useState<ProgressListResponse | null>(null);
   const [settings, setSettings] = useState<ProgressSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [downloads, setDownloads] = useState<PendingDownloadItem[]>([]);
-  const [downloadsLoaded, setDownloadsLoaded] = useState(false);
-  const [downloadsError, setDownloadsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [inflight, setInflight] = useState(0);
@@ -83,7 +66,6 @@ export function useProgressFeed(options: ProgressFeedOptions): ProgressFeed {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const progressController = useRef<PollController | null>(null);
-  const downloadsController = useRef<PollController | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -112,19 +94,6 @@ export function useProgressFeed(options: ProgressFeedOptions): ProgressFeed {
         setInflight((count) => Math.max(0, count - 1));
         setLoading(false);
       }
-    }
-  }, []);
-
-  const loadDownloads = useCallback(async () => {
-    try {
-      const items = await fetchDownloads();
-      if (!mounted.current) return;
-      setDownloads(items);
-      setDownloadsLoaded(true);
-      setDownloadsError(null);
-    } catch (loadError) {
-      if (!mounted.current) return;
-      setDownloadsError(errorMessage(loadError));
     }
   }, []);
 
@@ -159,27 +128,12 @@ export function useProgressFeed(options: ProgressFeedOptions): ProgressFeed {
   }, [loadProgress, options.from, options.to, options.activeOnly, options.limit]);
 
   useEffect(() => {
-    const controller = new PollController({
-      poll: loadDownloads,
-      intervalMs: () => DOWNLOADS_POLL_MS,
-    });
-    downloadsController.current = controller;
-    if (!document.hidden) controller.start();
-    return () => {
-      controller.stop();
-      if (downloadsController.current === controller) downloadsController.current = null;
-    };
-  }, [loadDownloads]);
-
-  useEffect(() => {
     const onVisibilityChange = () => {
       if (document.hidden) {
         progressController.current?.stop();
-        downloadsController.current?.stop();
         return;
       }
       progressController.current?.start();
-      downloadsController.current?.start();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -188,7 +142,6 @@ export function useProgressFeed(options: ProgressFeedOptions): ProgressFeed {
   const refresh = useCallback(async () => {
     const tasks: Array<Promise<void>> = [];
     if (progressController.current) tasks.push(progressController.current.trigger());
-    if (downloadsController.current) tasks.push(downloadsController.current.trigger());
     if (!settingsRef.current) tasks.push(loadSettings());
     await Promise.all(tasks);
   }, [loadSettings]);
@@ -200,9 +153,6 @@ export function useProgressFeed(options: ProgressFeedOptions): ProgressFeed {
     rows,
     settings,
     settingsError,
-    downloads,
-    downloadsLoaded,
-    downloadsError,
     error,
     rangeMessage: rangeError(options.from, options.to),
     loading,

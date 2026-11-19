@@ -70,27 +70,6 @@ export interface ProgressSettings {
   [key: string]: unknown;
 }
 
-export interface PendingDownloadTarget {
-  download_url?: string | null;
-  downloaded?: boolean;
-  output_dir?: string | null;
-  target_path?: string | null;
-}
-
-export interface PendingDownloadItem {
-  task_id: string;
-  song_id?: string | null;
-  batch_id?: string | null;
-  title?: string | null;
-  track_number?: number | null;
-  primary?: PendingDownloadTarget;
-  secondary?: PendingDownloadTarget;
-}
-
-export interface PendingDownloadsResponse {
-  items?: PendingDownloadItem[];
-}
-
 export interface ImageJobsSyncManualResponse {
   updated?: number;
 }

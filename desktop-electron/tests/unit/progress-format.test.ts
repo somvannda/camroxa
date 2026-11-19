@@ -3,12 +3,17 @@ import {
   API_ROW_CAP,
   countStats,
   downloadQueueRows,
+  downloadProgressText,
+  downloadStateLabel,
+  downloadStateTone,
   filterProgressRows,
+  formatBytes,
   imageCellText,
   isActiveRow,
   localVideoState,
   metaLine,
   musicCellText,
+  parentFolder,
   prepareRows,
   progressQuery,
   rangeError,
@@ -19,6 +24,7 @@ import {
   todayYmd,
   youtubeCellText,
 } from "../../src/features/progress/progress-format";
+import type { DownloadItemInfo } from "../../electron/shared/types";
 import type { ProgressRow, ProgressRowMeta } from "../../src/features/progress/progress-types";
 
 type RowOverrides = Omit<Partial<ProgressRow>, "meta"> & { meta?: Partial<ProgressRowMeta> };
@@ -234,7 +240,7 @@ describe("row presentation", () => {
     );
     expect(summaryText({ rows: [], summary: "No runs", updated_at: null }, [])).toBe("No runs.");
     expect(metaLine(3, 100, 2, "error", 200)).toBe(
-      "3 visible rows · 100 loaded · API cap 100 · 2 pending downloads · Error",
+      "3 visible rows · 100 loaded · API cap 100 · 2 downloads · Error",
     );
   });
 
@@ -244,45 +250,114 @@ describe("row presentation", () => {
 });
 
 describe("download queue", () => {
-  it("maps batch ids to channel names and reports target progress", () => {
+  function item(overrides: Partial<DownloadItemInfo> = {}): DownloadItemInfo {
+    return {
+      key: "task-1::primary",
+      taskId: "task-1",
+      songId: "song-1",
+      batchId: "batch-1",
+      title: "Night Drive",
+      trackNumber: 2,
+      role: "primary",
+      state: "queued",
+      hasUrl: true,
+      targetPath: "C:\\music\\01 Night Drive.mp3",
+      receivedBytes: 0,
+      totalBytes: null,
+      percent: null,
+      attempts: 0,
+      error: null,
+      errorCode: null,
+      updatedAt: 0,
+      completedAt: null,
+      ...overrides,
+    };
+  }
+
+  it("maps batch ids to channel names and reports live bytes", () => {
     const rows = downloadQueueRows(
       [
-        {
-          task_id: "task-1",
-          batch_id: "batch-1",
-          title: "Night Drive",
-          track_number: 2,
-          primary: {
-            download_url: "https://example.test/1.mp3",
-            downloaded: true,
-            output_dir: "C:\\music",
-            target_path: "C:\\music\\1.mp3",
-          },
-          secondary: {
-            download_url: null,
-            downloaded: false,
-            output_dir: "C:\\music",
-            target_path: "C:\\music\\2.mp3",
-          },
-        },
+        item({
+          state: "downloading",
+          receivedBytes: 1024 * 1024,
+          totalBytes: 2 * 1024 * 1024,
+          percent: 50,
+          attempts: 1,
+        }),
+        item({
+          key: "task-1::secondary",
+          role: "secondary",
+          state: "failed",
+          hasUrl: false,
+          targetPath: null,
+          error: "The server did not provide a download link for this song.",
+          errorCode: "DOWNLOAD_URL_MISSING",
+        }),
       ],
       [row()],
     );
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(rows[0].channel).toBe("Night Shift");
-    expect(rows[0].state).toBe("Partial");
-    expect(rows[0].progress).toBe("1/2 targets ready");
-    expect(rows[0].revealPath).toBe("C:\\music\\1.mp3");
-    expect(rows[0].hasDownloadUrl).toBe(true);
+    expect(rows[0].state).toBe("Downloading");
+    expect(rows[0].stateTone).toBe("accent");
+    expect(rows[0].progress).toBe("1.0 MB / 2.0 MB · 50%");
+    expect(rows[0].canCancel).toBe(true);
+    expect(rows[0].canRetry).toBe(false);
+    expect(rows[0].folderPath).toBe("C:\\music");
+    expect(rows[1].state).toBe("Failed");
+    expect(rows[1].canRetry).toBe(false);
+    expect(rows[1].error).toContain("download link");
   });
 
-  it("falls back to the batch id when no loaded row names the channel", () => {
-    const [entry] = downloadQueueRows(
-      [{ task_id: "task-2", batch_id: "batch-9", primary: { downloaded: false } }],
+  it("falls back to the batch id and only offers actions that can run", () => {
+    const [queued] = downloadQueueRows(
+      [
+        item({
+          batchId: "batch-9",
+          title: "",
+          songId: null,
+          state: "queued",
+          targetPath: "C:\\music\\a.mp3",
+        }),
+      ],
       [],
     );
-    expect(entry.channel).toBe("batch-9");
-    expect(entry.state).toBe("Pending");
-    expect(entry.progress).toBe("0/1 target ready");
+    expect(queued.song).toBe("task-1");
+    expect(queued.channel).toBe("batch-9");
+    expect(queued.state).toBe("Queued");
+    expect(queued.progress).toBe("Waiting for a slot");
+    expect(queued.canReveal).toBe(false);
+    expect(queued.canCancel).toBe(true);
+
+    const [failed] = downloadQueueRows(
+      [item({ state: "failed", hasUrl: true, error: "The download server did not respond." })],
+      [],
+    );
+    expect(failed.canRetry).toBe(true);
+    expect(failed.canCancel).toBe(false);
+
+    const [done] = downloadQueueRows(
+      [item({ state: "done", totalBytes: 1024 * 1024, receivedBytes: 1024 * 1024, percent: 100 })],
+      [],
+    );
+    expect(done.canReveal).toBe(true);
+    expect(done.canRetry).toBe(false);
+    expect(done.progress).toBe("1.0 MB");
+  });
+
+  it("formats bytes, states and folders without inventing values", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(15 * 1024 * 1024)).toBe("15 MB");
+    expect(formatBytes(null)).toBe("--");
+    expect(downloadStateLabel("cancelled")).toBe("Cancelled");
+    expect(downloadStateTone("done")).toBe("success");
+    expect(downloadStateTone("failed")).toBe("danger");
+    expect(parentFolder("C:\\music\\night\\01 Night Drive.mp3")).toBe("C:\\music\\night");
+    expect(parentFolder("/music/night/01.mp3")).toBe("/music/night");
+    expect(parentFolder("01.mp3")).toBeNull();
+    expect(
+      downloadProgressText(item({ state: "downloading", receivedBytes: 2048, totalBytes: null })),
+    ).toBe("2.0 KB downloaded");
   });
 });

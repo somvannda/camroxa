@@ -82,6 +82,19 @@ const bridge = {
       return () => ipcRenderer.removeListener("video-templates:changed", listener);
     },
   },
+  downloads: {
+    list: () => invoke("downloads:list"),
+    start: () => invoke("downloads:start"),
+    stop: () => invoke("downloads:stop"),
+    retry: (key: string) => invoke("downloads:retry", { key }),
+    cancel: (key: string) => invoke("downloads:cancel", { key }),
+    reveal: (key: string) => invoke("downloads:reveal", { key }),
+    onChange: (callback: (payload: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on("downloads:changed", listener);
+      return () => ipcRenderer.removeListener("downloads:changed", listener);
+    },
+  },
   pipeline: {
     list: () => invoke("pipeline:list"),
     enqueue: (request: unknown) => invoke("pipeline:enqueue", request),
