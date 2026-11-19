@@ -1,0 +1,83 @@
+name: Desktop Electron
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "desktop-electron/**"
+      - ".github/workflows/desktop-electron.yml"
+  pull_request:
+    paths:
+      - "desktop-electron/**"
+      - ".github/workflows/desktop-electron.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-electron-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop-electron
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop-electron/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: API schema drift
+        run: npm run api:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: E2E smoke
+        run: npm run test:e2e
+        env:
+          CI: "true"
+          ELECTRON_ENABLE_LOGGING: "1"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-electron-artifacts
+          path: |
+            desktop-electron/artifacts
+            desktop-electron/dist
+            desktop-electron/dist-electron
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-electron-logs
+          path: |
+            ${{ env.APPDATA }}/Camxora Desktop/logs
+          if-no-files-found: ignore
+          retention-days: 7
