@@ -15,7 +15,7 @@ import { mediaSchemePrivileges } from "../services/media";
 import {
   VIZZY_HOST,
   VIZZY_SCHEME,
-  resolveVizzyAsset,
+  resolveVizzyRequest,
   vizzyAssetStreamResponse,
   vizzyErrorResponse,
 } from "./assets";
@@ -23,6 +23,8 @@ import {
 export interface VizzyProtocolOptions {
   /** Absolute directory that contains `index.html`. */
   root: string;
+  /** Optional staged template library; `/creations/*` is served from here. */
+  libraryRoot?: string | null;
   /** Optional hook for diagnostics; never used for auth. */
   onRequest?: (info: { pathname: string; status: number }) => void;
   /** Optional error sink (missing root, handler failure). */
@@ -72,6 +74,7 @@ export function createVizzyProtocolHandler(
   options: VizzyProtocolOptions,
 ): (request: Request) => Promise<Response> {
   const root = path.resolve(options.root);
+  const libraryRoot = options.libraryRoot ? path.resolve(options.libraryRoot) : null;
 
   return async (request: Request): Promise<Response> => {
     try {
@@ -93,7 +96,7 @@ export function createVizzyProtocolHandler(
         return vizzyErrorResponse(405, "Method not allowed");
       }
 
-      const lookup = resolveVizzyAsset(root, url.pathname);
+      const lookup = resolveVizzyRequest(root, libraryRoot, url.pathname);
       if (!lookup.ok) {
         options.onRequest?.({ pathname: url.pathname, status: lookup.status });
         return vizzyErrorResponse(lookup.status, lookup.message);

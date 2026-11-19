@@ -99,8 +99,7 @@ function isInside(root: string, target: string): boolean {
  * Map a URL pathname to a file under `root`. Rejects traversal, NUL bytes,
  * encoded separators and anything that is not a regular file.
  */
-export function resolveVizzyAsset(root: string, pathname: string): VizzyAssetLookup {
-  let decoded: string;
+export function resolveVizzyAsset(root: string, pathname: string): VizzyAssetLookup {  let decoded: string;
   try {
     decoded = decodeURIComponent(pathname);
   } catch {
@@ -127,6 +126,22 @@ export function resolveVizzyAsset(root: string, pathname: string): VizzyAssetLoo
   if (!stat.isFile()) return { ok: false, status: 404, message: "Not found" };
 
   return { ok: true, asset: { filePath, mime: mimeForAsset(filePath), size: stat.size } };
+}
+
+/**
+ * Resolve a hosted request. `/creations/*` comes from the staged template
+ * library (when present); everything else comes from the built editor bundle.
+ */
+export function resolveVizzyRequest(
+  root: string,
+  libraryRoot: string | null,
+  pathname: string,
+): VizzyAssetLookup {
+  if (libraryRoot && (pathname === "/creations" || pathname.startsWith("/creations/"))) {
+    const creationsRoot = path.join(path.resolve(libraryRoot), "creations");
+    return resolveVizzyAsset(creationsRoot, pathname.slice("/creations".length) || "/");
+  }
+  return resolveVizzyAsset(root, pathname);
 }
 
 /** Headers every response carries, including error responses. */

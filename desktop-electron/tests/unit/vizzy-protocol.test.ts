@@ -6,6 +6,7 @@ import {
   mimeForAsset,
   parseByteRange,
   resolveVizzyAsset,
+  resolveVizzyRequest,
   vizzyAssetStreamResponse,
 } from "../../electron/vizzy-host/assets";
 
@@ -82,5 +83,49 @@ describe("asset resolution", () => {
   it("resolves a nested file and rejects traversal", () => {
     expect(resolveVizzyAsset(root, "/asset.bin")).toMatchObject({ ok: true });
     expect(resolveVizzyAsset(root, "/../asset.bin")).toMatchObject({ ok: false, status: 403 });
+  });
+});
+
+describe("staged template library routing", () => {
+  let libraryRoot: string;
+
+  beforeAll(() => {
+    libraryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "camxora-vizzy-lib-"));
+    fs.mkdirSync(path.join(libraryRoot, "creations", "templates"), { recursive: true });
+    fs.mkdirSync(path.join(libraryRoot, "creations", "thumbs"), { recursive: true });
+    fs.writeFileSync(path.join(libraryRoot, "creations", "manifest.json"), '{"creations":[]}');
+    fs.writeFileSync(path.join(libraryRoot, "creations", "templates", "a.json"), "{}");
+    fs.writeFileSync(path.join(libraryRoot, "creations", "thumbs", "a.jpg"), "jpg");
+  });
+
+  afterAll(() => {
+    fs.rmSync(libraryRoot, { recursive: true, force: true });
+  });
+
+  it("serves /creations from the library when one is staged", () => {
+    expect(resolveVizzyRequest(root, libraryRoot, "/creations/manifest.json")).toMatchObject({
+      ok: true,
+    });
+    expect(resolveVizzyRequest(root, libraryRoot, "/creations/templates/a.json")).toMatchObject({
+      ok: true,
+    });
+    expect(resolveVizzyRequest(root, libraryRoot, "/creations/thumbs/a.jpg")).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("keeps the editor bundle for non-library paths", () => {
+    expect(resolveVizzyRequest(root, libraryRoot, "/asset.bin")).toMatchObject({ ok: true });
+  });
+
+  it("rejects traversal out of the library and falls back without one", () => {
+    expect(resolveVizzyRequest(root, libraryRoot, "/creations/../asset.bin")).toMatchObject({
+      ok: false,
+      status: 403,
+    });
+    expect(resolveVizzyRequest(root, null, "/creations/manifest.json")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
   });
 });

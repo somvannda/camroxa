@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { app, BrowserWindow, protocol, session, shell } from "electron";
 import { registerIpc } from "./ipc";
@@ -23,6 +24,14 @@ function vizzyBundleRoot(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, "vizzy-dist")
     : path.join(__dirname, "..", "vizzy-dist");
+}
+
+/** `vizzy-library/` next to the app bundle, or inside the packaged resources. */
+function vizzyLibraryRoot(): string | null {
+  const root = app.isPackaged
+    ? path.join(process.resourcesPath, "vizzy-library")
+    : path.join(__dirname, "..", "vizzy-library");
+  return fs.existsSync(path.join(root, "creations", "manifest.json")) ? root : null;
 }
 
 app.setName(APP_NAME);
@@ -104,6 +113,7 @@ app.whenReady().then(() => {
   try {
     installVizzyProtocol({
       root: vizzyRoot,
+      libraryRoot: vizzyLibraryRoot(),
       onError: (error) => logger.error("vizzy protocol", { error: String(error) }),
     });
   } catch (error) {
