@@ -42,6 +42,8 @@ interface EditorGlobals {
   editHistory?: HistoryLike;
   editorSerializeProject?: () => unknown;
   editorRestoreProject?: (snapshot: unknown) => void;
+  /** Loads a track into the editor and resolves after its impact scan. */
+  editorLoadAudio?: (name: string, bytes: Uint8Array) => Promise<string>;
 }
 
 export interface VizzyTestSnapshot {
@@ -194,6 +196,29 @@ function applyHostProject(project: VizzyOpenedProject, requestId: string): void 
   }
 }
 
+/**
+ * Load a run track from the host.
+ *
+ * The bytes are streamed over `camxora-media://` inside the editor and handed
+ * to the editor's own audio loader; they are never embedded in the project and
+ * never cross the preload bridge as a payload.
+ */
+async function loadAudioFromUrl(name: string, url: string, requestId: string): Promise<void> {
+  try {
+    const load = globals.editorLoadAudio;
+    if (!load) throw new Error("The editor is not ready to load audio.");
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) throw new Error(`The audio file could not be streamed (${response.status}).`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    await load(name, bytes);
+    bridge?.acknowledge({ requestId, ok: true });
+    reportState();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    bridge?.acknowledge({ requestId, ok: false, error: message });
+  }
+}
+
 function installTestApi(): void {
   const api: VizzyTestApi = {
     get ready() {
@@ -241,6 +266,10 @@ function subscribeToHost(): void {
         `Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
       );
       markSaved();
+      return;
+    }
+    if (command.type === "load-audio") {
+      void loadAudioFromUrl(command.name, command.url, command.requestId);
     }
   });
 }

@@ -1,3 +1,5 @@
+import type { BindingOptions, BindingSelection } from "./pipeline";
+
 export type ApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export interface ApiRequest {
@@ -212,6 +214,46 @@ export interface VideoTemplateInfo {
   fps: number;
   createdAt: string;
   thumbnailUrl: string | null;
+}
+
+/** `video-templates:changed` (main → every shell window). */
+export interface VideoTemplateChangedEvent {
+  id: string;
+  action: "saved" | "deleted";
+}
+
+/**
+ * `vizzy:template-options` — what the save dialog needs from the live project.
+ * The options come from the exact snapshot the save will capture.
+ */
+export interface VizzyTemplateDraftInfo {
+  name: string;
+  width: number;
+  height: number;
+  fps: number;
+  kind: "long" | "reel";
+  /** Binding pre-fill from `detectBindings()`, filtered to compatible options. */
+  detected: BindingSelection;
+  options: BindingOptions;
+}
+
+/** `vizzy:save-template` request; the host supplies the snapshot and thumbnail. */
+export interface VizzySaveTemplateInput {
+  name: string;
+  kind: "long" | "reel";
+  bindings: BindingSelection;
+}
+
+/** `vizzy:render-template` — one saved template rendered with a real track. */
+export interface VizzyRenderTemplateRequest {
+  templateId: string;
+  audioPath: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  backgroundPath?: string;
+  logoPath?: string;
+  palette?: string[];
 }
 
 /** `vizzy:export` request: every field is optional; the project fills the gaps. */

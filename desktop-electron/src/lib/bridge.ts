@@ -13,6 +13,7 @@ import type {
   TemplateChangedEvent,
   UpdateCheckResult,
   UpdateOffer,
+  VideoTemplateChangedEvent,
   VideoTemplateInfo,
   VizzyBounds,
   VizzyExportOutcome,
@@ -21,8 +22,11 @@ import type {
   VizzyOpenResult,
   VizzyProbe,
   VizzyRenderSummary,
+  VizzyRenderTemplateRequest,
   VizzySaveResult,
+  VizzySaveTemplateInput,
   VizzyState,
+  VizzyTemplateDraftInfo,
 } from "../../electron/shared/types";
 
 export interface CamxoraBridge {
@@ -96,6 +100,7 @@ export interface CamxoraBridge {
     list(): Promise<IpcResult<VideoTemplateInfo[]>>;
     read(id: string): Promise<IpcResult<VideoTemplateInfo & { pipeline: unknown }>>;
     remove(id: string): Promise<IpcResult<boolean>>;
+    onChange(callback: (payload: VideoTemplateChangedEvent) => void): () => void;
   };
   vizzy: {
     attach(bounds: VizzyBounds): Promise<IpcResult<VizzyState>>;
@@ -113,6 +118,13 @@ export interface CamxoraBridge {
     deleteRender(name: string): Promise<IpcResult<{ deleted: boolean }>>;
     revealRender(name: string): Promise<IpcResult<boolean>>;
     renderUrl(name: string): Promise<IpcResult<{ url: string }>>;
+    /** Hide the native editor while a shell modal is open. */
+    setVisible(visible: boolean): Promise<IpcResult<boolean>>;
+    templateOptions(): Promise<IpcResult<VizzyTemplateDraftInfo>>;
+    saveTemplate(input: VizzySaveTemplateInput): Promise<IpcResult<VideoTemplateInfo>>;
+    previewTemplate(id: string): Promise<IpcResult<VizzyOpenResult>>;
+    openLibrary(): Promise<IpcResult<{ opened: boolean }>>;
+    renderTemplate(request: VizzyRenderTemplateRequest): Promise<IpcResult<VizzyExportOutcome>>;
     onState(callback: (state: VizzyState) => void): () => void;
     onExportProgress(callback: (progress: VizzyExportProgress) => void): () => void;
   };

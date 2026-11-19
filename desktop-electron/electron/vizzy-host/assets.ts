@@ -39,7 +39,7 @@ export const VIZZY_CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob: camxora-media:",
-  "connect-src 'self' blob: data:",
+  "connect-src 'self' blob: data: camxora-media:",
   "font-src 'self' data:",
   "object-src 'none'",
   "base-uri 'none'",

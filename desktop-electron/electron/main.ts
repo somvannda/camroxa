@@ -5,6 +5,7 @@ import { registerIpc } from "./ipc";
 import { logger } from "./services/logger";
 import { handleMediaRequest } from "./services/media";
 import { ensureAppDirs, getAppPaths } from "./services/paths";
+import { resolveLibraryRoot } from "./services/vizzy-library";
 import { closeStore, initStore } from "./services/store";
 import { APP_NAME, APP_VERSION, USER_DATA_FOLDER } from "./shared/version";
 import { VizzyHost } from "./vizzy-host/host";
@@ -26,12 +27,14 @@ function vizzyBundleRoot(): string {
     : path.join(__dirname, "..", "vizzy-dist");
 }
 
-/** `vizzy-library/` next to the app bundle, or inside the packaged resources. */
+/**
+ * `vizzy-library/` from the staged pack. `resolveLibraryRoot()` honours
+ * `CAMXORA_VIZZY_LIBRARY_DIR`, then packaged resources, then the app directory,
+ * so the same code path serves dev, E2E and the installer.
+ */
 function vizzyLibraryRoot(): string | null {
-  const root = app.isPackaged
-    ? path.join(process.resourcesPath, "vizzy-library")
-    : path.join(__dirname, "..", "vizzy-library");
-  return fs.existsSync(path.join(root, "creations", "manifest.json")) ? root : null;
+  const root = resolveLibraryRoot();
+  return fs.existsSync(path.join(root, "manifest.json")) ? root : null;
 }
 
 app.setName(APP_NAME);

@@ -66,6 +66,13 @@ export type VizzyHostCommand =
       json: string;
     }
   | { v: 1; type: "project-saved"; path: string; name: string }
+  | {
+      v: 1;
+      type: "load-audio";
+      requestId: string;
+      name: string;
+      url: string;
+    }
   | { v: 1; type: "request-reload" }
   | { v: 1; type: "export-run"; jobId: string; settings: VizzyExportSettings }
   | { v: 1; type: "export-cancel"; jobId: string };

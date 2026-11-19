@@ -495,8 +495,9 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
               data-testid="settings-profile-templates"
             >
               <Note>
-                Vizzy pipeline templates arrive in P7. This build has no template picker, and the old
-                Camxora template list is not used by the Vizzy pipeline.
+                Save video and reel templates in Vizzy (preview a composition, then “Save as
+                video template”), then pick them in Publication. The old Camxora template list is
+                not used by the Vizzy pipeline.
               </Note>
             </Section>
 
