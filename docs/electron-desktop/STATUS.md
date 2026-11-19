@@ -98,7 +98,7 @@ This is a backend contract decision, not a renderer bug.
 
 | Page | Status |
 |---|---|
-| Dashboard | Merged, 47-test baseline, fixture E2E |
+| Dashboard | Merged — KPIs, chart, quota, activity, fixture E2E |
 | Profile | Merged, fixture E2E |
 | Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, downloads, polling, 200-row E2E |
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history |
@@ -109,4 +109,4 @@ This is a backend contract decision, not a renderer bug.
 
 Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /
 #0f1322 / #a855f7 palette, 28 px page titles, gradient primary CTA. Pages are lazy-loaded; the
-shell chunk is ~328 kB (102 kB gzip).
+shell chunk is ~333 kB (103 kB gzip).

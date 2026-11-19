@@ -60,9 +60,15 @@ remote_image, remote_other, thumbnail`.
 Before porting:
 
 - [ ] Vendor or substitute the 78 remote font URLs and 4 remote images.
-- [ ] Re-run the audit and require `remote_font = 0`, `remote_image = 0`, `missing_local = 0`.
+- [ ] Re-run `npm run vizzy:audit` and require `remote_font = 0`, `remote_image = 0`,
+      `missing_local = 0`.
 - [ ] Keep `remote_audio` as metadata, not a render dependency.
 - [ ] Add a regression project for `1735`, `code-286`, `nebula-staff`.
+
+The audit script is `desktop-electron/scripts/audit-vizzy-library.mjs`. It reads
+`CAMXORA_VIZZY_SOURCE` (or `G:/Developments/Rea/editor`) and rewrites the CSV:
+`npm run vizzy:audit` reports status and `npm run vizzy:audit:strict` fails on remote
+fonts/images, missing local files or missing thumbnails.
 
 ---
 

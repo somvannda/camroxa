@@ -21,6 +21,8 @@
     "typecheck": "tsc --noEmit",
     "api:types": "openapi-typescript openapi.json -o src/lib/api-schema.d.ts",
     "api:check": "node scripts/check-openapi.mjs",
+    "vizzy:audit": "node scripts/audit-vizzy-library.mjs --out ../docs/electron-desktop/vizzy/library-inventory.csv --allow-remote",
+    "vizzy:audit:strict": "node scripts/audit-vizzy-library.mjs --out ../docs/electron-desktop/vizzy/library-inventory.csv",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
