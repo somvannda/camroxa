@@ -32,7 +32,7 @@
 | **P7 pipeline contract** | Validated `pipeline.json`, conservative binding detection, run-input application, atomic video-template store with PNG thumbnails, render-plan builder |
 | **P7 template pickers** | Publication selects saved long/reel templates and persists `video_template_id`/`reel_template_id`; shell-only list/read/delete IPC |
 | **P7 export + renders** | Native export through the editor's exporter, chunked to `renders/`, progress/cancel, inline Renders panel with confirmed delete; `vizzy-export` E2E |
-| **P7 save + render templates** | “Save template” dialog with detected/overridable bindings and PNG thumbnail; saved-template rail with preview/render/delete; a saved template renders a real 1080p MP4 with the run audio |
+| **P7 save + render templates** | “Save template” dialog with detected/overridable bindings and PNG thumbnail; saved-template rail with preview/render/delete; a saved template renders a real 1080p MP4 with the run audio; `candy-wave` also completed save → render at 640×360/60 |
 | **P7 batch** | Offscreen render host and Music/Progress wiring are **running** in `desktop/batch` |
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |

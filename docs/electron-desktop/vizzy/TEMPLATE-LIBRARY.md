@@ -139,6 +139,11 @@ loaded template to a real 480×270 MP4 and validates it with ffprobe. Time per t
 0.36–1.06 s; the run is ~55 s. This covers LIB-01, LIB-02 and LIB-05 for the library; the
 matrix JSON lands in `desktop-electron/artifacts/vizzy/`.
 
+A real library template has also completed the full **save-as-video-template → render** path:
+`candy-wave` (14 nodes, 640×360 @ 60) was saved with detected background/title/artist/palette
+bindings, then rendered with a 2 s run track to a 640×360 H.264/AAC MP4 (1.98 s). This covers
+LIB-06 and LIB-07 for a non-fixture template.
+
 | ID | Check | Pass condition |
 |---|---|---|
 | LIB-01 | Open | Project loads with no console errors |
