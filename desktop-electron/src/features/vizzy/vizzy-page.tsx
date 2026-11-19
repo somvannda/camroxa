@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Badge, StatusDot } from "../../components/status";
+import { StatusDot } from "../../components/status";
 import { Button } from "../../components/button";
 import { Icon } from "../../components/icon";
 import { toast } from "../../components/toast";
@@ -205,29 +205,33 @@ export function VizzyPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface-1 px-4">
-        <Icon name="fa-film" size={14} className="text-text-muted" />
-        <span className="text-meta text-text-muted">Vizzy</span>
-        <span className="h-4 w-px bg-border" />
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-surface-1 px-4">
+        <Icon name="fa-film" size={14} className="shrink-0 text-text-muted" />
+        <span className="shrink-0 text-meta text-text-muted">Vizzy</span>
+        <span className="h-4 w-px shrink-0 bg-border" />
 
-        <span className="max-w-[320px] truncate text-body font-medium text-text-primary">
+        <span className="min-w-0 max-w-[220px] truncate text-body font-medium text-text-primary">
           {state.projectName || "Untitled project"}
         </span>
-        <StatusDot tone={state.dirty ? "warning" : "success"} label={attached ? saveLabel : "Not running"} />
-        <span className="text-meta text-text-muted">{state.nodeCount} items</span>
+        <span className="shrink-0">
+          <StatusDot
+            tone={state.dirty ? "warning" : "success"}
+            label={attached ? saveLabel : "Not running"}
+          />
+        </span>
+        <span className="hidden shrink-0 whitespace-nowrap text-meta text-text-muted min-[1440px]:inline">
+          {state.nodeCount} items
+        </span>
         {state.projectWidth > 0 && state.projectHeight > 0 ? (
-          <span className="text-meta text-text-muted">
+          <span className="hidden shrink-0 whitespace-nowrap text-meta text-text-muted min-[1440px]:inline">
             {state.projectWidth}×{state.projectHeight}
           </span>
         ) : null}
-        {state.fftTier !== "unknown" ? (
-          <Badge tone="neutral">fft: {state.fftTier}</Badge>
-        ) : null}
-        {state.crossOriginIsolated ? <Badge tone="neutral">isolated</Badge> : null}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button
             variant="secondary"
+            className="shrink-0 px-3"
             onClick={() => togglePanel("export")}
             disabled={!attached || exporter.running}
             loading={exporter.running}
@@ -239,17 +243,21 @@ export function VizzyPage() {
           </Button>
           <Button
             variant="secondary"
+            className="shrink-0 whitespace-nowrap px-3"
             onClick={() => void openTemplateDialog()}
             disabled={!attached || exporter.running}
             data-testid="vizzy-template-open"
           >
             <Icon name="fa-floppy-disk" size={12} />
-            Save as template
+            Save template
           </Button>
           <Button
             variant="ghost"
+            className="shrink-0 px-2.5"
             onClick={() => togglePanel("renders")}
             aria-expanded={panel === "renders"}
+            aria-label="Renders"
+            title="Renders"
             data-testid="vizzy-renders-open"
           >
             <Icon name="fa-photo-film" size={12} />
@@ -257,8 +265,11 @@ export function VizzyPage() {
           </Button>
           <Button
             variant="ghost"
+            className="shrink-0 px-2.5"
             onClick={() => togglePanel("templates")}
             aria-expanded={panel === "templates"}
+            aria-label="Templates"
+            title="Templates"
             data-testid="vizzy-templates-open"
           >
             <Icon name="fa-layer-group" size={12} />
@@ -267,16 +278,23 @@ export function VizzyPage() {
           <span className="h-4 w-px bg-border" />
           <Button
             variant="primary"
+            className="shrink-0 px-3"
             onClick={() => void save()}
             loading={busy === "save"}
             disabled={!attached}
           >
             Save
           </Button>
-          <Button variant="secondary" onClick={() => void open()} loading={busy === "open"} disabled={!attached}>
+          <Button
+            variant="secondary"
+            className="shrink-0 px-3"
+            onClick={() => void open()}
+            loading={busy === "open"}
+            disabled={!attached}
+          >
             Open
           </Button>
-          <Button variant="ghost" onClick={closeEditor} disabled={!attached}>
+          <Button variant="ghost" className="shrink-0 px-2.5" onClick={closeEditor} disabled={!attached}>
             Close
           </Button>
         </div>
