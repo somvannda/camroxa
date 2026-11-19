@@ -178,7 +178,13 @@ export function MarketplaceCard({
             title={policy ?? undefined}
             onClick={onInstall}
           >
-            {installing ? null : installed ? <Icon name="fa-check" size={14} /> : <Icon name="fa-download" size={14} />}
+            {installing ? null : installed ? (
+              <Icon name="fa-check" size={14} />
+            ) : supported ? (
+              <Icon name="fa-download" size={14} />
+            ) : (
+              <Icon name="fa-ban" size={14} />
+            )}
             {!supported ? "Not supported" : installLabel(installed, installing)}
           </Button>
         </div>
