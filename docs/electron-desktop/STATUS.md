@@ -30,9 +30,9 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               47/47 PASS
-npm run build          PASS
-npm run test:e2e       PASS (smoke, login/gates, media, account)
+npm test               132/132 PASS
+npm run build          PASS (shell 330 kB / 102 kB gzip, pages split)
+npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, update)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
