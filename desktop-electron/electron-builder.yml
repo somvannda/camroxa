@@ -10,6 +10,8 @@ files:
 extraResources:
   - from: vizzy-dist
     to: vizzy-dist
+  - from: vizzy-library
+    to: vizzy-library
 win:
   icon: resources/icon.ico
   target:

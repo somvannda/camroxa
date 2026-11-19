@@ -74,18 +74,36 @@ fonts/images, missing local files or missing thumbnails.
 
 ## 3. Delivery
 
-| Option | Behaviour | Recommendation |
+The library is staged on disk before packaging:
+
+```powershell
+cd desktop-electron
+npm run vizzy:library          # copy from CAMXORA_VIZZY_SOURCE (default G:/Developments/Rea/editor)
+npm run vizzy:library:check    # manifest + file presence gate
+```
+
+- Output: `desktop-electron/vizzy-library/` (git-ignored), **263.9 MB**:
+  91 project JSON files, 88 asset folders, 91 thumbnails and `manifest.json`.
+- `manifest.json` rows: `slug, name, project, thumbnail, hasAssets, jsonBytes, assetBytes`.
+- `electron-builder.yml` ships it as `extraResources/vizzy-library`; the app reads it from
+  `process.resourcesPath` (packaged) or `desktop-electron/vizzy-library` (dev).
+- The release build requires the staged library; `package:win` runs the check first.
+
+| Option | Behaviour | Trade-off |
 |---|---|---|
-| **First-run pack** | Base installer is lean; the app installs all 91 into the library on first run | **Recommended** |
-| **Bundle** | All 91 ship inside the installer | Acceptable if product accepts the size |
-| **Lazy download** | Templates fetch on first open | Only if the pack becomes too large |
+| **Bundle** (current staging) | All 91 ship inside the installer | Simple, fully offline; adds ~264 MB plus the 45 MB editor bundle |
+| **First-run pack** | Lean installer; the app installs all 91 on first run | Needs hosting, a signed pack, resume/repair |
+| **Lazy download** | Fetch each template on first open | Most complex; weakest offline story |
 
-All three present **all 91 as available**. The difference is only when the bytes land on disk.
+All three present **all 91 as available**. The current build bundles them; the installer size
+budget in `02-MODULE-MAP.md` (≤220 MB) is exceeded and needs an explicit product decision
+before release.
 
-- [ ] Choose the delivery mode (default: first-run pack).
-- [ ] Include a manifest with slug, display name, kind, thumbnail, asset list and licence.
-- [ ] Verify the pack installs atomically and resumes on interruption.
-- [ ] Keep a cache/repair action in Settings.
+- [x] Stage the pack locally with a manifest.
+- [x] Verify every manifest row resolves to a file.
+- [ ] Decide bundle vs first-run pack before the 2.0.0 installer.
+- [ ] Add a library repair/verify action in Settings.
+- [ ] Add licence metadata per template (see §4).
 
 ---
 

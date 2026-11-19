@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 vizzy-dist/
+vizzy-library/
 release/
 out/
 artifacts/

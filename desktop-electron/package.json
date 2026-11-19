@@ -31,8 +31,10 @@
     "vizzy:sync": "node scripts/sync-vizzy.mjs",
     "vizzy:install": "npm --prefix vizzy ci",
     "vizzy:build": "npm --prefix vizzy run build",
+    "vizzy:library": "node scripts/sync-vizzy-library.mjs",
+    "vizzy:library:check": "node scripts/sync-vizzy-library.mjs --check",
     "vizzy": "npm run vizzy:sync && npm run vizzy:install && npm run vizzy:build",
-    "package:win": "npm run build && npm run vizzy:build && electron-builder --win nsis"
+    "package:win": "npm run build && npm run vizzy:build && npm run vizzy:library:check && electron-builder --win nsis"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
