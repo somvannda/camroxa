@@ -10,19 +10,31 @@ const allowedFiles = new Set<string>();
 const tokens = new Map<string, string>();
 
 export function registerMediaScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: "camxora-media",
-      privileges: {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        stream: true,
-        corsEnabled: true,
-      },
-    },
-  ]);
+  protocol.registerSchemesAsPrivileged([mediaSchemePrivileges()]);
 }
+
+/**
+ * The privileged entry for `camxora-media://`.
+ *
+ * Electron keeps a single privileged-scheme list per process: a second
+ * `registerSchemesAsPrivileged` call replaces the first, so hosts that need more
+ * than one scheme must register them together. `electron/vizzy-host/protocol.ts`
+ * exports `registerHostSchemes()` for exactly that.
+ */
+function mediaSchemePrivileges() {
+  return {
+    scheme: "camxora-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  };
+}
+
+export { mediaSchemePrivileges };
 
 function managedRoots(): string[] {
   const paths = getAppPaths();

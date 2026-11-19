@@ -79,6 +79,22 @@ const bridge = {
     check: () => invoke("updates:check"),
     open: (offer: unknown) => invoke("updates:open", offer),
   },
+  vizzy: {
+    attach: (bounds: unknown) => invoke("vizzy:attach", bounds),
+    detach: () => invoke("vizzy:detach"),
+    setBounds: (bounds: unknown) => invoke("vizzy:set-bounds", bounds),
+    state: () => invoke("vizzy:state"),
+    probe: () => invoke("vizzy:probe"),
+    reload: () => invoke("vizzy:reload"),
+    save: () => invoke("vizzy:save"),
+    open: () => invoke("vizzy:open"),
+    openPath: (path: string) => invoke("vizzy:open-path", { path }),
+    onState: (callback: (state: unknown) => void) => {
+      const listener = (_event: unknown, state: unknown) => callback(state);
+      ipcRenderer.on("vizzy:state", listener);
+      return () => ipcRenderer.removeListener("vizzy:state", listener);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("camxora", bridge);

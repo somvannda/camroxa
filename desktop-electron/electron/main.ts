@@ -2,15 +2,28 @@ import path from "node:path";
 import { app, BrowserWindow, protocol, session, shell } from "electron";
 import { registerIpc } from "./ipc";
 import { logger } from "./services/logger";
-import { handleMediaRequest, registerMediaScheme } from "./services/media";
-import { ensureAppDirs } from "./services/paths";
+import { handleMediaRequest } from "./services/media";
+import { ensureAppDirs, getAppPaths } from "./services/paths";
 import { closeStore, initStore } from "./services/store";
 import { APP_NAME, APP_VERSION, USER_DATA_FOLDER } from "./shared/version";
+import { VizzyHost } from "./vizzy-host/host";
+import { installVizzyProtocol, registerHostSchemes } from "./vizzy-host/protocol";
 
-registerMediaScheme();
+// Privileged scheme registration must run before the app is ready; the handlers
+// themselves are installed after `whenReady()`. One call registers both
+// `camxora-media://` and `camxora-vizzy://` (Electron keeps a single list).
+registerHostSchemes();
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 let mainWindow: BrowserWindow | null = null;
+let vizzyHost: VizzyHost | null = null;
+
+/** `vizzy-dist/` next to the app bundle, or inside the packaged resources. */
+function vizzyBundleRoot(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "vizzy-dist")
+    : path.join(__dirname, "..", "vizzy-dist");
+}
 
 app.setName(APP_NAME);
 app.setAppUserModelId("com.camxora.desktop");
@@ -76,6 +89,7 @@ function createWindow(): BrowserWindow {
 
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
+    vizzyHost?.dispose();
   });
 
   return window;
@@ -85,7 +99,30 @@ app.whenReady().then(() => {
   ensureAppDirs();
   initStore();
   protocol.handle("camxora-media", handleMediaRequest);
-  registerIpc();
+
+  const vizzyRoot = vizzyBundleRoot();
+  try {
+    installVizzyProtocol({
+      root: vizzyRoot,
+      onError: (error) => logger.error("vizzy protocol", { error: String(error) }),
+    });
+  } catch (error) {
+    logger.error("vizzy bundle unavailable", { error: String(error), root: vizzyRoot });
+  }
+
+  vizzyHost = new VizzyHost({
+    getWindow: () => mainWindow,
+    preloadPath: path.join(__dirname, "vizzy-preload.cjs"),
+    root: vizzyRoot,
+    projectsDir: getAppPaths().projects,
+    onState: (state) => {
+      if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send("vizzy:state", state);
+      }
+    },
+  });
+
+  registerIpc(vizzyHost);
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "notifications");
@@ -112,6 +149,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  vizzyHost?.dispose();
   closeStore();
 });
 

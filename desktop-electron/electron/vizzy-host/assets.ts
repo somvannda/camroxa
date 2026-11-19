@@ -1,10 +1,14 @@
 /**
- * Pure helpers for the Vizzy host spike.
+ * Pure helpers for the hosted Vizzy page.
  *
  * This module deliberately has no Electron import so it can be unit-tested in a
  * plain Node/vitest process. `protocol.ts` and `server.ts` wrap it.
+ *
+ * P7 adds the production response path: `vizzyAssetStreamResponse` streams from
+ * disk and honours a single `Range` request, which the spike did not need.
  */
 import fs from "node:fs";
+import { Readable } from "node:stream";
 import path from "node:path";
 
 export const VIZZY_SCHEME = "camxora-vizzy";
@@ -31,11 +35,12 @@ export const VIZZY_ISOLATION_HEADERS: Readonly<Record<string, string>> = {
 export const VIZZY_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
-  "worker-src 'self'",
+  "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob: camxora-media:",
-  "connect-src 'self'",
+  "connect-src 'self' blob: data:",
+  "font-src 'self' data:",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
@@ -45,6 +50,7 @@ const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
+  ".cjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".map": "application/json; charset=utf-8",
@@ -65,6 +71,9 @@ const MIME: Record<string, string> = {
   ".wav": "audio/wav",
   ".ogg": "audio/ogg",
   ".flac": "audio/flac",
+  ".fnt": "text/plain; charset=utf-8",
+  ".obj": "text/plain; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 export function mimeForAsset(filePath: string): string {
@@ -128,6 +137,7 @@ export function vizzyResponseHeaders(mime: string): Record<string, string> {
     "Content-Security-Policy": VIZZY_CONTENT_SECURITY_POLICY,
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    "Accept-Ranges": "bytes",
   };
 }
 
@@ -146,5 +156,80 @@ export function vizzyErrorResponse(status: number, message: string): Response {
   return new Response(message, {
     status,
     headers: vizzyResponseHeaders("text/plain; charset=utf-8"),
+  });
+}
+
+export interface VizzyByteRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Parse a `Range` header for a single range. Multi-range and malformed values
+ * are ignored (`null`), which makes the handler answer with the full body — the
+ * safe behaviour for `<video>` and `WebAssembly.instantiateStreaming`.
+ */
+export function parseByteRange(header: string | null, size: number): VizzyByteRange | null {
+  if (!header) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match) return null;
+  const [, rawStart, rawEnd] = match;
+  if (rawStart === "" && rawEnd === "") return null;
+
+  let start: number;
+  let end: number;
+  if (rawStart === "") {
+    // Suffix range: the last N bytes.
+    const length = Number(rawEnd);
+    if (!Number.isFinite(length) || length <= 0) return null;
+    start = Math.max(0, size - length);
+    end = size - 1;
+  } else {
+    start = Number(rawStart);
+    end = rawEnd === "" ? size - 1 : Number(rawEnd);
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 0 || end < start || start >= size) return null;
+  return { start, end: Math.min(end, size - 1) };
+}
+
+/**
+ * Production response: stream from disk, honour a single range, and keep every
+ * header the isolation model needs.
+ */
+export function vizzyAssetStreamResponse(
+  asset: VizzyAsset,
+  rangeHeader: string | null,
+  method: string,
+): Response {
+  const range = parseByteRange(rangeHeader, asset.size);
+  const headers = vizzyResponseHeaders(asset.mime);
+
+  if (method === "HEAD") {
+    return new Response(null, {
+      status: 200,
+      headers: { ...headers, "Content-Length": String(asset.size) },
+    });
+  }
+
+  if (range) {
+    const length = range.end - range.start + 1;
+    const stream = Readable.toWeb(
+      fs.createReadStream(asset.filePath, { start: range.start, end: range.end }),
+    ) as ReadableStream;
+    return new Response(stream, {
+      status: 206,
+      headers: {
+        ...headers,
+        "Content-Length": String(length),
+        "Content-Range": `bytes ${range.start}-${range.end}/${asset.size}`,
+      },
+    });
+  }
+
+  const stream = Readable.toWeb(fs.createReadStream(asset.filePath)) as ReadableStream;
+  return new Response(stream, {
+    status: 200,
+    headers: { ...headers, "Content-Length": String(asset.size) },
   });
 }

@@ -1,0 +1,2043 @@
+[
+ {
+  "id": "vizzy-01",
+  "name": "Preset 01",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-01.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:CfKwtDM1TvfNNo0v2UcYP",
+  "creator": "artofore",
+  "date": "2025-03-27T15:32:17.424Z",
+  "ref": {
+   "id": "CfKwtDM1TvfNNo0v2UcYP",
+   "lineWidth": 3,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 4,
+   "analyzers": 4,
+   "shaderLayers": 4,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     320,
+     420
+    ],
+    [
+     220,
+     320
+    ],
+    [
+     120,
+     220
+    ],
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:CfKwtDM1TvfNNo0v2UcYP"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Stroke",
+   "bands": 72,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 100,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 100,
+   "imageSize": 115,
+   "scaleMultiplier": 188,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-02",
+  "name": "Preset 02",
+  "category": "Bars",
+  "thumb": "/presets/vizzy-02.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:MJ9QyNICe1Pn7ffouOBIL",
+  "creator": "iGerman",
+  "date": "2025-03-27T15:28:10.987Z",
+  "ref": {
+   "id": "MJ9QyNICe1Pn7ffouOBIL",
+   "lineWidth": 14,
+   "texX": 0,
+   "texY": 5,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     20000
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:MJ9QyNICe1Pn7ffouOBIL"
+  },
+  "params": {
+   "type": "Bars",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 63,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/Logo.2be98029.webp",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-03",
+  "name": "Preset 03",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-03.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:MpBiDfJ_oPeFKyzBclQdU",
+  "creator": "HyperBass",
+  "date": "2022-02-06T15:26:42.640Z",
+  "ref": {
+   "id": "MpBiDfJ_oPeFKyzBclQdU",
+   "lineWidth": 12.07,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 114,
+   "analyzerRanges": [
+    [
+     20,
+     200
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:MpBiDfJ_oPeFKyzBclQdU"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Curve",
+   "fillStyle": "Stroke",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 280,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 4,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 300,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/logo_transparent.dded2d31.webp",
+   "color": "#ffb4b4"
+  }
+ },
+ {
+  "id": "vizzy-04",
+  "name": "Preset 04",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-04.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:cJuzRXYOYSBflpC4IJaLu",
+  "creator": "Thang",
+  "date": "2021-05-03T18:24:46.283Z",
+  "ref": {
+   "id": "cJuzRXYOYSBflpC4IJaLu",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 180,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 855,
+   "analyzerRanges": [
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:cJuzRXYOYSBflpC4IJaLu"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#4f2eb2"
+  }
+ },
+ {
+  "id": "vizzy-05",
+  "name": "Preset 05",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-05.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:STYMVhSQ7fWhx8uCzbwfp",
+  "creator": "Chris Connely",
+  "date": "2021-05-03T18:21:58.248Z",
+  "ref": {
+   "id": "STYMVhSQ7fWhx8uCzbwfp",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 19,
+   "analyzers": 19,
+   "shaderLayers": 19,
+   "customPathLength": 116,
+   "analyzerRanges": [
+    [
+     1020,
+     2000
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ],
+    [
+     20,
+     200
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:STYMVhSQ7fWhx8uCzbwfp"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 100,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 300,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/logo_transparent.dded2d31.webp",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-06",
+  "name": "Preset 06",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-06.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:ikh7eio3U7LYEEVYV9GMC",
+  "creator": "Tigerclaw227",
+  "date": "2021-03-04T20:17:56.522Z",
+  "ref": {
+   "id": "ikh7eio3U7LYEEVYV9GMC",
+   "lineWidth": 15.72,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 0.35479856256084225,
+   "texScaleY": 0.35479856256084225,
+   "rotation": 360,
+   "layers": 10,
+   "analyzers": 10,
+   "shaderLayers": 10,
+   "customPathLength": 23,
+   "analyzerRanges": [
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:ikh7eio3U7LYEEVYV9GMC"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 121,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 463,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": false,
+   "color": "#fbff00"
+  }
+ },
+ {
+  "id": "vizzy-07",
+  "name": "Preset 07",
+  "category": "Bars",
+  "thumb": "/presets/vizzy-07.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:5OiNjI_C7XgpkJDXH1QXu",
+  "creator": "iMaker",
+  "date": "2021-02-28T01:16:46.495Z",
+  "ref": {
+   "id": "5OiNjI_C7XgpkJDXH1QXu",
+   "lineWidth": 8,
+   "texX": 0,
+   "texY": 500,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     2000
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:5OiNjI_C7XgpkJDXH1QXu"
+  },
+  "params": {
+   "type": "Bars",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 128,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 300,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#FFB500"
+  }
+ },
+ {
+  "id": "vizzy-08",
+  "name": "Preset 08",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-08.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:vBur4jVbPG6-h0FyjCs0-",
+  "creator": "",
+  "date": "2021-02-28T00:47:16.537Z",
+  "ref": {
+   "id": "vBur4jVbPG6-h0FyjCs0-",
+   "lineWidth": 6,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": -180,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 151,
+   "analyzerRanges": [
+    [
+     20,
+     500
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:vBur4jVbPG6-h0FyjCs0-"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Line",
+   "fillStyle": "Fill",
+   "bands": 120,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 271,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 140,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#2f3472"
+  }
+ },
+ {
+  "id": "vizzy-09",
+  "name": "Preset 09",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-09.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:zyBozgbIt91dw-wx90kRP",
+  "creator": "iGerman",
+  "date": "2021-02-23T20:28:31.107Z",
+  "ref": {
+   "id": "zyBozgbIt91dw-wx90kRP",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 116,
+   "analyzerRanges": [
+    [
+     20,
+     200
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:zyBozgbIt91dw-wx90kRP"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 100,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 300,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/logo_transparent.dded2d31.webp",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-10",
+  "name": "Preset 10",
+  "category": "Bars",
+  "thumb": "/presets/vizzy-10.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:Y7YBz4NxCr3QDlGAY0Sqd",
+  "creator": "",
+  "date": "2021-02-06T18:05:06.470Z",
+  "ref": {
+   "id": "Y7YBz4NxCr3QDlGAY0Sqd",
+   "lineWidth": 3.5,
+   "texX": 0,
+   "texY": 500,
+   "texScaleX": 1,
+   "texScaleY": 2,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     2000
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:Y7YBz4NxCr3QDlGAY0Sqd"
+  },
+  "params": {
+   "type": "Bars",
+   "draw": "Curve",
+   "fillStyle": "Stroke",
+   "bands": 150,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 85,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/logo_transparent.dded2d31.webp",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-11",
+  "name": "Preset 11",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-11.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:0XRHfD59fAMbYktRQH0I8",
+  "creator": "Nitro Bass",
+  "date": "2021-01-19T17:09:55.113Z",
+  "ref": {
+   "id": "0XRHfD59fAMbYktRQH0I8",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1.25,
+   "texScaleY": 1.25,
+   "rotation": 0,
+   "layers": 9,
+   "analyzers": 9,
+   "shaderLayers": 9,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:0XRHfD59fAMbYktRQH0I8"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 150,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 100,
+   "imageSize": 92,
+   "scaleMultiplier": 175,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/logo_transparent.dded2d31.webp",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-12",
+  "name": "Preset 12",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-12.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:8b9z9U5CMF55coBDjodQh",
+  "creator": "Volt Sounds",
+  "date": "2020-12-28T20:32:35.555Z",
+  "ref": {
+   "id": "8b9z9U5CMF55coBDjodQh",
+   "lineWidth": 5.72,
+   "texX": -6,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 207,
+   "analyzerRanges": [
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:8b9z9U5CMF55coBDjodQh"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 200,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#b40000"
+  }
+ },
+ {
+  "id": "vizzy-13",
+  "name": "Preset 13",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-13.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:vvHjpPLOw6fdjzvXIStBI",
+  "creator": "Zgoly",
+  "date": "2020-12-27T12:14:20.602Z",
+  "ref": {
+   "id": "vvHjpPLOw6fdjzvXIStBI",
+   "lineWidth": 3,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 360,
+   "layers": 4,
+   "analyzers": 4,
+   "shaderLayers": 4,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ],
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:vvHjpPLOw6fdjzvXIStBI"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Stroke",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 4,
+   "circleSize": 89,
+   "imageSize": 74,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "https://firebasestorage.googleapis.com/v0/b/vizzy-6ced1.appspot.com/o/images%2FwY07nYf1xiYsc0fEzJ5sI3gKsJX2%2FwY07nYf1xiYsc0fEzJ5sI3gKsJX2%2Fprojects_v0.91%2FhlippwZ9caHBjJaOXoBki%2FV_uKphKoBqRUiHHD20KPU?alt=media&token=75782370-78e9-4c35-ad35-de275f1ddbb8",
+   "color": "#00d4ff"
+  }
+ },
+ {
+  "id": "vizzy-14",
+  "name": "Preset 14",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-14.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:fDC3UhZ4CNg3QWKXze2KO",
+  "creator": "",
+  "date": "2020-12-09T02:06:13.682Z",
+  "ref": {
+   "id": "fDC3UhZ4CNg3QWKXze2KO",
+   "lineWidth": 10.5,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": -180,
+   "layers": 2,
+   "analyzers": 2,
+   "shaderLayers": 2,
+   "customPathLength": 192,
+   "analyzerRanges": [
+    [
+     20,
+     2000
+    ],
+    [
+     20,
+     2000
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:fDC3UhZ4CNg3QWKXze2KO"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 120,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 271,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 140,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ff5f00"
+  }
+ },
+ {
+  "id": "vizzy-15",
+  "name": "Preset 15",
+  "category": "Bars",
+  "thumb": "/presets/vizzy-15.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:6rIMecueuMlF4hB5V_Nq-",
+  "creator": "Yourself",
+  "date": "2020-11-22T14:46:11.358Z",
+  "ref": {
+   "id": "6rIMecueuMlF4hB5V_Nq-",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     20000
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:6rIMecueuMlF4hB5V_Nq-"
+  },
+  "params": {
+   "type": "Bars",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 256,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 300,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/logo_transparent.dded2d31.webp",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-16",
+  "name": "Preset 16",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-16.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:sJ8I2_Kml1DkHQJ_NfElR",
+  "creator": "",
+  "date": "2020-11-12T01:11:59.082Z",
+  "ref": {
+   "id": "sJ8I2_Kml1DkHQJ_NfElR",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 180,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 271,
+   "analyzerRanges": [
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:sJ8I2_Kml1DkHQJ_NfElR"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#4f2eb2"
+  }
+ },
+ {
+  "id": "vizzy-17",
+  "name": "Preset 17",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-17.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:S8NqSmD-vYUD3Fxt0vav5",
+  "creator": "",
+  "date": "2020-11-12T01:03:03.057Z",
+  "ref": {
+   "id": "S8NqSmD-vYUD3Fxt0vav5",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 180,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 211,
+   "analyzerRanges": [
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:S8NqSmD-vYUD3Fxt0vav5"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#4f2eb2"
+  }
+ },
+ {
+  "id": "vizzy-18",
+  "name": "Preset 18",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-18.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:OBS6MY8pNg3i_LqgGjAC-",
+  "creator": "Arya",
+  "date": "2020-11-12T00:58:29.563Z",
+  "ref": {
+   "id": "OBS6MY8pNg3i_LqgGjAC-",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 180,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 224,
+   "analyzerRanges": [
+    [
+     20,
+     120
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:OBS6MY8pNg3i_LqgGjAC-"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#324478"
+  }
+ },
+ {
+  "id": "vizzy-19",
+  "name": "Preset 19",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-19.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:UKEy2TmOrXPeuSg_qTEHb",
+  "creator": "Dubstep Manuel",
+  "date": "2020-11-11T18:55:19.671Z",
+  "ref": {
+   "id": "UKEy2TmOrXPeuSg_qTEHb",
+   "lineWidth": 16.240000000000002,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 7,
+   "analyzers": 7,
+   "shaderLayers": 7,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:UKEy2TmOrXPeuSg_qTEHb"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 50,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 179,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 100,
+   "imageSize": 171,
+   "scaleMultiplier": 175,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": false,
+   "imageUrl": "https://firebasestorage.googleapis.com/v0/b/vizzy-6ced1.appspot.com/o/images%2FfgcVkeFkoCPFnhiTWMfgJciQbm13%2FfgcVkeFkoCPFnhiTWMfgJciQbm13%2Fprojects_v0.91%2FlM5nDXhrg5Hhr41zNq4lq%2FWd7bbkEljxgM-bxLxBLH7?alt=media&token=fc252ac6-0024-42ee-a004-946117831f43",
+   "color": "#a8a8a8"
+  }
+ },
+ {
+  "id": "vizzy-20",
+  "name": "Preset 20",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-20.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:AVktxFneFkWJXSJxT7MZh",
+  "creator": "",
+  "date": "2020-11-11T17:56:16.560Z",
+  "ref": {
+   "id": "AVktxFneFkWJXSJxT7MZh",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1.25,
+   "texScaleY": 1.25,
+   "rotation": 0,
+   "layers": 4,
+   "analyzers": 4,
+   "shaderLayers": 4,
+   "customPathLength": 152,
+   "analyzerRanges": [
+    [
+     20,
+     300
+    ],
+    [
+     20,
+     300
+    ],
+    [
+     20,
+     300
+    ],
+    [
+     20,
+     300
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:AVktxFneFkWJXSJxT7MZh"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 100,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 100,
+   "imageSize": 100,
+   "scaleMultiplier": 175,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-21",
+  "name": "Preset 21",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-21.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:jtZyO_j1dj0drQCa9P0Up",
+  "creator": "",
+  "date": "2020-11-07T17:51:00.948Z",
+  "ref": {
+   "id": "jtZyO_j1dj0drQCa9P0Up",
+   "lineWidth": 3,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     150
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:jtZyO_j1dj0drQCa9P0Up"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Line",
+   "fillStyle": "Fill",
+   "bands": 164,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 150,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-22",
+  "name": "Preset 22",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-22.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:c2-ANxQHpDG8zAjggKa7j",
+  "creator": "",
+  "date": "2020-11-07T00:32:28.657Z",
+  "ref": {
+   "id": "c2-ANxQHpDG8zAjggKa7j",
+   "lineWidth": 2.5,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 10,
+   "analyzers": 10,
+   "shaderLayers": 10,
+   "customPathLength": 293,
+   "analyzerRanges": [
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:c2-ANxQHpDG8zAjggKa7j"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 50,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 150,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 60,
+   "scaleMultiplier": 175,
+   "shadowEnabled": false,
+   "fillCircle": true,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "https://firebasestorage.googleapis.com/v0/b/vizzy-6ced1.appspot.com/o/images%2FGIxNEuJvMfOvaDfbzNhSiclaGAa2%2F0rnGJGDB0KL3Ea8zoKNvg.png?alt=media&token=5db9ea05-be72-4b3b-9fae-62918dbe4978",
+   "color": "#0c0c0c"
+  }
+ },
+ {
+  "id": "vizzy-23",
+  "name": "Preset 23",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-23.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:DSYW080ZSmuHrhklgoeVG",
+  "creator": "",
+  "date": "2020-11-04T13:08:01.614Z",
+  "ref": {
+   "id": "DSYW080ZSmuHrhklgoeVG",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1.25,
+   "texScaleY": 1.25,
+   "rotation": 0,
+   "layers": 7,
+   "analyzers": 7,
+   "shaderLayers": 7,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:DSYW080ZSmuHrhklgoeVG"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 150,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 100,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 100,
+   "imageSize": 70,
+   "scaleMultiplier": 175,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-24",
+  "name": "Preset 24",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-24.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:8e6rolX0NvVRdigZgX_ZE",
+  "creator": "",
+  "date": "2020-11-04T12:23:59.567Z",
+  "ref": {
+   "id": "8e6rolX0NvVRdigZgX_ZE",
+   "lineWidth": 3,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     150
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:8e6rolX0NvVRdigZgX_ZE"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Line",
+   "fillStyle": "Fill",
+   "bands": 16,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 150,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 2,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-25",
+  "name": "Preset 25",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-25.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:ecQZiOFVgeZYNszy3FBMj",
+  "creator": "iGerman",
+  "date": "2020-10-31T14:45:13.412Z",
+  "ref": {
+   "id": "ecQZiOFVgeZYNszy3FBMj",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1.25,
+   "texScaleY": 1.25,
+   "rotation": 0,
+   "layers": 7,
+   "analyzers": 7,
+   "shaderLayers": 7,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:ecQZiOFVgeZYNszy3FBMj"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 115,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 100,
+   "imageSize": 100,
+   "scaleMultiplier": 175,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "https://firebasestorage.googleapis.com/v0/b/vizzy-6ced1.appspot.com/o/images%2FlhncCGm4PwY4YZtGkuEzM4Bfhni1%2Fprojects_v0.91%2FNp1y-uCQ85orNU9XjGmLl%2FFN-2UoLiQFsnPQ1zztMjO?alt=media&token=f87c644a-57e9-4eee-9990-77cb8df7160a",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-26",
+  "name": "Preset 26",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-26.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:kMlfhPr-jSO9-r828lecN",
+  "creator": "iGerman",
+  "date": "2020-10-31T03:59:17.881Z",
+  "ref": {
+   "id": "kMlfhPr-jSO9-r828lecN",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1.25,
+   "texScaleY": 1.25,
+   "rotation": 0,
+   "layers": 5,
+   "analyzers": 5,
+   "shaderLayers": 5,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ],
+    [
+     20,
+     110
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:kMlfhPr-jSO9-r828lecN"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 150,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 100,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 93,
+   "imageSize": 100,
+   "scaleMultiplier": 175,
+   "shadowEnabled": false,
+   "fillCircle": true,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-27",
+  "name": "Preset 27",
+  "category": "Circle",
+  "thumb": "/presets/vizzy-27.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:3jct-djvc24JjI-cgV-gL",
+  "creator": "Nitro Bass",
+  "date": "2020-10-30T17:34:36.198Z",
+  "ref": {
+   "id": "3jct-djvc24JjI-cgV-gL",
+   "lineWidth": 2,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 8,
+   "analyzers": 8,
+   "shaderLayers": 8,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ],
+    [
+     20,
+     135
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:3jct-djvc24JjI-cgV-gL"
+  },
+  "params": {
+   "type": "Circle",
+   "draw": "Curve",
+   "fillStyle": "Fill",
+   "bands": 150,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 70,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 100,
+   "imageSize": 90,
+   "scaleMultiplier": 225,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "https://firebasestorage.googleapis.com/v0/b/vizzy-6ced1.appspot.com/o/images%2FaVqILeOXKaeGTojCs5RO79HbQsc2%2FaVqILeOXKaeGTojCs5RO79HbQsc2%2Fprojects_v0.91%2FfCmYKaSOt_dQsa9KKfSvt%2F3fQy9ugWrdsQcWqKG6jWb?alt=media&token=5d2cf54c-4a9a-4b8d-99a5-cf0fbb0cae62",
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-28",
+  "name": "Preset 28",
+  "category": "Bars",
+  "thumb": "/presets/vizzy-28.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:tcORo9-IWJZxuy6r1hB-x",
+  "creator": "a",
+  "date": "2020-10-30T16:55:47.388Z",
+  "ref": {
+   "id": "tcORo9-IWJZxuy6r1hB-x",
+   "lineWidth": 5,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 0,
+   "customPathLength": 240,
+   "analyzerRanges": [
+    [
+     20,
+     300
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:tcORo9-IWJZxuy6r1hB-x"
+  },
+  "params": {
+   "type": "Bars",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 128,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": false,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#11edc0"
+  }
+ },
+ {
+  "id": "vizzy-29",
+  "name": "Preset 29",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-29.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:XpYNb5lmaBbjMLAi2OBP8",
+  "creator": "iGerman",
+  "date": "2020-10-27T16:39:58.697Z",
+  "ref": {
+   "id": "XpYNb5lmaBbjMLAi2OBP8",
+   "lineWidth": 4,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 60,
+   "analyzerRanges": [
+    [
+     20,
+     150
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:XpYNb5lmaBbjMLAi2OBP8"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 350,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#ffffff"
+  }
+ },
+ {
+  "id": "vizzy-30",
+  "name": "Preset 30",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-30.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:BetFQHB5XxpR88-3AqN7s",
+  "creator": "iGerman",
+  "date": "2020-10-27T16:32:09.972Z",
+  "ref": {
+   "id": "BetFQHB5XxpR88-3AqN7s",
+   "lineWidth": 12,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 87,
+   "analyzerRanges": [
+    [
+     20,
+     150
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:BetFQHB5XxpR88-3AqN7s"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 32,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 80,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "imageUrl": "/static/media/logo_transparent.dded2d31.webp",
+   "color": "#6948CC"
+  }
+ },
+ {
+  "id": "vizzy-31",
+  "name": "Preset 31",
+  "category": "Bars",
+  "thumb": "/presets/vizzy-31.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:IOaAlclI-92pExIX38JiI",
+  "creator": "Yourself",
+  "date": "2020-10-27T16:25:32.764Z",
+  "ref": {
+   "id": "IOaAlclI-92pExIX38JiI",
+   "lineWidth": 10,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 0,
+   "analyzerRanges": [
+    [
+     20,
+     20000
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:IOaAlclI-92pExIX38JiI"
+  },
+  "params": {
+   "type": "Bars",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 150,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 200,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#FFB500"
+  }
+ },
+ {
+  "id": "vizzy-32",
+  "name": "Preset 32",
+  "category": "Custom",
+  "thumb": "/presets/vizzy-32.webp",
+  "source": "reference",
+  "docId": "spectrum_preset:mDiz9TZPDKyRfXqGaQ_sO",
+  "creator": "",
+  "date": "2020-10-16T17:18:30.012Z",
+  "ref": {
+   "id": "mDiz9TZPDKyRfXqGaQ_sO",
+   "lineWidth": 5,
+   "texX": 0,
+   "texY": 0,
+   "texScaleX": 1,
+   "texScaleY": 1,
+   "rotation": 0,
+   "layers": 1,
+   "analyzers": 1,
+   "shaderLayers": 1,
+   "customPathLength": 87,
+   "analyzerRanges": [
+    [
+     20,
+     150
+    ]
+   ],
+   "thumbnailStoragePath": "spectrum_presets/spectrum_preset:mDiz9TZPDKyRfXqGaQ_sO"
+  },
+  "params": {
+   "type": "Custom",
+   "draw": "Line",
+   "fillStyle": "Stroke",
+   "bands": 64,
+   "gain": 1,
+   "colorShift": 0,
+   "mirror": true,
+   "smoothing": 60,
+   "opacity": 95,
+   "height": 100,
+   "dotSize": 5,
+   "feather": 8,
+   "downsample": 1,
+   "circleSize": 95,
+   "imageSize": 100,
+   "scaleMultiplier": 100,
+   "shadowEnabled": false,
+   "fillCircle": false,
+   "clipCircle": false,
+   "circularImage": true,
+   "color": "#6948CC"
+  }
+ }
+]

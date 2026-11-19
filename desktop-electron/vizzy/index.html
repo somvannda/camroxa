@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Studio — editor</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Top: menus, release chip, project status, primary action -->
+      <header id="topbar">
+        <div class="top-left">
+          <span class="logo" aria-hidden="true"></span>
+          <span class="brand">STUDIO</span>
+          <nav class="menus" id="menus">
+            <button class="menu" data-menu="File">File</button>
+            <button class="menu" data-menu="Edit">Edit</button>
+            <button class="menu" data-menu="Project">Project</button>
+            <button class="menu" data-menu="View">View</button>
+            <button class="menu" data-menu="Help">Help</button>
+          </nav>
+        </div>
+        <div class="top-center">
+          <button id="btn-release" class="release-chip" title="Show changelog">
+            <span class="release-bolt" data-icon="bolt" data-icon-size="14" aria-hidden="true"></span>
+            <span>Release 1.0</span>
+          </button>
+        </div>
+        <div class="top-right">
+          <span id="tier" class="badge dev-only" title="Active FFT tier">fft: --</span>
+          <span id="project-name" class="project-name">Untitled project</span>
+          <span id="save-state" class="save-state">Not saved</span>
+          <button id="btn-warnings" class="warn" title="Editor warnings" aria-label="Editor warnings" data-icon="warning"></button>
+          <button class="menu-ghost" id="btn-signin" title="Accounts are not part of this build">
+            Sign in
+          </button>
+          <button id="btn-export" class="accent pill">Export</button>
+        </div>
+      </header>
+
+      <!-- Left: icon rail + compositor tree -->
+      <nav id="rail">
+        <button class="rail-item active" data-panel="composition">
+          <span class="rail-icon" data-icon="layers" data-icon-size="16"></span><span>Composition</span>
+        </button>
+        <button class="rail-item" data-panel="analyzers">
+          <span class="rail-icon" data-icon="graphic_eq" data-icon-size="16"></span><span>Analyzers</span>
+        </button>
+        <button class="rail-item" data-panel="effects">
+          <span class="rail-icon" data-icon="auto_awesome" data-icon-size="16"></span><span>Effects</span>
+        </button>
+        <button class="rail-item" data-panel="automations">
+          <span class="rail-icon" data-icon="timeline" data-icon-size="16"></span><span>Automations</span>
+        </button>
+        <button class="rail-item" data-panel="media">
+          <span class="rail-icon" data-icon="perm_media" data-icon-size="16"></span><span>Media</span>
+        </button>
+        <button class="rail-item" data-panel="projects">
+          <span class="rail-icon" data-icon="folder" data-icon-size="16"></span><span>Projects</span>
+        </button>
+        <button class="rail-item" data-panel="lyrics">
+          <span class="rail-icon" data-icon="subtitles" data-icon-size="16"></span><span>Lyrics</span>
+        </button>
+      </nav>
+
+      <aside id="compositor">
+        <div class="panel-head">
+          <span class="panel-title">Composition</span>
+          <div class="head-actions" id="composition-actions">
+            <button class="icon" id="btn-shy" title="Show shy layers" data-icon="visibility_off"></button>
+            <button class="icon" id="btn-render-settings" title="Open render settings" data-icon="settings"></button>
+            <button class="icon" id="btn-audio-settings" title="Audio processing settings" data-icon="music_note"></button>
+            <button class="icon" id="btn-clear-objects" title="Clear all objects" data-icon="delete_sweep"></button>
+            <button class="icon" id="btn-add-effect" title="Add global effect" data-icon="auto_awesome"></button>
+            <button class="icon" id="btn-add-layer" title="Add new layer" data-icon="add"></button>
+          </div>
+          <div class="head-actions" id="panel-actions"></div>
+        </div>
+        <div id="tree" class="tree"></div>
+      </aside>
+
+      <div id="split-left" class="splitter" title="Resize composition panel"></div>
+
+      <main id="stage-wrap">
+        <canvas id="stage"></canvas>
+        <div class="stage-bottom">
+          <div class="stage-left"></div>
+          <div class="stage-right">
+            <div class="stage-res" id="stage-res">
+              <button class="res" data-res="360">360</button>
+              <button class="res" data-res="480">480</button>
+              <button class="res" data-res="720">720</button>
+              <button class="res active" data-res="1080">1080</button>
+            </div>
+            <select id="aspect-select" class="aspect-select" title="Aspect ratio">
+              <option value="16:9">16:9</option>
+              <option value="9:16">9:16</option>
+              <option value="1:1">1:1</option>
+            </select>
+            <button id="btn-3d" class="icon" title="Toggle 3D mode (Ctrl+F)" data-icon="view_in_ar"></button>
+            <button id="btn-external" class="icon" title="Open external preview" data-icon="open_in_new"></button>
+            <button id="btn-fullscreen" class="icon" title="Fullscreen (Ctrl+Enter)" data-icon="fullscreen"></button>
+          </div>
+        </div>
+        <div id="drop-hint" class="drop-hint" hidden>
+          <strong>Drag and drop images, videos or audio files here to quickly add them to your project</strong>
+          <span>You can also drop lyrics (items or supported files) to edit them</span>
+        </div>
+        <div id="hud" class="hud"></div>
+      </main>
+
+      <div id="split-right" class="splitter" title="Resize item controls"></div>
+
+      <aside id="inspector">
+        <div class="panel-head">
+          <span class="panel-title" id="inspector-title">Objects / —</span>
+          <div class="head-actions">
+            <button class="icon" id="btn-note" title="Set note" data-icon="sticky_note_2"></button>
+            <button class="icon" id="btn-edit-automations" title="Edit automations" data-icon="timeline"></button>
+            <button class="icon" id="btn-reset" title="Reset" data-icon="restore"></button>
+            <button class="icon" id="btn-delete" title="Remove" data-icon="delete"></button>
+            <button class="icon" id="btn-item-effect" title="Add effect" data-icon="add"></button>
+          </div>
+        </div>
+        <div id="inspector-body" class="inspector-body"></div>
+        <div id="panel-stack" class="panel-stack"></div>
+      </aside>
+
+      <aside id="code-editor">
+        <div class="panel-head">
+          <span class="panel-title">Code Editor</span>
+          <div class="head-actions">
+            <button class="icon" id="code-close" title="Close code editor" data-icon="close"></button>
+            <button class="icon" id="code-apply" title="Apply code" data-icon="check"></button>
+          </div>
+        </div>
+        <textarea id="code-editor-text" spellcheck="false" autocomplete="off"></textarea>
+        <div id="code-editor-note" class="panel-note"></div>
+      </aside>
+
+      <section id="timeline-wrap">
+        <div id="timeline-bar">
+          <div class="tl-left">
+            <button class="icon" id="btn-undo" title="Undo (Ctrl+Z)" data-icon="undo"></button>
+            <button class="icon" id="btn-redo" title="Redo (Ctrl+Shift+Z)" data-icon="redo"></button>
+            <span class="divider"></span>
+            <button class="icon on" id="tool-select" title="Select tool (V)" data-icon="near_me"></button>
+            <button class="icon" id="tool-hand" title="Hand tool (H)" data-icon="pan_tool"></button>
+            <button class="icon" id="tool-razor" title="Razor tool (C)" data-icon="content_cut"></button>
+            <button class="icon" id="tool-slip" title="Slip tool (Y)" data-icon="swap_horiz"></button>
+            <span class="divider"></span>
+            <button class="icon" id="zoom-in" title="Zoom in" data-icon="add"></button>
+            <button class="icon" id="zoom-out" title="Zoom out" data-icon="remove"></button>
+            <span id="zoom-label" class="mono">Zoom: 1.00</span>
+            <input id="zoom-slider" type="range" min="0.5" max="8" step="0.05" value="1" title="Timeline zoom" />
+            <button class="icon" id="btn-fit" title="Fit project (Shift+Z)" data-icon="zoom_out_map"></button>
+            <button class="icon on" id="btn-snap" title="Snapping (Alt to bypass)" data-icon="grid_on"></button>
+            <button class="icon" id="btn-loop" title="Loop" data-icon="repeat"></button>
+            <button class="icon" id="btn-keyframes" title="Hide keyframes" data-icon="keyframe"></button>
+            <button class="icon" id="btn-frames" title="Toggle seconds / frames" data-icon="tag"></button>
+            <span class="divider"></span>
+            <span id="time-readout" class="mono">00:00:00 / 00:12:00</span>
+          </div>
+          <div class="tl-center">
+            <button id="btn-stop" class="icon" title="Stop" data-icon="stop"></button>
+            <button id="btn-frame-prev" class="icon" title="Back one frame" data-icon="skip_previous"></button>
+            <button id="btn-play" class="icon" title="Play / Pause (Space)" data-icon="play_arrow"></button>
+            <button id="btn-frame-next" class="icon" title="Forward one frame" data-icon="skip_next"></button>
+          </div>
+          <div class="tl-right">
+            <div class="tl-audio">
+              <span id="audio-name" class="mono"></span>
+              <button id="btn-audio" class="mini" title="Upload audio or right click to select from default audios"><span data-icon="music_note" data-icon-size="12"></span>Choose audio</button>
+            </div>
+          </div>
+        </div>
+        <div id="timeline-scroll">
+          <canvas id="timeline"></canvas>
+        </div>
+        <div id="timeline-hscroll" role="scrollbar" aria-label="Timeline position" aria-orientation="horizontal">
+          <div id="timeline-hthumb"></div>
+        </div>
+        <div id="timeline-a11y" class="sr-only" role="list" aria-label="Timeline clips"></div>
+      </section>
+
+      <footer id="status" class="status">ready</footer>
+    </div>
+    <script type="module" src="/src/host/boot.ts"></script>
+  </body>
+</html>

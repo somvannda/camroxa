@@ -1,0 +1,312 @@
+[
+  {
+    "name": "Advanced Outline",
+    "url": "https://vizzy.io/static/media/advanced_outline_effect.1087daf3.webp",
+    "local": "/media/effects/effect-advanced-outline.webp"
+  },
+  {
+    "name": "Advanced Shadow",
+    "url": "https://vizzy.io/static/media/advanced_shadow_effect.2dd6c988.webp",
+    "local": "/media/effects/effect-advanced-shadow.webp"
+  },
+  {
+    "name": "Alpha",
+    "url": "https://vizzy.io/static/media/alpha_effect.7b7b2416.webp",
+    "local": "/media/effects/effect-alpha.webp"
+  },
+  {
+    "name": "Blending",
+    "url": "https://vizzy.io/static/media/blending_effect.012ddaec.webp",
+    "local": "/media/effects/effect-blending.webp"
+  },
+  {
+    "name": "Bloom",
+    "url": "https://vizzy.io/static/media/bloom_effect.5de75510.webp",
+    "local": "/media/effects/effect-bloom.webp"
+  },
+  {
+    "name": "Bokeh blur",
+    "url": "https://vizzy.io/static/media/bokeh_blur_effect.913ac9af.webp",
+    "local": "/media/effects/effect-bokeh-blur.webp"
+  },
+  {
+    "name": "Box blur",
+    "url": "https://vizzy.io/static/media/box_blur_effect.37e72ca1.webp",
+    "local": "/media/effects/effect-box-blur.webp"
+  },
+  {
+    "name": "Bulge/Pinch",
+    "url": "https://vizzy.io/static/media/bulge_pinch_effect.16ba87ee.webp",
+    "local": "/media/effects/effect-bulge-pinch.webp"
+  },
+  {
+    "name": "Camera Shake",
+    "url": "https://vizzy.io/static/media/camera_shake_effect.24ed3af5.webp",
+    "local": "/media/effects/effect-camera-shake.webp"
+  },
+  {
+    "name": "Channel blur",
+    "url": "https://vizzy.io/static/media/channel_blur_effect.861276ea.webp",
+    "local": "/media/effects/effect-channel-blur.webp"
+  },
+  {
+    "name": "Chroma key",
+    "url": "https://vizzy.io/static/media/chromakey_effect.d44f2c9d.webp",
+    "local": "/media/effects/effect-chroma-key.webp"
+  },
+  {
+    "name": "Chroma Shift",
+    "url": "https://vizzy.io/static/media/chroma_shift_effect.4e0b3a76.webp",
+    "local": "/media/effects/effect-chroma-shift.webp"
+  },
+  {
+    "name": "Chromatic aberration",
+    "url": "https://vizzy.io/static/media/chromatic_aberration_effect.4989243e.webp",
+    "local": "/media/effects/effect-chromatic-aberration.webp"
+  },
+  {
+    "name": "Color correction",
+    "url": "https://vizzy.io/static/media/color_correction_effect.46f56bee.webp",
+    "local": "/media/effects/effect-color-correction.webp"
+  },
+  {
+    "name": "Color Tint",
+    "url": "https://vizzy.io/static/media/color_tint_effect.35bbe2e0.webp",
+    "local": "/media/effects/effect-color-tint.webp"
+  },
+  {
+    "name": "Crop",
+    "url": "https://vizzy.io/static/media/crop_effect.fec74eeb.webp",
+    "local": "/media/effects/effect-crop.webp"
+  },
+  {
+    "name": "Directional blur",
+    "url": "https://vizzy.io/static/media/directional_blur_effect.10a5ded2.webp",
+    "local": "/media/effects/effect-directional-blur.webp"
+  },
+  {
+    "name": "Displacement",
+    "url": "https://vizzy.io/static/media/displacement_effect.c4136433.webp",
+    "local": "/media/effects/effect-displacement.webp"
+  },
+  {
+    "name": "Distance Field",
+    "url": "https://vizzy.io/static/media/distance_field_effect.26d061c7.webp",
+    "local": "/media/effects/effect-distance-field.webp"
+  },
+  {
+    "name": "Edge detection",
+    "url": "https://vizzy.io/static/media/edge_detection_effect.948b4b98.webp",
+    "local": "/media/effects/effect-edge-detection.webp"
+  },
+  {
+    "name": "FidelityFX CAS",
+    "url": "https://vizzy.io/static/media/cas_effect.2cffefdd.webp",
+    "local": "/media/effects/effect-fidelityfx-cas.webp"
+  },
+  {
+    "name": "Fish eye",
+    "url": "https://vizzy.io/static/media/fisheye_effect.fce655f9.webp",
+    "local": "/media/effects/effect-fish-eye.webp"
+  },
+  {
+    "name": "Fish eye 2",
+    "url": "https://vizzy.io/static/media/fisheye2.183f836e.webp",
+    "local": "/media/effects/effect-fish-eye-2.webp"
+  },
+  {
+    "name": "Flicker",
+    "url": "https://vizzy.io/static/media/flicker_effect.00061733.webp",
+    "local": "/media/effects/effect-flicker.webp"
+  },
+  {
+    "name": "FXAA",
+    "url": "https://vizzy.io/static/media/fxaa_effect.3121472d.webp",
+    "local": "/media/effects/effect-fxaa.webp"
+  },
+  {
+    "name": "Glitch",
+    "url": "https://vizzy.io/static/media/glitch_effect.21e7a7c1.webp",
+    "local": "/media/effects/effect-glitch.webp"
+  },
+  {
+    "name": "God rays",
+    "url": "https://vizzy.io/static/media/godrays_effect.bc91f9f8.webp",
+    "local": "/media/effects/effect-god-rays.webp"
+  },
+  {
+    "name": "Gradient map",
+    "url": "https://vizzy.io/static/media/gradient_map_effect.d9f94662.webp",
+    "local": "/media/effects/effect-gradient-map.webp"
+  },
+  {
+    "name": "Gray scale",
+    "url": "https://vizzy.io/static/media/grayscale_effect.7c40ac84.webp",
+    "local": "/media/effects/effect-gray-scale.webp"
+  },
+  {
+    "name": "Horizontal blur",
+    "url": "https://vizzy.io/static/media/horizontal_blur_effect.a49ff0d1.webp",
+    "local": "/media/effects/effect-horizontal-blur.webp"
+  },
+  {
+    "name": "Impact Ripple",
+    "url": "https://vizzy.io/static/media/impact_ripple_effect.7e90c62a.webp",
+    "local": "/media/effects/effect-impact-ripple.webp"
+  },
+  {
+    "name": "Invert",
+    "url": "https://vizzy.io/static/media/invert_effect.5c5e0db7.webp",
+    "local": "/media/effects/effect-invert.webp"
+  },
+  {
+    "name": "Kaleidoscope",
+    "url": "https://vizzy.io/static/media/kaleidoscope_effect.c099d279.webp",
+    "local": "/media/effects/effect-kaleidoscope.webp"
+  },
+  {
+    "name": "Liquify",
+    "url": "https://vizzy.io/static/media/liquify_effect.366e5fcf.webp",
+    "local": "/media/effects/effect-liquify.webp"
+  },
+  {
+    "name": "Mask",
+    "url": "https://vizzy.io/static/media/imagemask_effect.30683990.webp",
+    "local": "/media/effects/effect-mask.webp"
+  },
+  {
+    "name": "Mirror",
+    "url": "https://vizzy.io/static/media/mirror_effect.e73e91f5.webp",
+    "local": "/media/effects/effect-mirror.webp"
+  },
+  {
+    "name": "Morphing fractal",
+    "url": "https://vizzy.io/static/media/morphing_fractal_effect.3aa26ab8.webp",
+    "local": "/media/effects/effect-morphing-fractal.webp"
+  },
+  {
+    "name": "Pixelate",
+    "url": "https://vizzy.io/static/media/pixelate_effect.303628c9.webp",
+    "local": "/media/effects/effect-pixelate.webp"
+  },
+  {
+    "name": "Polar Coordinates",
+    "url": "https://vizzy.io/static/media/polar_coordinates_effect.8a7ae32c.webp",
+    "local": "/media/effects/effect-polar-coordinates.webp"
+  },
+  {
+    "name": "Premultiply alpha",
+    "url": "https://vizzy.io/static/media/premultiply_alpha_effect.c10fa007.webp",
+    "local": "/media/effects/effect-premultiply-alpha.webp"
+  },
+  {
+    "name": "Radial blur",
+    "url": "https://vizzy.io/static/media/radial_blur_effect.f4ea8045.webp",
+    "local": "/media/effects/effect-radial-blur.webp"
+  },
+  {
+    "name": "Render layer",
+    "url": "https://vizzy.io/static/media/glow_effect.04083960.webp",
+    "local": "/media/effects/effect-render-layer.webp"
+  },
+  {
+    "name": "Repeating Ripple",
+    "url": "https://vizzy.io/static/media/repeating_ripple_effect.b87e82b0.webp",
+    "local": "/media/effects/effect-repeating-ripple.webp"
+  },
+  {
+    "name": "RGB displace",
+    "url": "https://vizzy.io/static/media/rgb_displace_effect.e187ce80.webp",
+    "local": "/media/effects/effect-rgb-displace.webp"
+  },
+  {
+    "name": "Sepia",
+    "url": "https://vizzy.io/static/media/sepia_effect.89110a85.webp",
+    "local": "/media/effects/effect-sepia.webp"
+  },
+  {
+    "name": "Simple Outline",
+    "url": "https://vizzy.io/static/media/outline_effect.15a884b5.webp",
+    "local": "/media/effects/effect-simple-outline.webp"
+  },
+  {
+    "name": "Simple Shadow",
+    "url": "https://vizzy.io/static/media/shadow_effect.f98adf30.webp",
+    "local": "/media/effects/effect-simple-shadow.webp"
+  },
+  {
+    "name": "Skew",
+    "url": "https://vizzy.io/static/media/skew_effect.5571fbb3.webp",
+    "local": "/media/effects/effect-skew.webp"
+  },
+  {
+    "name": "Spooky",
+    "url": "https://vizzy.io/static/media/spooky_effect.2b7be294.webp",
+    "local": "/media/effects/effect-spooky.webp"
+  },
+  {
+    "name": "Streak glow",
+    "url": "https://vizzy.io/static/media/streakglow_effect.12f223de.webp",
+    "local": "/media/effects/effect-streak-glow.webp"
+  },
+  {
+    "name": "Tilt shift",
+    "url": "https://vizzy.io/static/media/two_pass_blur_effect.bdc96c58.webp",
+    "local": "/media/effects/effect-tilt-shift.webp"
+  },
+  {
+    "name": "Time stop",
+    "url": "https://vizzy.io/static/media/timestop_effect.063572a8.webp",
+    "local": "/media/effects/effect-time-stop.webp"
+  },
+  {
+    "name": "Trail",
+    "url": "https://vizzy.io/static/media/trail_effect.e55c3f6b.webp",
+    "local": "/media/effects/effect-trail.webp"
+  },
+  {
+    "name": "Transform",
+    "url": "https://vizzy.io/static/media/transform_effect.542c1276.webp",
+    "local": "/media/effects/effect-transform.webp"
+  },
+  {
+    "name": "Triangle blur",
+    "url": "https://vizzy.io/static/media/triangle_blur_effect.1c838e3b.webp",
+    "local": "/media/effects/effect-triangle-blur.webp"
+  },
+  {
+    "name": "Twirl",
+    "url": "https://vizzy.io/static/media/twirl_effect.4ad48b91.webp",
+    "local": "/media/effects/effect-twirl.webp"
+  },
+  {
+    "name": "Two pass blur",
+    "url": "https://vizzy.io/static/media/two_pass_blur_effect.bdc96c58.webp",
+    "local": "/media/effects/effect-two-pass-blur.webp"
+  },
+  {
+    "name": "Vertical blur",
+    "url": "https://vizzy.io/static/media/vertical_blur_effect.0b5a4fca.webp",
+    "local": "/media/effects/effect-vertical-blur.webp"
+  },
+  {
+    "name": "VHS",
+    "url": "https://vizzy.io/static/media/vhs_effect.413784ff.webp",
+    "local": "/media/effects/effect-vhs.webp"
+  },
+  {
+    "name": "VHS 2",
+    "url": "https://vizzy.io/static/media/vhs2_effect.28203823.webp",
+    "local": "/media/effects/effect-vhs-2.webp"
+  },
+  {
+    "name": "Vignette",
+    "url": "https://vizzy.io/static/media/vignette_effect.f442749c.webp",
+    "local": "/media/effects/effect-vignette.webp"
+  },
+  {
+    "name": "Zoom blur",
+    "url": "https://vizzy.io/static/media/zoom_blur_effect.d6e25479.webp",
+    "local": "/media/effects/effect-zoom-blur.webp"
+  }
+]

@@ -7,6 +7,9 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
+extraResources:
+  - from: vizzy-dist
+    to: vizzy-dist
 win:
   icon: resources/icon.ico
   target:

@@ -1,0 +1,4 @@
+# Vendored Rea/Vizzy tree: git must not rewrite these bytes.
+# The repository uses core.autocrlf=true and UPSTREAM.md records a tree hash,
+# so line endings are fixed to LF by scripts/sync-vizzy.mjs.
+* -text

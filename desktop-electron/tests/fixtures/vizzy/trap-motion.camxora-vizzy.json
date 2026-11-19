@@ -1,0 +1,1316 @@
+{
+  "format": "studio-project",
+  "version": 1,
+  "savedAt": "2026-11-19T06:57:35.673Z",
+  "project": {
+    "id": "project_mwn773551",
+    "name": "Untitled",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "markers": [],
+    "duration": 12,
+    "background": "#000000",
+    "creatorNote": "",
+    "volume": 100,
+    "muted": false,
+    "spectrumLayerColorMode": "lighten",
+    "spectrumLayerColorShift": 0.5,
+    "audioImpactMax": 1254.375834090776,
+    "globals": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "audioSettings": {
+      "bassBoost": 0,
+      "frequency": 60,
+      "playbackRate": 1,
+      "attenuator": false,
+      "additionalGainDb": 0,
+      "compressor": false
+    }
+  },
+  "nodes": [
+    {
+      "id": "node_mwn7736t2",
+      "kind": "media",
+      "name": "Image",
+      "start": 0,
+      "duration": 12,
+      "visible": true,
+      "mapping": [
+        [
+          "behaviour.opacity",
+          100
+        ],
+        [
+          "behaviour.scale",
+          100
+        ],
+        [
+          "effects.vignette",
+          0
+        ],
+        [
+          "effects.brightnessMultiplier",
+          0.2
+        ],
+        [
+          "effects.brightness",
+          1
+        ],
+        [
+          "channel.fitToScreen",
+          1
+        ],
+        [
+          "channel.useLayerAsImage",
+          0
+        ],
+        [
+          "basics.autoBackground",
+          1
+        ],
+        [
+          "basics.autoCoverArt",
+          0
+        ],
+        [
+          "transform.x",
+          0
+        ],
+        [
+          "transform.y",
+          0
+        ],
+        [
+          "transform.z",
+          0
+        ],
+        [
+          "transform.rotX",
+          0
+        ],
+        [
+          "transform.rotY",
+          0
+        ],
+        [
+          "transform.rotZ",
+          0
+        ],
+        [
+          "transform.scaleX",
+          100
+        ],
+        [
+          "transform.scaleY",
+          100
+        ],
+        [
+          "transform.scaleZ",
+          100
+        ]
+      ],
+      "props": {
+        "name": "Image",
+        "start": 0,
+        "duration": 12,
+        "visible": true,
+        "z": 0,
+        "trackRow": 0,
+        "solo": false,
+        "shy": false,
+        "ignoreTimeSpan": false,
+        "analyzerId": "analyzer_default",
+        "is3D": false,
+        "assetId": "asset_mwn7736u3",
+        "imageUrl": null,
+        "useLayerAsImage": false,
+        "layerSource": "",
+        "mirrorType": "None",
+        "audioAnalyzer": "analyzer_default",
+        "vignette": 0,
+        "brightness": 1,
+        "tint": "#ffffff",
+        "colorMult": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+        },
+        "colorAdd": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0
+        },
+        "brightnessMultiplier": 0.2
+      }
+    },
+    {
+      "id": "node_mwn7736u4",
+      "kind": "effects",
+      "name": "Spectrum",
+      "start": 0,
+      "duration": 12,
+      "visible": true,
+      "mapping": [
+        [
+          "behaviour.opacity",
+          100
+        ],
+        [
+          "behaviour.scale",
+          125
+        ],
+        [
+          "behaviour.height",
+          100
+        ],
+        [
+          "behaviour.dotSize",
+          5
+        ],
+        [
+          "behaviour.feather",
+          8
+        ],
+        [
+          "behaviour.bands",
+          64
+        ],
+        [
+          "behaviour.downsample",
+          1
+        ],
+        [
+          "behaviour.lineWidth",
+          3
+        ],
+        [
+          "behaviour.smoothWidth",
+          10
+        ],
+        [
+          "behaviour.smoothPasses",
+          4
+        ],
+        [
+          "transform.x",
+          0
+        ],
+        [
+          "transform.y",
+          0
+        ],
+        [
+          "transform.width",
+          100
+        ],
+        [
+          "transform.height",
+          100
+        ],
+        [
+          "transform.rotation",
+          0
+        ],
+        [
+          "transform.scaleMultiplier",
+          81.36181480912192
+        ],
+        [
+          "transform.textureX",
+          0
+        ],
+        [
+          "transform.textureY",
+          0
+        ],
+        [
+          "transform.textureScaleX",
+          100
+        ],
+        [
+          "transform.textureScaleY",
+          100
+        ],
+        [
+          "effects.colorShift",
+          0
+        ],
+        [
+          "effects.smoothing",
+          60
+        ],
+        [
+          "effects.gain",
+          1
+        ],
+        [
+          "channel.shadow",
+          1
+        ],
+        [
+          "channel.shadowScale",
+          100
+        ],
+        [
+          "channel.shadowAlpha",
+          100
+        ],
+        [
+          "channel.shadowX",
+          0
+        ],
+        [
+          "channel.shadowY",
+          0
+        ],
+        [
+          "channel.shadowSigmaX",
+          20
+        ],
+        [
+          "channel.shadowSigmaY",
+          20
+        ],
+        [
+          "channel.circleSize",
+          100
+        ],
+        [
+          "channel.fillCircle",
+          0
+        ],
+        [
+          "channel.clipCircle",
+          0
+        ],
+        [
+          "channel.connect",
+          0
+        ],
+        [
+          "channel.aa",
+          1
+        ],
+        [
+          "channel.aspectFix",
+          1
+        ],
+        [
+          "channel.imageSize",
+          100
+        ],
+        [
+          "channel.circularImage",
+          1
+        ],
+        [
+          "channel.baseRadius",
+          51.4
+        ],
+        [
+          "channel.contourWidth",
+          0.7
+        ]
+      ],
+      "props": {
+        "name": "Spectrum",
+        "start": 0,
+        "duration": 12,
+        "visible": true,
+        "z": 0.01,
+        "trackRow": 1,
+        "solo": false,
+        "shy": false,
+        "ignoreTimeSpan": false,
+        "analyzerId": "analyzer_default",
+        "is3D": false,
+        "type": "Circle",
+        "draw": "Curve",
+        "fillStyle": "Fill",
+        "color": "#ffffff",
+        "circleColor": "#f72585",
+        "layers": [
+          {
+            "id": "spectrum_layer:0",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#00b950",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_0"
+          },
+          {
+            "id": "spectrum_layer:1",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#00c9a8",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_1"
+          },
+          {
+            "id": "spectrum_layer:2",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#00d8ff",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_2"
+          },
+          {
+            "id": "spectrum_layer:3",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#0091ff",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_3"
+          },
+          {
+            "id": "spectrum_layer:4",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#0049ff",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_4"
+          },
+          {
+            "id": "spectrum_layer:5",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#8025ff",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_5"
+          },
+          {
+            "id": "spectrum_layer:6",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#ff00ff",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_6"
+          },
+          {
+            "id": "spectrum_layer:7",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#ff0080",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_7"
+          },
+          {
+            "id": "spectrum_layer:8",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#ff0000",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_8"
+          },
+          {
+            "id": "spectrum_layer:9",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#ff7701",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_9"
+          },
+          {
+            "id": "spectrum_layer:10",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#ffed02",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_10"
+          },
+          {
+            "id": "spectrum_layer:11",
+            "multiplier": 1,
+            "ceiling": 1000,
+            "alpha": 1,
+            "colorType": "Solid",
+            "color": "#ffffff",
+            "colorFrom": "#FF0000",
+            "colorTo": "#000000",
+            "colorMix": 0.5,
+            "colorGradient": "#FF00FF:#FF00FF",
+            "baseOn": "Value",
+            "shaderSrc": "",
+            "shadowAlpha": 1,
+            "shadowColor": "#ffffff",
+            "shadowScale": 0.01,
+            "blurAmount": 0,
+            "rotation": 0,
+            "scale": 1,
+            "enabled": true,
+            "audioAnalyzer": "analyzer_trap_11"
+          }
+        ],
+        "pathMode": true,
+        "customPath": "",
+        "closeLine": true,
+        "moveBack": false,
+        "repeatPointsOnPath": true,
+        "smoothStartAndEnd": true,
+        "smoothingWidth": 10,
+        "smoothingPasses": 4,
+        "stretchToEnd": false,
+        "spacing": 0,
+        "renderScale": 1,
+        "spinSpeed": 0,
+        "spinTime": 0,
+        "lineCap": "round",
+        "pathEffect": "none",
+        "dashOffset": 10,
+        "clipSize": 0.95,
+        "positionX": 0,
+        "positionY": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "referenceScaleMultiplier": 1.757573183983459,
+        "assetId": null,
+        "imageUrl": "/media/vizzy-emblem-alpha.png",
+        "colorShift": 0,
+        "bands": 64,
+        "mirror": true,
+        "currentData": 2.018798826262355,
+        "cumulativeData": 0.010013251925175428
+      }
+    },
+    {
+      "id": "node_mwn7736u5",
+      "kind": "particles",
+      "name": "Particles",
+      "start": 0,
+      "duration": 12,
+      "visible": true,
+      "mapping": [
+        [
+          "behaviour.opacity",
+          100
+        ],
+        [
+          "particles.instances",
+          1000
+        ],
+        [
+          "particles.impact",
+          3
+        ],
+        [
+          "particles.globalAlpha",
+          1
+        ],
+        [
+          "particles.sizeMin",
+          0.2
+        ],
+        [
+          "particles.sizeMax",
+          0.6
+        ],
+        [
+          "particles.speed",
+          0.3
+        ]
+      ],
+      "props": {
+        "name": "Particles",
+        "start": 0,
+        "duration": 12,
+        "visible": true,
+        "z": 0,
+        "trackRow": 2,
+        "solo": false,
+        "shy": false,
+        "ignoreTimeSpan": false,
+        "analyzerId": "analyzer_default",
+        "is3D": true,
+        "instances": 1000,
+        "sizeRange": [
+          0.2,
+          0.6
+        ],
+        "alphaRange": [
+          0,
+          1
+        ],
+        "speedRange": [
+          1,
+          2
+        ],
+        "phaseRange": [
+          5,
+          15
+        ],
+        "phaseAmplitude": [
+          -10,
+          10
+        ],
+        "phaseSpeedRange": [
+          1,
+          5
+        ],
+        "timeToLiveRange": [
+          10,
+          12
+        ],
+        "directionX": [
+          0,
+          5
+        ],
+        "directionY": [
+          -3,
+          3
+        ],
+        "directionZ": [
+          50,
+          100
+        ],
+        "color": "#ffffff",
+        "mirror": true,
+        "constantSize": false,
+        "zLimit": 5,
+        "zLimitGrace": 10,
+        "backLimit": 500,
+        "backLimitGrace": 10,
+        "limitOverrides": {
+          "zLimit": false,
+          "zLimitGrace": false,
+          "backLimit": false,
+          "backLimitGrace": false
+        },
+        "impactMultiplier": 3,
+        "smoothingTimeConstant": 0.2,
+        "globalAlpha": 1,
+        "incrementWithTime": true,
+        "timeIncrementMultiplier": 0.3,
+        "enableRandomSize": false,
+        "randomSizeSpeed": 2,
+        "enableRandomAlpha": true,
+        "randomAlphaSpeed": 2,
+        "enableRandomRotation": false,
+        "randomRotationSpeed": 2,
+        "fadeBeginning": true,
+        "fadeEnd": true,
+        "seed": "558337",
+        "audioAnalyzer": "analyzer_default",
+        "particleImage": "/media/particles/circle_05_alpha.webp",
+        "magFilter": "Linear",
+        "minFilter": "Linear",
+        "premultiplyAlpha": false,
+        "textureUrlPending": "/media/particles/circle_05_alpha.webp",
+        "cumMult": 0.0365135243396253,
+        "reaction": null,
+        "reactionPrev": 0,
+        "reactionValue": 0,
+        "reactionApplied": 1
+      }
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer_mwn773957",
+      "name": "Background Layer",
+      "nodeIds": [
+        "node_mwn7736t2"
+      ],
+      "enabled": true,
+      "renderToBuffer": false,
+      "camera": {
+        "type": "Orthographic",
+        "fov": 45,
+        "near": 1,
+        "far": 100000
+      }
+    },
+    {
+      "id": "layer_mwn773958",
+      "name": "3D Visualizers",
+      "nodeIds": [
+        "node_mwn7736u5"
+      ],
+      "enabled": true,
+      "renderToBuffer": false,
+      "camera": {
+        "type": "Perspective",
+        "fov": 45,
+        "near": 1,
+        "far": 100000
+      }
+    },
+    {
+      "id": "layer_mwn773956",
+      "name": "2D Visualizers",
+      "nodeIds": [
+        "node_mwn7736u4"
+      ],
+      "enabled": true,
+      "renderToBuffer": false,
+      "camera": {
+        "type": "Orthographic",
+        "fov": 45,
+        "near": 1,
+        "far": 100000
+      }
+    }
+  ],
+  "automations": [
+    {
+      "id": "automation_mwn773959",
+      "type": "property",
+      "nodeId": "node_mwn7736u4",
+      "propertyId": "effects.gain",
+      "connections": {},
+      "keyframes": [
+        {
+          "t": 0,
+          "value": 0.7,
+          "easing": "ease-out"
+        },
+        {
+          "t": 2.5,
+          "value": 1.9,
+          "easing": "ease-in"
+        },
+        {
+          "t": 5,
+          "value": 0.8,
+          "easing": "ease-out"
+        },
+        {
+          "t": 9,
+          "value": 1.6,
+          "easing": "linear"
+        }
+      ]
+    },
+    {
+      "id": "automation_mwn77395a",
+      "name": "Audio Impact",
+      "type": "audioImpact",
+      "nodeId": "node_mwn7736u4",
+      "propertyId": "transform.scaleMultiplier",
+      "connections": {},
+      "keyframes": [],
+      "audioAnalyzer": "analyzer_default",
+      "impact": {
+        "min": 81.01123595505618,
+        "max": 150.4494382022472,
+        "sensitivity": 0.1,
+        "smoothing": 0.3,
+        "floor": 0,
+        "ceiling": 3000,
+        "cumulative": false
+      }
+    }
+  ],
+  "automationGroups": [],
+  "analyzers": [
+    {
+      "id": "analyzer_default",
+      "name": "Default",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50,
+      "sampleOutCount": 64,
+      "audioDuration": 200,
+      "audioOffset": 0,
+      "frequencyRange": [
+        20,
+        130
+      ],
+      "windowFunction": "hann",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": [
+        "node_mwn7736t2",
+        "node_mwn7736u4",
+        "node_mwn7736u5"
+      ]
+    },
+    {
+      "id": "analyzer_trap_0",
+      "name": "Layer 1",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 125,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_1",
+      "name": "Layer 2",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 133,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_2",
+      "name": "Layer 3",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 141,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_3",
+      "name": "Layer 4",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 150,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_4",
+      "name": "Layer 5",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 158,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_5",
+      "name": "Layer 6",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 166,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_6",
+      "name": "Layer 7",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 174,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_7",
+      "name": "Layer 8",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 182,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_8",
+      "name": "Layer 9",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 190,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_9",
+      "name": "Layer 10",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 199,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_10",
+      "name": "Layer 11",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 207,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    },
+    {
+      "id": "analyzer_trap_11",
+      "name": "Layer 12",
+      "sampleProvider": "goertzel",
+      "outputMultiplier": 50.5,
+      "sampleOutCount": 64,
+      "audioDuration": 215,
+      "audioOffset": 65,
+      "frequencyRange": [
+        20,
+        110
+      ],
+      "windowFunction": "raised cosine",
+      "smoothingTimeConstant": 0,
+      "audioReactionAlignment": -1,
+      "windowParameter": 1,
+      "windowSkew": 0,
+      "frequencyScale": "linear",
+      "hzLinearFactor": 0.5,
+      "cqtResolution": 7,
+      "cqtWindowFunction": "hann",
+      "cqtWindowParameter": 1,
+      "cqtWindowSkew": 0,
+      "spectrumConstantQ": false,
+      "cqtBandwidth": 8,
+      "perBinFrequencyTilt": 0,
+      "perBandFrequencyTilt": 0,
+      "perBandWeighting": "a",
+      "perBandWeightingAmount": 0,
+      "downSample": true,
+      "users": []
+    }
+  ],
+  "effects": [
+    {
+      "id": "effect:global_fade",
+      "type": "alpha",
+      "name": "Global alpha",
+      "targets": [
+        "global"
+      ],
+      "enabled": false,
+      "time": null,
+      "ignoreTimeSpan": true,
+      "params": {
+        "alpha": 100
+      },
+      "orderByTarget": {}
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset_mwn7736u3",
+      "name": "Neon music dreamscape",
+      "kind": "image",
+      "url": "/media/neon-dreamscape.png",
+      "width": 1672,
+      "height": 941
+    }
+  ]
+}

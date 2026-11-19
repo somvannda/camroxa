@@ -1,0 +1,1724 @@
+[
+  {
+    "id": "default",
+    "name": "Default",
+    "category": "Basics",
+    "thumb": "/particles/presets/default.png",
+    "params": {
+      "instances": 1000,
+      "sizeRange": [
+        0.2,
+        0.6
+      ],
+      "alphaRange": [
+        0,
+        1
+      ],
+      "speedRange": [
+        1,
+        2
+      ],
+      "phaseRange": [
+        5,
+        15
+      ],
+      "phaseAmplitude": [
+        -10,
+        10
+      ],
+      "phaseSpeedRange": [
+        1,
+        5
+      ],
+      "timeToLiveRange": [
+        10,
+        12
+      ],
+      "startPos": [
+        -45,
+        -75,
+        -500
+      ],
+      "endPos": [
+        250,
+        75,
+        500
+      ],
+      "directionX": [
+        0,
+        5
+      ],
+      "directionY": [
+        -3,
+        3
+      ],
+      "directionZ": [
+        50,
+        100
+      ],
+      "color": "#ffffff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.3,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "20261114",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/circle_05_alpha.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    }
+  },
+  {
+    "id": "embers",
+    "name": "Embers",
+    "category": "Ambient",
+    "thumb": "/particles/presets/embers.png",
+    "params": {
+      "instances": 2400,
+      "sizeRange": [
+        0.16,
+        0.55
+      ],
+      "alphaRange": [
+        0.35,
+        0.95
+      ],
+      "speedRange": [
+        0.8,
+        1.6
+      ],
+      "phaseRange": [
+        8,
+        18
+      ],
+      "phaseAmplitude": [
+        -6,
+        6
+      ],
+      "phaseSpeedRange": [
+        0.6,
+        1.4
+      ],
+      "timeToLiveRange": [
+        3.5,
+        8
+      ],
+      "startPos": [
+        -240,
+        -160,
+        -120
+      ],
+      "endPos": [
+        240,
+        160,
+        120
+      ],
+      "directionX": [
+        -9,
+        9
+      ],
+      "directionY": [
+        20,
+        34
+      ],
+      "directionZ": [
+        -4,
+        6
+      ],
+      "color": "#ff7a1f",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 2,
+      "zLimitGrace": 8,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 2.4,
+      "smoothingTimeConstant": 0.18,
+      "globalAlpha": 0.95,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.6,
+      "enableRandomSize": true,
+      "randomSizeSpeed": 2.4,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 3.1,
+      "enableRandomRotation": true,
+      "randomRotationSpeed": 2.2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "184211",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/flame_01.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -350
+      ]
+    },
+    "audio": {
+      "target": "speed",
+      "amount": 2.2,
+      "smoothing": 0.15,
+      "sensitivity": 1.3
+    }
+  },
+  {
+    "id": "snowfall",
+    "name": "Snowfall",
+    "category": "Weather",
+    "thumb": "/particles/presets/snowfall.png",
+    "params": {
+      "instances": 6000,
+      "sizeRange": [
+        0.1,
+        0.32
+      ],
+      "alphaRange": [
+        0.25,
+        0.85
+      ],
+      "speedRange": [
+        0.5,
+        0.9
+      ],
+      "phaseRange": [
+        10,
+        26
+      ],
+      "phaseAmplitude": [
+        -10,
+        10
+      ],
+      "phaseSpeedRange": [
+        0.5,
+        0.9
+      ],
+      "timeToLiveRange": [
+        7,
+        14
+      ],
+      "startPos": [
+        -260,
+        -190,
+        -80
+      ],
+      "endPos": [
+        260,
+        190,
+        80
+      ],
+      "directionX": [
+        -14,
+        14
+      ],
+      "directionY": [
+        -58,
+        -40
+      ],
+      "directionZ": [
+        -4,
+        4
+      ],
+      "color": "#e8f6ff",
+      "mirror": false,
+      "constantSize": false,
+      "zLimit": 2,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 1.2,
+      "smoothingTimeConstant": 0.22,
+      "globalAlpha": 0.9,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.65,
+      "enableRandomSize": true,
+      "randomSizeSpeed": 1.5,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 1.8,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": false,
+      "fadeEnd": false,
+      "seed": "551173",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/circle_05_alpha.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -400
+      ]
+    },
+    "audio": {
+      "target": "spread",
+      "amount": 0.35,
+      "smoothing": 0.3,
+      "sensitivity": 0.9
+    }
+  },
+  {
+    "id": "neon-sparks",
+    "name": "Neon Sparks",
+    "category": "Neon",
+    "thumb": "/particles/presets/neon-sparks.png",
+    "params": {
+      "instances": 3800,
+      "sizeRange": [
+        0.12,
+        0.45
+      ],
+      "alphaRange": [
+        0.45,
+        1
+      ],
+      "speedRange": [
+        1.2,
+        2.6
+      ],
+      "phaseRange": [
+        10,
+        26
+      ],
+      "phaseAmplitude": [
+        -16,
+        16
+      ],
+      "phaseSpeedRange": [
+        0.8,
+        1.8
+      ],
+      "timeToLiveRange": [
+        2.2,
+        4.5
+      ],
+      "startPos": [
+        -180,
+        -120,
+        -60
+      ],
+      "endPos": [
+        180,
+        120,
+        60
+      ],
+      "directionX": [
+        -45,
+        45
+      ],
+      "directionY": [
+        -35,
+        35
+      ],
+      "directionZ": [
+        -20,
+        40
+      ],
+      "color": "#22e9ff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 1,
+      "zLimitGrace": 6,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3.4,
+      "smoothingTimeConstant": 0.35,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.9,
+      "enableRandomSize": true,
+      "randomSizeSpeed": 3.4,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 3.6,
+      "enableRandomRotation": true,
+      "randomRotationSpeed": 3,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "902117",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/star_particle.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -300
+      ]
+    },
+    "audio": {
+      "target": "spread",
+      "amount": 1.5,
+      "smoothing": 0.08,
+      "sensitivity": 1.5
+    }
+  },
+  {
+    "id": "dust-motes",
+    "name": "Dust Motes",
+    "category": "Atmosphere",
+    "thumb": "/particles/presets/dust-motes.png",
+    "params": {
+      "instances": 2000,
+      "sizeRange": [
+        0.09,
+        0.26
+      ],
+      "alphaRange": [
+        0.16,
+        0.5
+      ],
+      "speedRange": [
+        0.2,
+        0.4
+      ],
+      "phaseRange": [
+        20,
+        60
+      ],
+      "phaseAmplitude": [
+        -26,
+        26
+      ],
+      "phaseSpeedRange": [
+        0.15,
+        0.35
+      ],
+      "timeToLiveRange": [
+        14,
+        20
+      ],
+      "startPos": [
+        -300,
+        -170,
+        -260
+      ],
+      "endPos": [
+        300,
+        170,
+        120
+      ],
+      "directionX": [
+        -30,
+        30
+      ],
+      "directionY": [
+        -30,
+        30
+      ],
+      "directionZ": [
+        -12,
+        12
+      ],
+      "color": "#ffe6b8",
+      "mirror": true,
+      "constantSize": true,
+      "zLimit": 2,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 0.8,
+      "smoothingTimeConstant": 0.12,
+      "globalAlpha": 0.95,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.5,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 1.6,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": false,
+      "fadeEnd": false,
+      "seed": "330911",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/circle_05_alpha.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -320
+      ]
+    },
+    "audio": {
+      "target": "size",
+      "amount": 0.55,
+      "smoothing": 0.45,
+      "sensitivity": 0.9
+    }
+  },
+  {
+    "id": "rainfall",
+    "name": "Rainfall",
+    "category": "Weather",
+    "thumb": "/particles/presets/rainfall.png",
+    "params": {
+      "instances": 8000,
+      "sizeRange": [
+        0.1,
+        0.34
+      ],
+      "alphaRange": [
+        0.28,
+        0.8
+      ],
+      "speedRange": [
+        2.2,
+        3
+      ],
+      "phaseRange": [
+        2,
+        8
+      ],
+      "phaseAmplitude": [
+        -1,
+        1
+      ],
+      "phaseSpeedRange": [
+        0.5,
+        1.2
+      ],
+      "timeToLiveRange": [
+        1,
+        2.2
+      ],
+      "startPos": [
+        -320,
+        -320,
+        -120
+      ],
+      "endPos": [
+        320,
+        260,
+        120
+      ],
+      "directionX": [
+        -6,
+        6
+      ],
+      "directionY": [
+        -48,
+        -34
+      ],
+      "directionZ": [
+        -6,
+        10
+      ],
+      "color": "#9cc8ff",
+      "mirror": false,
+      "constantSize": false,
+      "zLimit": 1,
+      "zLimitGrace": 8,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 2.8,
+      "smoothingTimeConstant": 0.4,
+      "globalAlpha": 0.9,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 1.2,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2.4,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "771029",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/slash_02.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -380
+      ]
+    },
+    "audio": {
+      "target": "speed",
+      "amount": 1.2,
+      "smoothing": 0.1,
+      "sensitivity": 1.4
+    }
+  },
+  {
+    "id": "fireflies",
+    "name": "Fireflies",
+    "category": "Ambient",
+    "thumb": "/particles/presets/fireflies.png",
+    "params": {
+      "instances": 1500,
+      "sizeRange": [
+        0.14,
+        0.38
+      ],
+      "alphaRange": [
+        0.25,
+        1
+      ],
+      "speedRange": [
+        0.35,
+        0.7
+      ],
+      "phaseRange": [
+        60,
+        130
+      ],
+      "phaseAmplitude": [
+        -40,
+        40
+      ],
+      "phaseSpeedRange": [
+        0.8,
+        1.6
+      ],
+      "timeToLiveRange": [
+        7,
+        14
+      ],
+      "startPos": [
+        -200,
+        -120,
+        -100
+      ],
+      "endPos": [
+        200,
+        120,
+        100
+      ],
+      "directionX": [
+        -6,
+        6
+      ],
+      "directionY": [
+        2,
+        6
+      ],
+      "directionZ": [
+        -6,
+        6
+      ],
+      "color": "#c8ff45",
+      "mirror": true,
+      "constantSize": true,
+      "zLimit": 2,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 2,
+      "smoothingTimeConstant": 0.16,
+      "globalAlpha": 0.95,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.35,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 3.8,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "608777",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/particle1.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -330
+      ]
+    },
+    "audio": {
+      "target": "alpha",
+      "amount": 0.65,
+      "smoothing": 0.22,
+      "sensitivity": 1.1
+    }
+  },
+  {
+    "id": "smoke-plume",
+    "name": "Smoke Plume",
+    "category": "Atmosphere",
+    "thumb": "/particles/presets/smoke-plume.png",
+    "params": {
+      "instances": 1200,
+      "sizeRange": [
+        0.4,
+        1.1
+      ],
+      "alphaRange": [
+        0.06,
+        0.3
+      ],
+      "speedRange": [
+        0.25,
+        0.5
+      ],
+      "phaseRange": [
+        10,
+        30
+      ],
+      "phaseAmplitude": [
+        -14,
+        14
+      ],
+      "phaseSpeedRange": [
+        0.2,
+        0.5
+      ],
+      "timeToLiveRange": [
+        8,
+        16
+      ],
+      "startPos": [
+        -140,
+        -160,
+        -100
+      ],
+      "endPos": [
+        140,
+        160,
+        100
+      ],
+      "directionX": [
+        -10,
+        10
+      ],
+      "directionY": [
+        50,
+        80
+      ],
+      "directionZ": [
+        -3,
+        5
+      ],
+      "color": "#b9c8dc",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 2,
+      "zLimitGrace": 12,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 1.4,
+      "smoothingTimeConstant": 0.1,
+      "globalAlpha": 0.72,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.3,
+      "enableRandomSize": true,
+      "randomSizeSpeed": 1.3,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 1.2,
+      "enableRandomRotation": true,
+      "randomRotationSpeed": 1.1,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "515004",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/smoke_07.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -300
+      ]
+    },
+    "audio": {
+      "target": "size",
+      "amount": 1.05,
+      "smoothing": 0.5,
+      "sensitivity": 1
+    }
+  },
+  {
+    "id": "galaxy-spiral",
+    "name": "Galaxy Spiral",
+    "category": "Space",
+    "thumb": "/particles/presets/galaxy-spiral.png",
+    "params": {
+      "instances": 2600,
+      "sizeRange": [
+        0.14,
+        0.42
+      ],
+      "alphaRange": [
+        0.3,
+        0.85
+      ],
+      "speedRange": [
+        0.6,
+        1.1
+      ],
+      "phaseRange": [
+        60,
+        150
+      ],
+      "phaseAmplitude": [
+        -40,
+        40
+      ],
+      "phaseSpeedRange": [
+        0.2,
+        0.45
+      ],
+      "timeToLiveRange": [
+        14,
+        20
+      ],
+      "startPos": [
+        -260,
+        -180,
+        -500
+      ],
+      "endPos": [
+        260,
+        180,
+        500
+      ],
+      "directionX": [
+        -24,
+        24
+      ],
+      "directionY": [
+        -18,
+        18
+      ],
+      "directionZ": [
+        -6,
+        10
+      ],
+      "color": "#b9a7ff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.32,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 1.4,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "771902",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/circle_05_alpha.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "spin",
+      "amount": 0.9,
+      "smoothing": 0.35,
+      "sensitivity": 1.2
+    }
+  },
+  {
+    "id": "vortex",
+    "name": "Vortex",
+    "category": "Space",
+    "thumb": "/particles/presets/vortex.png",
+    "params": {
+      "instances": 3000,
+      "sizeRange": [
+        0.1,
+        0.3
+      ],
+      "alphaRange": [
+        0.3,
+        0.9
+      ],
+      "speedRange": [
+        0.9,
+        1.6
+      ],
+      "phaseRange": [
+        80,
+        170
+      ],
+      "phaseAmplitude": [
+        -55,
+        55
+      ],
+      "phaseSpeedRange": [
+        0.5,
+        1
+      ],
+      "timeToLiveRange": [
+        6,
+        12
+      ],
+      "startPos": [
+        -300,
+        -200,
+        -500
+      ],
+      "endPos": [
+        300,
+        200,
+        500
+      ],
+      "directionX": [
+        -40,
+        40
+      ],
+      "directionY": [
+        -40,
+        40
+      ],
+      "directionZ": [
+        -10,
+        10
+      ],
+      "color": "#6ef0ff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.5,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "441207",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/circle_05_alpha.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "spin",
+      "amount": 2.2,
+      "smoothing": 0.12,
+      "sensitivity": 1.5
+    }
+  },
+  {
+    "id": "fireworks",
+    "name": "Fireworks",
+    "category": "Celebration",
+    "thumb": "/particles/presets/fireworks.png",
+    "params": {
+      "instances": 3600,
+      "sizeRange": [
+        0.08,
+        0.26
+      ],
+      "alphaRange": [
+        0.4,
+        1
+      ],
+      "speedRange": [
+        1.8,
+        2.8
+      ],
+      "phaseRange": [
+        10,
+        40
+      ],
+      "phaseAmplitude": [
+        -8,
+        8
+      ],
+      "phaseSpeedRange": [
+        0.4,
+        1
+      ],
+      "timeToLiveRange": [
+        1.2,
+        2.6
+      ],
+      "startPos": [
+        -30,
+        -30,
+        -500
+      ],
+      "endPos": [
+        30,
+        30,
+        500
+      ],
+      "directionX": [
+        -160,
+        160
+      ],
+      "directionY": [
+        -160,
+        160
+      ],
+      "directionZ": [
+        -40,
+        40
+      ],
+      "color": "#ffd166",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 1,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2.6,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "903311",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/particle1.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "spread",
+      "amount": 2.4,
+      "smoothing": 0.04,
+      "sensitivity": 1.6
+    }
+  },
+  {
+    "id": "bubbles",
+    "name": "Bubbles",
+    "category": "Celebration",
+    "thumb": "/particles/presets/bubbles.png",
+    "params": {
+      "instances": 1400,
+      "sizeRange": [
+        0.16,
+        0.5
+      ],
+      "alphaRange": [
+        0.2,
+        0.6
+      ],
+      "speedRange": [
+        0.4,
+        0.8
+      ],
+      "phaseRange": [
+        30,
+        80
+      ],
+      "phaseAmplitude": [
+        -18,
+        18
+      ],
+      "phaseSpeedRange": [
+        0.4,
+        0.9
+      ],
+      "timeToLiveRange": [
+        7,
+        13
+      ],
+      "startPos": [
+        -280,
+        -220,
+        -500
+      ],
+      "endPos": [
+        280,
+        -40,
+        500
+      ],
+      "directionX": [
+        -10,
+        10
+      ],
+      "directionY": [
+        22,
+        42
+      ],
+      "directionZ": [
+        -4,
+        6
+      ],
+      "color": "#9fe8ff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.4,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "128844",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/circle_05_alpha.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "size",
+      "amount": 0.8,
+      "smoothing": 0.18,
+      "sensitivity": 1.2
+    }
+  },
+  {
+    "id": "confetti",
+    "name": "Confetti",
+    "category": "Celebration",
+    "thumb": "/particles/presets/confetti.png",
+    "params": {
+      "instances": 3200,
+      "sizeRange": [
+        0.1,
+        0.3
+      ],
+      "alphaRange": [
+        0.55,
+        1
+      ],
+      "speedRange": [
+        1,
+        1.8
+      ],
+      "phaseRange": [
+        20,
+        60
+      ],
+      "phaseAmplitude": [
+        -14,
+        14
+      ],
+      "phaseSpeedRange": [
+        1,
+        2
+      ],
+      "timeToLiveRange": [
+        4,
+        9
+      ],
+      "startPos": [
+        -240,
+        -260,
+        -500
+      ],
+      "endPos": [
+        240,
+        0,
+        500
+      ],
+      "directionX": [
+        -60,
+        60
+      ],
+      "directionY": [
+        -48,
+        -24
+      ],
+      "directionZ": [
+        -6,
+        6
+      ],
+      "color": "#ff8ad8",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.7,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": true,
+      "randomRotationSpeed": 3,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "553901",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/square.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "spread",
+      "amount": 1.2,
+      "smoothing": 0.06,
+      "sensitivity": 1.3
+    }
+  },
+  {
+    "id": "meteor-shower",
+    "name": "Meteor Shower",
+    "category": "Weather",
+    "thumb": "/particles/presets/meteor-shower.png",
+    "params": {
+      "instances": 2600,
+      "sizeRange": [
+        0.1,
+        0.28
+      ],
+      "alphaRange": [
+        0.55,
+        1
+      ],
+      "speedRange": [
+        2.2,
+        3
+      ],
+      "phaseRange": [
+        4,
+        12
+      ],
+      "phaseAmplitude": [
+        -2,
+        2
+      ],
+      "phaseSpeedRange": [
+        0.5,
+        1
+      ],
+      "timeToLiveRange": [
+        1.5,
+        3
+      ],
+      "startPos": [
+        -320,
+        -260,
+        -500
+      ],
+      "endPos": [
+        80,
+        40,
+        500
+      ],
+      "directionX": [
+        -140,
+        -60
+      ],
+      "directionY": [
+        -90,
+        -40
+      ],
+      "directionZ": [
+        -20,
+        20
+      ],
+      "color": "#cfe6ff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 1.15,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "661204",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/slash_02.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "speed",
+      "amount": 2.6,
+      "smoothing": 0.1,
+      "sensitivity": 1.4
+    }
+  },
+  {
+    "id": "aurora-dust",
+    "name": "Aurora Dust",
+    "category": "Ambient",
+    "thumb": "/particles/presets/aurora-dust.png",
+    "params": {
+      "instances": 3000,
+      "sizeRange": [
+        0.24,
+        0.7
+      ],
+      "alphaRange": [
+        0.1,
+        0.32
+      ],
+      "speedRange": [
+        0.5,
+        0.9
+      ],
+      "phaseRange": [
+        40,
+        110
+      ],
+      "phaseAmplitude": [
+        -30,
+        30
+      ],
+      "phaseSpeedRange": [
+        0.25,
+        0.5
+      ],
+      "timeToLiveRange": [
+        16,
+        20
+      ],
+      "startPos": [
+        -320,
+        -140,
+        -500
+      ],
+      "endPos": [
+        320,
+        180,
+        500
+      ],
+      "directionX": [
+        -26,
+        26
+      ],
+      "directionY": [
+        20,
+        40
+      ],
+      "directionZ": [
+        -10,
+        10
+      ],
+      "color": "#6dffc4",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.45,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "220117",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/smoke_07.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "alpha",
+      "amount": 0.55,
+      "smoothing": 0.25,
+      "sensitivity": 1
+    }
+  },
+  {
+    "id": "smoke-rings",
+    "name": "Smoke Rings",
+    "category": "Atmosphere",
+    "thumb": "/particles/presets/smoke-rings.png",
+    "params": {
+      "instances": 2600,
+      "sizeRange": [
+        0.14,
+        0.44
+      ],
+      "alphaRange": [
+        0.08,
+        0.3
+      ],
+      "speedRange": [
+        0.9,
+        1.4
+      ],
+      "phaseRange": [
+        20,
+        60
+      ],
+      "phaseAmplitude": [
+        -10,
+        10
+      ],
+      "phaseSpeedRange": [
+        0.2,
+        0.5
+      ],
+      "timeToLiveRange": [
+        6,
+        11
+      ],
+      "startPos": [
+        -20,
+        -20,
+        -500
+      ],
+      "endPos": [
+        20,
+        20,
+        500
+      ],
+      "directionX": [
+        -90,
+        90
+      ],
+      "directionY": [
+        -90,
+        90
+      ],
+      "directionZ": [
+        -8,
+        8
+      ],
+      "color": "#d7e4f2",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.5,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "310452",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/smoke_07.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "size",
+      "amount": 1.5,
+      "smoothing": 0.4,
+      "sensitivity": 1.1
+    }
+  },
+  {
+    "id": "electric-sparks",
+    "name": "Electric Sparks",
+    "category": "Neon",
+    "thumb": "/particles/presets/electric-sparks.png",
+    "params": {
+      "instances": 4200,
+      "sizeRange": [
+        0.06,
+        0.2
+      ],
+      "alphaRange": [
+        0.4,
+        1
+      ],
+      "speedRange": [
+        1.4,
+        2.6
+      ],
+      "phaseRange": [
+        10,
+        40
+      ],
+      "phaseAmplitude": [
+        -40,
+        40
+      ],
+      "phaseSpeedRange": [
+        1.2,
+        2
+      ],
+      "timeToLiveRange": [
+        0.6,
+        1.4
+      ],
+      "startPos": [
+        -220,
+        -140,
+        -500
+      ],
+      "endPos": [
+        220,
+        140,
+        500
+      ],
+      "directionX": [
+        -70,
+        70
+      ],
+      "directionY": [
+        -70,
+        70
+      ],
+      "directionZ": [
+        -30,
+        30
+      ],
+      "color": "#c9f7ff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 1,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 2,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "770413",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/star_particle.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "flicker",
+      "amount": 0.9,
+      "smoothing": 0.02,
+      "sensitivity": 1.8
+    }
+  },
+  {
+    "id": "starfield",
+    "name": "Starfield",
+    "category": "Space",
+    "thumb": "/particles/presets/starfield.png",
+    "params": {
+      "instances": 2600,
+      "sizeRange": [
+        0.05,
+        0.18
+      ],
+      "alphaRange": [
+        0.3,
+        0.9
+      ],
+      "speedRange": [
+        1.6,
+        2.4
+      ],
+      "phaseRange": [
+        4,
+        12
+      ],
+      "phaseAmplitude": [
+        -2,
+        2
+      ],
+      "phaseSpeedRange": [
+        0.5,
+        1
+      ],
+      "timeToLiveRange": [
+        3,
+        6
+      ],
+      "startPos": [
+        -160,
+        -100,
+        -500
+      ],
+      "endPos": [
+        160,
+        100,
+        500
+      ],
+      "directionX": [
+        -6,
+        6
+      ],
+      "directionY": [
+        -6,
+        6
+      ],
+      "directionZ": [
+        150,
+        260
+      ],
+      "color": "#ffffff",
+      "mirror": true,
+      "constantSize": false,
+      "zLimit": 5,
+      "zLimitGrace": 10,
+      "backLimit": 500,
+      "backLimitGrace": 10,
+      "impactMultiplier": 3,
+      "smoothingTimeConstant": 0.2,
+      "globalAlpha": 1,
+      "incrementWithTime": true,
+      "timeIncrementMultiplier": 0.85,
+      "enableRandomSize": false,
+      "randomSizeSpeed": 2,
+      "enableRandomAlpha": true,
+      "randomAlphaSpeed": 1.8,
+      "enableRandomRotation": false,
+      "randomRotationSpeed": 2,
+      "fadeBeginning": true,
+      "fadeEnd": true,
+      "seed": "880215",
+      "audioAnalyzer": "analyzer_default",
+      "particleImage": "/media/particles/circle_05_alpha.webp",
+      "magFilter": "Linear",
+      "minFilter": "Linear",
+      "premultiplyAlpha": false,
+      "offset": [
+        0,
+        0,
+        -500
+      ]
+    },
+    "audio": {
+      "target": "speed",
+      "amount": 3,
+      "smoothing": 0.2,
+      "sensitivity": 1.3
+    }
+  }
+]

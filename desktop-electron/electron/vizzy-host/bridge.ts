@@ -52,6 +52,19 @@ export interface VizzyOpenedProject {
 export type VizzyViewMessage =
   | { v: 1; type: "vizzy:ready" }
   | { v: 1; type: "vizzy:dirty"; dirty: boolean }
+  | {
+      v: 1;
+      type: "vizzy:state";
+      state: {
+        ready: boolean;
+        projectName: string;
+        dirty: boolean;
+        nodeCount: number;
+        crossOriginIsolated: boolean;
+        fftTier: string;
+      };
+    }
+  | { v: 1; type: "vizzy:ack"; requestId: string; ok: boolean; error?: string }
   | { v: 1; type: "vizzy:save"; name: string; bytes: ArrayBuffer }
   | { v: 1; type: "vizzy:open" }
   | { v: 1; type: "vizzy:pick-media"; kind: VizzyMediaKind }
@@ -71,6 +84,15 @@ export type VizzyHostMessage =
     }
   | { v: 1; type: "vizzy:theme"; tokens: Record<string, string> }
   | { v: 1; type: "vizzy:open-project"; project: VizzyOpenedProject }
+  | {
+      /** P7 native open: the editor's snapshot travels as JSON, not bytes. */
+      v: 1;
+      type: "vizzy:open-project-json";
+      requestId: string;
+      path: string;
+      name: string;
+      json: string;
+    }
   | { v: 1; type: "vizzy:project-saved"; path: string }
   | { v: 1; type: "vizzy:media-picked"; kind: VizzyMediaKind; url: string }
   | { v: 1; type: "vizzy:export-progress"; jobId: string; percent: number; stage: string }
@@ -106,6 +128,17 @@ export interface VizzyBridgeOptions {
   project?: VizzyProjectSummary | null;
   /** Save-state strip in the shell; wired to the same store as `vizzy:dirty`. */
   onDirty?: (dirty: boolean) => void;
+  /** Richer strip state: project name, node count and FFT tier. */
+  onState?: (state: {
+    ready: boolean;
+    projectName: string;
+    dirty: boolean;
+    nodeCount: number;
+    crossOriginIsolated: boolean;
+    fftTier: string;
+  }) => void;
+  /** Acknowledgement for an `open-project-json` command. */
+  onAck?: (payload: { requestId: string; ok: boolean; error?: string }) => void;
 }
 
 export interface VizzyBridge {
@@ -155,6 +188,34 @@ export function createVizzyBridge(options: VizzyBridgeOptions): VizzyBridge {
         case "vizzy:dirty": {
           const dirty = raw.dirty === true;
           options.onDirty?.(dirty);
+          return;
+        }
+        case "vizzy:state": {
+          if (!isRecord(raw.state)) {
+            fail("Invalid state payload");
+            return;
+          }
+          const state = raw.state;
+          options.onState?.({
+            ready: state.ready === true,
+            projectName: typeof state.projectName === "string" ? state.projectName : "",
+            dirty: state.dirty === true,
+            nodeCount: typeof state.nodeCount === "number" ? state.nodeCount : 0,
+            crossOriginIsolated: state.crossOriginIsolated === true,
+            fftTier: typeof state.fftTier === "string" ? state.fftTier : "unknown",
+          });
+          return;
+        }
+        case "vizzy:ack": {
+          if (typeof raw.requestId !== "string") {
+            fail("Invalid acknowledgement");
+            return;
+          }
+          options.onAck?.({
+            requestId: raw.requestId,
+            ok: raw.ok === true,
+            error: typeof raw.error === "string" ? raw.error : undefined,
+          });
           return;
         }
         case "vizzy:save": {

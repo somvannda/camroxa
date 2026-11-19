@@ -13,6 +13,11 @@ import type {
   TemplateChangedEvent,
   UpdateCheckResult,
   UpdateOffer,
+  VizzyBounds,
+  VizzyOpenResult,
+  VizzyProbe,
+  VizzySaveResult,
+  VizzyState,
 } from "../../electron/shared/types";
 
 export interface CamxoraBridge {
@@ -82,6 +87,18 @@ export interface CamxoraBridge {
   updates: {
     check(): Promise<IpcResult<UpdateCheckResult>>;
     open(offer: UpdateOffer): Promise<IpcResult<boolean>>;
+  };
+  vizzy: {
+    attach(bounds: VizzyBounds): Promise<IpcResult<VizzyState>>;
+    detach(): Promise<IpcResult<boolean>>;
+    setBounds(bounds: VizzyBounds): Promise<IpcResult<boolean>>;
+    state(): Promise<IpcResult<VizzyState>>;
+    probe(): Promise<IpcResult<VizzyProbe>>;
+    reload(): Promise<IpcResult<boolean>>;
+    save(): Promise<IpcResult<VizzySaveResult>>;
+    open(): Promise<IpcResult<VizzyOpenResult | null>>;
+    openPath(path: string): Promise<IpcResult<VizzyOpenResult>>;
+    onState(callback: (state: VizzyState) => void): () => void;
   };
 }
 
