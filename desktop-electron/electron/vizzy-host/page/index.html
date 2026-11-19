@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vizzy host spike</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --surface: #0b0d10;
+        --panel: #12161b;
+        --border: #232a32;
+        --text: #e6edf3;
+        --muted: #8b98a5;
+        --accent: #7c5cff;
+        --ok: #3fb950;
+        --bad: #f85149;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--surface);
+        color: var(--text);
+        font:
+          13px/1.5 "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      p.lead {
+        margin: 0 0 20px;
+        color: var(--muted);
+      }
+      .banner {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 20px;
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .dot.ok {
+        background: var(--ok);
+      }
+      .dot.bad {
+        background: var(--bad);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+      }
+      th,
+      td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        font-weight: 600;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      td.name {
+        width: 190px;
+        color: var(--muted);
+      }
+      td.value {
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        word-break: break-word;
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .bad {
+        color: var(--bad);
+      }
+      pre {
+        margin: 20px 0 0;
+        padding: 12px;
+        overflow: auto;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vizzy host spike</h1>
+    <p class="lead">
+      Cross-origin isolation, SharedArrayBuffer, WebGL2, worker and WebAssembly probes for the
+      hosted editor.
+    </p>
+    <div class="banner">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">running…</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Check</th>
+          <th>Measured value</th>
+        </tr>
+      </thead>
+      <tbody id="checks"></tbody>
+    </table>
+    <pre id="raw">waiting for probes…</pre>
+    <script type="module" src="./spike.js"></script>
+  </body>
+</html>
