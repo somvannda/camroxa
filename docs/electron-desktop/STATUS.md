@@ -40,6 +40,17 @@ npm run api:check   PASS (schema up to date)
 npm audit --omit=dev  0 vulnerabilities
 ```
 
+## Active workstreams (parallel)
+
+| Worktree | Branch | Scope |
+|---|---|---|
+| `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges |
+| `Camxora Desktop Auth` | `desktop/auth` | Google OAuth, paid/email/onboarding gates |
+| `Camxora Desktop Account` | `desktop/account` | Dashboard + Profile |
+| `Camxora Desktop Vizzy Host` | `desktop/vizzy-host` | COOP/COEP host spike + bridge skeleton |
+
+Merge order and file ownership: [`WORKSTREAMS.md`](WORKSTREAMS.md).
+
 ## Phase 1 started
 
 | Item | Status |
