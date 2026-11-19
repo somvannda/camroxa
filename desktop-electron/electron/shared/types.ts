@@ -140,6 +140,56 @@ export interface TemplateChangedEvent {
   reinstalled: boolean;
 }
 
+/* ------------------------------------------------------------------ */
+/* Vizzy host (P7)                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Placement of the hosted editor view inside the window, in CSS pixels. */
+export interface VizzyBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Everything the Vizzy shell strip renders. */
+export interface VizzyState {
+  attached: boolean;
+  ready: boolean;
+  crashed: boolean;
+  projectName: string;
+  dirty: boolean;
+  nodeCount: number;
+  fftTier: string;
+  crossOriginIsolated: boolean;
+  path: string | null;
+  error: string | null;
+}
+
+/** `vizzy:probe` — live editor diagnostics read from `window.__vizzyTest`. */
+export interface VizzyProbe {
+  url: string;
+  ready: boolean;
+  projectName: string;
+  dirty: boolean;
+  nodeCount: number;
+  crossOriginIsolated: boolean;
+  fftTier: string;
+  webgl2: boolean;
+}
+
+export interface VizzySaveResult {
+  path: string;
+  name: string;
+  bytes: number;
+}
+
+export interface VizzyOpenResult {
+  path: string;
+  name: string;
+  nodeCount: number;
+}
+
 export function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data };
 }
