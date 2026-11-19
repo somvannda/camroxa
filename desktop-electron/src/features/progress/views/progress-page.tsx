@@ -4,6 +4,7 @@ import { PageHeader } from "../../../components/page-header";
 import { Card } from "../../../components/card";
 import { apiRequest, errorMessage } from "../../../lib/api";
 import { DownloadQueue } from "../download-queue";
+import { VideoPipelineSection } from "../video-pipeline-table";
 import { ProgressDetail } from "../progress-detail";
 import { ProgressErrorBanner } from "../progress-error-banner";
 import { ProgressStatCards } from "../progress-stat-cards";
@@ -311,6 +312,8 @@ export function ProgressPage() {
             void runFolder(path);
           }}
         />
+
+        <VideoPipelineSection />
       </div>
     </div>
   );

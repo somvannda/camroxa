@@ -82,6 +82,20 @@ const bridge = {
       return () => ipcRenderer.removeListener("video-templates:changed", listener);
     },
   },
+  pipeline: {
+    list: () => invoke("pipeline:list"),
+    enqueue: (request: unknown) => invoke("pipeline:enqueue", request),
+    start: () => invoke("pipeline:start"),
+    cancel: () => invoke("pipeline:cancel"),
+    retry: (batchId?: string) => invoke("pipeline:retry", batchId ? { batchId } : {}),
+    clear: () => invoke("pipeline:clear"),
+    reveal: (path: string) => invoke("pipeline:reveal", { path }),
+    onChange: (callback: (payload: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on("pipeline:changed", listener);
+      return () => ipcRenderer.removeListener("pipeline:changed", listener);
+    },
+  },
   diagnostics: {
     send: (note?: string) => invoke("diagnostics:send", { note }),
   },

@@ -9,6 +9,10 @@ import type {
   InstalledTemplate,
   IpcResult,
   PickFileRequest,
+  PipelineChangedEvent,
+  PipelineEnqueueRequest,
+  PipelineEnqueueResult,
+  PipelineSnapshot,
   SavedAccount,
   TemplateChangedEvent,
   UpdateCheckResult,
@@ -101,6 +105,16 @@ export interface CamxoraBridge {
     read(id: string): Promise<IpcResult<VideoTemplateInfo & { pipeline: unknown }>>;
     remove(id: string): Promise<IpcResult<boolean>>;
     onChange(callback: (payload: VideoTemplateChangedEvent) => void): () => void;
+  };
+  pipeline: {
+    list(): Promise<IpcResult<PipelineSnapshot>>;
+    enqueue(request: PipelineEnqueueRequest): Promise<IpcResult<PipelineEnqueueResult>>;
+    start(): Promise<IpcResult<{ started: boolean; running: boolean }>>;
+    cancel(): Promise<IpcResult<{ cancelled: boolean; batchIds: string[] }>>;
+    retry(batchId?: string): Promise<IpcResult<{ enqueued: number; started: boolean }>>;
+    clear(): Promise<IpcResult<{ removed: number }>>;
+    reveal(path: string): Promise<IpcResult<boolean>>;
+    onChange(callback: (payload: PipelineChangedEvent) => void): () => void;
   };
   vizzy: {
     attach(bounds: VizzyBounds): Promise<IpcResult<VizzyState>>;

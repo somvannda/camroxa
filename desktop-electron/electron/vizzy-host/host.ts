@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Production host for the Vizzy `WebContentsView`.
  *
  * One instance lives in the main process. The renderer attaches it to the
@@ -18,7 +18,6 @@ import type {
   VizzyBounds,
   VizzyExportOutcome,
   VizzyExportProgress,
-  VizzyExportResult,
   VizzyExportSettingsInput,
   VizzyOpenResult,
   VizzyProbe,
@@ -26,11 +25,11 @@ import type {
   VizzySaveResult,
   VizzyState,
 } from "../shared/types";
-import { probe } from "../services/ffmpeg";
 import { logger } from "../services/logger";
 import { allowPickedFile, createMediaUrl } from "../services/media";
 import { VIZZY_INDEX_URL } from "./assets";
 import { createVizzyBridge, type VizzyBridge } from "./bridge";
+import { VizzyExportSession } from "./export-session";
 import {
   atomicWriteText,
   ensureProjectsDir,
@@ -40,33 +39,23 @@ import {
   serialiseProjectFile,
   projectFilePath,
 } from "./project-store";
+import { OffscreenVizzyRenderer } from "./render-window";
 import {
-  RenderChunkWriter,
   deleteRenderFile,
   ensureRendersDir,
   listRenderFiles,
   managedRenderPath,
-  renderFileNameForTemplate,
-  resolveExportSettings,
-  uniqueRenderPath,
-  type ResolvedVizzyExportSettings,
   type VizzyProjectInfo,
 } from "./renders";
 
 const CRASH_RELOAD_WINDOW_MS = 60_000;
 const CRASH_RELOAD_BUDGET = 3;
 const ACK_TIMEOUT_MS = 8_000;
-/** How long the editor gets to abort after a cancel before the host cleans up. */
-const EXPORT_CANCEL_GRACE_MS = 5_000;
-/** The editor must report its first frame within this window. */
-const EXPORT_START_TIMEOUT_MS = 60_000;
-/** Hard ceiling for one export; a stuck encoder must not hold the file open. */
-const EXPORT_TIMEOUT_MS = 60 * 60_000;
 /** Decoding and analysing a run track may take a little while on a long song. */
 const AUDIO_LOAD_TIMEOUT_MS = 180_000;
 /** How long a re-shown view gets to paint before `capturePage()`. */
 const THUMBNAIL_PAINT_TIMEOUT_MS = 2_000;
-/** `camxora-vizzy://vizzy` — the only origin the editor may navigate to. */
+/** `camxora-vizzy://vizzy` â€” the only origin the editor may navigate to. */
 const VIZZY_ORIGIN = new URL(VIZZY_INDEX_URL).origin;
 
 export interface VizzyHostDeps {
@@ -91,29 +80,6 @@ interface PendingAck {
   timer: NodeJS.Timeout;
 }
 
-/** One in-flight export. Only one job per host, and only inside `renders/`. */
-interface ExportJob {
-  id: string;
-  settings: ResolvedVizzyExportSettings;
-  filePath: string;
-  fileName: string;
-  writer: RenderChunkWriter;
-  frames: number;
-  startedAt: number;
-  cancelled: boolean;
-  settled: boolean;
-  writeChain: Promise<void>;
-  resolve: (outcome: VizzyExportOutcome) => void;
-  promise: Promise<VizzyExportOutcome>;
-  cancelTimer: NodeJS.Timeout | null;
-  startTimer: NodeJS.Timeout | null;
-  timeoutTimer: NodeJS.Timeout | null;
-}
-
-function totalFramesFor(settings: ResolvedVizzyExportSettings): number {
-  return Math.max(1, Math.round(settings.duration * settings.fps));
-}
-
 function clampBounds(bounds: VizzyBounds, window: BrowserWindow | null): VizzyBounds {
   const content = window?.getContentBounds();
   const maxWidth = Math.max(0, content?.width ?? 0);
@@ -135,7 +101,9 @@ export class VizzyHost {
   private attached = false;
   /** Shell modals hide the native view, which always paints above DOM. */
   private viewVisible = true;
-  private exportJob: ExportJob | null = null;
+  private readonly session: VizzyExportSession;
+  /** Hidden renderer used by the pipeline when `/vizzy` is not open. */
+  private renderer: OffscreenVizzyRenderer | null = null;
   private state: VizzyState = {
     attached: false,
     ready: false,
@@ -153,16 +121,27 @@ export class VizzyHost {
     error: null,
   };
 
-  constructor(private readonly deps: VizzyHostDeps) {}
+  constructor(private readonly deps: VizzyHostDeps) {
+    this.session = new VizzyExportSession({
+      rendersDir: deps.rendersDir,
+      getContents: () => this.viewContents(),
+      getBridge: () => this.bridge,
+      isReady: () => this.state.ready,
+      defaultName: () => this.state.projectName || "untitled-project",
+      getProjectInfo: () => this.readProjectInfo(),
+      onProgress: (progress) => this.deps.onExportProgress?.(progress),
+    });
+  }
 
   getState(): VizzyState {
     return { ...this.state };
   }
 
-  /** True only for the hosted editor's webContents (channel guard). */
+  /** True for the hosted editor's webContents or the batch render window's. */
   isViewSender(sender: WebContents): boolean {
     const contents = this.view?.webContents;
-    return Boolean(contents && !contents.isDestroyed() && contents.id === sender.id);
+    if (contents && !contents.isDestroyed() && contents.id === sender.id) return true;
+    return this.renderer?.isSender(sender) === true;
   }
 
   /** True only for the shell window's webContents (channel guard). */
@@ -171,13 +150,33 @@ export class VizzyHost {
     return Boolean(contents && !contents.isDestroyed() && contents.id === sender.id);
   }
 
-  /** Route a `vizzy:bridge` message from the hosted view. */
-  async handleViewMessage(message: unknown): Promise<void> {
+  /** Route a `vizzy:bridge` message from whichever editor surface sent it. */
+  async handleViewMessage(message: unknown, sender?: WebContents): Promise<void> {
+    if (sender && this.renderer?.isSender(sender)) {
+      await this.renderer.handleViewMessage(message);
+      return;
+    }
     await this.bridge?.handleViewMessage(message);
   }
 
   hasView(): boolean {
     return Boolean(this.view && !this.view.webContents.isDestroyed());
+  }
+
+  private viewContents(): WebContents | null {
+    const contents = this.view?.webContents;
+    return contents && !contents.isDestroyed() ? contents : null;
+  }
+
+  private ensureRenderer(): OffscreenVizzyRenderer {
+    if (!this.renderer) {
+      this.renderer = new OffscreenVizzyRenderer({
+        preloadPath: this.deps.preloadPath,
+        rendersDir: this.deps.rendersDir,
+        onExportProgress: this.deps.onExportProgress,
+      });
+    }
+    return this.renderer;
   }
 
   /**
@@ -235,7 +234,7 @@ export class VizzyHost {
    */
   detach(): void {
     this.clearPendingAcks("The Vizzy view was closed.");
-    this.abortExport("The Vizzy editor was closed.");
+    this.session.abort("The Vizzy editor was closed.");
     this.destroyView();
     this.update({ attached: false, ready: false });
   }
@@ -557,158 +556,68 @@ export class VizzyHost {
    * the settings. Resolves when the job settles (done / cancelled / failed).
    * `outputName` names the file from a template id instead of the project name.
    */
-  async exportVideo(
+  exportVideo(
     input: VizzyExportSettingsInput | null,
-    options: { outputName?: string } = {},
+    options: { outputName?: string; onStarted?: (jobId: string) => void } = {},
   ): Promise<VizzyExportOutcome> {
-    if (!this.hasView() || !this.bridge) throw new Error("Open the Vizzy editor first.");
-    if (!this.state.ready) throw new Error("The Vizzy editor is still starting.");
-    if (this.exportJob) throw new Error("An export is already running.");
-
-    const project = await this.readProjectInfo();
-    const settings = resolveExportSettings(input, project);
-    const directory = ensureRendersDir(this.deps.rendersDir);
-    const requestedName = options.outputName?.trim();
-    const fileName = renderFileNameForTemplate(
-      requestedName || project?.name || this.state.projectName || "untitled-project",
-      settings.format,
-    );
-    const filePath = uniqueRenderPath(directory, fileName);
-    const handle = await fs.promises.open(filePath, "w+");
-
-    const writer = new RenderChunkWriter({
-      writeAt: async (buffer, position) => {
-        await handle.write(buffer, 0, buffer.byteLength, position);
-      },
-      close: async () => {
-        try {
-          await handle.sync();
-        } finally {
-          await handle.close();
-        }
-      },
-    });
-
-    let resolveJob: (outcome: VizzyExportOutcome) => void = () => undefined;
-    const promise = new Promise<VizzyExportOutcome>((resolve) => {
-      resolveJob = resolve;
-    });
-    const job: ExportJob = {
-      id: crypto.randomUUID(),
-      settings,
-      filePath,
-      fileName,
-      writer,
-      frames: 0,
-      startedAt: Date.now(),
-      cancelled: false,
-      settled: false,
-      writeChain: Promise.resolve(),
-      resolve: resolveJob,
-      promise,
-      cancelTimer: null,
-      startTimer: null,
-      timeoutTimer: null,
-    };
-    this.exportJob = job;
-    job.startTimer = setTimeout(() => {
-      void this.settleWithoutFile(job, {
-        status: "failed",
-        message: "The Vizzy editor did not start the export.",
-      });
-    }, EXPORT_START_TIMEOUT_MS);
-
-    const total = totalFramesFor(settings);
-    this.deps.onExportProgress?.({
-      jobId: job.id,
-      done: 0,
-      total,
-      percent: 0,
-      stage: "starting",
-    });
-    logger.info("vizzy export started", {
-      file: fileName,
-      width: settings.width,
-      height: settings.height,
-      fps: settings.fps,
-      format: settings.format,
-      codec: settings.codec,
-      seconds: settings.duration,
-    });
-
-    this.bridge.send({
-      v: 1,
-      type: "vizzy:export-run",
-      jobId: job.id,
-      settings: {
-        width: settings.width,
-        height: settings.height,
-        fps: settings.fps,
-        format: settings.format,
-        codec: settings.codec,
-        bitrate: settings.bitrate,
-        crf: settings.crf,
-        start: settings.start,
-        end: settings.end,
-      },
-    });
-
-    return promise;
+    return this.session.start(input, options);
   }
 
-  /** View-only: one encoder chunk written at its absolute file offset. */
+  /**
+   * Render a saved template without the visible editor.
+   *
+   * Uses a hidden window with its own session partition and the same editor
+   * bundle; the caller supplies the exact project JSON and the run audio. This
+   * is the pipeline's render port, so a queued job never depends on `/vizzy`
+   * being open.
+   */
+  async renderTemplateOffscreen(input: {
+    projectJson: string;
+    name: string;
+    audioPath: string;
+    settings: VizzyExportSettingsInput;
+    outputName: string;
+    onProgress?: (progress: VizzyExportProgress) => void;
+    onStarted?: (jobId: string) => void;
+    shouldAbort?: () => boolean;
+  }): Promise<VizzyExportOutcome> {
+    const renderer = this.ensureRenderer();
+    return renderer.render(input);
+  }
+
+  /** True while a batch render window exists (diagnostics/E2E). */
+  hasRenderWindow(): boolean {
+    return this.renderer?.hasWindow() === true;
+  }
+
+  /** Close the batch render window. Deletes no user files. */
+  disposeRenderer(): void {
+    this.renderer?.dispose();
+    this.renderer = null;
+  }
+
+  /** Shell cancel: abort the editor's exporter, then delete the partial file. */
+  cancelExport(jobId: string): boolean {
+    if (this.session.cancel(jobId)) return true;
+    return this.renderer?.cancel(jobId) === true;
+  }
+
+  /** Editor-origin: one encoder chunk written at its absolute file offset. */
   async writeExportChunk(input: {
     jobId: string;
     position: number;
     data: Uint8Array;
   }): Promise<{ bytes: number }> {
-    const job = this.exportJob;
-    if (!job || job.id !== input.jobId) throw new Error("That export is no longer running.");
-    if (job.cancelled) throw new Error("The export was cancelled.");
-    const write = job.writeChain.then(() => job.writer.write(input.position, input.data));
-    job.writeChain = write.catch(() => undefined);
-    await write;
-    return { bytes: job.writer.bytes };
-  }
-
-  /** Shell cancel: abort the editor's exporter, then delete the partial file. */
-  cancelExport(jobId: string): boolean {
-    const job = this.exportJob;
-    if (!job || job.id !== jobId) return false;
-    if (job.cancelled) return true;
-    job.cancelled = true;
-    this.bridge?.send({ v: 1, type: "vizzy:export-cancel", jobId: job.id });
-    job.cancelTimer = setTimeout(() => {
-      void this.settleWithoutFile(job, { status: "cancelled" });
-    }, EXPORT_CANCEL_GRACE_MS);
-    return true;
-  }
-
-  /** View progress → shell event. Unknown or cancelled jobs are ignored. */
-  handleExportProgress(payload: { jobId: string; done: number; total: number; stage: string }): void {
-    const job = this.exportJob;
-    if (!job || job.id !== payload.jobId || job.cancelled) return;
-    if (job.startTimer) {
-      // The exporter is alive; swap the start guard for the hard ceiling.
-      clearTimeout(job.startTimer);
-      job.startTimer = null;
-      job.timeoutTimer = setTimeout(() => {
-        void this.settleWithoutFile(job, {
-          status: "failed",
-          message: "The export timed out before it finished.",
-        });
-      }, EXPORT_TIMEOUT_MS);
+    if (this.renderer && this.renderer.currentJobId === input.jobId) {
+      return this.renderer.writeChunk(input);
     }
-    const total = Math.max(1, Math.round(Number(payload.total) || totalFramesFor(job.settings)));
-    const done = Math.min(total, Math.max(0, Math.round(Number(payload.done) || 0)));
-    job.frames = Math.max(job.frames, done);
-    this.deps.onExportProgress?.({
-      jobId: job.id,
-      done,
-      total,
-      percent: Math.round((done / total) * 100),
-      stage: typeof payload.stage === "string" ? payload.stage.slice(0, 80) : "exporting",
-    });
+    return this.session.writeChunk(input);
+  }
+
+  /** View progress â†’ shell event. Unknown or cancelled jobs are ignored. */
+  handleExportProgress(payload: { jobId: string; done: number; total: number; stage: string }): void {
+    this.session.handleProgress(payload);
+    this.renderer?.handleProgress(payload);
   }
 
   /** View completion signal; the host owns the final word on the file. */
@@ -719,26 +628,8 @@ export class VizzyHost {
     frames: number;
     error?: string;
   }): Promise<void> {
-    const job = this.exportJob;
-    if (!job || job.id !== payload.jobId) return;
-    if (Number.isFinite(payload.frames) && payload.frames > 0) {
-      job.frames = Math.min(Math.round(payload.frames), totalFramesFor(job.settings));
-    }
-    if (job.cancelled || payload.cancelled) {
-      await this.settleWithoutFile(job, { status: "cancelled" });
-      return;
-    }
-    if (!payload.ok) {
-      await this.settleWithoutFile(job, {
-        status: "failed",
-        message:
-          typeof payload.error === "string" && payload.error.length > 0
-            ? payload.error.slice(0, 400)
-            : "The export failed before it wrote a file.",
-      });
-      return;
-    }
-    await this.settleDone(job);
+    await this.session.handleFinished(payload);
+    await this.renderer?.handleFinished(payload);
   }
 
   /** Delete one managed render; anything outside `renders/` is refused. */
@@ -765,7 +656,8 @@ export class VizzyHost {
 
   dispose(): void {
     this.clearPendingAcks("The Vizzy view was closed.");
-    this.abortExport("The application is closing.");
+    this.session.abort("The application is closing.");
+    this.disposeRenderer();
     this.destroyView();
   }
 
@@ -830,116 +722,6 @@ export class VizzyHost {
     };
   }
 
-  /** Cancel whatever is in flight because the view or the app is going away. */
-  private abortExport(reason: string): void {
-    const job = this.exportJob;
-    if (!job) return;
-    logger.info("vizzy export aborted", { reason, file: job.fileName });
-    job.cancelled = true;
-    void this.settleWithoutFile(job, { status: "cancelled" });
-  }
-
-  private async settleDone(job: ExportJob): Promise<void> {
-    if (job.settled) return;
-    job.settled = true;
-    this.clearExportTimers(job);
-    if (this.exportJob === job) this.exportJob = null;
-
-    let closeError: unknown = null;
-    try {
-      await job.writer.close();
-    } catch (error) {
-      closeError = error;
-    }
-    const bytes = job.writer.bytes;
-    if (closeError || bytes <= 0) {
-      this.removeRenderFile(job);
-      const message =
-        closeError !== null
-          ? `The render could not be closed: ${closeError instanceof Error ? closeError.message : String(closeError)}`
-          : "The exporter wrote no video data.";
-      logger.error("vizzy export failed", { file: job.fileName, error: message });
-      this.deps.onExportProgress?.({
-        jobId: job.id,
-        done: 0,
-        total: totalFramesFor(job.settings),
-        percent: 0,
-        stage: "failed",
-      });
-      job.resolve({ status: "failed", message });
-      return;
-    }
-
-    let probed: Awaited<ReturnType<typeof probe>> | null = null;
-    try {
-      probed = await probe(job.filePath);
-    } catch (error) {
-      // ffprobe is optional at runtime; the file is still a real render.
-      logger.warn("vizzy export probe failed", {
-        file: job.fileName,
-        error: String(error),
-      });
-    }
-
-    const total = totalFramesFor(job.settings);
-    const result: VizzyExportResult = {
-      jobId: job.id,
-      path: job.filePath,
-      name: job.fileName,
-      bytes,
-      frames: job.frames || total,
-      durationSec: probed?.durationSec || job.settings.duration,
-      width: probed?.width ?? job.settings.width,
-      height: probed?.height ?? job.settings.height,
-      videoCodec: probed?.videoCodec ?? null,
-      audioCodec: probed?.audioCodec ?? null,
-      elapsedMs: Date.now() - job.startedAt,
-    };
-    logger.info("vizzy export finished", {
-      file: job.fileName,
-      bytes,
-      frames: result.frames,
-      ms: result.elapsedMs,
-    });
-    this.deps.onExportProgress?.({
-      jobId: job.id,
-      done: total,
-      total,
-      percent: 100,
-      stage: "done",
-    });
-    job.resolve({ status: "done", result });
-  }
-
-  /** Close the handle, delete the partial file and settle the job. */
-  private async settleWithoutFile(job: ExportJob, outcome: VizzyExportOutcome): Promise<void> {
-    if (job.settled) return;
-    job.settled = true;
-    this.clearExportTimers(job);
-    if (this.exportJob === job) this.exportJob = null;
-    try {
-      await job.writer.close();
-    } catch {
-      /* the handle may already be closed */
-    }
-    this.removeRenderFile(job);
-    job.resolve(outcome);
-  }
-
-  private removeRenderFile(job: ExportJob): void {
-    const removed = deleteRenderFile(this.deps.rendersDir, job.fileName);
-    if (removed) logger.info("vizzy export cleanup", { file: job.fileName });
-  }
-
-  private clearExportTimers(job: ExportJob): void {
-    if (job.cancelTimer) clearTimeout(job.cancelTimer);
-    if (job.startTimer) clearTimeout(job.startTimer);
-    if (job.timeoutTimer) clearTimeout(job.timeoutTimer);
-    job.cancelTimer = null;
-    job.startTimer = null;
-    job.timeoutTimer = null;
-  }
-
   private clearPendingAcks(reason: string): void {
     for (const [, pending] of this.pendingAcks) {
       clearTimeout(pending.timer);
@@ -983,7 +765,7 @@ export class VizzyHost {
     contents.on("render-process-gone", (_event, details) => {
       logger.error("vizzy render process gone", { reason: details.reason });
       this.clearViewState();
-      this.abortExport("The Vizzy editor stopped responding.");
+      this.session.abort("The Vizzy editor stopped responding.");
       this.update({
         crashed: true,
         ready: false,

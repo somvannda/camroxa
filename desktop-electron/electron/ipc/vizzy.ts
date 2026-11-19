@@ -529,7 +529,7 @@ export function registerVizzyIpc(host: VizzyHost): void {
 
   ipcMain.on(VIZZY_BRIDGE_CHANNEL, (event, message: unknown) => {
     if (!viewOnly(event.sender)) return;
-    void host.handleViewMessage(message);
+    void host.handleViewMessage(message, event.sender);
   });
 
   ipcMain.handle("vizzy:project:save", (event, payload: unknown) => {

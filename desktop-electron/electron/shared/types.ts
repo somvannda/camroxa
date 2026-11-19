@@ -306,6 +306,119 @@ export interface VizzyRenderSummary {
   mtimeMs: number;
 }
 
+/* ------------------------------------------------------------------ */
+/* Video pipeline (P7 batch orchestration)                             */
+/* ------------------------------------------------------------------ */
+
+export type PipelineBranch = "long" | "reel";
+
+export type PipelineJobStatus =
+  | "queued"
+  | "rendering"
+  | "encoding"
+  | "merging"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+/** One durable queue row, as the shell renders it. */
+export interface PipelineJobInfo {
+  id: string;
+  batchId: string;
+  branch: PipelineBranch;
+  templateId: string;
+  templateName: string;
+  audioPath: string;
+  audioName: string;
+  title: string;
+  artist: string;
+  album: string;
+  outputDir: string;
+  status: PipelineJobStatus;
+  stage: string;
+  progress: number;
+  error: string | null;
+  /** Absolute path of the validated render, once the row is done. */
+  output: string | null;
+  merge: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** One batch: the queue group the Music trigger enqueues. */
+export interface PipelineBatchInfo {
+  batchId: string;
+  outputDir: string;
+  merge: boolean;
+  mergedOutput: string | null;
+  status: "idle" | "running" | "merging" | "done" | "failed" | "cancelled";
+  error: string | null;
+  total: number;
+  done: number;
+  failed: number;
+  cancelled: number;
+  running: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PipelineSnapshot {
+  running: boolean;
+  jobs: PipelineJobInfo[];
+  batches: PipelineBatchInfo[];
+  /** Set when the render host could not be started (bundle missing, etc.). */
+  error: string | null;
+}
+
+/** One requested render; the main process resolves audio paths when `audioDir` is set. */
+export interface PipelineEnqueueJob {
+  branch: PipelineBranch;
+  templateId: string;
+  audioPath?: string;
+  audioDir?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  backgroundPath?: string;
+  logoPath?: string;
+}
+
+export interface PipelineEnqueueRequest {
+  /** Reuse an existing batch id when retrying; a new one is created otherwise. */
+  batchId?: string;
+  /** Absolute run folder; renders are managed by the app, the merge lands here. */
+  outputDir: string;
+  merge?: boolean;
+  /** File stem for the merged output, sanitised by the main process. */
+  mergeName?: string;
+  /** Start the runner as soon as the rows are created (Music action). */
+  autostart?: boolean;
+  jobs: PipelineEnqueueJob[];
+}
+
+export interface PipelineEnqueueSkip {
+  audioPath: string;
+  title: string;
+  reason: string;
+}
+
+export interface PipelineEnqueueResult {
+  batchId: string;
+  created: number;
+  skipped: number;
+  /** Rows already queued/done for the same key; retry is explicit. */
+  duplicates: number;
+  skippedDetails: PipelineEnqueueSkip[];
+  started: boolean;
+  message: string | null;
+}
+
+/** `pipeline:changed` payload (main → shell). The shell re-reads the snapshot. */
+export interface PipelineChangedEvent {
+  batchId: string;
+  reason: "enqueued" | "started" | "progress" | "done" | "failed" | "cancelled" | "cleared";
+}
+
 export function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data };
 }

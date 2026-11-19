@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent } from "../../../components/dialog";
 import { Button } from "../../../components/button";
 import { Card } from "../../../components/card";
@@ -6,7 +7,7 @@ import { PageHeader } from "../../../components/page-header";
 import { Badge } from "../../../components/status";
 import { toast } from "../../../components/toast";
 import { apiRequest, errorMessage } from "../../../lib/api";
-import { AutomationCard } from "../components/automation-card";
+import { AutomationCard, type PipelineNotice } from "../components/automation-card";
 import { ChannelPairCard } from "../components/channel-pair-card";
 import { MusicErrorBanner } from "../components/music-error-banner";
 import { MusicHistoryCard } from "../components/music-history-card";
@@ -61,6 +62,7 @@ import type {
 } from "../music-types";
 import { fetchMusicHistory, MUSIC_LOAD_ERROR_COPY, useMusicWorkspace } from "../use-music-workspace";
 import { useMusicSettingsAutosave } from "../use-settings-autosave";
+import { buildMusicPipelinePlan } from "../music-pipeline";
 import { todayYmd } from "../music-format";
 
 function blankComposer(): ComposerState {
@@ -119,6 +121,7 @@ async function writeClipboard(text: string): Promise<boolean> {
 }
 
 export function MusicPage() {
+  const navigate = useNavigate();
   const query = useMusicWorkspace();
   const data = query.data;
 
@@ -152,6 +155,8 @@ export function MusicPage() {
   const [batchStatus, setBatchStatus] = useState("");
   const [batchStatusTone, setBatchStatusTone] = useState<"neutral" | "success" | "warning" | "danger">("neutral");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pipelineBusy, setPipelineBusy] = useState(false);
+  const [pipelineNotice, setPipelineNotice] = useState<PipelineNotice | null>(null);
 
   const saveStatus = useMusicSettingsAutosave(settings, settingsReady);
 
@@ -251,6 +256,27 @@ export function MusicPage() {
   const historyLabel = useMemo(
     () => historySummary(history.batches, historyRows, history.summary),
     [history.batches, history.summary, historyRows],
+  );
+
+  // The video pipeline reads the profile's saved templates and the run folders
+  // the backend recorded. It never invents a song path.
+  const pipelinePlan = useMemo(
+    () =>
+      buildMusicPipelinePlan({
+        profiles: data?.profiles ?? [],
+        primaryIds: [],
+        batches: history.batches ?? [],
+        videoTemplateId: "",
+        reelTemplateId: "",
+        merge: settings.autoMergeAfterVideo,
+        reel: settings.autoReelAfterVideo,
+      }),
+    [
+      data?.profiles,
+      history.batches,
+      settings.autoMergeAfterVideo,
+      settings.autoReelAfterVideo,
+    ],
   );
 
   const historyLimit = Math.max(8, Math.min(100, settings.historyWindow));
@@ -693,6 +719,53 @@ export function MusicPage() {
     void runGenerate();
   };
 
+  const renderVideos = async () => {
+    if (pipelineBusy) return;
+    const plan = pipelinePlan;
+    if (!plan.request) {
+      setPipelineNotice({
+        tone: plan.templateErrors.length > 0 ? "danger" : "warning",
+        text: plan.message,
+        settings: plan.templateErrors.length > 0,
+      });
+      return;
+    }
+    setPipelineBusy(true);
+    setPipelineNotice(null);
+    try {
+      const response = await window.camxora.pipeline.enqueue({
+        ...plan.request,
+        autostart: true,
+      });
+      if (!response.ok) {
+        setPipelineNotice({ tone: "danger", text: response.error.message });
+        return;
+      }
+      const result = response.data;
+      if (result.created > 0) {
+        setPipelineNotice({
+          tone: "success",
+          text: `${result.created} render${result.created === 1 ? "" : "s"} queued. Rendering runs in the background; track it on Progress.`,
+        });
+        toast(`Queued ${result.created} video render${result.created === 1 ? "" : "s"}.`, "success");
+      } else {
+        const first = result.skippedDetails[0]?.reason ?? result.message ?? "Nothing was queued.";
+        setPipelineNotice({
+          tone: "warning",
+          text: first,
+          settings: result.skipped > 0,
+        });
+      }
+    } catch (cause) {
+      setPipelineNotice({
+        tone: "danger",
+        text: errorMessage(cause) || "Unable to queue the video render.",
+      });
+    } finally {
+      setPipelineBusy(false);
+    }
+  };
+
   const lyricUnit = operationUnitCost(costs.get("lyric"));
   const draftLabel = formatButtonCredits("Draft", lyricUnit);
   const polishLabel = formatButtonCredits("Polish", lyricUnit);
@@ -855,6 +928,12 @@ export function MusicPage() {
             generateEnabled={canGenerate}
             generateLabel={generateLabel}
             onGenerate={requestGenerate}
+            pipelineSummary={pipelinePlan.message}
+            pipelineJobCount={pipelinePlan.jobCount}
+            pipelineBusy={pipelineBusy}
+            pipelineNotice={pipelineNotice}
+            onRenderVideos={() => void renderVideos()}
+            onOpenSettings={() => navigate("/settings")}
           />
         </div>
 

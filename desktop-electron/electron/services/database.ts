@@ -28,11 +28,24 @@ export interface PipelineJobRecord {
   progress: number;
   payload: string;
   error: string | null;
+  /** Absolute path of the validated render, written when the row is done. */
+  outputPath?: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
-const MIGRATIONS: Array<{ version: number; sql: string }> = [
+export interface PipelineBatchRecord {
+  batchId: string;
+  outputDir: string;
+  merge: boolean;
+  mergedOutput: string | null;
+  status: string;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+const MIGRATIONS: Array<{ version: number; sql?: string; run?: (db: DatabaseSync) => void }> = [
   {
     version: 1,
     sql: `
@@ -86,6 +99,45 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
         WHERE marketplace_item_id IS NOT NULL;
     `,
   },
+  {
+    version: 3,
+    run: (db) => {
+      // A v1 database may predate the pipeline table entirely (the schema is
+      // created idempotently here) and SQLite has no `ADD COLUMN IF NOT EXISTS`.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS pipeline_jobs (
+          id TEXT PRIMARY KEY,
+          batch_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          stage TEXT NOT NULL,
+          progress REAL NOT NULL DEFAULT 0,
+          payload TEXT NOT NULL,
+          error TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_batch ON pipeline_jobs(batch_id);
+      `);
+      const columns = db.prepare("PRAGMA table_info(pipeline_jobs)").all() as Array<{
+        name: string;
+      }>;
+      if (!columns.some((column) => column.name === "output_path")) {
+        db.exec("ALTER TABLE pipeline_jobs ADD COLUMN output_path TEXT");
+      }
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS pipeline_batches (
+          batch_id TEXT PRIMARY KEY,
+          output_dir TEXT NOT NULL,
+          merge INTEGER NOT NULL DEFAULT 0,
+          merged_output TEXT,
+          status TEXT NOT NULL,
+          error TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export class Store {
@@ -100,7 +152,8 @@ export class Store {
       if (row) continue;
       this.db.exec("BEGIN");
       try {
-        this.db.exec(migration.sql);
+        if (migration.run) migration.run(this.db);
+        else if (migration.sql) this.db.exec(migration.sql);
         this.db
           .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
           .run(migration.version, Date.now());
@@ -223,8 +276,8 @@ export class Store {
   createJob(record: PipelineJobRecord): void {
     this.db
       .prepare(
-        `INSERT INTO pipeline_jobs (id, batch_id, status, stage, progress, payload, error, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO pipeline_jobs (id, batch_id, status, stage, progress, payload, error, output_path, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -234,6 +287,7 @@ export class Store {
         record.progress,
         record.payload,
         record.error,
+        record.outputPath ?? null,
         record.createdAt,
         record.updatedAt,
       );
@@ -241,23 +295,24 @@ export class Store {
 
   updateJob(
     id: string,
-    patch: Partial<Pick<PipelineJobRecord, "status" | "stage" | "progress" | "error">>,
+    patch: Partial<Pick<PipelineJobRecord, "status" | "stage" | "progress" | "error" | "outputPath">>,
   ): void {
     const current = this.db
-      .prepare("SELECT status, stage, progress, error FROM pipeline_jobs WHERE id = ?")
+      .prepare("SELECT status, stage, progress, error, output_path FROM pipeline_jobs WHERE id = ?")
       .get(id) as
-      | { status: string; stage: string; progress: number; error: string | null }
+      | { status: string; stage: string; progress: number; error: string | null; output_path: string | null }
       | undefined;
     if (!current) return;
     this.db
       .prepare(
-        "UPDATE pipeline_jobs SET status = ?, stage = ?, progress = ?, error = ?, updated_at = ? WHERE id = ?",
+        "UPDATE pipeline_jobs SET status = ?, stage = ?, progress = ?, error = ?, output_path = ?, updated_at = ? WHERE id = ?",
       )
       .run(
         patch.status ?? current.status,
         patch.stage ?? current.stage,
         patch.progress ?? current.progress,
         patch.error === undefined ? current.error : patch.error,
+        patch.outputPath === undefined ? current.output_path : patch.outputPath,
         Date.now(),
         id,
       );
@@ -267,7 +322,8 @@ export class Store {
     this.db.prepare("DELETE FROM pipeline_jobs WHERE id = ?").run(id);
   }
 
-  listJobs(): PipelineJobRecord[] {    const rows = this.db.prepare("SELECT * FROM pipeline_jobs ORDER BY created_at DESC").all();
+  listJobs(): PipelineJobRecord[] {
+    const rows = this.db.prepare("SELECT * FROM pipeline_jobs ORDER BY created_at DESC").all();
     return (rows as Array<Record<string, unknown>>).map((row) => ({
       id: String(row.id),
       batchId: String(row.batch_id),
@@ -276,10 +332,67 @@ export class Store {
       progress: Number(row.progress),
       payload: String(row.payload),
       error: row.error ? String(row.error) : null,
+      outputPath: row.output_path ? String(row.output_path) : null,
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
     }));
   }
+
+  upsertBatch(record: PipelineBatchRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO pipeline_batches (batch_id, output_dir, merge, merged_output, status, error, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(batch_id) DO UPDATE SET
+           output_dir = excluded.output_dir,
+           merge = excluded.merge,
+           merged_output = excluded.merged_output,
+           status = excluded.status,
+           error = excluded.error,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        record.batchId,
+        record.outputDir,
+        record.merge ? 1 : 0,
+        record.mergedOutput,
+        record.status,
+        record.error,
+        record.createdAt,
+        record.updatedAt,
+      );
+  }
+
+  getBatch(batchId: string): PipelineBatchRecord | null {
+    const row = this.db
+      .prepare("SELECT * FROM pipeline_batches WHERE batch_id = ?")
+      .get(batchId) as Record<string, unknown> | undefined;
+    return row ? batchRow(row) : null;
+  }
+
+  listBatches(): PipelineBatchRecord[] {
+    const rows = this.db
+      .prepare("SELECT * FROM pipeline_batches ORDER BY created_at DESC")
+      .all() as Array<Record<string, unknown>>;
+    return rows.map(batchRow);
+  }
+
+  deleteBatch(batchId: string): void {
+    this.db.prepare("DELETE FROM pipeline_batches WHERE batch_id = ?").run(batchId);
+  }
+}
+
+function batchRow(row: Record<string, unknown>): PipelineBatchRecord {
+  return {
+    batchId: String(row.batch_id),
+    outputDir: String(row.output_dir),
+    merge: Number(row.merge) === 1,
+    mergedOutput: row.merged_output ? String(row.merged_output) : null,
+    status: String(row.status),
+    error: row.error ? String(row.error) : null,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
 }
 
 export function createDatabase(filePath: string): Store {
