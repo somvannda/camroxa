@@ -25,4 +25,25 @@ describe("updates", () => {
     expect(parseUpdateManifest({ version: "2.0.1", url: "http://example.com/a.exe" }, "2.0.0")?.url).toBeUndefined();
     expect(parseUpdateManifest({}, "2.0.0")).toBeNull();
   });
+
+  it("accepts the public desktop-release payload fields", () => {
+    expect(
+      parseUpdateManifest(
+        {
+          version: "2.0.1",
+          mandatory: true,
+          release_notes: "Installer fix",
+          download_url: "https://downloads.camxora.com/Camxora-2.0.1-setup.exe",
+          published_at: "2026-11-19T00:00:00Z",
+        },
+        "2.0.0",
+      ),
+    ).toEqual({
+      version: "2.0.1",
+      mandatory: true,
+      notes: "Installer fix",
+      url: "https://downloads.camxora.com/Camxora-2.0.1-setup.exe",
+      publishedAt: "2026-11-19T00:00:00Z",
+    });
+  });
 });

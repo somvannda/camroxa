@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import heroUrl from "../../assets/brand/auth-hero.png";
+import { Footer } from "../../shell/footer";
 import { TitleBar } from "../../shell/titlebar";
 
 /**
@@ -12,11 +13,9 @@ import { TitleBar } from "../../shell/titlebar";
  */
 export function AuthFrame({
   children,
-  footer,
   variant = "split",
 }: {
   children: ReactNode;
-  footer?: string;
   variant?: "split" | "solo";
 }) {
   const split = variant === "split";
@@ -61,12 +60,7 @@ export function AuthFrame({
         </div>
       </div>
 
-      {footer ? (
-        <div className="flex h-8 shrink-0 items-center justify-between border-t border-border px-4 text-caption text-text-muted">
-          <span>Camxora Desktop 2.0.0</span>
-          <span className="font-mono">{footer}</span>
-        </div>
-      ) : null}
+      <Footer variant="auth" />
     </div>
   );
 }

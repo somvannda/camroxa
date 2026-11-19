@@ -11,7 +11,6 @@ export function TitleBar() {
       <div className="flex items-center gap-2.5">
         <img src={logoUrl} alt="" className="h-7 w-7 rounded-[7px]" />
         <span className="text-[15px] font-semibold tracking-[-0.01em] text-text-primary">Camxora</span>
-        <span className="text-caption text-text-muted">Desktop 2.0</span>
       </div>
 
       <div className="no-drag flex items-center gap-4">

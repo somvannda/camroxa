@@ -37,7 +37,7 @@ export function OnboardingGate({ portalUrl }: { portalUrl: string }) {
   }
 
   return (
-    <AuthFrame footer="Onboarding" variant="solo">
+    <AuthFrame variant="solo">
       <div className="mb-6 text-center">
         <p className="text-caption text-text-muted">ACCOUNT SETUP</p>
         <h1 className="mt-1 text-page font-semibold text-text-primary">Complete your setup</h1>

@@ -16,6 +16,9 @@ export function registerSystemIpc(): void {
     devBypass: devAuthBypass(),
     portalUrl: process.env.CAMXORA_PORTAL_BASE_URL ?? "https://app.camxora.com",
     build: process.env.CAMXORA_BUILD_ID ?? (app.isPackaged ? "release" : "dev"),
+    apiBaseUrl:
+      process.env.CAMXORA_API_BASE_URL?.replace(/\/+$/, "") ??
+      "http://127.0.0.1:8000/api/v1",
   }));
 
   ipcMain.handle("window:minimize", (event) => {

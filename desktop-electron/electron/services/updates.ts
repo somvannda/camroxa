@@ -1,5 +1,6 @@
 import { shell } from "electron";
 import { logger } from "./logger";
+import { getApiBaseUrl } from "./api-client";
 import { APP_VERSION } from "../shared/version";
 import type { UpdateCheckResult, UpdateOffer } from "../shared/types";
 
@@ -31,6 +32,9 @@ interface ManifestPayload {
   notes?: unknown;
   url?: unknown;
   publishedAt?: unknown;
+  download_url?: unknown;
+  release_notes?: unknown;
+  published_at?: unknown;
 }
 
 export function parseUpdateManifest(
@@ -41,37 +45,49 @@ export function parseUpdateManifest(
   const raw = payload as ManifestPayload;
   if (typeof raw.version !== "string" || !raw.version.trim()) return null;
   if (compareVersions(raw.version, currentVersion) <= 0) return null;
-  const url = typeof raw.url === "string" && /^https:\/\//i.test(raw.url) ? raw.url : undefined;
+  const candidateUrl = raw.url ?? raw.download_url;
+  const url =
+    typeof candidateUrl === "string" && /^https:\/\//i.test(candidateUrl)
+      ? candidateUrl
+      : undefined;
+  const candidateNotes = raw.notes ?? raw.release_notes;
+  const candidatePublished = raw.publishedAt ?? raw.published_at;
   return {
     version: raw.version.trim(),
     mandatory: raw.mandatory === true,
-    notes: typeof raw.notes === "string" ? raw.notes : undefined,
+    notes: typeof candidateNotes === "string" ? candidateNotes : undefined,
     url,
-    publishedAt: typeof raw.publishedAt === "string" ? raw.publishedAt : undefined,
+    publishedAt: typeof candidatePublished === "string" ? candidatePublished : undefined,
   };
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
   const manifestUrl = (process.env.CAMXORA_UPDATE_MANIFEST_URL ?? "").trim();
-  if (!manifestUrl) {
-    return { currentVersion: APP_VERSION, offer: null };
-  }
-  const allowLoopbackHttp =
-    process.env.CAMXORA_UPDATE_ALLOW_HTTP === "1" &&
-    /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(manifestUrl);
-  if (!/^https:\/\//i.test(manifestUrl) && !allowLoopbackHttp) {
-    return {
-      currentVersion: APP_VERSION,
-      offer: null,
-      message: "The update manifest URL must use HTTPS.",
-    };
+  const target = manifestUrl || `${getApiBaseUrl()}/public/desktop-release`;
+
+  if (manifestUrl) {
+    const allowLoopbackHttp =
+      process.env.CAMXORA_UPDATE_ALLOW_HTTP === "1" &&
+      /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(manifestUrl);
+    if (!/^https:\/\//i.test(manifestUrl) && !allowLoopbackHttp) {
+      return {
+        currentVersion: APP_VERSION,
+        offer: null,
+        message: "The update manifest URL must use HTTPS.",
+      };
+    }
   }
 
   try {
-    const response = await fetch(manifestUrl, {
+    const response = await fetch(target, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
+    // A confirmed 404 is the published-release withdrawal signal: no offer,
+    // no error. Other failures are reported without blocking the app.
+    if (response.status === 404) {
+      return { currentVersion: APP_VERSION, offer: null };
+    }
     if (!response.ok) {
       return {
         currentVersion: APP_VERSION,
@@ -84,6 +100,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
       current: APP_VERSION,
       offered: offer?.version ?? null,
       mandatory: offer?.mandatory ?? false,
+      source: manifestUrl ? "manifest" : "api",
     });
     return { currentVersion: APP_VERSION, offer };
   } catch (error) {

@@ -151,7 +151,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
 
   if (gate) {
     return (
-      <AuthFrame footer="Plan required" variant="solo">
+      <AuthFrame variant="solo">
         <Card className="p-5">
           <div className="space-y-4">
             <div>

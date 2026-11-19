@@ -83,6 +83,7 @@ export interface AppInfo {
   devBypass: boolean;
   portalUrl: string;
   build: string;
+  apiBaseUrl: string;
 }
 
 export interface UpdateOffer {

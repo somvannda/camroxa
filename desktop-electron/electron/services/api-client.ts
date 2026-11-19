@@ -42,6 +42,11 @@ function apiBaseUrl(): string {
   );
 }
 
+/** Public API origin used by update checks and other unauthenticated clients. */
+export function getApiBaseUrl(): string {
+  return apiBaseUrl();
+}
+
 export function portalBaseUrl(): string {
   const configured = (process.env.CAMXORA_PORTAL_BASE_URL ?? "").trim().replace(/\/+$/, "");
   return configured || "https://app.camxora.com";
