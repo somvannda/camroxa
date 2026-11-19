@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { _electron as electron } from "playwright";
@@ -88,19 +89,61 @@ try {
   }
 
   const failures = results.filter((item) => !item.ok);
+
+  // LIB-05: export the last loaded template to a real file and validate it.
+  const exported = await window.evaluate(() =>
+    window.camxora.vizzy.export({
+      width: 480,
+      height: 270,
+      fps: 30,
+      start: 0,
+      end: 1,
+      format: "mp4",
+    }),
+  );
+  const outcome = exported?.ok ? exported.data : null;
+  let exportCheck = { ok: false, detail: "export was not started" };
+  if (outcome?.status === "done") {
+    const probe = spawnSync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration:stream=codec_name,width,height",
+        "-of",
+        "json",
+        outcome.result.path,
+      ],
+      { encoding: "utf8" },
+    );
+    exportCheck = {
+      ok: probe.status === 0 && outcome.result.videoCodec === "h264",
+      name: outcome.result.name,
+      bytes: outcome.result.bytes,
+      frames: outcome.result.frames,
+      detail: probe.stdout?.trim() ?? "",
+    };
+    await window.evaluate((name) => window.camxora.vizzy.deleteRender(name), outcome.result.name);
+  } else if (outcome?.status === "failed") {
+    exportCheck = { ok: false, detail: outcome.message };
+  }
+
   console.log(
     JSON.stringify({
       total: results.length,
       passed: results.length - failures.length,
       failed: failures.length,
+      exportCheck,
       slowest: [...results].sort((a, b) => b.ms - a.ms).slice(0, 5),
       failures,
     }),
   );
   fs.writeFileSync(
     path.join(artifacts, "vizzy", "library-matrix.json"),
-    JSON.stringify(results, null, 2),
+    JSON.stringify({ results, exportCheck }, null, 2),
   );
+  if (failures.length || !exportCheck.ok) process.exitCode = 1;
 } finally {
   await app.close();
 }
