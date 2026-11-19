@@ -16,6 +16,7 @@ directory and do not push. The integrator reviews and merges each branch in orde
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
 | `Camxora Desktop P8` | `desktop/settings-p8` | Descriptions, Structures, Moods, Pools, Suno tabs | Running |
+| `Camxora Desktop Downloads` | `desktop/downloads` | Main-process music download coordinator + Progress live queue | Running |
 | ~~`Camxora Desktop Batch`~~ | ~~`desktop/batch`~~ | Offscreen render host, queue wiring, Progress/Music triggers, merge | **Merged** |
 | ~~`Camxora Desktop Templates`~~ | ~~`desktop/templates`~~ | Save-as-template, template rail, single-template render | **Merged** |
 | ~~`Camxora Desktop Pipeline`~~ | ~~`desktop/pipeline`~~ | Native export + Renders | **Merged** |
