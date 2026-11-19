@@ -33,13 +33,14 @@
 | **P7 template pickers** | Publication selects saved long/reel templates and persists `video_template_id`/`reel_template_id`; shell-only list/read/delete IPC |
 | **P7 export + renders** | Native export through the editor's exporter, chunked to `renders/`, progress/cancel, inline Renders panel with confirmed delete; `vizzy-export` E2E |
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
+| **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 
 ### Verification
 
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               228/228 PASS
+npm test               238/238 PASS
 npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
 npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy, vizzy-export)
 npm run api:check      PASS
@@ -99,12 +100,14 @@ This is a backend contract decision, not a renderer bug.
 - `2cd7e14` per-profile template pickers, `5d907cd` pipeline render plan
 - Export merge `2b0cc7b` (`208da89` + `1291682` on `desktop/pipeline`)
 - `8009d68` 91-template import matrix, `8af3ef7` FFmpeg merge groundwork
+- `f13aabc` pipeline queue, `1a427ae` sequential runner
 
 ## Remaining
 
 - P1: startup/bootstrap polish only.
 - P7: editor host, 91-template library, export and Renders are merged. “Save as video template”
-  and the batch pipeline (render/merge/reel) are the next milestone.
+  and the single-template render are **running** in `desktop/templates`; batch wiring and
+  merge/reel orchestration follow.
 - P8–P9 remain.
 
 ### Settings follow-ups
