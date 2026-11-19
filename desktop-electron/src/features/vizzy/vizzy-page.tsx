@@ -220,7 +220,7 @@ export function VizzyPage() {
           />
         </span>
         <span className="hidden shrink-0 whitespace-nowrap text-meta text-text-muted min-[1440px]:inline">
-          {state.nodeCount} items
+          {state.nodeCount} {state.nodeCount === 1 ? "item" : "items"}
         </span>
         {state.projectWidth > 0 && state.projectHeight > 0 ? (
           <span className="hidden shrink-0 whitespace-nowrap text-meta text-text-muted min-[1440px]:inline">

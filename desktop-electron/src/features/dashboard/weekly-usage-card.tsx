@@ -137,7 +137,7 @@ export function WeeklyUsageCard({
                 >
                   <span className="block text-caption text-text-muted">{day.label}</span>
                   <span className="block text-meta text-text-secondary text-tabular">
-                    {day.total} items
+                    {day.total} {day.total === 1 ? "item" : "items"}
                   </span>
                 </button>
               ))}
