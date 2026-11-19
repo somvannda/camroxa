@@ -39,6 +39,62 @@ interface Banner {
   detail?: string | null;
 }
 
+type SourceMode = "prompt_only" | "category";
+type PromptSource = "custom" | "admin_library";
+
+interface ImageSettingsDraft {
+  background: string;
+  thumbnail: string;
+  backgroundSource: SourceMode;
+  thumbnailSource: SourceMode;
+  backgroundPromptSource: PromptSource;
+  thumbnailPromptSource: PromptSource;
+}
+
+function readSourceMode(value: unknown): SourceMode {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "category" ? "category" : "prompt_only";
+}
+
+function readPromptSource(value: unknown): PromptSource {
+  return String(value ?? "").trim().toLowerCase() === "admin_library"
+    ? "admin_library"
+    : "custom";
+}
+
+function draftToPayload(draft: ImageSettingsDraft): Record<string, unknown> {
+  return {
+    imageBackgroundPrompt: draft.background,
+    imageThumbnailPrompt: draft.thumbnail,
+    imageBackgroundSourceMode: draft.backgroundSource,
+    imageThumbnailSourceMode: draft.thumbnailSource,
+    imageBackgroundPromptSource: draft.backgroundPromptSource,
+    imageThumbnailPromptSource: draft.thumbnailPromptSource,
+  };
+}
+
+function settingsEqual(a: ImageSettingsDraft, b: ImageSettingsDraft): boolean {
+  return (
+    a.background === b.background &&
+    a.thumbnail === b.thumbnail &&
+    a.backgroundSource === b.backgroundSource &&
+    a.thumbnailSource === b.thumbnailSource &&
+    a.backgroundPromptSource === b.backgroundPromptSource &&
+    a.thumbnailPromptSource === b.thumbnailPromptSource
+  );
+}
+
+const SOURCE_OPTIONS: Array<{ value: string; label: string; mode: SourceMode; prompt: PromptSource }> = [
+  { value: "prompt_only:custom", label: "Prompt only", mode: "prompt_only", prompt: "custom" },
+  { value: "category:custom", label: "Category", mode: "category", prompt: "custom" },
+  { value: "prompt_only:admin_library", label: "Prompt only · Admin library", mode: "prompt_only", prompt: "admin_library" },
+  { value: "category:admin_library", label: "Category · Admin library", mode: "category", prompt: "admin_library" },
+];
+
+function sourceValue(mode: SourceMode, prompt: PromptSource): string {
+  return `${mode}:${prompt}`;
+}
+
 const LOAD_ERROR = "Unable to load the Image workspace right now.";
 const SAVE_ERROR = "Unable to save image settings right now.";
 
@@ -130,36 +186,63 @@ export function ImagePage() {
 
   const [backgroundPrompt, setBackgroundPrompt] = useState("");
   const [thumbnailPrompt, setThumbnailPrompt] = useState("");
+  const [backgroundSource, setBackgroundSource] = useState<SourceMode>("prompt_only");
+  const [thumbnailSource, setThumbnailSource] = useState<SourceMode>("prompt_only");
+  const [backgroundPromptSource, setBackgroundPromptSource] = useState<PromptSource>("custom");
+  const [thumbnailPromptSource, setThumbnailPromptSource] = useState<PromptSource>("custom");
   const [promptsReady, setPromptsReady] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
 
   const promptsInitialized = useRef(false);
-  const lastSaved = useRef({ background: "", thumbnail: "" });
-  const latestPrompts = useRef({ background: "", thumbnail: "" });
+  const userClearedSelection = useRef(false);
+  const lastSaved = useRef<ImageSettingsDraft>({
+    background: "",
+    thumbnail: "",
+    backgroundSource: "prompt_only",
+    thumbnailSource: "prompt_only",
+    backgroundPromptSource: "custom",
+    thumbnailPromptSource: "custom",
+  });
+  const latestSettings = useRef<ImageSettingsDraft>(lastSaved.current);
   const saveSeq = useRef(0);
 
+  const currentSettings = (): ImageSettingsDraft => ({
+    background: backgroundPrompt,
+    thumbnail: thumbnailPrompt,
+    backgroundSource,
+    thumbnailSource,
+    backgroundPromptSource,
+    thumbnailPromptSource,
+  });
+
   useEffect(() => {
-    latestPrompts.current = { background: backgroundPrompt, thumbnail: thumbnailPrompt };
-  }, [backgroundPrompt, thumbnailPrompt]);
+    latestSettings.current = {
+      background: backgroundPrompt,
+      thumbnail: thumbnailPrompt,
+      backgroundSource,
+      thumbnailSource,
+      backgroundPromptSource,
+      thumbnailPromptSource,
+    };
+  }, [
+    backgroundPrompt,
+    thumbnailPrompt,
+    backgroundSource,
+    thumbnailSource,
+    backgroundPromptSource,
+    thumbnailPromptSource,
+  ]);
 
   // Flush a pending debounce when the page closes so an edit is not lost.
   useEffect(() => {
     return () => {
       if (!promptsInitialized.current) return;
-      const pending = latestPrompts.current;
-      if (
-        pending.background === lastSaved.current.background &&
-        pending.thumbnail === lastSaved.current.thumbnail
-      ) {
-        return;
-      }
+      const pending = latestSettings.current;
+      if (settingsEqual(pending, lastSaved.current)) return;
       void apiRequest({
         method: "PATCH",
         path: "/settings",
-        body: {
-          imageBackgroundPrompt: pending.background,
-          imageThumbnailPrompt: pending.thumbnail,
-        },
+        body: draftToPayload(pending),
       }).catch(() => undefined);
     };
   }, []);
@@ -168,36 +251,41 @@ export function ImagePage() {
   useEffect(() => {
     if (!data || promptsInitialized.current) return;
     const prompts = normalizeImagePrompts(data.settings);
-    setBackgroundPrompt(prompts.background);
-    setThumbnailPrompt(prompts.thumbnail);
-    lastSaved.current = prompts;
+    const draft: ImageSettingsDraft = {
+      ...prompts,
+      backgroundSource: readSourceMode(data.settings?.imageBackgroundSourceMode),
+      thumbnailSource: readSourceMode(data.settings?.imageThumbnailSourceMode),
+      backgroundPromptSource: readPromptSource(data.settings?.imageBackgroundPromptSource),
+      thumbnailPromptSource: readPromptSource(data.settings?.imageThumbnailPromptSource),
+    };
+    setBackgroundPrompt(draft.background);
+    setThumbnailPrompt(draft.thumbnail);
+    setBackgroundSource(draft.backgroundSource);
+    setThumbnailSource(draft.thumbnailSource);
+    setBackgroundPromptSource(draft.backgroundPromptSource);
+    setThumbnailPromptSource(draft.thumbnailPromptSource);
+    lastSaved.current = draft;
+    latestSettings.current = draft;
     promptsInitialized.current = true;
     setPromptsReady(true);
   }, [data]);
 
-  // Prompt autosave: 350 ms debounce, no PATCH before the initial settings land.
+  // Settings autosave: 350 ms debounce, no PATCH before the initial settings land.
   useEffect(() => {
     if (!promptsReady) return;
-    if (
-      backgroundPrompt === lastSaved.current.background &&
-      thumbnailPrompt === lastSaved.current.thumbnail
-    ) {
-      return;
-    }
+    const draft = currentSettings();
+    if (settingsEqual(draft, lastSaved.current)) return;
     const sequence = ++saveSeq.current;
     setSaveState("saving");
     const timer = window.setTimeout(() => {
       void apiRequest({
         method: "PATCH",
         path: "/settings",
-        body: {
-          imageBackgroundPrompt: backgroundPrompt,
-          imageThumbnailPrompt: thumbnailPrompt,
-        },
+        body: draftToPayload(draft),
       })
         .then(() => {
           if (sequence !== saveSeq.current) return;
-          lastSaved.current = { background: backgroundPrompt, thumbnail: thumbnailPrompt };
+          lastSaved.current = draft;
           setSaveState("saved");
           setBanner((current) => (current?.title === SAVE_ERROR ? null : current));
         })
@@ -208,7 +296,16 @@ export function ImagePage() {
         });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [backgroundPrompt, thumbnailPrompt, promptsReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    backgroundPrompt,
+    thumbnailPrompt,
+    backgroundSource,
+    thumbnailSource,
+    backgroundPromptSource,
+    thumbnailPromptSource,
+    promptsReady,
+  ]);
 
   useEffect(() => {
     if (saveState !== "saved") return;
@@ -239,10 +336,21 @@ export function ImagePage() {
       setSelectedKey(null);
       return;
     }
+    if (userClearedSelection.current) return;
     if (!selectedKey || !rows.some((row) => row.key === selectedKey)) {
       setSelectedKey(rows[0].key);
     }
   }, [rows, selectedKey]);
+
+  const selectRow = useCallback((key: string) => {
+    userClearedSelection.current = false;
+    setSelectedKey(key);
+  }, []);
+
+  const deselectRow = useCallback(() => {
+    userClearedSelection.current = true;
+    setSelectedKey(null);
+  }, []);
 
   const selectedRow = rows.find((row) => row.key === selectedKey) ?? null;
 
@@ -346,6 +454,64 @@ export function ImagePage() {
     }
   }, [batchIds, clearing, query]);
 
+  const manualGenerate = async (kind: "background" | "thumbnail") => {
+    if (busyJobId) return;
+    const isBackground = kind === "background";
+    const label = isBackground ? "Background" : "Thumbnail";
+    const prompt = (isBackground ? backgroundPrompt : thumbnailPrompt).trim();
+    const sourceMode = isBackground ? backgroundSource : thumbnailSource;
+    const promptSource = isBackground ? backgroundPromptSource : thumbnailPromptSource;
+    if (sourceMode === "prompt_only" && !prompt && promptSource === "custom") {
+      setBanner({
+        title: `Add a ${label.toLowerCase()} prompt`,
+        detail: "Write a prompt, or switch the source to Category.",
+      });
+      return;
+    }
+
+    setBusyJobId("manual");
+    setBanner(null);
+    setStatusLabel(`Generating ${label.toLowerCase()}…`);
+    try {
+      const draft = currentSettings();
+      await apiRequest({ method: "PATCH", path: "/settings", body: draftToPayload(draft) });
+      lastSaved.current = draft;
+
+      const job = isBackground ? selectedRow?.bgJob : selectedRow?.thJob;
+      if (selectedRow && job) {
+        await apiRequest({
+          method: "POST",
+          path: "/image-jobs/retry",
+          body: { job_ids: [job.id], batch_id: selectedRow.batchId, force: true },
+        });
+        toast(`Regenerating ${label.toLowerCase()} for ${selectedRow.albumLabel}.`, "success");
+      } else {
+        const profileId = data?.profiles[0]?.id ?? null;
+        await apiRequest({
+          method: "POST",
+          path: "/image-jobs/manual-generate",
+          body: {
+            kind,
+            prompt: prompt || null,
+            channel_profile_id: profileId,
+          },
+        });
+        const today = todayYmd();
+        setFromDate(today);
+        setToDate(today);
+        toast(`Created a today row and queued the ${label.toLowerCase()}.`, "success");
+      }
+      setStatusLabel(`${label} queued.`);
+      await query.refetch();
+    } catch (error) {
+      setStatusLabel(`Unable to generate ${label.toLowerCase()}.`);
+      setBanner({ title: `Unable to generate ${label.toLowerCase()}.`, detail: errorMessage(error) });
+      toast(`Unable to generate ${label.toLowerCase()}.`, "danger");
+    } finally {
+      setBusyJobId(null);
+    }
+  };
+
   return (
     <div className="pb-6" data-testid="image-workspace">
       <PageHeader
@@ -421,6 +587,19 @@ export function ImagePage() {
           <Button variant="secondary" onClick={reload} disabled={query.isFetching}>
             {query.isFetching ? "Reloading…" : "Reload"}
           </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const today = todayYmd();
+              setFromDate(today);
+              setToDate(today);
+            }}
+          >
+            Clear Filters
+          </Button>
+          <Button variant="secondary" onClick={deselectRow} disabled={!selectedKey}>
+            Deselect
+          </Button>
           <div className="ml-auto flex items-center gap-3">
             {refreshing ? <StatusDot tone="accent" label="Refreshing…" /> : null}
             <span className="text-caption text-text-muted">
@@ -491,11 +670,11 @@ export function ImagePage() {
                             data-testid={`image-row-${row.key}`}
                             aria-selected={selected}
                             tabIndex={0}
-                            onClick={() => setSelectedKey(row.key)}
+                            onClick={() => selectRow(row.key)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                setSelectedKey(row.key);
+                                selectRow(row.key);
                               }
                             }}
                             className={`cursor-pointer ${
@@ -597,8 +776,13 @@ export function ImagePage() {
                     <Button
                       variant="ghost"
                       onClick={() => {
-                        setBackgroundPrompt(lastSaved.current.background);
-                        setThumbnailPrompt(lastSaved.current.thumbnail);
+                        const saved = lastSaved.current;
+                        setBackgroundPrompt(saved.background);
+                        setThumbnailPrompt(saved.thumbnail);
+                        setBackgroundSource(saved.backgroundSource);
+                        setThumbnailSource(saved.thumbnailSource);
+                        setBackgroundPromptSource(saved.backgroundPromptSource);
+                        setThumbnailPromptSource(saved.thumbnailPromptSource);
                         setSaveState("idle");
                       }}
                       disabled={!promptsReady}
@@ -608,8 +792,29 @@ export function ImagePage() {
                   </div>
                 </div>
                 <div className="mt-3 grid gap-4 xl:grid-cols-2">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-caption text-text-muted">Background prompt</span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-caption text-text-muted">Background prompt</span>
+                      <select
+                        aria-label="Background source"
+                        value={sourceValue(backgroundSource, backgroundPromptSource)}
+                        disabled={!promptsReady}
+                        onChange={(event) => {
+                          const option =
+                            SOURCE_OPTIONS.find((item) => item.value === event.target.value) ??
+                            SOURCE_OPTIONS[0];
+                          setBackgroundSource(option.mode);
+                          setBackgroundPromptSource(option.prompt);
+                        }}
+                        className="h-7 rounded-control border border-border bg-surface-1 px-2 text-caption text-text-primary focus:border-accent focus:outline-none"
+                      >
+                        {SOURCE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <textarea
                       value={backgroundPrompt}
                       onChange={(event) => setBackgroundPrompt(event.target.value)}
@@ -620,9 +825,39 @@ export function ImagePage() {
                       className="w-full resize-y rounded-control border border-border bg-surface-1 px-3 py-2 text-body text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-40"
                       placeholder="Describe the background for album art"
                     />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-caption text-text-muted">Thumbnail prompt</span>
+                    <Button
+                      variant="secondary"
+                      className="h-8 self-start px-3 text-caption"
+                      disabled={!promptsReady || Boolean(busyJobId)}
+                      onClick={() => void manualGenerate("background")}
+                      data-testid="image-manual-background"
+                    >
+                      Manual Generation
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-caption text-text-muted">Thumbnail prompt</span>
+                      <select
+                        aria-label="Thumbnail source"
+                        value={sourceValue(thumbnailSource, thumbnailPromptSource)}
+                        disabled={!promptsReady}
+                        onChange={(event) => {
+                          const option =
+                            SOURCE_OPTIONS.find((item) => item.value === event.target.value) ??
+                            SOURCE_OPTIONS[0];
+                          setThumbnailSource(option.mode);
+                          setThumbnailPromptSource(option.prompt);
+                        }}
+                        className="h-7 rounded-control border border-border bg-surface-1 px-2 text-caption text-text-primary focus:border-accent focus:outline-none"
+                      >
+                        {SOURCE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <textarea
                       value={thumbnailPrompt}
                       onChange={(event) => setThumbnailPrompt(event.target.value)}
@@ -633,7 +868,16 @@ export function ImagePage() {
                       className="w-full resize-y rounded-control border border-border bg-surface-1 px-3 py-2 text-body text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-40"
                       placeholder="Describe the thumbnail treatment"
                     />
-                  </label>
+                    <Button
+                      variant="secondary"
+                      className="h-8 self-start px-3 text-caption"
+                      disabled={!promptsReady || Boolean(busyJobId)}
+                      onClick={() => void manualGenerate("thumbnail")}
+                      data-testid="image-manual-thumbnail"
+                    >
+                      Manual Generation
+                    </Button>
+                  </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
                   <p className="text-caption text-text-muted">

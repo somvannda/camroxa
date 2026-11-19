@@ -77,6 +77,14 @@ export interface CamxoraBridge {
   media: {
     url(request: { path: string }): Promise<IpcResult<{ url: string }>>;
   };
+  webmusic: {
+    saveClip(request: {
+      taskId: string;
+      variant: "ok" | "alt";
+      title?: string;
+      format?: "mp3" | "wav";
+    }): Promise<IpcResult<{ path: string; url: string }>>;
+  };
   preferences: {
     getDevice(): Promise<IpcResult<DevicePreferences>>;
     setDevice(request: Partial<DevicePreferences>): Promise<IpcResult<DevicePreferences>>;

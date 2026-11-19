@@ -417,8 +417,8 @@ async function workspaceScenario() {
     assert(body.includes("Night Shift") && body.includes("Deep Focus"), "Profiles missing");
     assert(
       (await page.locator('[data-testid^="profile-toggle-primary-"]').count()) === 2 &&
-        (await page.locator('[data-testid^="profile-toggle-secondary-"]').count()) === 2,
-      "Both channel lists must show every profile",
+        (await page.locator('[data-testid^="profile-toggle-secondary-"]').count()) === 1,
+      "Secondary must hide the channel already paired on the primary side",
     );
 
     // No save loop: applying API settings must not PATCH them back.

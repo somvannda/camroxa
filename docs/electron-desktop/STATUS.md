@@ -193,3 +193,24 @@ download URL therefore never needs the session token.
 Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /
 #0f1322 / #a855f7 palette, 28 px page titles, gradient primary CTA. Pages are lazy-loaded; the
 shell chunk is ~333 kB (103 kB gzip).
+
+## QA round (2026-11-19)
+
+- Settings uses horizontal tabs instead of the vertical rail; the immediate-action note moved
+  below the tab strip.
+- Music gained a **Simple** mode that posts `{mode:"simple"}` to `/web-music/generate`, polls
+  `/web-music/generations/{id}` and saves MP3/WAV through the new `webmusic:save-clip` IPC
+  (main-process bearer fetch, written to the Suno output folder, played via `camxora-media://`).
+  Studio mode is unchanged.
+- Primary/secondary channel lists are exclusive: a channel selected on one side disappears from
+  the other and is removed if it was already paired.
+- Vizzy forces a first frame after `did-finish-load`/ready; the strip shows `Starting…` until the
+  editor reports ready.
+- Image parity with the Python app: Clear Filters, Deselect, per-kind source selectors
+  (Prompt only / Category × custom / admin library) and Manual Generation (regenerate the
+  selected job, or create a today row through `/image-jobs/manual-generate`).
+- Local DB drift: `platform_db` had an `alembic_version` revision from a diverged checkout, so
+  migrations 175-211 never ran and `/progress` 500ed on `batches.auto_upload_youtube`. The local
+  database was repaired in place (schema + representative pricing seeds) and stamped to `211`.
+  This is a local-only repair; a fresh DB should come from `alembic upgrade head`.
+

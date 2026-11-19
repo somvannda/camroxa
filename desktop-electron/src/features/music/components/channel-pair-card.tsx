@@ -10,6 +10,7 @@ interface ChannelPairCardProps {
   onToggle: (profileId: string) => void;
   locked?: boolean;
   testId: string;
+  note?: string;
 }
 
 export function ChannelPairCard({
@@ -20,6 +21,7 @@ export function ChannelPairCard({
   onToggle,
   locked = false,
   testId,
+  note,
 }: ChannelPairCardProps) {
   const order = new Map(selectedIds.map((id, index) => [id, index + 1]));
 
@@ -32,7 +34,7 @@ export function ChannelPairCard({
         </span>
       </div>
       <p className="mt-1 text-meta text-text-secondary">
-        Click to toggle. Pairing follows the order shown.
+        {note ?? "Click to toggle. Pairing follows the order shown."}
       </p>
 
       <ul className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1" aria-label={title}>

@@ -38,6 +38,9 @@ const bridge = {
   media: {
     url: (request: unknown) => invoke("media:url", request),
   },
+  webmusic: {
+    saveClip: (request: unknown) => invoke("webmusic:save-clip", request),
+  },
   preferences: {
     getDevice: () => invoke("preferences:device:get"),
     setDevice: (request: unknown) => invoke("preferences:device:set", request),

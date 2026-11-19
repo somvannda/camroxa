@@ -163,60 +163,57 @@ function SettingsWorkspace() {
         description="Channel profiles, publication defaults, prompt catalogs, content pools and Suno."
       />
 
-      <div className="flex flex-1 items-start gap-6 p-6">
+      <div className="border-b border-border px-6">
         <nav
           aria-label="Settings sections"
           role="tablist"
-          aria-orientation="vertical"
-          className="sticky top-6 w-[200px] shrink-0"
+          aria-orientation="horizontal"
+          className="-mb-px flex gap-1 overflow-x-auto"
           onKeyDown={onTabListKeyDown}
         >
-          <div className="space-y-0.5">
-            {SETTINGS_TABS.map((tab) => {
-              const active = ws.activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  id={`settings-tab-${tab.id}`}
-                  aria-selected={active}
-                  aria-controls="settings-tabpanel"
-                  tabIndex={active ? 0 : -1}
-                  data-settings-tab={tab.id}
-                  className={classNames(
-                    "relative flex h-8 w-full items-center gap-2 rounded-[6px] px-2.5 text-left text-body transition-colors",
-                    active
-                      ? "bg-surface-active text-text-primary"
-                      : "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
-                  )}
-                  onClick={() => ws.setActiveTab(tab.id)}
-                >
-                  {active ? (
-                    <span className="absolute left-0 top-1.5 h-5 w-0.5 rounded-full bg-accent" />
-                  ) : null}
-                  <span className="flex-1 truncate">{tab.label}</span>
-                  {dirtyPerTab[tab.id] ? (
-                    <>
-                      <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
-                      <span className="sr-only">Unsaved changes</span>
-                    </>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-6 px-2.5 text-caption leading-5 text-text-muted">
-            Defaults save with Save all. Prompt saves, YouTube connect and pool refresh act immediately.
-          </p>
+          {SETTINGS_TABS.map((tab) => {
+            const active = ws.activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`settings-tab-${tab.id}`}
+                aria-selected={active}
+                aria-controls="settings-tabpanel"
+                tabIndex={active ? 0 : -1}
+                data-settings-tab={tab.id}
+                className={classNames(
+                  "relative flex h-10 shrink-0 items-center gap-2 border-b-2 px-3 text-body transition-colors",
+                  active
+                    ? "border-accent text-text-primary"
+                    : "border-transparent text-text-secondary hover:border-border hover:text-text-primary",
+                )}
+                onClick={() => ws.setActiveTab(tab.id)}
+              >
+                <span className="whitespace-nowrap">{tab.label}</span>
+                {dirtyPerTab[tab.id] ? (
+                  <>
+                    <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                    <span className="sr-only">Unsaved changes</span>
+                  </>
+                ) : null}
+              </button>
+            );
+          })}
         </nav>
+      </div>
 
-        <div
-          className="min-w-0 flex-1"
-          id="settings-tabpanel"
-          role="tabpanel"
-          aria-labelledby={`settings-tab-${ws.activeTab}`}
-        >
+      <p className="px-6 pt-3 text-caption leading-5 text-text-muted">
+        Defaults save with Save all. Prompt saves, YouTube connect and pool refresh act immediately.
+      </p>
+
+      <div
+        className="min-w-0 flex-1 p-6"
+        id="settings-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${ws.activeTab}`}
+      >
           {ws.activeTab === "profiles" ? <ProfilesTab workspace={ws} /> : null}
           {ws.activeTab === "publication" ? <PublicationTab workspace={ws} /> : null}
           {ws.activeTab === "preferences" ? <PreferencesTab workspace={ws} /> : null}
@@ -228,7 +225,6 @@ function SettingsWorkspace() {
           {ws.activeTab === "pools" ? <PoolsTab workspace={ws} /> : null}
           {ws.activeTab === "suno" ? <SunoTab workspace={ws} /> : null}
         </div>
-      </div>
 
       <footer className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface-1 px-6 py-3">
         <p

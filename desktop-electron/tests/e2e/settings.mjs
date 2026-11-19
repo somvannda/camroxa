@@ -642,9 +642,10 @@ async function settingsSuccess() {
       `All eight tabs must render, got: ${tabNames.join("|")}`,
     );
     const navText = await page.getByRole("tablist", { name: "Settings sections" }).innerText();
+    const pageText = await page.locator("body").innerText();
     assert(
-      navText.includes("Defaults save with Save all") &&
-        navText.includes("pool refresh act immediately"),
+      pageText.includes("Defaults save with Save all") &&
+        pageText.includes("pool refresh act immediately"),
       "Immediate-action note missing",
     );
     assert(!navText.includes("arrive in P8"), "The P8 placeholder note must be gone");

@@ -202,6 +202,7 @@ export class VizzyHost {
       this.attached = true;
     }
     this.view!.setVisible(this.viewVisible);
+    window.focus();
     this.update({ attached: true, error: null });
     return this.getState();
   }
@@ -780,6 +781,12 @@ export class VizzyHost {
       this.update({ ready: false, error: `The Vizzy editor failed to load (${description}).` });
     });
 
+    contents.on("did-finish-load", () => {
+      // The editor can finish loading before or after the view is attached;
+      // nudging here covers the attach-first ordering as well.
+      this.nudgeView();
+    });
+
     contents.on("console-message", (_event, level, message, line, sourceId) => {
       if (level >= 2) logger.warn("vizzy console", { message, line, sourceId });
     });
@@ -895,12 +902,35 @@ export class VizzyHost {
   }
 
   private update(patch: Partial<VizzyState>): VizzyState {
+    const wasReady = this.state.ready;
     this.state = {
       ...this.state,
       ...patch,
       path: patch.path !== undefined ? patch.path : (this.lastPath ?? this.state.path),
     };
+    if (patch.ready === true && !wasReady) this.nudgeView();
     this.deps.onState(this.getState());
     return this.state;
+  }
+
+  /**
+   * Force a first frame.
+   *
+   * A `WebContentsView` attached before its document paints can stay blank until
+   * the window receives a compositor change; users then have to click before the
+   * editor appears. Re-applying the bounds and toggling visibility once the
+   * editor reports ready gives the compositor that change without moving layout.
+   */
+  private nudgeView(): void {
+    const view = this.view;
+    const bounds = this.lastBounds;
+    if (!view || view.webContents.isDestroyed() || !this.attached || !bounds) return;
+    view.setBounds({
+      ...bounds,
+      width: Math.max(2, bounds.width),
+      height: Math.max(2, bounds.height),
+    });
+    view.setVisible(false);
+    view.setVisible(this.viewVisible);
   }
 }

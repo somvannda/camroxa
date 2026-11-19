@@ -7,12 +7,14 @@ import { PageHeader } from "../../../components/page-header";
 import { Badge } from "../../../components/status";
 import { toast } from "../../../components/toast";
 import { apiRequest, errorMessage } from "../../../lib/api";
+import { classNames } from "../../../lib/format";
 import { AutomationCard, type PipelineNotice } from "../components/automation-card";
 import { ChannelPairCard } from "../components/channel-pair-card";
 import { MusicErrorBanner } from "../components/music-error-banner";
 import { MusicHistoryCard } from "../components/music-history-card";
 import { MusicSettingsStrip } from "../components/music-settings-strip";
 import { SongEditorCard } from "../components/song-editor-card";
+import { MusicSimplePanel } from "./music-simple-panel";
 import {
   costByType,
   formatButtonCredits,
@@ -126,6 +128,7 @@ export function MusicPage() {
   const data = query.data;
 
   const [settings, setSettings] = useState<MusicSettings>(DEFAULT_MUSIC_SETTINGS);
+  const [mode, setMode] = useState<"studio" | "simple">("studio");
   const [settingsReady, setSettingsReady] = useState(false);
   const [composer, setComposer] = useState<ComposerState>(blankComposer);
   const [descriptions, setDescriptions] = useState<PromptOption[]>([]);
@@ -339,11 +342,28 @@ export function MusicPage() {
   };
 
   const toggleProfile = (side: "primary" | "secondary", profileId: string) => {
-    setComposer((current) =>
-      side === "primary"
-        ? { ...current, primaryIds: toggleSelection(current.primaryIds, profileId) }
-        : { ...current, secondaryIds: toggleSelection(current.secondaryIds, profileId) },
-    );
+    setComposer((current) => {
+      if (side === "primary") {
+        const primaryIds = toggleSelection(current.primaryIds, profileId);
+        // A channel can only be paired once, so selecting it on one side
+        // removes it from the other side instead of leaving a stale duplicate.
+        return {
+          ...current,
+          primaryIds,
+          secondaryIds: primaryIds.includes(profileId)
+            ? current.secondaryIds.filter((id) => id !== profileId)
+            : current.secondaryIds,
+        };
+      }
+      const secondaryIds = toggleSelection(current.secondaryIds, profileId);
+      return {
+        ...current,
+        secondaryIds,
+        primaryIds: secondaryIds.includes(profileId)
+          ? current.primaryIds.filter((id) => id !== profileId)
+          : current.primaryIds,
+      };
+    });
   };
 
   const chooseDescription = (id: string) => {
@@ -809,7 +829,7 @@ export function MusicPage() {
         <PageHeader
           eyebrow="Workspace"
           title="Music"
-          description="Batch composer, song editor, channel pairs and history."
+          description="Compose with the studio batch pipeline, or let Suno write a simple song from one prompt."
         />
         <div className="p-6">
           <Card className="p-5" data-testid="music-loading">
@@ -826,7 +846,7 @@ export function MusicPage() {
         <PageHeader
           eyebrow="Workspace"
           title="Music"
-          description="Batch composer, song editor, channel pairs and history."
+          description="Compose with the studio batch pipeline, or let Suno write a simple song from one prompt."
         />
         <div className="space-y-4 p-6">
           <MusicErrorBanner message={MUSIC_LOAD_ERROR_COPY} />
@@ -846,22 +866,56 @@ export function MusicPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Music"
-        description="Batch composer, song editor, channel pairs and history."
+        description="Compose with the studio batch pipeline, or let Suno write a simple song from one prompt."
         actions={stale ? <Badge tone="warning">Stale</Badge> : undefined}
       />
       <div className="space-y-4 p-6">
         {error ? <MusicErrorBanner message={error} onDismiss={() => setError("")} /> : null}
 
-        <MusicSettingsStrip
-          settings={settings}
-          fromDate={composer.fromDate}
-          toDate={composer.toDate}
-          onFromDate={(value) => updateComposer({ fromDate: value })}
-          onToDate={(value) => updateComposer({ toDate: value })}
-          onSettingsChange={updateSettings}
-        />
+        <div
+          className="inline-flex rounded-control border border-border bg-surface-1 p-0.5"
+          role="group"
+          aria-label="Music mode"
+        >
+          {(
+            [
+              { id: "studio", label: "Studio", hint: "Batch pipeline with profiles and prompts" },
+              { id: "simple", label: "Simple", hint: "One prompt, Suno writes title and lyrics" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={mode === option.id}
+              title={option.hint}
+              onClick={() => setMode(option.id)}
+              data-testid={`music-mode-${option.id}`}
+              className={classNames(
+                "h-8 rounded-[6px] px-3 text-body transition-colors",
+                mode === option.id
+                  ? "bg-surface-active text-text-primary"
+                  : "text-text-secondary hover:text-text-primary",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[1.5fr_0.75fr_0.75fr_0.95fr]">
+        {mode === "simple" ? (
+          <MusicSimplePanel />
+        ) : (
+          <>
+            <MusicSettingsStrip
+              settings={settings}
+              fromDate={composer.fromDate}
+              toDate={composer.toDate}
+              onFromDate={(value) => updateComposer({ fromDate: value })}
+              onToDate={(value) => updateComposer({ toDate: value })}
+              onSettingsChange={updateSettings}
+            />
+
+            <div className="grid items-start gap-4 xl:grid-cols-[1.5fr_0.75fr_0.75fr_0.95fr]">
           <SongEditorCard
             composer={composer}
             settings={settings}
@@ -894,11 +948,14 @@ export function MusicPage() {
           <ChannelPairCard
             side="secondary"
             title="Secondary channels"
-            profiles={data?.profiles ?? []}
+            profiles={(data?.profiles ?? []).filter(
+              (profile) => !composer.primaryIds.includes(profile.id),
+            )}
             selectedIds={composer.secondaryIds}
             onToggle={(id) => toggleProfile("secondary", id)}
             locked={generating}
             testId="secondary-channels"
+            note="Channels already paired on the Primary side are hidden here."
           />
 
           <AutomationCard
@@ -949,6 +1006,8 @@ export function MusicPage() {
           onSelectRow={selectHistoryRow}
           onOpenFolder={(row, side) => void openFolder(row, side)}
         />
+          </>
+        )}
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

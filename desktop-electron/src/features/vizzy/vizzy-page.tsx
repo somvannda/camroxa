@@ -215,8 +215,8 @@ export function VizzyPage() {
         </span>
         <span className="shrink-0">
           <StatusDot
-            tone={state.dirty ? "warning" : "success"}
-            label={attached ? saveLabel : "Not running"}
+            tone={!state.ready && attached ? "accent" : state.dirty ? "warning" : "success"}
+            label={attached ? (state.ready ? saveLabel : "Starting…") : "Not running"}
           />
         </span>
         <span className="hidden shrink-0 whitespace-nowrap text-meta text-text-muted min-[1440px]:inline">
