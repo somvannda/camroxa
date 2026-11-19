@@ -27,7 +27,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "node tests/e2e/smoke.mjs && node tests/e2e/login.mjs && node tests/e2e/media.mjs && node tests/e2e/account.mjs && node tests/e2e/progress.mjs && node tests/e2e/progress-retry.mjs && node tests/e2e/music.mjs && node tests/e2e/image-marketplace.mjs && node tests/e2e/settings.mjs && node tests/e2e/update.mjs && node tests/e2e/vizzy.mjs && node tests/e2e/vizzy-export.mjs",
+    "test:e2e": "node tests/e2e/smoke.mjs && node tests/e2e/login.mjs && node tests/e2e/media.mjs && node tests/e2e/account.mjs && node tests/e2e/progress.mjs && node tests/e2e/progress-retry.mjs && node tests/e2e/music.mjs && node tests/e2e/image-marketplace.mjs && node tests/e2e/settings.mjs && node tests/e2e/update.mjs && node tests/e2e/vizzy.mjs && node tests/e2e/vizzy-export.mjs && node tests/e2e/vizzy-templates.mjs && node tests/e2e/vizzy-library.mjs",
     "vizzy:sync": "node scripts/sync-vizzy.mjs",
     "vizzy:install": "npm --prefix vizzy ci",
     "vizzy:build": "npm --prefix vizzy run build",
