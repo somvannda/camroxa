@@ -7,6 +7,7 @@ export interface TemplateRecord {
   schemaVersion: number;
   path: string;
   thumbnailPath: string | null;
+  marketplaceItemId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -75,6 +76,16 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_templates_kind ON templates(kind);
     `,
   },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE templates ADD COLUMN marketplace_item_id TEXT;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_templates_marketplace_item
+        ON templates(marketplace_item_id)
+        WHERE marketplace_item_id IS NOT NULL;
+    `,
+  },
 ];
 
 export class Store {
@@ -129,22 +140,42 @@ export class Store {
       schemaVersion: Number(row.schema_version),
       path: String(row.path),
       thumbnailPath: row.thumbnail_path ? String(row.thumbnail_path) : null,
+      marketplaceItemId: row.marketplace_item_id ? String(row.marketplace_item_id) : null,
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
     }));
   }
 
+  findTemplateByMarketplaceItem(itemId: string): TemplateRecord | null {
+    const row = this.db
+      .prepare("SELECT * FROM templates WHERE marketplace_item_id = ?")
+      .get(itemId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      id: String(row.id),
+      name: String(row.name),
+      kind: String(row.kind),
+      schemaVersion: Number(row.schema_version),
+      path: String(row.path),
+      thumbnailPath: row.thumbnail_path ? String(row.thumbnail_path) : null,
+      marketplaceItemId: row.marketplace_item_id ? String(row.marketplace_item_id) : null,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    };
+  }
+
   upsertTemplate(record: TemplateRecord): void {
     this.db
       .prepare(
-        `INSERT INTO templates (id, name, kind, schema_version, path, thumbnail_path, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO templates (id, name, kind, schema_version, path, thumbnail_path, marketplace_item_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            kind = excluded.kind,
            schema_version = excluded.schema_version,
            path = excluded.path,
            thumbnail_path = excluded.thumbnail_path,
+           marketplace_item_id = excluded.marketplace_item_id,
            updated_at = excluded.updated_at`,
       )
       .run(
@@ -154,6 +185,7 @@ export class Store {
         record.schemaVersion,
         record.path,
         record.thumbnailPath,
+        record.marketplaceItemId ?? null,
         record.createdAt,
         record.updatedAt,
       );
