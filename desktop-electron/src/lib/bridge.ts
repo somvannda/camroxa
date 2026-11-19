@@ -15,8 +15,12 @@ import type {
   UpdateOffer,
   VideoTemplateInfo,
   VizzyBounds,
+  VizzyExportOutcome,
+  VizzyExportProgress,
+  VizzyExportSettingsInput,
   VizzyOpenResult,
   VizzyProbe,
+  VizzyRenderSummary,
   VizzySaveResult,
   VizzyState,
 } from "../../electron/shared/types";
@@ -103,7 +107,14 @@ export interface CamxoraBridge {
     save(): Promise<IpcResult<VizzySaveResult>>;
     open(): Promise<IpcResult<VizzyOpenResult | null>>;
     openPath(path: string): Promise<IpcResult<VizzyOpenResult>>;
+    export(settings?: VizzyExportSettingsInput): Promise<IpcResult<VizzyExportOutcome>>;
+    cancelExport(jobId: string): Promise<IpcResult<{ cancelled: boolean }>>;
+    renders(): Promise<IpcResult<VizzyRenderSummary[]>>;
+    deleteRender(name: string): Promise<IpcResult<{ deleted: boolean }>>;
+    revealRender(name: string): Promise<IpcResult<boolean>>;
+    renderUrl(name: string): Promise<IpcResult<{ url: string }>>;
     onState(callback: (state: VizzyState) => void): () => void;
+    onExportProgress(callback: (progress: VizzyExportProgress) => void): () => void;
   };
 }
 

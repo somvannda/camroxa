@@ -8548,6 +8548,12 @@ $("#btn-audio").addEventListener("click", () => {
 $("#btn-export").addEventListener("click", openExportDialog);
 
 let exporting = false;
+// CAMXORA-PATCH (scripts/sync-vizzy.mjs): when the shell drives an export,
+// runExport() reports progress and checks the host's cancel flag here.
+let camxoraExportHooks: {
+  progress(done: number, total: number, stage: string): void;
+  cancelled(): boolean;
+} | null = null;
 
 interface ExportSettings {
   width: number;
@@ -8902,7 +8908,8 @@ async function runExport(
         : undefined,
       audioBuffer: processedAudioBuffer ?? audioBuffer ?? undefined,
       streamTarget,
-      shouldCancel: () => progress.isCancelled(),
+      shouldCancel: () =>
+        progress.isCancelled() || camxoraExportHooks?.cancelled() === true,
       beforeFrame(frameTime: number) {
         // Advance the exported frame's analysis deterministically, then apply
         // keyframe/audio-impact automations for that instant.
@@ -8916,6 +8923,8 @@ async function runExport(
         button.textContent = `${Math.round((done / total) * 100)}%`;
         setStatus(`${stage} ${done}/${total}`);
         progress.update(done, total, stage);
+        // CAMXORA-PATCH: stream progress to the desktop shell.
+        camxoraExportHooks?.progress(done, total, stage);
       },
     };
 
@@ -11958,6 +11967,181 @@ Object.assign(globalThis, {
   editorSelectedAnalyzerId: () => selectedAnalyzerId,
   editorLogText: logTextFor,
 });
+
+/* CAMXORA-PATCH (scripts/sync-vizzy.mjs): host-driven native export.
+ *
+ * The shell owns the job, the destination file and cancellation. This block
+ * calls the editor's own runExport() with a SaveFileHandle whose write()
+ * forwards encoded chunks to the desktop process (structured clone, never
+ * base64), reports progress through the bridge, and reports a terminal state
+ * exactly once. The in-page export dialog above is unchanged and still works
+ * as the browser fallback.
+ */
+{
+  interface HostExportSettings {
+    width: number;
+    height: number;
+    fps: number;
+    format: "mp4" | "webm";
+    codec: "h264" | "vp8" | "vp9";
+    bitrate: number;
+    crf: number;
+    start: number;
+    end: number;
+  }
+  interface HostExportCommand {
+    v: 1;
+    type: string;
+    jobId?: string;
+    settings?: HostExportSettings;
+  }
+  interface HostExportBridge {
+    exportChunk(jobId: string, position: number, data: Uint8Array): Promise<{ bytes: number }>;
+    exportProgress(payload: {
+      jobId: string;
+      done: number;
+      total: number;
+      stage: string;
+    }): void;
+    exportFinished(payload: {
+      jobId: string;
+      ok: boolean;
+      cancelled: boolean;
+      frames: number;
+      error?: string;
+    }): void;
+    onCommand(handler: (command: HostExportCommand) => void): () => void;
+  }
+
+  const exportHost = (window as unknown as { camxoraVizzy?: HostExportBridge }).camxoraVizzy;
+  if (exportHost && typeof exportHost.onCommand === "function") {
+    let activeJobId: string | null = null;
+    let cancelRequested = false;
+
+    const isAbort = (reason: unknown): boolean =>
+      (reason instanceof DOMException && reason.name === "AbortError") ||
+      (reason instanceof Error && /cancel/i.test(reason.message)) ||
+      (typeof reason === "string" && /cancel/i.test(reason));
+
+    exportHost.onCommand((command) => {
+      if (command.type === "export-cancel") {
+        if (command.jobId && command.jobId === activeJobId) cancelRequested = true;
+        return;
+      }
+      if (command.type !== "export-run" || !command.jobId || !command.settings) return;
+      if (activeJobId) return;
+
+      const jobId = command.jobId;
+      const request = command.settings;
+      const format = request.format === "webm" ? "webm" : "mp4";
+      const codec: ExportCodec =
+        format === "mp4" ? "h264" : request.codec === "vp8" ? "vp8" : "vp9";
+      const settings: ExportSettings = {
+        ...defaultExportSettings(),
+        width: request.width,
+        height: request.height,
+        fps: request.fps,
+        start: request.start,
+        end: request.end,
+        codec,
+        bitrate: request.bitrate,
+        crf: request.crf,
+        // MP4/H.264 uses the reference wasm encoder; WebM prefers WebCodecs.
+        // Both streaming backends hand chunks to the host as they are produced.
+        engine: format === "webm" && WebCodecsExporter.available() ? "webcodecs" : "wasm",
+      };
+      let framesTotal = Math.max(
+        1,
+        Math.round(Math.max(0.1, settings.end - settings.start) * Math.max(1, Math.round(settings.fps))),
+      );
+
+      activeJobId = jobId;
+      cancelRequested = false;
+      let reported = false;
+      let renderedFrames = 0;
+
+      const report = (payload: {
+        ok: boolean;
+        cancelled: boolean;
+        frames: number;
+        error?: string;
+      }): void => {
+        if (reported) return;
+        reported = true;
+        activeJobId = null;
+        camxoraExportHooks = null;
+        exportHost.exportFinished({ jobId, ...payload });
+      };
+
+      const handle: SaveFileHandle = {
+        name: `${jobId}.${format}`,
+        async createWritable() {
+          return {
+            async write(data) {
+              if (data && typeof data === "object" && "type" in data && data.type === "write") {
+                await exportHost.exportChunk(jobId, data.position, data.data);
+                return;
+              }
+              // Blob fallback (non-streaming wasm ladder): slice it so no IPC
+              // message ever carries the whole video.
+              const bytes = new Uint8Array(await (data as Blob).arrayBuffer());
+              const size = 4 * 1024 * 1024;
+              for (let offset = 0; offset < bytes.byteLength; offset += size) {
+                await exportHost.exportChunk(
+                  jobId,
+                  offset,
+                  bytes.subarray(offset, Math.min(bytes.byteLength, offset + size)),
+                );
+              }
+            },
+            async close() {
+              report({ ok: true, cancelled: false, frames: Math.max(renderedFrames, framesTotal) });
+            },
+            async abort(reason) {
+              report({
+                ok: false,
+                cancelled: cancelRequested || isAbort(reason),
+                frames: renderedFrames,
+                error:
+                  reason instanceof Error
+                    ? reason.message
+                    : String(reason ?? "Export aborted"),
+              });
+            },
+          };
+        },
+      };
+
+      camxoraExportHooks = {
+        progress(done: number, total: number, stage: string) {
+          renderedFrames = Math.max(renderedFrames, done);
+          if (total > 0) framesTotal = total;
+          exportHost.exportProgress({ jobId, done, total, stage });
+        },
+        cancelled: () => cancelRequested,
+      };
+
+      void (async () => {
+        try {
+          await runExport(settings, handle);
+        } finally {
+          if (!reported) {
+            report({
+              ok: false,
+              cancelled: cancelRequested,
+              frames: renderedFrames,
+              error: cancelRequested
+                ? "The export was cancelled."
+                : "The exporter finished without writing a file.",
+            });
+          }
+          if (activeJobId === jobId) activeJobId = null;
+          camxoraExportHooks = null;
+        }
+      })();
+    });
+  }
+}
 
 // This module owns the WebGL renderer, the editor DOM and the rAF loop. Vite's
 // hot updates re-execute it in the same page, which used to stack another

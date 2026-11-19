@@ -125,9 +125,15 @@ app.whenReady().then(() => {
     preloadPath: path.join(__dirname, "vizzy-preload.cjs"),
     root: vizzyRoot,
     projectsDir: getAppPaths().projects,
+    rendersDir: getAppPaths().renders,
     onState: (state) => {
       if (mainWindow && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send("vizzy:state", state);
+      }
+    },
+    onExportProgress: (progress) => {
+      if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send("vizzy:export:progress", progress);
       }
     },
   });

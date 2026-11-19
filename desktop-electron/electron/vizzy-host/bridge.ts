@@ -60,6 +60,10 @@ export type VizzyViewMessage =
         projectName: string;
         dirty: boolean;
         nodeCount: number;
+        projectWidth?: number;
+        projectHeight?: number;
+        projectFps?: number;
+        projectDuration?: number;
         crossOriginIsolated: boolean;
         fftTier: string;
       };
@@ -70,6 +74,23 @@ export type VizzyViewMessage =
   | { v: 1; type: "vizzy:pick-media"; kind: VizzyMediaKind }
   | { v: 1; type: "vizzy:export"; request: VizzyExportOptions }
   | { v: 1; type: "vizzy:cancel-export"; jobId: string }
+  | {
+      v: 1;
+      type: "vizzy:export-progress";
+      jobId: string;
+      done: number;
+      total: number;
+      stage: string;
+    }
+  | {
+      v: 1;
+      type: "vizzy:export-finished";
+      jobId: string;
+      ok: boolean;
+      cancelled: boolean;
+      frames: number;
+      error?: string;
+    }
   | { v: 1; type: "vizzy:log"; level: VizzyLogLevel; message: string; detail?: unknown }
   | { v: 1; type: "vizzy:error"; message: string; stack?: string };
 
@@ -95,9 +116,24 @@ export type VizzyHostMessage =
     }
   | { v: 1; type: "vizzy:project-saved"; path: string }
   | { v: 1; type: "vizzy:media-picked"; kind: VizzyMediaKind; url: string }
-  | { v: 1; type: "vizzy:export-progress"; jobId: string; percent: number; stage: string }
-  | { v: 1; type: "vizzy:export-done"; jobId: string; outputPath: string }
-  | { v: 1; type: "vizzy:export-failed"; jobId: string; message: string }
+  | {
+      /** Host-driven export: the editor runs its own exporter for this job. */
+      v: 1;
+      type: "vizzy:export-run";
+      jobId: string;
+      settings: {
+        width: number;
+        height: number;
+        fps: number;
+        format: "mp4" | "webm";
+        codec: "h264" | "vp8" | "vp9";
+        bitrate: number;
+        crf: number;
+        start: number;
+        end: number;
+      };
+    }
+  | { v: 1; type: "vizzy:export-cancel"; jobId: string }
   | { v: 1; type: "vizzy:error"; message: string };
 
 export type VizzyLogLevel = "debug" | "info" | "warn" | "error";
@@ -134,11 +170,30 @@ export interface VizzyBridgeOptions {
     projectName: string;
     dirty: boolean;
     nodeCount: number;
+    projectWidth?: number;
+    projectHeight?: number;
+    projectFps?: number;
+    projectDuration?: number;
     crossOriginIsolated: boolean;
     fftTier: string;
   }) => void;
   /** Acknowledgement for an `open-project-json` command. */
   onAck?: (payload: { requestId: string; ok: boolean; error?: string }) => void;
+  /** Progress the editor reports while the host-driven export runs. */
+  onExportProgress?: (payload: {
+    jobId: string;
+    done: number;
+    total: number;
+    stage: string;
+  }) => void;
+  /** The editor's exporter finished; the host validates and settles the job. */
+  onExportFinished?: (payload: {
+    jobId: string;
+    ok: boolean;
+    cancelled: boolean;
+    frames: number;
+    error?: string;
+  }) => void;
 }
 
 export interface VizzyBridge {
@@ -201,6 +256,10 @@ export function createVizzyBridge(options: VizzyBridgeOptions): VizzyBridge {
             projectName: typeof state.projectName === "string" ? state.projectName : "",
             dirty: state.dirty === true,
             nodeCount: typeof state.nodeCount === "number" ? state.nodeCount : 0,
+            projectWidth: typeof state.projectWidth === "number" ? state.projectWidth : 0,
+            projectHeight: typeof state.projectHeight === "number" ? state.projectHeight : 0,
+            projectFps: typeof state.projectFps === "number" ? state.projectFps : 0,
+            projectDuration: typeof state.projectDuration === "number" ? state.projectDuration : 0,
             crossOriginIsolated: state.crossOriginIsolated === true,
             fftTier: typeof state.fftTier === "string" ? state.fftTier : "unknown",
           });
@@ -247,9 +306,10 @@ export function createVizzyBridge(options: VizzyBridgeOptions): VizzyBridge {
             fail("Invalid export request");
             return;
           }
+          // The host's `startExport` refuses view-originated jobs: the shell owns
+          // the destination file, progress and cancellation. Kept for protocol
+          // compatibility with the pre-host editor bridge.
           const { jobId } = await handlers.startExport(raw.request as unknown as VizzyExportOptions);
-          // Progress/done/failed are sent by the export service through
-          // `send({ type: "vizzy:export-progress", … })`.
           if (!jobId) fail("Export did not return a job id");
           return;
         }
@@ -259,6 +319,33 @@ export function createVizzyBridge(options: VizzyBridgeOptions): VizzyBridge {
             return;
           }
           await handlers.cancelExport(raw.jobId);
+          return;
+        }
+        case "vizzy:export-progress": {
+          if (typeof raw.jobId !== "string") {
+            fail("Invalid export progress");
+            return;
+          }
+          options.onExportProgress?.({
+            jobId: raw.jobId,
+            done: Number(raw.done) || 0,
+            total: Number(raw.total) || 0,
+            stage: typeof raw.stage === "string" ? raw.stage : "",
+          });
+          return;
+        }
+        case "vizzy:export-finished": {
+          if (typeof raw.jobId !== "string") {
+            fail("Invalid export result");
+            return;
+          }
+          options.onExportFinished?.({
+            jobId: raw.jobId,
+            ok: raw.ok === true,
+            cancelled: raw.cancelled === true,
+            frames: Number(raw.frames) || 0,
+            error: typeof raw.error === "string" ? raw.error : undefined,
+          });
           return;
         }
         case "vizzy:log": {
