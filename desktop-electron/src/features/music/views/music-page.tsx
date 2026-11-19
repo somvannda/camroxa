@@ -931,6 +931,7 @@ export function MusicPage() {
             pipelineSummary={pipelinePlan.message}
             pipelineJobCount={pipelinePlan.jobCount}
             pipelineBusy={pipelineBusy}
+            pipelineNeedsSettings={pipelinePlan.templateErrors.length > 0}
             pipelineNotice={pipelineNotice}
             onRenderVideos={() => void renderVideos()}
             onOpenSettings={() => navigate("/settings")}

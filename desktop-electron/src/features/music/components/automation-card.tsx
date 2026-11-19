@@ -46,6 +46,8 @@ interface AutomationCardProps {
   pipelineSummary: string;
   pipelineJobCount: number;
   pipelineBusy: boolean;
+  /** True when the plan is blocked by a missing template (show the Settings link). */
+  pipelineNeedsSettings: boolean;
   pipelineNotice: PipelineNotice | null;
   onRenderVideos: () => void;
   onOpenSettings: () => void;
@@ -74,6 +76,7 @@ export function AutomationCard({
   pipelineSummary,
   pipelineJobCount,
   pipelineBusy,
+  pipelineNeedsSettings,
   pipelineNotice,
   onRenderVideos,
   onOpenSettings,
@@ -275,6 +278,16 @@ export function AutomationCard({
         <p className="mt-1.5 text-caption text-text-muted" data-testid="pipeline-summary">
           {pipelineSummary}
         </p>
+        {pipelineNeedsSettings ? (
+          <button
+            type="button"
+            className="mt-0.5 block text-caption text-accent underline hover:no-underline"
+            onClick={onOpenSettings}
+            data-testid="pipeline-settings-hint"
+          >
+            Open Settings
+          </button>
+        ) : null}
 
         {pipelineNotice ? (
           <div

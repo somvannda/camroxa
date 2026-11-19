@@ -29,6 +29,7 @@ import {
   enqueuePipelineJobs,
   jobsForBatch,
   listQueue,
+  reconcileInterruptedJobs,
   retryableJobs,
   type PipelineQueueInput,
 } from "../services/pipeline-queue";
@@ -158,6 +159,10 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
 
   let lastError: string | null = null;
   let notifyTimer: NodeJS.Timeout | null = null;
+
+  // A restart cannot still be rendering: reconcile before the shell can read.
+  const reconciled = reconcileInterruptedJobs(store);
+  if (reconciled > 0) logger.warn("pipeline recovered interrupted renders", { rows: reconciled });
 
   const notify = (): void => {
     if (notifyTimer) return;

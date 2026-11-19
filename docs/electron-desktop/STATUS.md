@@ -42,7 +42,7 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               277/277 PASS
+npm test               278/278 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
 npm run test:e2e       PASS (15 suites incl. pipeline-batch)
 npm run api:check      PASS

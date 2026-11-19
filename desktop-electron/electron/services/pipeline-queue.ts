@@ -245,3 +245,35 @@ export function cancelQueuedJobs(store: Store, batchId?: string): number {
 export function jobsForBatch(store: Store, batchId: string): PipelineQueueItem[] {
   return listQueue(store).filter((item) => item.batchId === batchId);
 }
+
+/**
+ * A row caught in `rendering`/`encoding`/`merging` when the app starts cannot
+ * still be running: the process that owned the export is gone. Mark it failed
+ * so the row can be retried, and reset its batch, instead of leaving a spinner
+ * that never resolves.
+ */
+export function reconcileInterruptedJobs(store: Store): number {
+  const stale = listQueue(store).filter(
+    (item) =>
+      item.status === "rendering" || item.status === "encoding" || item.status === "merging",
+  );
+  for (const job of stale) {
+    updateQueueJob(store, job.id, {
+      status: "failed",
+      stage: "failed",
+      error: "The app closed before this render finished. Retry it.",
+    });
+  }
+  const touchedBatches = new Set(stale.map((job) => job.batchId));
+  for (const batchId of touchedBatches) {
+    const batch = store.getBatch(batchId);
+    if (!batch) continue;
+    store.upsertBatch({
+      ...batch,
+      status: "failed",
+      error: batch.error ?? "A render was interrupted by an app restart.",
+      updatedAt: Date.now(),
+    });
+  }
+  return stale.length;
+}

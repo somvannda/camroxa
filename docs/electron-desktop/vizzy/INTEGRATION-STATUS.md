@@ -360,7 +360,7 @@ npm run vizzy:build
 node scripts/sync-vizzy.mjs --check     # vendored tree matches UPSTREAM.md
 npm run typecheck
 npm run lint
-npm test                                # 36 files / 277 tests
+npm test                                # 36 files / 278 tests
 npm run build                           # includes build:vizzy-preload
 node tests/e2e/vizzy.mjs                # ~25 s
 node tests/e2e/vizzy-export.mjs         # ~40 s, writes export-settings.png + renders.png

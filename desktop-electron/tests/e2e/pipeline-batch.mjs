@@ -371,6 +371,9 @@ try {
 
   const cancelStart = await window.evaluate(async () => window.camxora.pipeline.start());
   if (!cancelStart.ok) fail(`cancel start failed: ${cancelStart.error.message}`);
+  // Cancel through the real Progress control, not only through IPC.
+  const cancelButton = window.getByTestId("pipeline-cancel-batch");
+  await cancelButton.waitFor({ timeout: 120_000 });
   await poll(
     async () => {
       const response = await snapshot(window);
@@ -382,10 +385,7 @@ try {
     120_000,
     100,
   );
-  const cancelled = await window.evaluate(async () => window.camxora.pipeline.cancel());
-  if (!cancelled.ok || !cancelled.data.cancelled) {
-    fail(`pipeline:cancel failed: ${JSON.stringify(cancelled)}`);
-  }
+  await cancelButton.click();
   const afterCancel = await poll(
     async () => {
       const response = await snapshot(window);
@@ -406,10 +406,9 @@ try {
   step("cancel left no partial output");
 
   // --- Retry runs only the failed/cancelled row --------------------------
-  const retried = await window.evaluate(async () => window.camxora.pipeline.retry("batch-cancel"));
-  if (!retried.ok || retried.data.enqueued !== 1) {
-    fail(`pipeline:retry failed: ${JSON.stringify(retried)}`);
-  }
+  const retryButton = window.getByTestId("pipeline-retry");
+  await retryButton.waitFor({ timeout: 60_000 });
+  await retryButton.click();
   const retriedDone = await poll(
     async () => {
       const response = await snapshot(window);

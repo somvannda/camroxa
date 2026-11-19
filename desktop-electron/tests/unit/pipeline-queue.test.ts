@@ -5,6 +5,8 @@ import {
   enqueuePipelineJobs,
   listQueue,
   nextQueuedJob,
+  reconcileInterruptedJobs,
+  retryableJobs,
   updateQueueJob,
   type PipelineQueueInput,
 } from "../../electron/services/pipeline-queue";
@@ -91,6 +93,32 @@ describe("pipeline queue", () => {
       updatedAt: 0,
     });
     expect(listQueue(store)).toEqual([]);
+    store.close();
+  });
+
+  it("recovers rows interrupted by an app restart", () => {
+    const store = createDatabase(":memory:");
+    store.upsertBatch({
+      batchId: "batch-1",
+      outputDir: "C:/runs/out",
+      merge: true,
+      mergedOutput: null,
+      status: "running",
+      error: null,
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    const [job] = enqueuePipelineJobs(store, [item()]);
+    updateQueueJob(store, job.id, { status: "encoding", stage: "encoding", progress: 60 });
+
+    const recovered = reconcileInterruptedJobs(store);
+    expect(recovered).toBe(1);
+    const row = listQueue(store)[0];
+    expect(row.status).toBe("failed");
+    expect(row.error).toMatch(/app closed/i);
+    expect(store.getBatch("batch-1")?.status).toBe("failed");
+    // A reconciled row is retryable again.
+    expect(retryableJobs(store, "batch-1")).toHaveLength(1);
     store.close();
   });
 });

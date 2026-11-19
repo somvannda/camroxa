@@ -119,6 +119,10 @@ Progress writes are throttled to ≤ 1 per 500 ms per job. `pipeline:changed` is
    Progress.
 6. **Auto-Upload stays disabled.** No upload is attempted anywhere in this flow.
 
+- **Restart.** The queue and batches are in SQLite. On startup any row caught in
+  `rendering`/`encoding`/`merging` is marked `failed` with “The app closed before this render
+  finished. Retry it.” and its batch is flagged, so nothing spins forever and retry is explicit.
+
 ### 2.6 Progress UI
 
 A compact “Video pipeline” card on `/progress`:
@@ -144,7 +148,7 @@ A compact “Video pipeline” card on `/progress`:
 | BATCH-7 | Missing template | PASS — explicit per-row/settings message, no render |
 | BATCH-8 | Auto-Upload | PASS — toggle disabled, no upload code path |
 | BATCH-9 | Preview parity | N/A here — unchanged from the template milestone (`vizzy-templates`) |
-| BATCH-10 | Restart | PASS (by construction) — the queue and batches live in SQLite |
+| BATCH-10 | Restart | PASS (unit) — the queue and batches live in SQLite; interrupted rows are reconciled to `failed` on startup and become retryable |
 
 `tests/e2e/pipeline-batch.mjs` runs the whole flow with **no `/vizzy` route open**
 (`vizzy.state().attached === false` throughout) and writes
