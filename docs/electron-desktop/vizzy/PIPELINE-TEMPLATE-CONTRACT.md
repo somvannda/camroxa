@@ -129,6 +129,21 @@ Rules:
 - Saving an existing template offers Save / Save as new.
 - A validation summary lists missing required bindings and incompatible nodes.
 
+### 4.1 Selecting a template per profile
+
+Saved templates are identified by their template id (the directory name under `templates/`).
+The existing profile publication fields `video_template_id` and `reel_template_id` store that
+id:
+
+- Settings → Publication gets **Video template** and **Reel template** pickers backed by
+  `vizzy:templates:list`; they show name, kind and output size, and an empty state that opens
+  Vizzy.
+- Saving a profile keeps the current ids; choosing a template writes the id in the same PUT.
+- The pipeline resolves the profile's id to a saved template. A missing id, a deleted template,
+  or a kind mismatch is an explicit error (see §6), never a silent fallback.
+- Old Camxora template ids (non-Vizzy) are rejected with the 2.0.0 policy.
+- `null` means "no saved template"; it must not be treated as an empty string.
+
 ---
 
 ## 5. Preview parity
@@ -188,6 +203,8 @@ Every one of the 91 templates can be opened, previewed and saved as a video temp
 | PIPE-T8 | Long/reel | Output dimensions and duration are correct |
 | PIPE-T9 | Old Camxora template | Rejected with the 2.0.0 policy |
 | PIPE-T10 | 91 templates | Each can be saved; suitable ones render through the pipeline |
+| PIPE-T11 | Profile selection | A saved template id round-trips through Settings and the pipeline resolves it |
+| PIPE-T12 | Missing/deleted selection | An explicit error is shown; no silent fallback |
 
 ---
 
