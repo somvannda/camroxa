@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "npm run build:vizzy-preload && concurrently -k -n renderer,main,preload,electron -c cyan,magenta,blue,yellow \"vite\" \"npm:watch:main\" \"npm:watch:preload\" \"npm:dev:electron\"",
+    "dev:login": "npm run build:vizzy-preload && concurrently -k -n renderer,main,preload,electron -c cyan,magenta,blue,yellow \"vite\" \"npm:watch:main\" \"npm:watch:preload\" \"wait-on http://localhost:5180 && cross-env VITE_DEV_SERVER_URL=http://localhost:5180 electron dist-electron/main.cjs\"",
     "dev:electron": "wait-on http://localhost:5180 && cross-env VITE_DEV_SERVER_URL=http://localhost:5180 CAMXORA_DEV_AUTH=1 electron dist-electron/main.cjs",
     "watch:main": "esbuild electron/main.ts --bundle --platform=node --format=cjs --outfile=dist-electron/main.cjs --external:electron --external:electron-updater --sourcemap --watch",
     "watch:preload": "esbuild electron/preload.ts --bundle --platform=node --format=cjs --outfile=dist-electron/preload.cjs --external:electron --sourcemap --watch",

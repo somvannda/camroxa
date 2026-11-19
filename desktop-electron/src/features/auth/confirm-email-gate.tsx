@@ -37,7 +37,7 @@ export function ConfirmEmailGate({ portalUrl }: { portalUrl: string }) {
   }
 
   return (
-    <AuthFrame footer="Confirm email">
+    <AuthFrame footer="Confirm email" variant="solo">
       <div className="mb-6 text-center">
         <p className="text-caption text-text-muted">ACCOUNT SETUP</p>
         <h1 className="mt-1 text-page font-semibold text-text-primary">Confirm your email</h1>

@@ -39,13 +39,13 @@ async function launch(name, env = {}) {
     console.log(
       JSON.stringify({
         title: await window.title(),
-        hasLogin: text.includes("Sign in to continue"),
+        hasLogin: text.includes("Sign in to listen"),
         hasEmail: text.includes("Email"),
         hasGoogle: text.includes("Continue with Google"),
         hasRemember: text.includes("Remember me"),
       }),
     );
-    if (!text.includes("Sign in to continue")) {
+    if (!text.includes("Sign in to listen")) {
       throw new Error("Login page did not render");
     }
     if (!text.includes("Continue with Google")) {
