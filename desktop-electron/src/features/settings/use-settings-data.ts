@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DevicePreferences, VideoTemplateInfo } from "../../../electron/shared/types";
 import type { ChannelProfile, UserMe } from "../dashboard/account-types";
 import {
@@ -106,10 +107,19 @@ async function fetchVideoTemplates(): Promise<VideoTemplateInfo[]> {
 }
 
 export function useVideoTemplatesQuery() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const subscribe = window.camxora?.videoTemplates?.onChange;
+    if (!subscribe) return;
+    return subscribe(() => {
+      void queryClient.invalidateQueries({ queryKey: settingsKeys.videoTemplates });
+    });
+  }, [queryClient]);
+
   return useQuery<VideoTemplateInfo[]>({
     queryKey: settingsKeys.videoTemplates,
     queryFn: fetchVideoTemplates,
-    staleTime: 10_000,
+    staleTime: 30_000,
     retry: 0,
     refetchOnWindowFocus: false,
   });
