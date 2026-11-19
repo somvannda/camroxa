@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import { protocol } from "electron";
 import { getAppPaths } from "./paths";
 import { isPathInside, mimeFor, parseRange } from "./media-utils";
+import { resolveLibraryRoot } from "./vizzy-library";
 
 const allowedFiles = new Set<string>();
 const tokens = new Map<string, string>();
@@ -38,7 +39,10 @@ export { mediaSchemePrivileges };
 
 function managedRoots(): string[] {
   const paths = getAppPaths();
-  return [paths.downloads, paths.renders, paths.images, paths.templates, paths.projects, paths.cache];
+  const roots = [paths.downloads, paths.renders, paths.images, paths.templates, paths.projects, paths.cache];
+  const library = resolveLibraryRoot();
+  if (fs.existsSync(path.join(library, "manifest.json"))) roots.push(library);
+  return roots;
 }
 
 function allowFile(filePath: string): string {
