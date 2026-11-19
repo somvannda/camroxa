@@ -31,6 +31,29 @@ const saveSchema = z.object({
   json: z.string().min(2),
 });
 
+const exportSchema = z
+  .object({
+    width: z.number().finite().min(16).max(7680).optional(),
+    height: z.number().finite().min(16).max(7680).optional(),
+    fps: z.number().finite().min(1).max(120).optional(),
+    format: z.enum(["mp4", "webm"]).optional(),
+    codec: z.enum(["h264", "vp8", "vp9"]).optional(),
+    bitrate: z.number().finite().min(0).max(200).optional(),
+    crf: z.number().finite().min(0).max(51).optional(),
+    start: z.number().finite().min(0).max(86_400).optional(),
+    end: z.number().finite().min(0).max(86_400).optional(),
+  })
+  .strict()
+  .nullish();
+
+const renderNameSchema = z.object({ name: z.string().min(1).max(160) });
+
+const exportChunkSchema = z.object({
+  jobId: z.string().uuid(),
+  position: z.number().int().min(0),
+  data: z.instanceof(Uint8Array),
+});
+
 export function registerVizzyIpc(host: VizzyHost): void {
   const shellOnly = (sender: WebContents): boolean => host.isShellSender(sender);
   const viewOnly = (sender: WebContents): boolean => host.isViewSender(sender);
@@ -111,7 +134,85 @@ export function registerVizzyIpc(host: VizzyHost): void {
     }
   });
 
+  /* export + managed renders ------------------------------------------ */
+
+  ipcMain.handle("vizzy:export", async (event, payload: unknown) => {
+    if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    try {
+      const settings = exportSchema.parse(payload);
+      const outcome = await host.exportVideo(settings ?? null);
+      if (outcome.status === "failed") {
+        return fail("VIZZY_EXPORT_FAILED", outcome.message);
+      }
+      return ok(outcome);
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
+  ipcMain.handle("vizzy:export:cancel", (event, payload: unknown) => {
+    if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    try {
+      const { jobId } = z.object({ jobId: z.string().uuid() }).parse(payload);
+      return ok({ cancelled: host.cancelExport(jobId) });
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
+  ipcMain.handle("vizzy:renders:list", (event) => {
+    if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    try {
+      return ok(host.listRenders());
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
+  ipcMain.handle("vizzy:renders:delete", (event, payload: unknown) => {
+    if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    try {
+      const { name } = renderNameSchema.parse(payload);
+      return ok({ deleted: host.deleteRender(name) });
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
+  ipcMain.handle("vizzy:renders:reveal", (event, payload: unknown) => {
+    if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    try {
+      const { name } = renderNameSchema.parse(payload);
+      return ok(host.revealRender(name));
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
+  ipcMain.handle("vizzy:renders:url", (event, payload: unknown) => {
+    if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    try {
+      const { name } = renderNameSchema.parse(payload);
+      const url = host.renderUrl(name);
+      if (!url) return fail("VIZZY_RENDER_NOT_FOUND", "That render is no longer available.");
+      return ok({ url });
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
   /* view-origin ------------------------------------------------------ */
+
+  // The editor streams encoder chunks here, one at a time, at absolute offsets.
+  ipcMain.handle("vizzy:export:chunk", async (event, payload: unknown) => {
+    if (!viewOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    try {
+      const chunk = exportChunkSchema.parse(payload);
+      return ok(await host.writeExportChunk(chunk));
+    } catch (error) {
+      return toError(error);
+    }
+  });
 
   ipcMain.on(VIZZY_BRIDGE_CHANNEL, (event, message: unknown) => {
     if (!viewOnly(event.sender)) return;

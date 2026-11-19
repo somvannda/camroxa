@@ -167,6 +167,11 @@ export interface VizzyState {
   projectName: string;
   dirty: boolean;
   nodeCount: number;
+  /** Project composition size/fps; the export popover seeds its defaults from these. */
+  projectWidth: number;
+  projectHeight: number;
+  projectFps: number;
+  projectDuration: number;
   fftTier: string;
   crossOriginIsolated: boolean;
   path: string | null;
@@ -195,6 +200,56 @@ export interface VizzyOpenResult {
   path: string;
   name: string;
   nodeCount: number;
+}
+
+/** `vizzy:export` request: every field is optional; the project fills the gaps. */
+export interface VizzyExportSettingsInput {
+  width?: number;
+  height?: number;
+  fps?: number;
+  format?: "mp4" | "webm";
+  codec?: "h264" | "vp8" | "vp9";
+  /** Video bitrate in Mbps; 0 lets the encoder choose a CRF. */
+  bitrate?: number;
+  crf?: number;
+  start?: number;
+  end?: number;
+}
+
+/** `vizzy:export:progress` payload (main → shell event). */
+export interface VizzyExportProgress {
+  jobId: string;
+  done: number;
+  total: number;
+  percent: number;
+  stage: string;
+}
+
+export interface VizzyExportResult {
+  jobId: string;
+  /** Absolute path inside `<userData>/renders/`; the shell only basenames it. */
+  path: string;
+  name: string;
+  bytes: number;
+  frames: number;
+  durationSec: number;
+  width: number;
+  height: number;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  elapsedMs: number;
+}
+
+export type VizzyExportOutcome =
+  | { status: "done"; result: VizzyExportResult }
+  | { status: "cancelled" }
+  | { status: "failed"; message: string };
+
+/** One managed file in `<userData>/renders/`. */
+export interface VizzyRenderSummary {
+  name: string;
+  bytes: number;
+  mtimeMs: number;
 }
 
 export function ok<T>(data: T): IpcResult<T> {

@@ -89,10 +89,21 @@ const bridge = {
     save: () => invoke("vizzy:save"),
     open: () => invoke("vizzy:open"),
     openPath: (path: string) => invoke("vizzy:open-path", { path }),
+    export: (options: unknown) => invoke("vizzy:export", options ?? {}),
+    cancelExport: (jobId: string) => invoke("vizzy:export:cancel", { jobId }),
+    renders: () => invoke("vizzy:renders:list"),
+    deleteRender: (name: string) => invoke("vizzy:renders:delete", { name }),
+    revealRender: (name: string) => invoke("vizzy:renders:reveal", { name }),
+    renderUrl: (name: string) => invoke("vizzy:renders:url", { name }),
     onState: (callback: (state: unknown) => void) => {
       const listener = (_event: unknown, state: unknown) => callback(state);
       ipcRenderer.on("vizzy:state", listener);
       return () => ipcRenderer.removeListener("vizzy:state", listener);
+    },
+    onExportProgress: (callback: (payload: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on("vizzy:export:progress", listener);
+      return () => ipcRenderer.removeListener("vizzy:export:progress", listener);
     },
   },
 };

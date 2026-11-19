@@ -18,11 +18,16 @@ import type {
   VizzyHostBridge,
   VizzyHostState,
   VizzyOpenedProject,
+  VizzyProjectInfo,
 } from "./bridge";
 
 interface ProjectLike {
   name: string;
   nodes: unknown[];
+  width?: number;
+  height?: number;
+  fps?: number;
+  duration?: number;
 }
 
 interface HistoryLike {
@@ -44,6 +49,10 @@ export interface VizzyTestSnapshot {
   projectName: string;
   dirty: boolean;
   nodeCount: number;
+  projectWidth: number;
+  projectHeight: number;
+  projectFps: number;
+  projectDuration: number;
   crossOriginIsolated: boolean;
   fftTier: string;
 }
@@ -51,6 +60,8 @@ export interface VizzyTestSnapshot {
 export interface VizzyTestApi extends VizzyTestSnapshot {
   /** Current project snapshot as JSON. Read-only: it does not mutate state. */
   readProjectJson(): string;
+  /** Project defaults for the export popover (name, size, fps, duration). */
+  readProjectInfo(): VizzyProjectInfo;
 }
 
 declare global {
@@ -74,11 +85,16 @@ function editorReady(): boolean {
 }
 
 function snapshot(): VizzyTestSnapshot {
+  const info = readProjectInfo();
   return {
     ready,
     projectName: globals.editorProject?.name ?? "",
     dirty,
     nodeCount: globals.editorProject?.nodes.length ?? 0,
+    projectWidth: info.width,
+    projectHeight: info.height,
+    projectFps: info.fps,
+    projectDuration: info.duration,
     crossOriginIsolated: globalThis.crossOriginIsolated === true,
     fftTier: globals.editorSpectrum?.tier ?? "unknown",
   };
@@ -90,10 +106,23 @@ function readProjectJson(): string {
   return JSON.stringify(serialize());
 }
 
+function readProjectInfo(): VizzyProjectInfo {
+  const project = globals.editorProject;
+  const number = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return {
+    name: project?.name ?? "",
+    width: number(project?.width),
+    height: number(project?.height),
+    fps: number(project?.fps),
+    duration: number(project?.duration),
+  };
+}
+
 function reportState(): void {
   if (!bridge) return;
   const state = snapshot();
-  const key = `${state.projectName}|${state.dirty}|${state.nodeCount}|${state.fftTier}|${state.ready}`;
+  const key = `${state.projectName}|${state.dirty}|${state.nodeCount}|${state.projectWidth}x${state.projectHeight}@${state.projectFps}|${state.projectDuration}|${state.fftTier}|${state.ready}`;
   if (key === reportedKey) return;
   reportedKey = key;
   const payload: VizzyHostState = {
@@ -101,6 +130,10 @@ function reportState(): void {
     projectName: state.projectName,
     dirty: state.dirty,
     nodeCount: state.nodeCount,
+    projectWidth: state.projectWidth,
+    projectHeight: state.projectHeight,
+    projectFps: state.projectFps,
+    projectDuration: state.projectDuration,
     crossOriginIsolated: state.crossOriginIsolated,
     fftTier: state.fftTier,
   };
@@ -182,6 +215,7 @@ function installTestApi(): void {
       return globals.editorSpectrum?.tier ?? "unknown";
     },
     readProjectJson,
+    readProjectInfo,
   };
 
   Object.defineProperty(window, "__vizzyTest", {

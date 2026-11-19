@@ -7,11 +7,11 @@
 | Field | Value |
 |---|---|
 | Source | `G:/Developments/Rea/editor` |
-| Synced at | 2026-11-19T07:05:46.965Z |
+| Synced at | 2026-11-19T07:34:57.883Z |
 | Files vendored | 241 |
 | Public dirs | `export/`, `fonts/`, `img/`, `lottie/`, `media/`, `models/`, `particles/`, `presets/`, `vendor/` (no `creations/`) |
 
-Vendored tree sha256: `96c8f4562544439989d591e1ef7830516260c44269506055bbc34ab4cb57c65d`
+Vendored tree sha256: `b1df80842f9929a992a68af28866cf762b48747062436cb376950fd71018bb73`
 
 ## Patch set
 
@@ -23,6 +23,8 @@ Applied by the sync script, with anchors that fail loudly when Rea moves:
 | Host adapter | `src/host/host-adapter.ts` | `window.__vizzyTest`, dirty tracking, native open/save state |
 | Bridge contract | `src/host/bridge.ts` | `window.camxoraVizzy` types injected by `electron/vizzy-preload.ts` |
 | Native save | `src/main.ts` | `saveProjectLocally()` routes to the host when the bridge exists |
+| Native export hooks | `src/main.ts` | `runExport()` reports progress and honours the host's cancel flag |
+| Native export runner | `src/main.ts` | host `export-run` drives `runExport()` with a chunk-streaming save handle |
 
 ## Rebuild
 
