@@ -95,6 +95,10 @@ A pipeline job is built from the same run data the old Video page used:
 same renderer, same analyser settings, same effects. The output resolution may be higher than
 the preview, but the composition is identical.
 
+The detailed save dialog, auto-detection rules, error states and acceptance tests are in
+[`vizzy/PIPELINE-TEMPLATE-CONTRACT.md`](vizzy/PIPELINE-TEMPLATE-CONTRACT.md). The complete
+91-template inventory is in [`vizzy/TEMPLATE-LIBRARY.md`](vizzy/TEMPLATE-LIBRARY.md).
+
 ---
 
 ## 4. Pipeline template contract
