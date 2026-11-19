@@ -28,7 +28,7 @@
 | **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 | **P7 Vizzy host** | Vendored Rea editor served from `camxora-vizzy://`, sandboxed `WebContentsView`, native open/save, crash recovery, shell strip; see [`vizzy/INTEGRATION-STATUS.md`](vizzy/INTEGRATION-STATUS.md) |
-| **P7 template library** | All 91 templates staged with a manifest (`vizzy-library/`, 263.4 MB), safe slug-only reader, thumbnails allowed through `camxora-media://`; the editor's Creations browser lists and previews all 91, and `test:e2e:library` imports **91/91** with 0 skipped |
+| **P7 template library** | All 91 templates staged with a manifest (`vizzy-library/`, 263.4 MB), safe slug-only reader, thumbnails allowed through `camxora-media://`; the editor's Creations browser lists and previews all 91, and `test:e2e:library` imports **91/91** with 0 skipped and exports one to a validated MP4 |
 | **P7 pipeline contract** | Validated `pipeline.json`, conservative binding detection, run-input application, atomic video-template store with PNG thumbnails, render-plan builder |
 | **P7 template pickers** | Publication selects saved long/reel templates and persists `video_template_id`/`reel_template_id`; shell-only list/read/delete IPC |
 | **P7 export + renders** | Native export through the editor's exporter, chunked to `renders/`, progress/cancel, inline Renders panel with confirmed delete; `vizzy-export` E2E |
@@ -40,7 +40,7 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               238/238 PASS
+npm test               239/239 PASS
 npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
 npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update, vizzy, vizzy-export)
 npm run api:check      PASS
@@ -101,6 +101,7 @@ This is a backend contract decision, not a renderer bug.
 - Export merge `2b0cc7b` (`208da89` + `1291682` on `desktop/pipeline`)
 - `8009d68` 91-template import matrix, `8af3ef7` FFmpeg merge groundwork
 - `f13aabc` pipeline queue, `1a427ae` sequential runner
+- `a5a0afa` real FFmpeg merge test, `a090213` library export matrix
 
 ## Remaining
 
