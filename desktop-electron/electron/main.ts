@@ -35,8 +35,8 @@ function createWindow(): BrowserWindow {
     minHeight: 800,
     show: false,
     frame: false,
-    backgroundColor: "#0b0d10",
-    title: "Camxora",
+    backgroundColor: "#070a13",
+    title: "Camxora Desktop 2.0",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

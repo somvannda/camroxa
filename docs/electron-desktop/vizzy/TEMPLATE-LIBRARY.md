@@ -2,8 +2,9 @@
 
 > **Document ID:** CAMXORA-ED-VZ-LIB
 > **Status:** Planning / port required
-> **Source:** `G:\Developments\Rea\docs\reference-exports\creations\templates` + `moai-money.json`
-> **Inventory:** [`library-inventory.csv`](library-inventory.csv) (90 rows + Moai Money)
+> **Source:** `G:\Developments\Rea\editor\public\creations\templates` (91 ported projects, local `/creations/assets` paths)
+> **Raw exports:** `G:\Developments\Rea\docs\reference-exports\creations\templates` (pre-port, remote Firebase URLs)
+> **Inventory:** [`library-inventory.csv`](library-inventory.csv) (91 rows)
 > **Updated:** 2026-11-19
 
 ---
@@ -24,30 +25,44 @@
 
 ## 2. Inventory
 
+Use the **editor tree**, not the raw reference exports: the editor copies have already been
+rewritten to local `/creations/assets/templates/<slug>/…` paths.
+
 | Measure | Value |
 |---|---|
-| Template JSON | 90 files, **14.2 MB** |
-| Moai Money creation | 1 file, 29.9 KB |
-| Ported media/assets | **244.8 MB** |
-| Templates with asset folders | **87** |
-| Templates missing an asset folder | **3** — `1735`, `code-286`, `nebula-staff` |
-| Licensed audio | **Not copied**; the manifest names the track. The user supplies the run audio. |
-| Largest asset sets | `rebecca-resonator` 36.5 MB, `retro` 25.3 MB, `killer-amv` 23.3 MB, `leafy-spectrum` 17.7 MB |
-| Largest JSON | `asphalt` 390.4 KB, `nebula-staff` 183.4 KB, `blobs-cubiq` 179.6 KB |
+| Template projects | **91** — 90 slugs + `moai-money` |
+| Template JSON | **14.4 MB** |
+| Ported media/assets | **249.4 MB** |
+| Templates with asset folders | **88** |
+| Templates without an asset folder | **3** — `1735`, `code-286`, `nebula-staff` |
+| Missing local asset references | **0** |
+| Thumbnails | **91 / 91** |
+| Remote audio references | 89 templates, 114 URLs (expected; licensed audio is not shipped) |
+| Remote font references | **35 templates, 78 URLs** — must be vendored or mapped to a bundled fallback |
+| Remote image references | **3 templates, 4 URLs** — must be vendored |
+| Non-asset URL | `retro` keeps a GLSL-sandbox provenance string; not a fetch |
 
 The per-template table is in [`library-inventory.csv`](library-inventory.csv):
-`Slug, JsonKB, AssetsMB, AssetFolder`.
+`slug, json_kb, assets_mb, asset_folder, local_refs, missing_local, remote_audio, remote_font,
+remote_image, remote_other, thumbnail`.
 
-### 2.1 Missing asset folders
+### 2.1 Asset gaps
 
-`1735`, `code-286`, `nebula-staff` have no `public/creations/assets/templates/<slug>/`
-folder in the Rea tree. Before porting:
+- `1735` — no asset folder; references two remote custom fonts.
+- `code-286` — no asset folder; references one remote custom font.
+- `nebula-staff` — no asset folder; procedural/text only, safe.
+- 35 templates reference Firebase/Google-hosted fonts. Offline render needs each font vendored
+  into `assets/templates/<slug>/` (or a deliberate local substitute recorded in metadata).
+- 3 templates reference remote images. Vendor them the same way.
+- Audio stays out of the package unless its licence is cleared. The manifest names the original
+  track; the pipeline binds the user's run audio.
 
-- [ ] Confirm whether the project uses no local media (safe) or references an external asset
-      that was not captured (blocked).
-- [ ] If external, capture/replace the asset or mark the template `needs assets` in the
-      library metadata.
-- [ ] Add a regression project for each after resolution.
+Before porting:
+
+- [ ] Vendor or substitute the 78 remote font URLs and 4 remote images.
+- [ ] Re-run the audit and require `remote_font = 0`, `remote_image = 0`, `missing_local = 0`.
+- [ ] Keep `remote_audio` as metadata, not a render dependency.
+- [ ] Add a regression project for `1735`, `code-286`, `nebula-staff`.
 
 ---
 
