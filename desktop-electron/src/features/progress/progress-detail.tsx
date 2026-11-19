@@ -39,6 +39,8 @@ interface ProgressDetailProps {
   onOpenExternal: (url: string) => void;
   onSyncManual: (row: ProgressRow) => void;
   onRetryImage: (row: ProgressRow) => Promise<string>;
+  /** Manual YouTube upload surface, built by the page for this row. */
+  youtubePanel?: ReactNode;
 }
 
 const TIMELINE_TONE: Record<TimelineState, "success" | "accent" | "neutral" | "danger"> = {
@@ -118,6 +120,7 @@ export function ProgressDetail({
   onOpenExternal,
   onSyncManual,
   onRetryImage,
+  youtubePanel,
 }: ProgressDetailProps) {
   const [copied, setCopied] = useState(false);
   const [retryOpen, setRetryOpen] = useState(false);
@@ -426,6 +429,8 @@ export function ProgressDetail({
           Converter and merge have no local output or API value for this run.
         </p>
       ) : null}
+
+      {youtubePanel}
 
       <Dialog open={retryOpen} onOpenChange={setRetryOpen}>
         <DialogContent

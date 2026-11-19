@@ -420,6 +420,7 @@ export interface PipelineChangedEvent {
 }
 
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
 /* Music download coordinator (P4)                                     */
 /* ------------------------------------------------------------------ */
 
@@ -482,6 +483,146 @@ export type DownloadChangedReason =
 export interface DownloadChangedEvent {
   reason: DownloadChangedReason;
   key: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Manual YouTube upload (Progress row action)                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Why the Upload action is unavailable. `none` means it is available; every
+ * other value is shown as a specific reason next to the disabled action.
+ */
+export type YoutubeUploadBlock =
+  | "none"
+  | "no-file"
+  | "no-channel"
+  | "no-token"
+  | "quota"
+  | "plan"
+  | "legacy-template"
+  | "already-uploaded"
+  | "uploading"
+  | "busy"
+  | "unavailable";
+
+/** One Progress row the shell wants an upload verdict for. */
+export interface YoutubeUploadRowQuery {
+  key: string;
+  batchId: string;
+  profileId: string;
+  role: string;
+  runDir: string | null;
+  youtubeUrl?: string | null;
+}
+
+export interface YoutubeUploadRowState {
+  key: string;
+  profileId: string;
+  /** Canonical merged-file path, or null when the run has no merge on disk. */
+  mergedPath: string | null;
+  mergedName: string | null;
+  mergedBytes: number | null;
+  block: YoutubeUploadBlock;
+  reason: string | null;
+}
+
+export interface YoutubePlaylistOption {
+  id: string;
+  title: string;
+}
+
+export interface YoutubeChannelSummary {
+  profileId: string;
+  profileName: string;
+  connected: boolean;
+  channelTitle: string | null;
+  playlistId: string;
+  playlistTitle: string | null;
+  /** Playlists the connected channel offers (for “With playlist”). */
+  playlists: YoutubePlaylistOption[];
+}
+
+export interface YoutubeAvailability {
+  /** Channel summary for the first queried profile (back-compat/simple case). */
+  channel: YoutubeChannelSummary | null;
+  /** One summary per queried profile, so multi-channel accounts stay honest. */
+  channels: YoutubeChannelSummary[];
+  quotaRemaining: number | null;
+  quotaLimit: number | null;
+  rows: YoutubeUploadRowState[];
+  /** Set when the profiles/connections lookup itself failed. */
+  error: string | null;
+}
+
+/** What the confirmation dialog shows before anything is uploaded. */
+export interface YoutubeUploadPlan {
+  key: string;
+  profileId: string;
+  channelTitle: string;
+  title: string;
+  description: string;
+  visibility: string;
+  publishAt: string | null;
+  playlistId: string;
+  playlistTitle: string | null;
+  mergedName: string;
+  mergedBytes: number;
+  tags: string[];
+  category: string;
+  madeForKids: boolean;
+  containsSyntheticMedia: boolean;
+}
+
+export type YoutubeUploadPhase =
+  | "queued"
+  | "preparing"
+  | "uploading"
+  | "recording"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+export interface YoutubeUploadStartRequest {
+  key: string;
+  batchId: string;
+  profileId: string;
+  role: string;
+  runDir: string | null;
+  /** `profile` (default), `none`, or a playlist id chosen for this one upload. */
+  playlist?: string;
+  /** Set when retrying a failed attempt so the same publish job is reused. */
+  retryJobUid?: string | null;
+}
+
+export interface YoutubeUploadState {
+  uploadId: string;
+  key: string;
+  batchId: string;
+  profileId: string;
+  phase: YoutubeUploadPhase;
+  sentBytes: number;
+  totalBytes: number;
+  percent: number;
+  message: string | null;
+  title: string | null;
+  videoId: string | null;
+  videoUrl: string | null;
+  jobUid: string | null;
+  error: string | null;
+  startedAt: number;
+  finishedAt: number | null;
+}
+
+export interface YoutubeUploadSnapshot {
+  active: YoutubeUploadState | null;
+  /** Most recent first, including the active attempt. */
+  history: YoutubeUploadState[];
+}
+
+/** `youtube:changed` payload (main → shell). */
+export interface YoutubeUploadChangedEvent {
+  upload: YoutubeUploadState;
 }
 
 export function ok<T>(data: T): IpcResult<T> {

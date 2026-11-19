@@ -37,18 +37,21 @@
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
+| **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **P4 downloads** | Main-process coordinator (`download-coordinator.ts` + `download-targets.ts` + `download-io.ts`, `electron/ipc/downloads.ts`): 12 s/4 s polling, bounded concurrency, atomic temp→rename, 3-attempt backoff, dedupe, skip-if-present, cancel/pause/retry/reveal, completion sync; Progress shows live bytes and real actions; unit + `downloads` E2E |
-| **P7 manual upload** | Manual YouTube upload from a completed Progress batch is **running** in `desktop/youtube-upload`; Auto-Upload remains disabled |
+| **Manual YouTube upload** | Ported 1.7.1 flow behind an explicit Progress action: access token → `POST /publish/jobs` → resumable `videos.insert` (chunks, 308 resume, retry) → `/youtube/uploads/report` → `/publish/jobs/{uid}/complete`; playlist, cancel, retry and readable disable reasons. Auto-Upload stays disabled |
 
 ### Verification
 
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               319/319 PASS
+npm test               341/341 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
-npm run test:e2e       PASS (16 suites incl. pipeline-batch and downloads)
+npm run test:e2e       PASS (17 suites incl. downloads, pipeline-batch and youtube-upload)
 node tests/e2e/settings.mjs PASS (8 tabs, prompt CRUD, pools pager, Suno bounds, save-all order)
+node tests/e2e/youtube-upload.mjs PASS (job, 3 chunks resuming at 308, report, complete, link,
+                                      cancel, quota failure + /retry, Auto-Upload disabled)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
@@ -143,9 +146,11 @@ download URL therefore never needs the session token.
 - P4: the download coordinator is merged and writes real audio, with live Progress and completion
   sync. Music has no per-song Download action because the history contract exposes no URL (see
   “Open API gap”); folder reveal remains the honest action for existing files.
-- P7: editor, 91-template library, save-as-template, single-template render, Renders and batch
-  orchestration are merged. **Manual YouTube upload is the remaining P7 gap** and is running;
-  Auto-Upload stays disabled exactly as 1.7.1.
+- P7: editor, library, templates, render, Renders, batch orchestration and the **manual YouTube
+  upload** are merged; Auto-Upload stays disabled exactly as 1.7.1.
+- Upload risk: the resumable path is verified against a local fake Google endpoint, not real
+  Google credentials or a live daily quota. A real-channel smoke test is still required; the UI
+  reports provider refusals verbatim and never retries a refusal automatically.
 - P8: all eight Settings tabs are merged.
 - P9: installer/signing/clean-VM gate and the 91-template bundle-size decision.
 
@@ -173,7 +178,7 @@ download URL therefore never needs the session token.
 |---|---|
 | Dashboard | Merged — KPIs, chart, quota, activity, fixture E2E |
 | Profile | Merged, fixture E2E |
-| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, download queue, polling, 200-row E2E; **Download queue** now driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output) |
+| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, polling, 200-row E2E; **Download queue** driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output); **manual YouTube upload** (confirm → resumable → report → link, cancel/retry, Auto-Upload still off) |
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; “Render videos” queues the profile's saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |

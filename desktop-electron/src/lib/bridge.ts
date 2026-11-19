@@ -33,6 +33,13 @@ import type {
   VizzySaveTemplateInput,
   VizzyState,
   VizzyTemplateDraftInfo,
+  YoutubeAvailability,
+  YoutubeUploadChangedEvent,
+  YoutubeUploadPlan,
+  YoutubeUploadRowQuery,
+  YoutubeUploadSnapshot,
+  YoutubeUploadStartRequest,
+  YoutubeUploadState,
 } from "../../electron/shared/types";
 
 export interface CamxoraBridge {
@@ -97,6 +104,16 @@ export interface CamxoraBridge {
   };
   diagnostics: {
     send(note?: string): Promise<IpcResult<{ uploadId: string }>>;
+  };
+  youtube: {
+    /** Merged-file + channel + quota verdict for the visible Progress rows. */
+    availability(request: { rows: YoutubeUploadRowQuery[] }): Promise<IpcResult<YoutubeAvailability>>;
+    /** Channel, title, visibility/schedule and playlist for the confirm dialog. */
+    plan(request: { row: YoutubeUploadRowQuery }): Promise<IpcResult<YoutubeUploadPlan>>;
+    start(request: YoutubeUploadStartRequest): Promise<IpcResult<YoutubeUploadState>>;
+    cancel(uploadId?: string): Promise<IpcResult<{ cancelled: boolean }>>;
+    state(): Promise<IpcResult<YoutubeUploadSnapshot>>;
+    onChange(callback: (payload: YoutubeUploadChangedEvent) => void): () => void;
   };
   updates: {
     check(): Promise<IpcResult<UpdateCheckResult>>;

@@ -25,6 +25,10 @@ import type { ImageJobsRetryResponse, ImageJobsSyncManualResponse, ProgressRow }
 import { useDownloadQueue } from "../use-download-queue";
 import { useManualInspections } from "../use-manual-inspections";
 import { useProgressFeed } from "../use-progress-feed";
+import { useYoutubeUpload } from "../use-youtube-upload";
+import { YoutubeUploadDialog } from "../youtube-upload-dialog";
+import { YoutubeUploadPanel } from "../youtube-upload-panel";
+import { isUploadCandidate, uploadControl } from "../youtube-upload-format";
 
 interface ActionNotice {
   tone: "success" | "danger" | "warning";
@@ -55,6 +59,7 @@ export function ProgressPage() {
   const sourceMode = feed.settings?.imageSourceMode ?? feed.settings?.image_source_mode;
   const manualMode = String(sourceMode ?? "").toLowerCase() === "manual";
   const manual = useManualInspections(manualMode, feed.rows);
+  const uploads = useYoutubeUpload(feed.rows);
 
   const visibleRows = useMemo(
     () => filterProgressRows(feed.rows, { activeOnly, stage, limit }),
@@ -219,6 +224,43 @@ export function ProgressPage() {
   const stale = Boolean(feed.error) && feed.rows.length > 0;
   const pendingDownloads = downloadsFeed.snapshot ? downloads.length : null;
 
+  const youtubePanelFor = (row: ProgressRow) => {
+    if (!isUploadCandidate(row)) return undefined;
+    const key = rowKey(row);
+    const channel = uploads.channelFor(row.meta.profile_id);
+    const control = uploadControl({
+      row: uploads.rowState(key),
+      upload: uploads.uploadFor(key),
+      channel,
+      blockedByOther: Boolean(uploads.active && uploads.active.key !== key),
+      lookupError: uploads.availabilityError,
+    });
+    return (
+      <YoutubeUploadPanel
+        channel={channel}
+        control={control}
+        upload={uploads.uploadFor(key)}
+        preparing={uploads.preparing}
+        actionError={uploads.actionError}
+        onUpload={() => {
+          void uploads.openConfirm(row);
+        }}
+        onUploadWithPlaylist={() => {
+          void uploads.openConfirm(row, { pickPlaylist: true });
+        }}
+        onCancel={() => {
+          void uploads.cancelUpload();
+        }}
+        onRetry={() => {
+          void uploads.openConfirm(row, { retry: true });
+        }}
+        onOpenExternal={(url) => {
+          void openExternal(url);
+        }}
+      />
+    );
+  };
+
   return (
     <div className="pb-6">
       <PageHeader
@@ -320,6 +362,11 @@ export function ProgressPage() {
             void openExternal(url);
           }}
           onClearFilters={clearFilters}
+          uploadState={(key) => uploads.rowState(key)}
+          uploadingKey={uploads.active?.key ?? null}
+          onUpload={(row) => {
+            void uploads.openConfirm(row);
+          }}
         />
 
         {selectedRow ? (
@@ -347,8 +394,21 @@ export function ProgressPage() {
               void syncManual(row);
             }}
             onRetryImage={retryImageStage}
+            youtubePanel={youtubePanelFor(selectedRow)}
           />
         ) : null}
+
+        <YoutubeUploadDialog
+          confirmation={uploads.confirmation}
+          channel={uploads.channelFor(uploads.confirmation?.plan.profileId)}
+          starting={uploads.starting}
+          error={uploads.actionError}
+          onPlaylistChange={uploads.setPlaylist}
+          onCancel={uploads.closeConfirm}
+          onConfirm={() => {
+            void uploads.confirmUpload();
+          }}
+        />
 
         <DownloadQueue
           rows={downloads}
