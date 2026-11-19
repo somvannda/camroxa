@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPipelineBindings,
   buildPipelineTemplate,
   detectBindings,
   inferKind,
@@ -156,5 +157,57 @@ describe("pipeline template", () => {
         output: { width: 0, height: 1080, fps: 30 },
       }),
     ).toThrow();
+  });
+});
+
+describe("pipeline bindings applied to a run", () => {
+  function json(): string {
+    return JSON.stringify({ format: "studio-project", version: 1, ...snapshot() });
+  }
+
+  it("rebinds text, background, logo and palette without touching other state", () => {
+    const pipeline = buildPipelineTemplate({ name: "Night Drive", snapshot: snapshot() });
+    const output = applyPipelineBindings(json(), pipeline, {
+      title: "Run title",
+      artist: "Run artist",
+      album: "Run album",
+      backgroundUrl: "camxora-media://local/bg",
+      logoUrl: "camxora-media://local/logo",
+      palette: ["#ff0000"],
+    });
+    const parsed = JSON.parse(output);
+    const props = Object.fromEntries(parsed.nodes.map((node: { id: string; props: unknown }) => [node.id, node.props]));
+    expect(props["text-title"].textValue).toBe("Run title");
+    expect(props["text-artist"].textValue).toBe("Run artist");
+    expect(props["text-album"].textValue).toBe("Run album");
+    expect(props["media-bg"].imageUrl).toBe("camxora-media://local/bg");
+    expect(props["logo-1"].imageUrl).toBe("camxora-media://local/logo");
+    expect(props["spec-1"].color).toBe("#ff0000");
+    expect(parsed.project.name).toBe("Night Drive");
+  });
+
+  it("clips text when the binding asks for it", () => {
+    const pipeline = buildPipelineTemplate({
+      name: "Clip",
+      snapshot: snapshot(),
+      bindings: {
+        audio: { mode: "replace" },
+        title: { nodeId: "text-title", maxChars: 5, overflow: "clip" },
+      },
+    });
+    const parsed = JSON.parse(
+      applyPipelineBindings(json(), pipeline, { title: "123456789" }),
+    );
+    const title = parsed.nodes.find((node: { id: string }) => node.id === "text-title");
+    expect(title.props.textValue).toBe("12345");
+  });
+
+  it("fails loudly when a bound node is missing", () => {
+    const pipeline = buildPipelineTemplate({ name: "Broken", snapshot: snapshot() });
+    const value = JSON.parse(json());
+    value.nodes = value.nodes.filter((node: { id: string }) => node.id !== "text-title");
+    expect(() => applyPipelineBindings(JSON.stringify(value), pipeline, { title: "x" })).toThrow(
+      /missing its title node/i,
+    );
   });
 });

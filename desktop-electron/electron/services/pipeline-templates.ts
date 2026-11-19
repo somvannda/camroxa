@@ -91,7 +91,13 @@ function nodeName(node: SnapshotNode): string {
 
 function nodeLabel(node: SnapshotNode): string {
   const props = isRecord(node.props) ? node.props : {};
-  return [nodeName(node), textOf(props.text), textOf(props.imageUrl), textOf(props.assetId)]
+  return [
+    nodeName(node),
+    textOf(props.textValue),
+    textOf(props.text),
+    textOf(props.imageUrl),
+    textOf(props.assetId),
+  ]
     .filter(Boolean)
     .join(" ");
 }
@@ -245,6 +251,80 @@ export function validatePipelineTemplate(value: unknown): PipelineTemplate {
 
 export function inferKind(width: number, height: number): PipelineKind {
   return width >= height ? "long" : "reel";
+}
+
+export interface PipelineRunInputs {
+  title?: string;
+  artist?: string;
+  album?: string;
+  /** Displayable URL for the run background (usually a `camxora-media://` URL). */
+  backgroundUrl?: string;
+  /** Displayable URL for the run logo. */
+  logoUrl?: string;
+  /** Accent colours applied to palette-bound nodes. */
+  palette?: string[];
+}
+
+function clipText(value: string, binding: PipelineBinding): string {
+  const max = typeof binding.maxChars === "number" ? binding.maxChars : 0;
+  if (!max || value.length <= max) return value;
+  return binding.overflow === "clip" ? value.slice(0, max) : value;
+}
+
+/**
+ * Apply a run's inputs to the saved project. The result is still the exact saved
+ * project; only the bound properties change. Throws when a bound node is missing
+ * so the pipeline reports the exact template problem instead of rendering a
+ * silently unbound video.
+ */
+export function applyPipelineBindings(
+  snapshotJson: string,
+  pipeline: PipelineTemplate,
+  inputs: PipelineRunInputs,
+): string {
+  const parsed = JSON.parse(snapshotJson) as Record<string, unknown>;
+  const nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const node of nodes) {
+    if (isRecord(node) && typeof node.id === "string") byId.set(node.id, node);
+  }
+
+  const propsFor = (nodeId: string, field: string): Record<string, unknown> => {
+    const node = byId.get(nodeId);
+    if (!node) throw new Error(`The template is missing its ${field} node (${nodeId}).`);
+    if (!isRecord(node.props)) node.props = {};
+    return node.props as Record<string, unknown>;
+  };
+
+  const setText = (
+    binding: PipelineBinding | undefined,
+    field: string,
+    value: string | undefined,
+  ) => {
+    if (!binding || value === undefined) return;
+    propsFor(binding.nodeId, field).textValue = clipText(value, binding);
+  };
+
+  const { bindings } = pipeline;
+  setText(bindings.title, "title", inputs.title);
+  setText(bindings.artist, "artist", inputs.artist);
+  setText(bindings.album, "album", inputs.album);
+
+  if (bindings.background && inputs.backgroundUrl) {
+    propsFor(bindings.background.nodeId, "background").imageUrl = inputs.backgroundUrl;
+  }
+  if (bindings.logo && inputs.logoUrl) {
+    propsFor(bindings.logo.nodeId, "logo").imageUrl = inputs.logoUrl;
+  }
+
+  if (bindings.palette && inputs.palette?.length) {
+    for (const [index, nodeId] of bindings.palette.nodeIds.entries()) {
+      const props = propsFor(nodeId, "palette");
+      if ("color" in props) props.color = inputs.palette[index % inputs.palette.length];
+    }
+  }
+
+  return JSON.stringify(parsed, null, 2) + "\n";
 }
 
 export function buildPipelineTemplate(input: {
