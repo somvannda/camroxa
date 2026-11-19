@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import logoUrl from "../../assets/brand/camxora-logo.svg";
 
 export function AuthFrame({
   children,
@@ -10,11 +11,9 @@ export function AuthFrame({
   return (
     <div className="flex h-full flex-col bg-bg">
       <div className="drag-region flex h-12 items-center justify-between border-b border-border px-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-6 w-6 items-center justify-center rounded-[6px] bg-accent text-[11px] font-semibold text-accent-ink">
-            C
-          </div>
-          <span className="text-meta font-semibold tracking-[0.12em] text-text-primary">CAMXORA</span>
+        <div className="flex items-center gap-2.5">
+          <img src={logoUrl} alt="" className="h-7 w-7 rounded-[7px]" />
+          <span className="text-[15px] font-semibold tracking-[-0.01em] text-text-primary">Camxora</span>
           <span className="text-caption text-text-muted">Desktop 2.0</span>
         </div>
       </div>

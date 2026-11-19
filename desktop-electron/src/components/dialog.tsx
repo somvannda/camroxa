@@ -1,6 +1,6 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { Icon } from "./icon";
 import { classNames } from "../lib/format";
 
 export const Dialog = DialogPrimitive.Root;
@@ -42,7 +42,7 @@ export function DialogContent({
             className="flex h-7 w-7 items-center justify-center rounded-[6px] text-text-muted hover:bg-surface-hover hover:text-text-primary"
             aria-label="Close"
           >
-            <X size={15} />
+            <Icon name="fa-xmark" size={15} />
           </DialogPrimitive.Close>
         </div>
         <div className="mt-4">{children}</div>

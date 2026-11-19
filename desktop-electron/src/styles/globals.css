@@ -15,11 +15,16 @@
     margin: 0;
     background: var(--bg);
     color: var(--text-primary);
-    font-family: Inter, "Segoe UI", system-ui, sans-serif;
-    font-size: 13px;
-    line-height: 19px;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
+  }
+
+  .kh,
+  [lang="km"] {
+    font-family: var(--font-khmer);
   }
 
   * {
@@ -75,6 +80,15 @@
     background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: 12px;
+  }
+
+  .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    flex: none;
+    font-style: normal;
   }
 
   .hairline {

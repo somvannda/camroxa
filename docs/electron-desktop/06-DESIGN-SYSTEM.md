@@ -21,9 +21,13 @@ spacing, no decorative effects, and copy that says what the product does.
 |---|---|
 | **Product** | A night-shift production studio for faceless music channels: generate songs, images and visuals, run the pipeline, publish |
 | **Character** | Operator-grade, precise, quietly energetic |
-| **World** | A broadcast control room after hours: graphite surfaces, VU-meter green/amber, violet only as a signal |
-| **Moments** | The **Vizzy stage preview** and the **Dashboard weekly usage chart** carry the color; everything else stays quiet |
-| **Signature** | A **2 px signal rail** on the active nav item, a **live status dot**, and **mono timecode** with tabular figures |
+| **World** | camxora.com after hours: deep navy surfaces, Inter + Niradei type, violet as the signal, never a wash |
+| **Moments** | The **Vizzy stage preview**, the **Dashboard weekly usage chart** and the **original Camxora logo** carry the color; everything else stays quiet |
+| **Signature** | The **gradient Camxora mark**, a **2 px violet signal rail** on the active nav item, and **mono timecode** with tabular figures |
+
+**Brand source:** `camxora.com` is the source of truth for the logo, palette, fonts, icon set and
+type/control scale. The desktop keeps the same brand and drops the web's glass/glow treatments
+on chrome: the gradient is reserved for the mark and the one primary CTA.
 
 ### 1.1 Professional bar
 
@@ -73,45 +77,51 @@ one accent, and semantic colors used only for meaning.
 
 ```css
 :root {
-  /* surfaces */
-  --bg:            #0b0d10;
-  --surface-1:     #111418;
-  --surface-2:     #171b20;
-  --surface-3:     #1d2228;
-  --surface-hover: #20262d;
-  --surface-active:#252c34;
+  /* camxora.com surfaces */
+  --bg:            #070a13;
+  --sidebar:       #0a0d18;
+  --field:         #0a0d18;
+  --surface-1:     #0f1322;   /* panels, cards */
+  --surface-2:     #121728;   /* raised panel */
+  --surface-3:     #181f36;   /* controls, secondary buttons */
+  --surface-hover: #222a45;
+  --surface-active:#222a45;
 
   /* hairlines */
-  --border:        rgba(255, 255, 255, 0.08);
+  --border:        rgba(255, 255, 255, 0.075);
   --border-strong: rgba(255, 255, 255, 0.14);
 
   /* text */
-  --text-primary:  #f2f4f7;
-  --text-secondary:#a7b0bc;
-  --text-muted:    #6e7885;
-  --text-disabled: #4b535d;
+  --text-primary:  #f4f5fb;
+  --text-secondary:#c9cde0;
+  --text-muted:    #8b90a6;
+  --text-disabled: #6f748a;
 
-  /* accent (Camxora violet, used as a signal) */
-  --accent:        #8b7cf6;
-  --accent-hover:  #9d90f8;
-  --accent-ink:    #0b0d10;
-  --accent-soft:   rgba(139, 124, 246, 0.12);
-  --accent-line:   rgba(139, 124, 246, 0.45);
+  /* brand */
+  --accent:        #a855f7;
+  --accent-hover:  #c084fc;
+  --accent-ink:    #070a13;
+  --accent-soft:   rgba(168, 85, 247, 0.14);
+  --accent-line:   rgba(168, 85, 247, 0.45);
+  --brand-violet:  #7c3aed;
+  --brand-purple:  #a855f7;
+  --brand-gradient: linear-gradient(100deg, #7c3aed, #a855f7);
 
   /* semantic */
-  --success:       #4ade80;
-  --success-soft:  rgba(74, 222, 128, 0.12);
-  --warning:       #fbbf24;
-  --warning-soft:  rgba(251, 191, 36, 0.12);
-  --danger:        #f87171;
-  --danger-soft:   rgba(248, 113, 113, 0.12);
-  --info:          #38bdf8;
-  --info-soft:     rgba(56, 189, 248, 0.12);
+  --success:       #52d17c;
+  --warning:       #faed87;
+  --danger:        #b91c1c;
+  --info:          #60a5fa;
 
   /* chart series — only the dashboard chart may use several hues */
-  --series-songs:  #8b7cf6;
-  --series-images: #38bdf8;
-  --series-videos: #4ade80;
+  --series-songs:  #a855f7;
+  --series-images: #60a5fa;
+  --series-videos: #52d17c;
+
+  /* type */
+  --font-sans:   "Inter Variable", "Inter", "Niradei", "Noto Sans Khmer", system-ui, sans-serif;
+  --font-khmer:  "Niradei", "Noto Sans Khmer", sans-serif;
+  --font-mono:   "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 ```
 
@@ -132,14 +142,16 @@ Rules:
 
 | Role | Family | Size / line | Weight |
 |---|---|---|---|
-| Page title | Inter | 24 / 30 | 600 |
-| Section title | Inter | 16 / 22 | 600 |
-| Card title | Inter | 14 / 20 | 600 |
-| Body | Inter | 13 / 19 | 400 |
-| Body strong | Inter | 13 / 19 | 500 |
-| Meta / label | Inter | 12 / 16 | 400–500 |
-| Caption | Inter | 11 / 15 | 400 |
+| Page title | Inter Variable | 28 / 34 | 600 |
+| Section title | Inter Variable | 16 / 22 | 600 |
+| Card title | Inter Variable | 14 / 20 | 600 |
+| Body | Inter Variable | 14 / 20 | 400 |
+| Body small | Inter Variable | 13 / 19 | 400 |
+| Label / control | Inter Variable | 13 / 18 | 500 |
+| Meta / label | Inter Variable | 12 / 17 | 400–500 |
+| Caption | Inter Variable | 11 / 15 | 400 |
 | Timecode / numbers | JetBrains Mono | 12 / 16 | 400–500 |
+| Khmer text | Niradei | inherit | 400–700 |
 | Vizzy UI | Inter (host UI) | as shipped | as shipped |
 
 Rules:
@@ -149,14 +161,17 @@ Rules:
 - Numbers use `font-variant-numeric: tabular-nums`.
 - No italic for emphasis.
 - No negative letter spacing below 16 px.
-- Fonts are bundled locally (no Google Fonts at runtime).
+- Inter Variable is bundled via `@fontsource-variable/inter`; Niradei TTFs are bundled under
+  `public/fonts/` for Khmer text. No Google Fonts request at runtime.
 
 ### 2.3 Spacing and sizing
 
 - 4 px grid. Allowed steps: `4 8 12 16 20 24 32 40 48 64`.
-- Control heights: `28` compact, `32` default, `36` comfortable; primary CTA `40`.
+- Control heights: `28` compact, `34` inputs, `36` standard buttons, `40` comfortable,
+  `44–48` primary CTA.
 - Table rows: `36` default, `32` dense, `44` with two-line cells.
-- Sidebar width `232`; collapsed `64`.
+- Sidebar width `256`; collapsed `64`. (camxora.com uses 288 for its full web sidebar; the
+  desktop trades 32 px for workspace.)
 - Top bar `48`; footer `28`; page padding `24`; card padding `16–20`.
 - Content max width `1600`; pages are fluid below that.
 - Minimum window `1280×800`; default `1440×900`; the old app's `1920×1080` minimum is dropped.
@@ -184,10 +199,14 @@ Nested radii must add up. A 12 px card with 8 px padding holds a 4 px inner cont
 
 ### 2.6 Iconography
 
-- Lucide, 16 px in controls, 18 px in nav, 1.5 stroke.
+- **Font Awesome 6 solid**, matching camxora.com's `Icon` component
+  (`fa-classic fa-solid fa-replaced`). No Lucide and no emoji.
+- Sizes: 13 px in compact controls, 15 px in nav, 16 px for page actions, 18 px for page-level
+  actions only. An icon is at most 1 px larger than its text.
 - Icons take the text role color, never their own color.
 - One fixed icon column; labels align across rows.
-- No emoji in UI text.
+- The original **`camxora-logo.svg`** is the only brand mark. It is used in the title bar and
+  auth frame; never redraw it as a letter tile.
 
 ---
 
@@ -197,7 +216,7 @@ Nested radii must add up. A 12 px card with 8 px padding holds a 4 px inner cont
 ┌────────────────────────────────────────────────────────────────────────────┐
 │ Title bar 48px: brand · project/context · status · window controls         │
 ├──────────────┬─────────────────────────────────────────────────────────────┤
-│ Sidebar 232  │ Page header (title, description, primary actions)           │
+│ Sidebar 256  │ Page header (title, description, primary actions)           │
 │              ├─────────────────────────────────────────────────────────────┤
 │ Account      │ Content (scrolls)                                           │
 │ Workspace    │                                                             │
@@ -415,7 +434,12 @@ a "Installed" label.
 
 ## 10. Implementation notes
 
-- Tokens live in `src/styles/tokens.css` and are mirrored into Tailwind's theme.
+- Tokens live in `src/styles/tokens.css` and are mirrored into Tailwind's theme. They mirror
+  camxora.com's `--bg`, `--sidebar`, `--panel`, `--field`, `--line`, `--text`, `--muted`,
+  `--violet`, `--purple` and `--grad` values.
+- The original logo is `src/assets/brand/camxora-logo.svg` (copied from
+  `camxora.com/public/camxora-logo.svg`). Font Awesome CSS/webfonts live under
+  `src/styles/fontawesome/` + `src/styles/webfonts/`.
 - Components live in `src/components`; no page imports a raw Radix primitive directly.
 - The Vizzy override stylesheet lives in `vizzy/theme/shell-overrides.css` and is loaded after
   Rea's CSS inside the Vizzy view only.

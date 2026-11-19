@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ListChecks } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { useSessionStore } from "../../store/session";
@@ -55,7 +55,7 @@ export function OnboardingGate({ portalUrl }: { portalUrl: string }) {
           ) : null}
 
           <div className="flex items-start gap-3 rounded-control border border-border bg-surface-1 px-3 py-3">
-            <ListChecks size={16} className="mt-0.5 shrink-0 text-text-secondary" aria-hidden />
+            <Icon name="fa-list-check" size={16} className="mt-0.5 shrink-0 text-text-secondary" />
             <p className="text-body text-text-secondary">
               Your studio needs a channel profile before generation can start. Set it up in your browser, then refresh.
             </p>

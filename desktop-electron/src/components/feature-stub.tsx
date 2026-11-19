@@ -1,4 +1,4 @@
-import { CircleDashed } from "lucide-react";
+import { Icon } from "./icon";
 import { Badge } from "./status";
 import { Card } from "./card";
 import { PageHeader } from "./page-header";
@@ -25,7 +25,7 @@ export function FeatureStub({
       <div className="p-6">
         <Card className="max-w-2xl p-5">
           <div className="flex items-start gap-3">
-            <CircleDashed size={18} className="mt-0.5 text-text-muted" />
+            <Icon name="fa-circle-notch" size={18} className="mt-0.5 text-text-muted" />
             <div>
               <h2 className="text-title font-semibold text-text-primary">
                 {title} is planned for {phase}

@@ -209,7 +209,7 @@ The full specification is in [`06-DESIGN-SYSTEM.md`](06-DESIGN-SYSTEM.md).
 |---|---|
 | **Product** | A night-shift production studio for faceless music channels: generate, compose, run, publish |
 | **Character** | Operator-grade, precise, quietly energetic |
-| **World** | A broadcast control room after hours: graphite surfaces, VU-meter green/amber, violet only as a signal |
+| **World** | camxora.com after hours: deep navy surfaces, Inter + Niradei type, violet as the signal, never a wash |
 | **Moments** | The Vizzy stage preview and the Dashboard weekly chart carry the color; everything else stays quiet |
 | **Signature** | A 2px signal rail on the active nav item, a live status dot, and mono timecode with tabular figures |
 

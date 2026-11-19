@@ -6,6 +6,8 @@ export default {
     extend: {
       colors: {
         bg: "var(--bg)",
+        sidebar: "var(--sidebar)",
+        field: "var(--field)",
         surface: {
           1: "var(--surface-1)",
           2: "var(--surface-2)",
@@ -48,20 +50,24 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["Inter", "Segoe UI", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "Consolas", "monospace"],
+        sans: ["Inter Variable", "Inter", "Niradei", "Noto Sans Khmer", "Segoe UI", "system-ui", "sans-serif"],
+        display: ["Niradei", "Inter Variable", "Inter", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
       },
       borderRadius: {
-        control: "8px",
+        control: "10px",
         card: "12px",
-        overlay: "14px",
+        overlay: "16px",
       },
       fontSize: {
         caption: ["11px", { lineHeight: "15px" }],
-        meta: ["12px", { lineHeight: "16px" }],
-        body: ["13px", { lineHeight: "19px" }],
+        meta: ["12px", { lineHeight: "17px" }],
+        body: ["14px", { lineHeight: "20px" }],
+        "body-sm": ["13px", { lineHeight: "19px" }],
         title: ["16px", { lineHeight: "22px" }],
-        page: ["24px", { lineHeight: "30px" }],
+        subhead: ["18px", { lineHeight: "24px" }],
+        page: ["28px", { lineHeight: "34px" }],
+        hero: ["30px", { lineHeight: "36px" }],
       },
       spacing: {
         4.5: "18px",

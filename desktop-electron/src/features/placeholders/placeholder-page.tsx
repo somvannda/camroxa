@@ -1,4 +1,4 @@
-import { CircleDashed } from "lucide-react";
+import { Icon } from "../../components/icon";
 import type { ShellRoute } from "../../shell/routes";
 import { Card } from "../../components/card";
 import { PageHeader } from "../../components/page-header";
@@ -16,7 +16,7 @@ export function PlaceholderPage({ route }: { route: ShellRoute }) {
       <div className="p-6">
         <Card className="max-w-2xl p-5">
           <div className="flex items-start gap-3">
-            <CircleDashed size={18} className="mt-0.5 text-text-muted" />
+            <Icon name="fa-circle-notch" size={18} className="mt-0.5 text-text-muted" />
             <div>
               <h2 className="text-title font-semibold text-text-primary">
                 {route.label} is planned for {route.phase}

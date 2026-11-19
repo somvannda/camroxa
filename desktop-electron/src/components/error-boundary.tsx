@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { RotateCcw } from "lucide-react";
+import { Icon } from "./icon";
 import { Button } from "./button";
 import { Card } from "./card";
 
@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </pre>
           <div className="mt-5 flex items-center gap-2">
             <Button variant="primary" onClick={() => window.location.reload()}>
-              <RotateCcw size={14} />
+              <Icon name="fa-rotate-left" size={14} />
               Reload window
             </Button>
           </div>

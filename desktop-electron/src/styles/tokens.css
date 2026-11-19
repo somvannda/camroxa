@@ -1,37 +1,70 @@
+@font-face {
+  font-family: "Niradei";
+  src: url("/fonts/Niradei-Medium.ttf") format("truetype");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Niradei";
+  src: url("/fonts/Niradei-ExtraBold.ttf") format("truetype");
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Niradei";
+  src: url("/fonts/Niradei-Black.ttf") format("truetype");
+  font-weight: 800 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
 
-  --bg: #0b0d10;
-  --surface-1: #111418;
-  --surface-2: #171b20;
-  --surface-3: #1d2228;
-  --surface-hover: #20262d;
-  --surface-active: #252c34;
+  /* camxora.com palette */
+  --bg: #070a13;
+  --sidebar: #0a0d18;
+  --field: #0a0d18;
 
-  --border: rgba(255, 255, 255, 0.08);
+  --surface-1: #0f1322;
+  --surface-2: #121728;
+  --surface-3: #181f36;
+  --surface-hover: #222a45;
+  --surface-active: #222a45;
+
+  --border: rgba(255, 255, 255, 0.075);
   --border-strong: rgba(255, 255, 255, 0.14);
 
-  --text-primary: #f2f4f7;
-  --text-secondary: #a7b0bc;
-  --text-muted: #6e7885;
-  --text-disabled: #4b535d;
+  --text-primary: #f4f5fb;
+  --text-secondary: #c9cde0;
+  --text-muted: #8b90a6;
+  --text-disabled: #6f748a;
 
-  --accent: #8b7cf6;
-  --accent-hover: #9d90f8;
-  --accent-ink: #0b0d10;
-  --accent-soft: rgba(139, 124, 246, 0.12);
-  --accent-line: rgba(139, 124, 246, 0.45);
+  --accent: #a855f7;
+  --accent-hover: #c084fc;
+  --accent-ink: #070a13;
+  --accent-soft: rgba(168, 85, 247, 0.14);
+  --accent-line: rgba(168, 85, 247, 0.45);
+  --brand-violet: #7c3aed;
+  --brand-purple: #a855f7;
+  --brand-gradient: linear-gradient(100deg, #7c3aed, #a855f7);
 
-  --success: #4ade80;
-  --success-soft: rgba(74, 222, 128, 0.12);
-  --warning: #fbbf24;
-  --warning-soft: rgba(251, 191, 36, 0.12);
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.12);
-  --info: #38bdf8;
-  --info-soft: rgba(56, 189, 248, 0.12);
+  --success: #52d17c;
+  --success-soft: rgba(82, 209, 124, 0.12);
+  --warning: #faed87;
+  --warning-soft: rgba(250, 237, 135, 0.12);
+  --danger: #b91c1c;
+  --danger-soft: rgba(185, 28, 28, 0.16);
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.12);
 
-  --series-songs: #8b7cf6;
-  --series-images: #38bdf8;
-  --series-videos: #4ade80;
+  --series-songs: #a855f7;
+  --series-images: #60a5fa;
+  --series-videos: #52d17c;
+
+  --font-sans: "Inter Variable", "Inter", "Niradei", "Noto Sans Khmer", system-ui, sans-serif;
+  --font-khmer: "Niradei", "Noto Sans Khmer", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }

@@ -4,11 +4,11 @@ import { classNames } from "../lib/format";
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-text-primary text-bg hover:bg-white",
+  primary: "text-white shadow-[0_8px_24px_rgba(124,58,237,.28)] hover:brightness-110",
   secondary:
-    "bg-surface-2 text-text-primary border border-border-strong hover:bg-surface-hover",
+    "bg-surface-3 text-text-primary border border-border hover:bg-surface-hover",
   ghost: "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
-  danger: "bg-danger text-bg hover:brightness-110",
+  danger: "bg-danger text-white hover:brightness-110",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -27,7 +27,8 @@ export function Button({
   return (
     <button
       className={classNames(
-        "inline-flex h-8 items-center justify-center gap-2 rounded-control px-3 text-body font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        "inline-flex h-9 items-center justify-center gap-1.5 rounded-control px-4 text-body-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        variant === "primary" ? "bg-[image:var(--brand-gradient)]" : "",
         variants[variant],
         className,
       )}

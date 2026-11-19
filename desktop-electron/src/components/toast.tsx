@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { Icon } from "./icon";
 import { classNames } from "../lib/format";
 
 type ToastTone = "info" | "success" | "warning" | "danger";
@@ -36,11 +36,11 @@ const toneClass: Record<ToastTone, string> = {
   danger: "border-danger/30 bg-danger-soft text-danger",
 };
 
-const toneIcon = {
-  info: Info,
-  success: CheckCircle2,
-  warning: AlertTriangle,
-  danger: AlertTriangle,
+const toneIcon: Record<ToastTone, string> = {
+  info: "fa-circle-info",
+  success: "fa-circle-check",
+  warning: "fa-triangle-exclamation",
+  danger: "fa-triangle-exclamation",
 };
 
 export function ToastViewport() {
@@ -49,28 +49,25 @@ export function ToastViewport() {
 
   return (
     <div className="pointer-events-none fixed bottom-10 right-4 z-50 flex w-[320px] flex-col gap-2">
-      {items.map((item) => {
-        const Icon = toneIcon[item.tone];
-        return (
-          <div
-            key={item.id}
-            className={classNames(
-              "pointer-events-auto flex items-start gap-2 rounded-control border p-3 text-body shadow-lg",
-              toneClass[item.tone],
-            )}
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className={classNames(
+            "pointer-events-auto flex items-start gap-2 rounded-control border p-3 text-body shadow-lg",
+            toneClass[item.tone],
+          )}
+        >
+          <Icon name={toneIcon[item.tone]} size={15} className="mt-0.5 shrink-0" />
+          <p className="flex-1 text-text-primary">{item.message}</p>
+          <button
+            className="text-text-muted hover:text-text-primary"
+            onClick={() => dismiss(item.id)}
+            aria-label="Dismiss"
           >
-            <Icon size={15} className="mt-0.5 shrink-0" />
-            <p className="flex-1 text-text-primary">{item.message}</p>
-            <button
-              className="text-text-muted hover:text-text-primary"
-              onClick={() => dismiss(item.id)}
-              aria-label="Dismiss"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        );
-      })}
+            <Icon name="fa-xmark" size={14} />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

@@ -1,15 +1,3 @@
-import {
-  Activity,
-  Clapperboard,
-  Image,
-  LayoutDashboard,
-  Music2,
-  Settings,
-  Store,
-  UserRound,
-  type LucideIcon,
-} from "lucide-react";
-
 export type ShellRouteKey =
   | "home"
   | "profile"
@@ -26,7 +14,8 @@ export interface ShellRoute {
   label: string;
   phase: string;
   description: string;
-  icon: LucideIcon;
+  /** Font Awesome 6 solid class, e.g. "fa-house". */
+  icon: string;
 }
 
 export const WORKSPACE_ROUTES: ShellRoute[] = [
@@ -36,7 +25,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     label: "Dashboard",
     phase: "P2",
     description: "Usage, quota and recent activity at a glance.",
-    icon: LayoutDashboard,
+    icon: "fa-house",
   },
   {
     key: "profile",
@@ -44,7 +33,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     label: "Profile",
     phase: "P2",
     description: "Signed-in account, plan, credits, allowance and channel profiles.",
-    icon: UserRound,
+    icon: "fa-user",
   },
   {
     key: "progress",
@@ -52,7 +41,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     label: "Progress",
     phase: "P3",
     description: "Live run stages, recovery actions and pending downloads.",
-    icon: Activity,
+    icon: "fa-wave-square",
   },
   {
     key: "music",
@@ -60,7 +49,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     label: "Music",
     phase: "P4",
     description: "Batch composer, song editor, automation and history.",
-    icon: Music2,
+    icon: "fa-music",
   },
   {
     key: "image",
@@ -68,7 +57,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     label: "Image",
     phase: "P5",
     description: "Image job queue, previews and prompt settings.",
-    icon: Image,
+    icon: "fa-image",
   },
   {
     key: "vizzy",
@@ -76,7 +65,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     label: "Vizzy",
     phase: "P7",
     description: "The hosted Vizzy editor and the automation pipeline.",
-    icon: Clapperboard,
+    icon: "fa-film",
   },
   {
     key: "marketplace",
@@ -84,7 +73,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     label: "Marketplace",
     phase: "P6",
     description: "Browse, install and manage Vizzy templates.",
-    icon: Store,
+    icon: "fa-store",
   },
 ];
 
@@ -95,6 +84,6 @@ export const UTILITY_ROUTES: ShellRoute[] = [
     label: "Settings",
     phase: "P2/P8",
     description: "Profiles, publication, preferences, prompts, pools and Suno.",
-    icon: Settings,
+    icon: "fa-gear",
   },
 ];

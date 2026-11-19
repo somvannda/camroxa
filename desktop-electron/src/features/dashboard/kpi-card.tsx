@@ -1,14 +1,14 @@
-import { Coins, Image, Music2, UploadCloud, Video, type LucideIcon } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Card } from "../../components/card";
 import { classNames } from "../../lib/format";
 import type { KpiValue } from "./dashboard-format";
 
-const ICONS: Record<KpiValue["key"], LucideIcon> = {
-  credits: Coins,
-  songs: Music2,
-  images: Image,
-  videos: Video,
-  youtube: UploadCloud,
+const ICONS: Record<KpiValue["key"], string> = {
+  credits: "fa-coins",
+  songs: "fa-music",
+  images: "fa-image",
+  videos: "fa-video",
+  youtube: "fa-cloud-arrow-up",
 };
 
 const TINTS: Record<KpiValue["key"], string> = {
@@ -20,7 +20,6 @@ const TINTS: Record<KpiValue["key"], string> = {
 };
 
 export function KpiCard({ item }: { item: KpiValue }) {
-  const Icon = ICONS[item.key];
   return (
     <Card className="flex items-start justify-between gap-3 p-4" data-testid={`kpi-${item.key}`}>
       <div className="min-w-0">
@@ -36,7 +35,7 @@ export function KpiCard({ item }: { item: KpiValue }) {
         )}
         aria-hidden="true"
       >
-        <Icon size={16} strokeWidth={1.5} />
+        <Icon name={ICONS[item.key]} size={16} />
       </span>
     </Card>
   );

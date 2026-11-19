@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { Icon } from "../../components/icon";
 import type { ApiError } from "../../../electron/shared/types";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
@@ -244,7 +244,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 onClick={() => setShowPassword((value) => !value)}
               >
-                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showPassword ? <Icon name="fa-eye-slash" size={14} /> : <Icon name="fa-eye" size={14} />}
               </button>
             </div>
           </div>
@@ -271,7 +271,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
           </div>
 
           <Button type="submit" variant="primary" className="h-9 w-full" loading={busy} disabled={busy || googleWaiting}>
-            <LogIn size={15} />
+            <Icon name="fa-right-to-bracket" size={15} />
             Sign in
           </Button>
 

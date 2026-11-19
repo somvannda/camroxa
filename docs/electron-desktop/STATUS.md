@@ -39,6 +39,21 @@ npx electron-builder --win --dir   PASS (unpacked app launched)
 
 E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates).
 
+## Brand alignment
+
+The desktop now uses the real camxora.com brand assets and tokens:
+
+- original `camxora-logo.svg` in the title bar and auth frame (no letter tile);
+- Inter Variable (bundled) + Niradei for Khmer;
+- Font Awesome 6 solid icons (replacing Lucide);
+- `#070a13` page / `#0a0d18` sidebar / `#0f1322` panels / `#181f36` controls;
+- `#a855f7` accent and the `#7c3aed → #a855f7` brand gradient for the primary CTA and mark;
+- camxora.com type scale (11–30 px, 28 px page title) and 34/36/44 control heights;
+- 256 px desktop sidebar.
+
+The web's glass/blur treatments are intentionally not copied onto chrome; the gradient is
+reserved for the logo and the one primary CTA.
+
 ## Open API gap
 
 `/licenses/validate` is **not present in the current `platform_api` OpenAPI**. The account pages

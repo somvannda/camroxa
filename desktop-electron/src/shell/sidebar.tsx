@@ -1,27 +1,26 @@
-import { LogOut } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { Icon } from "../components/icon";
 import { classNames } from "../lib/format";
 import { useSessionStore } from "../store/session";
 import { UTILITY_ROUTES, WORKSPACE_ROUTES, type ShellRoute } from "./routes";
 
 function NavItem({ route }: { route: ShellRoute }) {
-  const Icon = route.icon;
   return (
     <NavLink
       to={route.path}
       className={({ isActive }) =>
         classNames(
-          "relative flex h-8 items-center gap-2.5 rounded-[6px] px-2.5 text-body transition-colors",
+          "relative flex h-9 items-center gap-3 rounded-[8px] px-3 text-body-sm font-medium transition-colors",
           isActive
-            ? "bg-surface-active text-text-primary"
-            : "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
+            ? "bg-accent-soft text-text-primary"
+            : "text-text-muted hover:bg-surface-hover hover:text-text-primary",
         )
       }
     >
       {({ isActive }) => (
         <>
-          {isActive ? <span className="absolute left-0 top-1.5 h-5 w-0.5 rounded-full bg-accent" /> : null}
-          <Icon size={16} className={isActive ? "text-text-primary" : "text-text-muted"} />
+          {isActive ? <span className="absolute left-0 top-2 h-5 w-0.5 rounded-full bg-accent" /> : null}
+          <Icon name={route.icon} size={15} className={isActive ? "text-accent" : "text-text-muted"} />
           <span className="flex-1 truncate">{route.label}</span>
         </>
       )}
@@ -47,7 +46,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-[232px] shrink-0 flex-col border-r border-border bg-surface-1">
+    <aside className="flex w-[256px] shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="border-b border-border p-3">
         <div className="flex items-center gap-2.5 rounded-[8px] border border-border bg-surface-2 p-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-meta font-semibold text-accent">
@@ -78,10 +77,10 @@ export function Sidebar() {
 
       <div className="border-t border-border p-2">
         <button
-          className="flex h-8 w-full items-center gap-2.5 rounded-[6px] px-2.5 text-body text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          className="flex h-9 w-full items-center gap-3 rounded-[8px] px-3 text-body-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary"
           onClick={() => void signOut()}
         >
-          <LogOut size={16} className="text-text-muted" />
+          <Icon name="fa-arrow-right-from-bracket" size={15} className="text-text-muted" />
           Sign out
         </button>
       </div>

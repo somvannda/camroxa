@@ -23,7 +23,7 @@ export function Footer() {
   });
 
   return (
-    <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-surface-1 px-4 text-caption text-text-muted">
+    <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-sidebar px-4 text-caption text-text-muted">
       <div className="flex items-center gap-4">
         <StatusDot tone="success" label="Ready" />
         <span>2.0.0 preview</span>

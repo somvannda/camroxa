@@ -28,6 +28,7 @@
     "package:win": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
