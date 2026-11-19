@@ -26,6 +26,8 @@
 | **P2 settings** | Profiles (list/create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics) |
 | **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **Shell guard** | Unsaved settings block sidebar navigation with a Stay / Discard-and-leave confirm |
+| **Shell footer parity** | 40 px footer with Ready, Local/Sandbox/Dev API badge, `v2.0.0`, live credits and profile allowance; auth footer shows env/version only |
+| **Update parity** | Checks the platform `/public/desktop-release`, blocks before auth on mandatory offers, persists the gate across restart/unreachable checks and clears it on withdrawal |
 | **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 | **P7 Vizzy host** | Vendored Rea editor served from `camxora-vizzy://`, sandboxed `WebContentsView`, native open/save, crash recovery, shell strip; see [`vizzy/INTEGRATION-STATUS.md`](vizzy/INTEGRATION-STATUS.md) |
@@ -154,7 +156,8 @@ download URL therefore never needs the session token.
   Google credentials or a live daily quota. A real-channel smoke test is still required; the UI
   reports provider refusals verbatim and never retries a refusal automatically.
 - P8: all eight Settings tabs are merged.
-- P9: installer/signing/clean-VM gate and the 91-template bundle-size decision.
+- P9: installer/signing/clean-VM gate, the update install helper, and the 91-template
+  bundle-size decision.
 
 ### Settings follow-ups
 
