@@ -440,6 +440,10 @@ async function workspaceScenario() {
       (await readText(page, "generate-button")).includes("Generate (12 credits)"),
       "Generate label must show 12 credits",
     );
+    assert(
+      await page.locator('[data-testid="toggle-auto-upload"]').isDisabled(),
+      "Auto-Upload must stay disabled exactly as 1.7.1",
+    );
 
     // Auto-Image → 92, image total 80.
     await page.locator('[data-testid="toggle-auto-image"]').click();
