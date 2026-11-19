@@ -17,7 +17,7 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
 | `Camxora Desktop Auth` | `desktop/auth` | Google OAuth, paid gate, email/onboarding gates, update gate | Running |
 | `Camxora Desktop Account` | `desktop/account` | Dashboard + Profile pages | Running |
-| `Camxora Desktop Vizzy Host` | `desktop/vizzy-host` | COOP/COEP host spike, WebView/loopback, bridge skeleton | Running |
+| ~~`Camxora Desktop Vizzy Host`~~ | ~~`desktop/vizzy-host`~~ | COOP/COEP host spike, WebView/loopback, bridge skeleton | **Merged** |
 
 Create future worktrees from the latest integrator commit, not from an older page branch.
 

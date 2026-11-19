@@ -81,6 +81,8 @@ export async function handleMediaRequest(request: Request): Promise<Response> {
       "Accept-Ranges": "bytes",
       "Content-Length": String(end - start + 1),
       "Cache-Control": "private, max-age=300",
+      // Required when the Vizzy document is served with COEP: require-corp.
+      "Cross-Origin-Resource-Policy": "cross-origin",
     };
     if (range) headers["Content-Range"] = `bytes ${start}-${end}/${stat.size}`;
 

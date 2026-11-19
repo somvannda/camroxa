@@ -47,7 +47,7 @@ npm audit --omit=dev  0 vulnerabilities
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges |
 | `Camxora Desktop Auth` | `desktop/auth` | Google OAuth, paid/email/onboarding gates |
 | `Camxora Desktop Account` | `desktop/account` | Dashboard + Profile |
-| `Camxora Desktop Vizzy Host` | `desktop/vizzy-host` | COOP/COEP host spike + bridge skeleton |
+| ~~`Camxora Desktop Vizzy Host`~~ | ~~`desktop/vizzy-host`~~ | **Merged** — custom protocol recommended; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 
 Merge order and file ownership: [`WORKSTREAMS.md`](WORKSTREAMS.md).
 
@@ -61,6 +61,16 @@ Merge order and file ownership: [`WORKSTREAMS.md`](WORKSTREAMS.md).
 | Dev/E2E bypass | `CAMXORA_DEV_AUTH=1`, only when `!app.isPackaged` |
 | E2E | `smoke.mjs` (shell) + `login.mjs` (login) both pass; screenshots in `artifacts/` |
 | Remaining P1 | Google OAuth, paid/onboarding gates, update gate, startup/onboarding polish |
+
+## Vizzy host spike (merged)
+
+- **Recommendation:** `camxora-vizzy://` custom protocol primary, tokenised loopback fallback.
+- **Measured:** `crossOriginIsolated`, SharedArrayBuffer/Atomics, WebGL2 draw, classic+module
+  worker, WASM/SIMD all true on both transports.
+- **Gap fixed:** `camxora-media://` now sends `Cross-Origin-Resource-Policy: cross-origin`.
+- **Still to prove:** `Range`/HEAD seeking for `<video>`, real Rea bundle, macOS/Linux and
+  SwiftShader.
+- Details: [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md).
 
 ## Remaining before Phase 0 exit
 
