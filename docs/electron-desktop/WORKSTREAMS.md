@@ -15,6 +15,7 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | Worktree | Branch | Agent scope | Status |
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
+| `Camxora Desktop Pipeline` | `desktop/pipeline` | P7 native export + Renders panel | Running |
 | ~~`Camxora Desktop Vizzy`~~ | ~~`desktop/vizzy`~~ | P7 real editor host, native project I/O, save/open bridge | **Merged** |
 | ~~`Camxora Desktop Settings`~~ | ~~`desktop/settings`~~ | P2 Settings core: Profiles, Publication, Preferences | **Merged** |
 | ~~`Camxora Desktop Progress`~~ | ~~`desktop/progress`~~ | P3 Progress page | **Merged** |
