@@ -32,6 +32,12 @@ export interface CamxoraBridge {
   };
   files: {
     pick(request: PickFileRequest): Promise<IpcResult<string[]>>;
+    open(path: string): Promise<IpcResult<boolean>>;
+    reveal(path: string): Promise<IpcResult<boolean>>;
+    ensureDir(path: string): Promise<IpcResult<string>>;
+    readImage(path: string): Promise<
+      IpcResult<{ name: string; mime: string; bytes: Uint8Array }>
+    >;
   };
   media: {
     url(request: { path: string }): Promise<IpcResult<{ url: string }>>;

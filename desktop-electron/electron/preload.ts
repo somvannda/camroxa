@@ -29,6 +29,10 @@ const bridge = {
   },
   files: {
     pick: (request: unknown) => invoke("files:pick", request),
+    open: (path: string) => invoke("files:open", { path }),
+    reveal: (path: string) => invoke("files:reveal", { path }),
+    ensureDir: (path: string) => invoke("files:ensure-dir", { path }),
+    readImage: (path: string) => invoke("files:read-image", { path }),
   },
   media: {
     url: (request: unknown) => invoke("media:url", request),
