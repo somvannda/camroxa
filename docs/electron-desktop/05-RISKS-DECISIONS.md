@@ -195,6 +195,7 @@ on Windows.
 | R-25 | Vizzy content parity regresses (presets/catalogues/templates) | Medium | High | Content parity suite enumerating every built-in; release gate | Vizzy |
 | R-26 | All 91 templates cannot be cleared for redistribution or bloat the installer | High | High | First-run template pack; licensing record; bundle option only if cleared | Product/Legal |
 | R-27 | Pipeline output diverges from the saved preview | Medium | High | Save the exact project, same renderer, preview-parity test | Pipeline |
+| R-28 | `/licenses/validate` is absent from the live OpenAPI | High | Medium | Account pages fall back to `/users/me` + `/stats/dashboard`; expiry shows "Not provided" until backend resolves it | Backend |
 
 ---
 

@@ -162,7 +162,7 @@ async function launch(name, env = {}) {
     await window.getByRole("heading", { name: "Complete your setup" }).waitFor({ timeout: 8_000 });
 
     await window.getByRole("button", { name: "Open studio anyway" }).click();
-    await window.getByText("Foundation checks").waitFor({ timeout: 8_000 });
+    await window.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 8_000 });
 
     await window.screenshot({ path: path.join(artifacts, "auth-gates.png"), fullPage: true });
     console.log(

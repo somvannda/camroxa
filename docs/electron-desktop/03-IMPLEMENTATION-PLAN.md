@@ -106,9 +106,9 @@ product decision after 2.0.0.
 
 **Goal:** a real user can sign in, pass gates, and land on Dashboard.
 
-> **Status (2026-11-19):** login screen, main-process login, remember-me session storage,
-> `AuthGate`, sign-out and dev/E2E bypass are implemented. Google OAuth, paid gate,
-> email-confirmation/onboarding gates and the update gate remain. See [`STATUS.md`](STATUS.md).
+> **Status (2026-11-19):** **merged.** Login, remember-me, Google OAuth loopback, paid gate,
+> email-confirmation gate, onboarding gate, sign-out and dev/E2E bypass are implemented and
+> verified. The mandatory update gate and startup polish remain. See [`STATUS.md`](STATUS.md).
 
 | ID | Task | Acceptance | Est |
 |---|---|---|---|
@@ -137,6 +137,10 @@ product decision after 2.0.0.
 ## 6. Phase 2 — Settings core, Dashboard, Profile
 
 **Goal:** the account surfaces and the settings needed by every other page.
+
+> **Status (2026-11-19):** Dashboard and Profile are **merged** and verified against a stub
+> platform API. Settings core (Profiles/Publication/Preferences) remains. See
+> [`STATUS.md`](STATUS.md).
 
 | ID | Task | Acceptance | Est |
 |---|---|---|---|

@@ -11,7 +11,7 @@ function NavItem({ route }: { route: ShellRoute }) {
       to={route.path}
       className={({ isActive }) =>
         classNames(
-          "group relative flex h-8 items-center gap-2.5 rounded-[6px] px-2.5 text-body transition-colors",
+          "relative flex h-8 items-center gap-2.5 rounded-[6px] px-2.5 text-body transition-colors",
           isActive
             ? "bg-surface-active text-text-primary"
             : "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
@@ -23,9 +23,6 @@ function NavItem({ route }: { route: ShellRoute }) {
           {isActive ? <span className="absolute left-0 top-1.5 h-5 w-0.5 rounded-full bg-accent" /> : null}
           <Icon size={16} className={isActive ? "text-text-primary" : "text-text-muted"} />
           <span className="flex-1 truncate">{route.label}</span>
-          <span className="text-caption text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
-            {route.phase}
-          </span>
         </>
       )}
     </NavLink>

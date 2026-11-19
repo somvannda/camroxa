@@ -1,5 +1,6 @@
 import { Card } from "../../components/card";
 import type { DashboardStats, LicenseInfo, UserMe } from "../dashboard/account-types";
+import { formatPlanName } from "../dashboard/dashboard-format";
 import {
   membershipFields,
   membershipMetrics,
@@ -34,7 +35,8 @@ export function MembershipCard({
 }: MembershipCardProps) {
   const metrics = loading ? LOADING_METRICS : membershipMetrics(me, stats, license, profileCount);
   const fields = membershipFields(me, stats, license);
-  const planName = loading ? "--" : me?.plan_name?.trim() || "No active plan";
+  const formattedPlan = formatPlanName(me?.plan_name);
+  const planName = loading ? "--" : formattedPlan === "No plan" ? "No active plan" : formattedPlan;
 
   return (
     <Card className="p-5" data-testid="profile-membership">

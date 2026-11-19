@@ -3,107 +3,65 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1 — Auth and shell (started; P0 foundation complete locally)
+> **Phase:** P1 auth complete (except update gate); P2 Dashboard/Profile merged
 
 ---
 
 ## Completed
 
-| Task | Evidence |
+| Area | Evidence |
 |---|---|
-| `T-P0-01` Electron/React/Vite scaffold | `desktop-electron/package.json`, `vite.config.ts`, esbuild main/preload build |
-| `T-P0-02` Secure BrowserWindow | `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, navigation allowlist |
-| `T-P0-03` Typed IPC + Zod | `electron/ipc/index.ts`, `electron/shared/types.ts`, `electron/preload.ts` |
-| `T-P0-04` Design primitives | Button, Input, Card, PageHeader, Badge, Dialog, Table, Toast, ErrorBoundary |
-| `T-P0-05` OpenAPI types | `openapi.json` (940 paths), `src/lib/api-schema.d.ts`, `npm run api:types`, `npm run api:check` |
-| `T-P0-06` API client in main | `electron/services/api-client.ts`, `api:request`, `/health` call from Foundation page |
-| `T-P0-07` Session storage + refresh | `safeStorage`, encrypted `session.bin`, single-flight `/auth/refresh` |
-| `T-P0-08` SQLite store + migrations | `node:sqlite`, `electron/services/database.ts`, `store.ts`, schema version 1 |
-| `T-P0-09` Paths + file picker + media protocol | `paths.ts`, `files:pick`, `camxora-media://` token registry with range support |
-| `T-P0-10` FFmpeg probe + transcode queue | `electron/services/ffmpeg.ts`, `ffmpeg:probe`, `ffmpeg:run`, `ffmpeg:cancel`, progress events |
-| `T-P0-11` Logger + redaction + error boundary | JSONL logs, `redact.ts`, renderer console/load logging, `ErrorBoundary` |
-| `T-P0-12` CI | `.github/workflows/desktop-electron.yml` (Windows, typecheck/lint/test/build/E2E) |
-| `T-P0-13` Design baseline + shells | Tokens, Tailwind, shell, nine routes, professional foundation page |
-| `T-P0-14` ADRs + plan | `docs/electron-desktop/*` |
-| E2E smoke | `tests/e2e/smoke.mjs`, screenshot `artifacts/foundation.png` |
-| Packaged build smoke | `npx electron-builder --win --dir`; `release/win-unpacked/Camxora.exe` launched |
+| Electron/React/Vite foundation | Secure window, typed IPC modules, design tokens, shell, nine routes |
+| API client + OpenAPI | Main-process client, 940-path schema, drift check |
+| Session storage | `safeStorage`, remember-me, single-flight refresh, saved account summary |
+| SQLite store | `node:sqlite`, migrations, templates/projects/jobs tables |
+| Media protocol | tokenised `camxora-media://`, CORP/CORS, Range/HEAD E2E |
+| FFmpeg | probe, transcode queue, progress/cancel, E2E availability |
+| Logging/diagnostics | JSONL, redaction, renderer console/load logging, error boundary |
+| CI | Windows workflow: typecheck/lint/test/build/E2E |
+| Packaging | unpacked Windows build launched |
+| **P1 auth** | Email/password, remember-me, Google OAuth loopback, paid gate, email-confirmation gate, onboarding gate, sign-out, dev/E2E bypass |
+| **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
+| **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 
-### Verification run
+### Verification
 
 ```text
-npm run typecheck   PASS
-npm run lint        PASS
-npm test            8/8 PASS
-npm run build       PASS (renderer ~100 kB gzip JS)
-npm run test:e2e    PASS (title "Camxora", version 2.0.0, session bridge, FFmpeg available)
-npm run api:check   PASS (schema up to date)
-npm audit --omit=dev  0 vulnerabilities
+npm run typecheck      PASS
+npm run lint           PASS
+npm test               47/47 PASS
+npm run build          PASS
+npm run test:e2e       PASS (smoke, login/gates, media, account)
+npm run api:check      PASS
+npm audit --omit=dev   0 vulnerabilities
+npx electron-builder --win --dir   PASS (unpacked app launched)
 ```
 
-## Active workstreams (parallel)
+E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates).
 
-| Worktree | Branch | Scope |
-|---|---|---|
-| `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges |
-| `Camxora Desktop Auth` | `desktop/auth` | Google OAuth, paid/email/onboarding gates |
-| `Camxora Desktop Account` | `desktop/account` | Dashboard + Profile |
-| ~~`Camxora Desktop Vizzy Host`~~ | ~~`desktop/vizzy-host`~~ | **Merged** — custom protocol recommended; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
+## Open API gap
 
-Merge order and file ownership: [`WORKSTREAMS.md`](WORKSTREAMS.md).
+`/licenses/validate` is **not present in the current `platform_api` OpenAPI**. The account pages
+degrade to `null` and fall back to `/users/me` + `/stats/dashboard`; plan expiry will show
+“Not provided” until the endpoint exists or the licence fields move to an existing endpoint.
+This is a backend contract decision, not a renderer bug.
 
-## Phase 1 started
+## Merge history
 
-| Item | Status |
-|---|---|
-| Login screen | Implemented: email/password, remember me, loading/error, professional layout |
-| Main-process login | `auth:login` against `platform_api`, token pair persisted via `safeStorage` |
-| Session gate | `AuthGate` restores a session or shows login; sign-out returns to login |
-| Dev/E2E bypass | `CAMXORA_DEV_AUTH=1`, only when `!app.isPackaged` |
-| E2E | `smoke.mjs` (shell) + `login.mjs` (login) both pass; screenshots in `artifacts/` |
-| Remaining P1 | Google OAuth, paid/onboarding gates, update gate, startup/onboarding polish |
+- `10993c2` foundation
+- `a7892b3` Vizzy host spike
+- `6fdaef8` media range/CORS verification
+- Auth merge (`c771a18`) — Google OAuth + bootstrap gates
+- Account merge (`ed6a7d5`) — Dashboard + Profile
+- Working tree has the final polish fixes pending commit
 
-## Vizzy host spike (merged)
+## Remaining
 
-- **Recommendation:** `camxora-vizzy://` custom protocol primary, tokenised loopback fallback.
-- **Measured:** `crossOriginIsolated`, SharedArrayBuffer/Atomics, WebGL2 draw, classic+module
-  worker, WASM/SIMD all true on both transports.
-- **Gap fixed:** `camxora-media://` now sends `Cross-Origin-Resource-Policy: cross-origin`
-  and `Access-Control-Allow-Origin: *`; CORS enabled on the scheme.
-- **Range/HEAD verified:** `tests/e2e/media.mjs` returns HTTP 206 for `bytes=10-19/256`,
-  correct bytes, and a valid HEAD response.
-- **Still to prove:** real Rea bundle, macOS/Linux and SwiftShader.
-- Details: [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md).
+- P1: mandatory update gate + startup/bootstrap polish.
+- P2: Settings core (profiles, publication, preferences) — next workstream.
+- P3–P6, P7 integration and P8–P9 remain.
 
-## Remaining before Phase 0 exit
+## Worktrees
 
-- Updater skeleton (electron-updater wiring).
-- App icon/signing configuration for the installer.
-- Optional: renderer crash screenshot/recovery verification.
-- CI first run verification on GitHub.
-- FFmpeg was detected on the development machine; verify the bundled-binary path on a clean VM.
-- Packaged NSIS installer (the unpacked directory build is verified).
-
-## Notes
-
-- Electron userData is isolated at `%APPDATA%\Camxora Desktop`, so the legacy
-  `%APPDATA%\Camxora` PySide6 data is untouched.
-- Electron 45.4.1, React 19, Vite 7, Tailwind 3.4, TypeScript 5.9.
-- The store uses Node 24's `node:sqlite` (experimental warning). It is behind
-  `electron/services/database.ts`; swap to `better-sqlite3` if packaging proves unstable.
-- Dev audit has 6 moderate advisories from `electron-builder`/`minimatch`; production audit is
-  clean.
-- Nothing has been committed or pushed yet.
-
-## Decisions locked
-
-1. **All 91 templates** are in scope and available to users.
-2. **Pipeline renders the preview the user saves** with “Save as video template”; bindings are
-   auto-detected with optional overrides.
-3. **Auto-Upload keeps 1.7.1 behavior** (toggle disabled; existing publication/manual flow).
-4. **Old Camxora video templates are not migrated** in 2.0.0.
-5. **Vizzy is hosted, not rewritten**; the Electron shell and pipeline are new code.
-
-## Remaining P7 decision
-
-- 91-template delivery: first-run **“Vizzy Templates” pack** (recommended) or bundle in the
-  installer. Licensing/asset clearance must be recorded before public release.
+All three original worktrees are merged and removed. The repository now has only the
+integrator worktree. Create the next wave from the latest `desktop/electron-v1` commit.

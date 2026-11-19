@@ -26,7 +26,7 @@ export function Footer() {
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-surface-1 px-4 text-caption text-text-muted">
       <div className="flex items-center gap-4">
         <StatusDot tone="success" label="Ready" />
-        <span>Foundation build</span>
+        <span>2.0.0 preview</span>
       </div>
       <div className="flex items-center gap-4 font-mono text-tabular">
         <span>{info.data?.env ?? "development"}</span>

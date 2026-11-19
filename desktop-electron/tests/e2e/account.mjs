@@ -179,6 +179,11 @@ async function openApp(name, apiPort) {
   await page.locator("#email").fill("operator@example.com");
   await page.locator("#password").fill("e2e-password");
   await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForTimeout(500);
+  const onboarding = page.getByRole("button", { name: "Open studio anyway" });
+  if (await onboarding.isVisible().catch(() => false)) {
+    await onboarding.click();
+  }
   await page.getByRole("heading", { name: "Weekly Usage" }).waitFor({ timeout: 15000 });
   await page.waitForTimeout(400);
   return { app, page };

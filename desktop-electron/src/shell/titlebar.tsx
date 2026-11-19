@@ -1,5 +1,4 @@
 import { Minus, Square, X } from "lucide-react";
-import { StatusDot } from "../components/status";
 
 function windowAction(action: "minimize" | "toggleMaximize" | "close"): void {
   void window.camxora?.window?.[action]?.();
@@ -17,7 +16,6 @@ export function TitleBar() {
       </div>
 
       <div className="no-drag flex items-center gap-4">
-        <StatusDot tone="accent" label="Foundation" />
         <div className="flex items-center gap-1">
           <button
             className="flex h-7 w-8 items-center justify-center rounded-[6px] text-text-secondary hover:bg-surface-hover hover:text-text-primary"
