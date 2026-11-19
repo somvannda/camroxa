@@ -48,7 +48,7 @@ export function ToastViewport() {
   const dismiss = useToastStore((state) => state.dismiss);
 
   return (
-    <div className="pointer-events-none fixed bottom-10 right-4 z-50 flex w-[320px] flex-col gap-2">
+    <div className="pointer-events-none fixed bottom-24 right-4 z-50 flex w-[320px] flex-col gap-2">
       {items.map((item) => (
         <div
           key={item.id}

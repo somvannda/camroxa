@@ -5,10 +5,10 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { useId } from "react";
-import { AlertTriangle, RotateCw } from "lucide-react";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Dialog, DialogContent } from "../../components/dialog";
+import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
 import { classNames } from "../../lib/format";
 
@@ -271,12 +271,12 @@ export function ErrorBanner({
       role="alert"
     >
       <span className="flex items-start gap-2">
-        <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+        <Icon name="fa-triangle-exclamation" size={15} className="mt-0.5 shrink-0" />
         <span>{message}</span>
       </span>
       {onRetry ? (
         <Button variant="ghost" className="h-7 shrink-0 px-2 text-danger" onClick={onRetry}>
-          <RotateCw size={13} />
+          <Icon name="fa-rotate-right" size={13} />
           {retryLabel}
         </Button>
       ) : null}
@@ -287,7 +287,7 @@ export function ErrorBanner({
 export function InlineWarning({ children }: { children: ReactNode }) {
   return (
     <p className="flex items-start gap-2 rounded-control border border-warning/30 bg-warning-soft px-3 py-2 text-meta text-warning">
-      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+      <Icon name="fa-triangle-exclamation" size={14} className="mt-0.5 shrink-0" />
       <span>{children}</span>
     </p>
   );

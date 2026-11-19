@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { CheckCircle2, FolderOpen, ShieldCheck, Upload } from "lucide-react";
 import { Button } from "../../components/button";
+import { Icon } from "../../components/icon";
 import { Badge, StatusDot } from "../../components/status";
 import { toast } from "../../components/toast";
 import { openExternal } from "../auth/portal";
@@ -122,7 +122,7 @@ function PathRow({
           disabled={disabled || Boolean(busy) || !value.trim()}
           onClick={() => void open()}
         >
-          <FolderOpen size={14} />
+          <Icon name="fa-folder-open" size={14} />
           Open
         </Button>
       </div>
@@ -501,7 +501,7 @@ export function PreferencesTab({ workspace }: { workspace: SettingsWorkspace }) 
 
       <Section title="Diagnostics" description="Application logs and environment information.">
         <div className="flex items-start gap-2 text-body text-text-secondary">
-          <ShieldCheck size={16} className="mt-0.5 shrink-0 text-text-muted" />
+          <Icon name="fa-shield-halved" size={16} className="mt-0.5 shrink-0 text-text-muted" />
           <p>
             Logs stay on this computer until you send them. A bundle contains app and OS versions plus
             recent redacted log lines.
@@ -515,12 +515,12 @@ export function PreferencesTab({ workspace }: { workspace: SettingsWorkspace }) 
             disabled={diagnosticsBusy}
             onClick={() => void sendDiagnostics()}
           >
-            <Upload size={14} />
+            <Icon name="fa-upload" size={14} />
             Send diagnostics
           </Button>
           {diagnosticsId ? (
             <span className="inline-flex items-center gap-1.5 text-meta text-success">
-              <CheckCircle2 size={14} />
+              <Icon name="fa-circle-check" size={14} />
               Prepared · <span className="font-mono text-tabular">{diagnosticsId}</span>
             </span>
           ) : null}

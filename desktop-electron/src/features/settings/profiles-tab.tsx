@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ImagePlus, Search } from "lucide-react";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
+import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
 import { Badge, StatusDot } from "../../components/status";
 import { classNames } from "../../lib/format";
@@ -180,7 +180,11 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
           </div>
 
           <div className="relative mt-3">
-            <Search size={14} className="pointer-events-none absolute left-2.5 top-2 text-text-muted" />
+            <Icon
+              name="fa-magnifying-glass"
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-2 text-text-muted"
+            />
             <Input
               className="pl-8"
               aria-label="Search profiles"
@@ -359,7 +363,7 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
                       disabled={Boolean(mediaBusy) || busy}
                       onClick={() => void pickImage("logo")}
                     >
-                      <ImagePlus size={14} />
+                      <Icon name="fa-image" size={14} />
                       {hasLogoOnFile ? "Replace logo" : "Choose logo"}
                     </Button>
                   </div>
@@ -389,7 +393,7 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
                       disabled={Boolean(mediaBusy) || busy}
                       onClick={() => void pickImage("cover")}
                     >
-                      <ImagePlus size={14} />
+                      <Icon name="fa-image" size={14} />
                       {hasCoverOnFile ? "Replace cover" : "Choose cover"}
                     </Button>
                   </div>
