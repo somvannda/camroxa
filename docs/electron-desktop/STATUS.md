@@ -54,7 +54,7 @@ node tests/e2e/youtube-upload.mjs PASS (job, 3 chunks resuming at 308, report, c
                                       cancel, quota failure + /retry, Auto-Upload disabled)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
-npx electron-builder --win --dir   PASS (unpacked app launched)
+npx electron-builder --win --dir   Not re-run after the feature work; packaging is P9
 ```
 
 P8 was merged after the settings suite passed; the branch’s only extra requirement was the
