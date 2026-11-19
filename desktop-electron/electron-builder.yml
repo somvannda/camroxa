@@ -1,5 +1,6 @@
 appId: com.camxora.desktop
 productName: Camxora
+icon: resources/icon.png
 directories:
   output: release
 files:
@@ -7,6 +8,7 @@ files:
   - dist-electron/**/*
   - package.json
 win:
+  icon: resources/icon.ico
   target:
     - nsis
   artifactName: Camxora-${version}-setup.${ext}
