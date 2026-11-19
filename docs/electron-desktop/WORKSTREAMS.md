@@ -2,8 +2,8 @@
 
 > **Integrator worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Integrator branch:** `desktop/electron-v1`
-> **Base commit:** `10993c2`
-> **Updated:** 2026-11-19
+> **Base commit:** `fa82fda`
+> **Updated:** 2026-11-19 (wave 2)
 
 The project follows the repo rule: **one agent per worktree**. Agents do not share a
 directory and do not push. The integrator reviews and merges each branch in order.
@@ -15,12 +15,15 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | Worktree | Branch | Agent scope | Status |
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
-| ~~`Camxora Desktop Auth`~~ | ~~`desktop/auth`~~ | Google OAuth, paid gate, email/onboarding gates | **Merged** |
-| ~~`Camxora Desktop Account`~~ | ~~`desktop/account`~~ | Dashboard + Profile pages | **Merged** |
-| ~~`Camxora Desktop Vizzy Host`~~ | ~~`desktop/vizzy-host`~~ | COOP/COEP host spike, WebView/loopback, bridge skeleton | **Merged** |
+| `Camxora Desktop Settings` | `desktop/settings` | P2 Settings core: Profiles, Publication, Preferences | Running |
+| `Camxora Desktop Progress` | `desktop/progress` | P3 Progress page | Running |
+| `Camxora Desktop Music` | `desktop/music` | P4 Music page | Running |
+| `Camxora Desktop Image Marketplace` | `desktop/image-marketplace` | P5 Image + P6 Marketplace | Running |
 
-**Next wave (not started):** Settings core, then Progress/Music or Image/Marketplace. Create
-each worktree from the latest `desktop/electron-v1` commit.
+Wave 1 (Auth, Account, Vizzy Host) is merged and removed. Wave 2 branches from `fa82fda`.
+
+**Merge order:** Settings → Progress → Music → Image/Marketplace. Settings lands the profile
+and settings contracts first; the other pages can use them.
 
 Create future worktrees from the latest integrator commit, not from an older page branch.
 
@@ -34,6 +37,10 @@ Create future worktrees from the latest integrator commit, not from an older pag
 | **Auth agent** | `electron/services/api-client.ts` (auth/bootstrap), `electron/services/session.ts`, new `electron/services/google-oauth.ts`, `electron/ipc/auth.ts`, `src/features/auth/**`, `src/store/session.ts`, auth tests |
 | **Account agent** | `src/features/dashboard/**`, `src/features/profile/**`, dashboard/profile tests; `src/app.tsx` route mapping for those two pages only |
 | **Vizzy host agent** | `electron/vizzy-host/**`, `vizzy/**`, `scripts/vizzy-host-spike.mjs`, `docs/electron-desktop/vizzy/HOST-SPIKE.md` |
+| **Settings agent** | `src/features/settings/**`, settings tests |
+| **Progress agent** | `src/features/progress/**`, progress tests |
+| **Music agent** | `src/features/music/**`, music tests |
+| **Image/Marketplace agent** | `src/features/image/**`, `src/features/marketplace/**`, `electron/services/templates.ts`, `electron/ipc/templates.ts`, template-only `ipc/index.ts`/`preload.ts`/`shared/types.ts`/`package.json` additions |
 
 If an agent needs a shared-file change, it reports the request instead of editing the file.
 The integrator makes the change on `desktop/electron-v1` and agents rebase/merge it.

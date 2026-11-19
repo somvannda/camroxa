@@ -61,7 +61,14 @@ This is a backend contract decision, not a renderer bug.
 - P2: Settings core (profiles, publication, preferences) — next workstream.
 - P3–P6, P7 integration and P8–P9 remain.
 
-## Worktrees
+## Active wave 2
 
-All three original worktrees are merged and removed. The repository now has only the
-integrator worktree. Create the next wave from the latest `desktop/electron-v1` commit.
+| Worktree | Branch | Scope |
+|---|---|---|
+| `Camxora Desktop Settings` | `desktop/settings` | P2 Settings core: Profiles, Publication, Preferences |
+| `Camxora Desktop Progress` | `desktop/progress` | P3 Progress |
+| `Camxora Desktop Music` | `desktop/music` | P4 Music |
+| `Camxora Desktop Image Marketplace` | `desktop/image-marketplace` | P5 Image + P6 Marketplace |
+
+Wave 2 branches from `fa82fda`. Wave 1 is merged and removed. Merge order: Settings → Progress
+→ Music → Image/Marketplace.
