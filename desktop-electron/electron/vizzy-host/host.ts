@@ -1113,7 +1113,11 @@ export class VizzyHost {
   }
 
   private update(patch: Partial<VizzyState>): VizzyState {
-    this.state = { ...this.state, ...patch, path: this.lastPath ?? this.state.path };
+    this.state = {
+      ...this.state,
+      ...patch,
+      path: patch.path !== undefined ? patch.path : (this.lastPath ?? this.state.path),
+    };
     this.deps.onState(this.getState());
     return this.state;
   }
