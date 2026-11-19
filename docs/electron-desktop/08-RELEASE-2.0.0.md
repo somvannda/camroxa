@@ -46,13 +46,13 @@ Settings and the pipeline service.
 | Shell | Window chrome, sidebar, header, footer, command palette, notifications, background coordinators |
 | Dashboard | KPIs, weekly chart, quotas, recent activity |
 | Profile | Account, membership, channel profiles, activity |
-| Progress | Filters, stats, operational table, live render/merge/reel stages, existing upload flow, manual recovery, downloads |
+| Progress | Filters, stats, operational table, live render/merge/reel stages, manual YouTube upload, manual recovery, downloads |
 | Music | Composer, draft/polish, channel pairs, automation toggles, credits, generate, history, downloads |
 | Image | Queue, previews, retry, clear, prompt autosave |
 | Vizzy | Full editor, project I/O, media, manual export, pipeline template authoring, Renders panel |
 | Vizzy content | All built-in presets, spectrum catalogue, particle presets, Butterchurn presets, community/user presets and templates work as-is |
 | Vizzy templates | All 91 templates are available to users, open/preview/save/reopen/export, and can be saved as video templates; staged in a reproducible library and currently bundled (installer-size decision pending) |
-| Pipeline | Single-template and offscreen batch render/merge are live; reel, retry and Progress are wired. Manual YouTube upload is **not yet ported** and is a release blocker (Auto-Upload itself stays disabled) |
+| Pipeline | Single-template and offscreen batch render/merge are live; reel, retry and Progress are wired. Manual YouTube upload is ported (explicit row action); Auto-Upload itself stays disabled |
 | Marketplace | Catalog, filters, search, pagination, install/reinstall, pipeline template kind/compatibility |
 | Settings | Profiles, publication, preferences, descriptions, structures, moods, pools, Suno, template pickers |
 | Packaging | Signed Windows installer, auto-update, uninstall |
@@ -88,8 +88,8 @@ the Video/Merger pages with the Vizzy pipeline.
 | Video page | **Removed**; Vizzy is the editor and pipeline surface | No dead route |
 | Merger page | **Removed**; merge is a pipeline stage | Progress shows it |
 | Auto-Video / Auto-Merge / Auto-Reel | **Live** on the Vizzy renderer | Same toggles, now real |
-| Auto-Upload | **Unchanged from 1.7.1** | Toggle stays disabled; the manual upload action still has to be ported |
-| Converter/Merge/YouTube stages | **Render/merge live; upload pending** | Progress shows render/merge; manual upload port is a release blocker |
+| Auto-Upload | **Unchanged from 1.7.1** | Toggle stays disabled; uploads are only ever started by the explicit Progress action |
+| Converter/Merge/YouTube stages | **Render/merge live; manual upload live** | Progress shows render/merge; a completed merged row uploads through the confirmation dialog |
 | Profile Video/Reel templates | **Live** Vizzy pipeline template pickers | Validated on save |
 | Marketplace Video/Reel templates | **Live** for Vizzy templates; old Camxora templates are not selectable | Clear policy label |
 | Manual video export | **Vizzy native export** | Same project and renderer; FFmpeg handles merge/reel |
@@ -140,9 +140,16 @@ A 2.0.0 candidate ships only when:
   (1.97 s) through the same offscreen queue.
 - All eight Settings tabs are live and covered by the settings suite (prompt CRUD, pools pager,
   Suno bounds, deterministic save-all).
+- **Manual YouTube upload is ported and E2E-verified** (`youtube-upload` suite, 16 suites total):
+  a completed merged row uploaded a 1 MiB file in 3 × 256 KiB resumable chunks (resumed at the
+  server's 308 offset), created one publish job, sent one report and one completion, and rendered
+  the `youtube.com/watch?v=…` link. Cancel kept the local file byte-identical and never
+  completed the job; a provider 403 quota failure produced a readable reason and **Retry**
+  reused the job via `/publish/jobs/{uid}/retry`. Auto-Upload stayed disabled and unchecked and
+  no token/email reached the DOM or the logs.
 
-Still open for release: manual YouTube upload port, installer size and asset clearance, a
-clean-VM gate, accessibility and signing.
+Still open for release: real Google credentials/quota were not exercised in CI, installer size
+and asset clearance, a clean-VM gate, accessibility and signing.
 
 ### 5.2 Gate checklist
 
@@ -150,8 +157,7 @@ clean-VM gate, accessibility and signing.
 - [ ] Page acceptance suites pass on a clean Windows VM against sandbox.
 - [ ] Vizzy 10-project matrix and manual export matrix pass.
 - [ ] Pipeline acceptance passes: long render, reel, merge, upload, determinism, resume,
-      retry, partial batch.
-- [ ] Vizzy content parity gate passes (built-in presets, catalogue, particle, Butterchurn,
+      retry, partial batch.- [ ] Vizzy content parity gate passes (built-in presets, catalogue, particle, Butterchurn,
       community/user presets, templates).
 - [ ] All 91 templates are available, pass open/preview/save/reopen/export, and can be saved
       as video templates.
@@ -192,8 +198,12 @@ clean-VM gate, accessibility and signing.
   build bundles the staged library; a first-run pack remains a packaging option.
 - **"Where is my old Camxora template?"** → Old templates are not migrated in 2.0.0. Use
   1.7.x if you need it, or re-author it in Vizzy. The pipeline uses Vizzy templates only.
-- **"Auto-Upload is still disabled."** → That is unchanged from 1.7.1. Upload through the
-  existing publication/manual flow; the render itself is unaffected.
+- **"How do I upload a finished video to YouTube?"** → Progress → open the completed merged row
+  (or click Upload in its YouTube cell), confirm the channel, title, visibility and playlist,
+  then Upload to YouTube. Cancel keeps the local file. A failed upload can be retried without
+  re-merging.
+- **"Auto-Upload is still disabled."** → That is unchanged from 1.7.1. Upload is an explicit
+  manual action; nothing is published automatically.
 - **"A render failed."** → Open Progress → row detail. Retry the failed stage; completed
   outputs are kept.
 - **"Can I stay on 1.7.1?"** → Yes, until the migration blocker is resolved. 1.7.x remains

@@ -39,16 +39,19 @@
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
 | **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **P4 downloads** | Main-process music download coordinator and live Progress queue are **running** in `desktop/downloads`; the shell currently only displays pending items |
+| **Manual YouTube upload** | Ported 1.7.1 flow behind an explicit Progress action: access token → `POST /publish/jobs` → resumable `videos.insert` (chunks, 308 resume, retry) → `/youtube/uploads/report` → `/publish/jobs/{uid}/complete`; playlist, cancel, retry and readable disable reasons. Auto-Upload stays disabled |
 
 ### Verification
 
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               296/296 PASS
+npm test               335/335 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
-npm run test:e2e       PASS (15 suites incl. pipeline-batch)
+npm run test:e2e       PASS (16 suites incl. pipeline-batch + youtube-upload)
 node tests/e2e/settings.mjs PASS (8 tabs, prompt CRUD, pools pager, Suno bounds, save-all order)
+node tests/e2e/youtube-upload.mjs PASS (job, 3 chunks resuming at 308, report, complete, link,
+                                      cancel, quota failure + /retry, Auto-Upload disabled)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
@@ -119,8 +122,11 @@ This is a backend contract decision, not a renderer bug.
 ## Remaining
 
 - P1: startup/bootstrap polish only.
-- P7: editor, library, templates, render, Renders and batch orchestration are merged. **Manual
-  YouTube upload is not yet ported**; Auto-Upload stays disabled exactly as 1.7.1 either way.
+- P7: editor, library, templates, render, Renders, batch orchestration and the **manual YouTube
+  upload** are merged; Auto-Upload stays disabled exactly as 1.7.1.
+- Upload risk: the resumable path is verified against a local fake Google endpoint, not real
+  Google credentials or a live daily quota. A real-channel smoke test is still required; the UI
+  reports provider refusals verbatim and never retries a refusal automatically.
 - P8: all eight Settings tabs are merged.
 - P4 downloads: coordinator running in `desktop/downloads`; it is the last functional gap before
   packaging.
@@ -150,7 +156,7 @@ This is a backend contract decision, not a renderer bug.
 |---|---|
 | Dashboard | Merged — KPIs, chart, quota, activity, fixture E2E |
 | Profile | Merged, fixture E2E |
-| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, downloads, polling, 200-row E2E; **Video pipeline** table (durable queue, cancel/retry/reveal, merged output) |
+| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, downloads, polling, 200-row E2E; **Video pipeline** table (durable queue, cancel/retry/reveal, merged output); **manual YouTube upload** (confirm → resumable → report → link, cancel/retry, Auto-Upload still off) |
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; “Render videos” queues the profile's saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |

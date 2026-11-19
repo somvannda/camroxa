@@ -19,7 +19,8 @@ failed, and what needs a human. It is not the lane board (Workflow) and does not
 Music/Image/Vizzy pages.
 
 **2.0.0 scope:** converter, merge and reel are **live pipeline stages**. YouTube upload keeps
-the existing 1.7.1 publication/manual flow; Auto-Upload stays disabled. Progress consumes
+the existing 1.7.1 publication/manual flow: a completed merged row has an explicit
+**Upload to YouTube** action, and Auto-Upload stays disabled. Progress consumes
 render/encode/merge events from the pipeline service and allows a retry of only the failed
 stage. Historical runs with stored values still render correctly.
 
@@ -34,6 +35,12 @@ stage. Historical runs with stored values still render correctly.
 | Pending downloads | `GET /music/downloads/pending?limit=12` | Download queue card |
 | Manual sync | `POST /image-jobs/sync-manual` | Continue pipeline after manual images |
 | Local overlay | `video_runtime_inspection` | Converter/merge truth from local files |
+| Channel + quota | `GET /youtube/connections`, `GET /youtube/quota`, `GET /youtube/profiles/{id}/playlists` | Upload readiness, channel name, playlist list |
+| Manual upload | `POST /youtube/profiles/{id}/access-token`, `POST /publish/jobs`, YouTube resumable `videos.insert`, `POST /youtube/uploads/report`, `POST /publish/jobs/{uid}/complete`, `/retry`, `/cancel` | The explicit Upload to YouTube action |
+
+The upload runs in the **main process** (`electron/services/youtube-upload.ts`). The renderer
+only sends the row (`batch`, `profile`, `role`, run folder) and receives byte progress, phases
+and readable reasons; the access token never crosses IPC.
 
 ---
 
@@ -48,6 +55,7 @@ stage. Historical runs with stored values still render correctly.
 [ Meta line: visible rows · pending downloads · stage filter ]
 [ Error banner — with stale-data retention ]
 [ Operational table (card) ]
+[ Row detail: fields · timeline · paths · manual recovery · YouTube upload ]
 [ Download queue (card, hidden when empty) ]
 ```
 
@@ -142,6 +150,27 @@ The toolbar sits on the page background, not inside a card.
 | PG-49 | Error/stale | On poll failure, keep rows and mark "Stale · last updated …" | P0 |
 | PG-50 | Live pipeline stages | Converter, merge and reel are live; each shows progress and can retry only the failed stage; upload stays the existing flow; historical values still render; a legacy Camxora template blocks with the 2.0.0 policy | P0 |
 
+### 4.8 Manual YouTube upload
+
+Ported from 1.7.1 `PublishUploadWorker` + `YouTubeDirectUploadWorker` and
+`shared/lib/youtube_direct.py`. It is **never automatic**: nothing is requested or sent until
+the user confirms the dialog.
+
+| ID | Feature | Acceptance | Pri |
+|---|---|---|---|
+| PG-51 | Upload action | A completed merged row shows **Upload to YouTube** in the row's YouTube cell and in the row detail; disabled states name the exact reason | P0 |
+| PG-52 | Confirmation | Before anything is sent, the dialog shows the connected channel, rendered title, visibility/schedule, file, playlist and AI disclosure | P0 |
+| PG-53 | Publication settings | Title/description templates, tags (sanitised), category, visibility, `publish_at`, made-for-kids, AI disclosure and playlist come from the profile `youtube_config` | P0 |
+| PG-54 | Publish job | `POST /publish/jobs` is created first; a server-side `existing` job is reused, never duplicated | P0 |
+| PG-55 | Resumable transfer | Direct upload via the resumable protocol: `Content-Length`, 256 KiB-aligned chunks, `Content-Range`, 308 `Range` resume, retry with backoff; byte progress in the panel | P0 |
+| PG-56 | Playlist | Profile playlist by default; **With playlist…** can pick another playlist or none (only playlists the channel really has) | P0 |
+| PG-57 | Completion | `POST /youtube/uploads/report` then `POST /publish/jobs/{uid}/complete`; the panel links to the video and the YouTube cell can show the URL from the API | P0 |
+| PG-58 | Cancel | Cancel aborts the request, keeps the local file byte-identical and releases the reserved publish job; the row returns to its previous state | P0 |
+| PG-59 | Failure + retry | A readable reason (quota, token, metadata, network); the local file is kept; **Retry upload** reuses the failed publish job via `/publish/jobs/{uid}/retry` | P0 |
+| PG-60 | Disable reasons | No merged file, no connected channel, missing token, quota/plan error, legacy Camxora template, already uploaded, or another upload running | P0 |
+| PG-61 | Auto-Upload | Stays disabled exactly as 1.7.1; the Music toggle remains disabled and unchecked and E2E pins both the control and the absence of automatic requests | P0 |
+| PG-62 | Secrets | The access token, refresh token, channel email and cookies never reach the DOM, logs or diagnostics | P0 |
+
 ---
 
 ## 5. States
@@ -169,6 +198,11 @@ The toolbar sits on the page background, not inside a card.
 | PG-T7 | Empty | Empty message + clear filters |
 | PG-T8 | Download queue | Appears/disappears with pending items |
 | PG-T9 | Live pipeline | Render/merge/reel stages update; retry only the failed stage; upload uses the existing flow; historical values still render |
+| PG-T10 | Manual upload (E2E) | Completed merged row → confirm → publish job → 3 chunked PUTs resuming at the 308 offset → report → complete → video link; nothing sent before the click |
+| PG-T11 | Cancel (E2E) | Cancel aborts mid-transfer, keeps the local file byte-identical, releases the publish job, never completes it |
+| PG-T12 | Failure + retry (E2E) | Provider 403 quota surfaces a readable reason, keeps the file, reports the failure, then `/retry` reuses the job and completes on a fresh session |
+| PG-T13 | Auto-Upload pin | The Music Auto-Upload toggle stays disabled and unchecked; no token/job/session request happens without a click |
+| PG-T14 | Secrets | The access token and account email are absent from the page body and the JSONL logs |
 
 ---
 
@@ -184,10 +218,24 @@ The toolbar sits on the page background, not inside a card.
 
 ## 8. Definition of Done
 
-- [ ] PG-01 … PG-49 implemented; all `P0` verified against sandbox.
+- [ ] PG-01 … PG-62 implemented; all `P0` verified against sandbox.
 - [ ] Table renders 200 rows without layout jank.
 - [ ] Polling stops when the page is hidden.
 - [ ] Manual recovery end-to-end verified with a real run folder.
-- [ ] PG-T1 … PG-T9 pass.
-- [ ] Render/merge/reel stages are live and retryable; upload uses the existing flow.
+- [ ] PG-T1 … PG-T14 pass.
+- [ ] Render/merge/reel stages are live and retryable; the manual upload is explicit and Auto-Upload stays off.
 - [ ] Visual baseline approved.
+
+### 8.1 Manual upload — current evidence (2026-11-19)
+
+- `node tests/e2e/youtube-upload.mjs` **PASS**: fixture API + local fake Google endpoint; a
+  1 MiB merged file uploaded in 3 × 256 KiB chunks resuming at byte 262 144, one publish job,
+  one report, one completion and a `youtube.com/watch?v=…` link.
+- Cancel left the local file byte-identical and sent no completion; the publish job was
+  cancelled server-side.
+- A provider 403 quota refusal surfaced a readable reason, kept the file, reported the failure,
+  and **Retry upload** reused the job via `/publish/jobs/{uid}/retry` and completed.
+- The Music Auto-Upload toggle is disabled and unchecked; the panel states Auto-Upload stays
+  off; the token and account email appear in neither the page body nor the logs.
+- Real Google credentials and live quota were **not** exercised in CI — see the remaining risk
+  in [`../08-RELEASE-2.0.0.md`](../08-RELEASE-2.0.0.md).
