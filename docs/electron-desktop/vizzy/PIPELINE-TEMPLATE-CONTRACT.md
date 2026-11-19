@@ -191,7 +191,7 @@ A repeat render of the same inputs must match at the accepted tolerance. Diverge
 (`tests/e2e/vizzy-templates.mjs` asserts semantic equality between `template.json` and the
 project the editor holds after Preview, ignoring Rea's runtime-only counters). The render uses
 the saved output size/fps and the run track's ffprobe duration; the E2E re-probes the MP4
-(h264/aac, 1920×1080, 60 frames, ~1.97 s for a 2 s WAV). **Not verified yet:** frame-identical
+(h264/aac, 1920×1080, 60 frames, ~1.97 s for a 2 s WAV, 10.1–11.1 s wall clock). **Not verified yet:** frame-identical
 determinism across repeat renders and the 91-template render matrix.
 
 ---

@@ -34,7 +34,7 @@
 | Save as video template | strip action → `vizzy:template-options` pre-fills Audio/Background/Logo/Title/Artist/Album/Palette from `detectBindings()` → `vizzy:save-template` writes `template.json` + `pipeline.json` + `thumbnail.png` atomically; duplicate/incompatible bindings and a kind/aspect mismatch block the save; `tests/e2e/vizzy-templates.mjs` |
 | Templates panel | rail listing thumbnail, name, kind, output size and date; Preview loads the saved project via `vizzy:open-project-json`; Delete is confirmed and emits `video-templates:changed`; empty state points at Save preview |
 | Preview parity (project) | the editor's project after Preview is semantically identical to the saved `template.json` (runtime-only counters ignored) |
-| Render one saved template | Templates rail Render → native audio pick → `vizzy:render-template` → plan from `buildPipelineRenderPlan()` → saved project loaded → run audio streamed over `camxora-media://` into the editor's loader → existing exporter → `renders/<template-slug>-<timestamp>.mp4`; measured 1920×1080/30, 2 s WAV: 60 frames, h264+aac, 1.97 s, 2.0 MB, ~10.6 s wall clock |
+| Render one saved template | Templates rail Render → native audio pick → `vizzy:render-template` → plan from `buildPipelineRenderPlan()` → saved project loaded → run audio streamed over `camxora-media://` into the editor's loader → existing exporter → `renders/<template-slug>-<timestamp>.mp4`; measured 1920×1080/30, 2 s WAV: 60 frames, h264+aac, 1.97 s, ~2.0 MB, 10.1–11.1 s wall clock |
 | 91-template library | Templates rail **Library** → editor's own Creations browser; `tests/e2e/vizzy-library.mjs` asserts 91 rows, manifest 200, a loaded thumbnail 200 and one template load (nebula-staff, 5 items) |
 | No leaks | project file and editor DOM contain no session email and no token fields |
 
@@ -58,7 +58,7 @@ all git-ignored, produced by the E2E runs.
 | Stage fps in the harness | 27 fps at 534×300, synthetic audio source |
 | Export (fixture, 480×270, 30 fps, 2 s, H.264) | 2.4–4.7 s wall clock, ~400–450 KB, ffprobe `h264` + `aac`, 60 frames, 1.97 s |
 | Export CPU floor | the reference wasm encoder runs one frame at a time; 1080p30 is roughly 8–10× slower than 480p30 |
-| Saved-template render (1920×1080, 30 fps, 2 s WAV, H.264) | 10.6 s wall clock, 60 frames, 1.97 s, 2.0 MB, ffprobe `h264` + `aac` |
+| Saved-template render (1920×1080, 30 fps, 2 s WAV, H.264) | 10.1–11.1 s wall clock, 60 frames, 1.97 s, ~2.0 MB, ffprobe `h264` + `aac` |
 | Template save | `capturePage()` thumbnail 343 KB; `template.json` + `pipeline.json` written atomically |
 
 ---
