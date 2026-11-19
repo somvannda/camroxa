@@ -1,7 +1,7 @@
 # Pipeline Template Contract — “Save the preview as a video template”
 
 > **Document ID:** CAMXORA-ED-VZ-PIPE
-> **Status:** Required for P7
+> **Status:** Save, preview and single-template render implemented (P7); batch, merge, reel and upload remain stubbed
 > **Implements:** `09-PIPELINE-AUTOMATION.md` §3–§4
 > **Updated:** 2026-11-19
 
@@ -23,6 +23,24 @@ template language.
 
 **No legacy Camxora video templates** are accepted. They are a different schema and are not
 migrated in 2.0.0.
+
+### 1.1 Implemented today (2026-11-19)
+
+| Step | Mechanism |
+|---|---|
+| Save | Vizzy strip → **Save as video template** → `vizzy:template-options` (live `readSnapshot()` + `detectBindings()` + compatible node lists) → modal → `vizzy:save-template` (shell-only, zod) → host re-reads the live snapshot, captures `webContents.capturePage()` as `thumbnail.png`, validates the user's bindings and writes `template.json` + `pipeline.json` + `thumbnail.png` **atomically** through `saveVideoTemplate()`. |
+| List / manage | **Templates** rail in Vizzy: thumbnail, name, kind, output size, created date. Preview loads the saved `template.json` into the editor with `vizzy:open-project-json` (no re-creation). Delete is confirmed and emits `video-templates:changed`, which refreshes the rail and the Settings query. |
+| Library | **Library** in the Templates rail runs the editor's own `editorOpenCreations()`; the staged 91-template pack is served from `CAMXORA_VIZZY_LIBRARY_DIR` → `resolveLibraryRoot()` by the `camxora-vizzy://` handler. |
+| Render | Templates rail **Render** → `window.camxora.files.pick` → `vizzy:render-template` → `buildPipelineRenderPlan()` applies the run bindings to the saved project, `openProjectJson()` loads it, `loadAudioTrack()` streams the run file over `camxora-media://` into the editor's own loader, then the existing `exportVideo()` path renders `renders/<template-slug>-<timestamp>.mp4` with progress. |
+
+`vizzy:render-template` fails loudly (never a silent fallback) for a missing template, a
+kind/aspect mismatch, a missing or empty audio file, an unreadable audio probe, a missing
+background/logo file, a missing bound node, an editor that is not ready, and an encoder
+failure.
+
+**Not built (still stubbed):** batch/queue orchestration, long-form merge, the reel variant,
+YouTube upload from the pipeline, and the headless/offscreen renderer. One job at a time; the
+job needs the attached, ready editor.
 
 ---
 
@@ -92,7 +110,7 @@ confirms or overrides.
 | Title | text node named title/heading/song → first text node → none |
 | Artist | text node named artist/author → none |
 | Album | text node named album → none |
-| Palette | spectrum/image nodes with colour controllers → none |
+| Palette | nodes with a writable colour property (`props.color` or `props.fillStyle`) → none |
 
 Rules:
 
@@ -126,8 +144,14 @@ Rules:
 
 - Defaults come from the project resolution; the kind determines long vs reel.
 - The save writes atomically (`template.json` + `pipeline.json` + thumbnail).
-- Saving an existing template offers Save / Save as new.
-- A validation summary lists missing required bindings and incompatible nodes.
+- The dialog blocks a name/aspect mismatch (`Long` requires landscape, `Reel` portrait; square
+  projects may use either), a duplicate node and an incompatible node with a field-level error.
+- The native editor view is hidden while the modal is open (a `WebContentsView` paints above
+  shell DOM) and re-shown for the thumbnail capture and after close.
+- Detection is a pre-fill, not a policy: every optional binding can be cleared or overridden
+  before saving, and the host re-validates the selection against the live snapshot.
+- "Save as new" is the default behaviour: each save gets a unique slug id, so an existing
+  template is never overwritten.
 
 ### 4.1 Selecting a template per profile
 
@@ -136,7 +160,7 @@ The existing profile publication fields `video_template_id` and `reel_template_i
 id:
 
 - Settings → Publication gets **Video template** and **Reel template** pickers backed by
-  `vizzy:templates:list`; they show name, kind and output size, and an empty state that opens
+  `video-templates:list`; they show name, kind and output size, and an empty state that opens
   Vizzy.
 - Saving a profile keeps the current ids; choosing a template writes the id in the same PUT.
 - The pipeline resolves the profile's id to a saved template. A missing id, a deleted template,
@@ -163,6 +187,13 @@ The pipeline must match the preview the user saved:
 
 A repeat render of the same inputs must match at the accepted tolerance. Divergence is a bug.
 
+**Verified today:** the save → preview → render round-trip uses the same project JSON
+(`tests/e2e/vizzy-templates.mjs` asserts semantic equality between `template.json` and the
+project the editor holds after Preview, ignoring Rea's runtime-only counters). The render uses
+the saved output size/fps and the run track's ffprobe duration; the E2E re-probes the MP4
+(h264/aac, 1920×1080, 60 frames, ~1.97 s for a 2 s WAV). **Not verified yet:** frame-identical
+determinism across repeat renders and the 91-template render matrix.
+
 ---
 
 ## 6. Error and compatibility states
@@ -176,6 +207,13 @@ A repeat render of the same inputs must match at the accepted tolerance. Diverge
 | Missing asset | “The template references a missing image/video.” + Open template |
 | Pipeline unavailable | “Pipeline integration is not available in this build.” (never a silent no-op) |
 
+Exact IPC error codes returned by `vizzy:render-template` today: `TEMPLATE_NOT_FOUND`,
+`TEMPLATE_KIND_MISMATCH`, `AUDIO_FILE_MISSING`, `AUDIO_FILE_EMPTY`, `AUDIO_UNREADABLE`,
+`TEMPLATE_ASSET_MISSING`, `TEMPLATE_BINDING_MISSING`, `VIZZY_NOT_READY`, `VIZZY_NOT_ATTACHED`,
+`VIZZY_RENDER_FAILED`; `vizzy:save-template` returns `TEMPLATE_INVALID` (with `detail.fields`)
+or `TEMPLATE_SAVE_FAILED`. The message is shown verbatim in the rail/dialog. Old Camxora
+templates never reach these paths because only Vizzy template directories are listed.
+
 ---
 
 ## 7. All 91 templates
@@ -186,6 +224,12 @@ Every one of the 91 templates can be opened, previewed and saved as a video temp
 - templates without a placeholder still render as previewed with the run audio;
 - the user can add bindings later;
 - a template that cannot be rendered reports the exact missing feature/asset.
+
+The staged pack is served by the `camxora-vizzy://` handler from
+`resolveLibraryRoot()` (`CAMXORA_VIZZY_LIBRARY_DIR` → packaged resources → app directory).
+The Vizzy **Templates → Library** action opens the editor's own Creations browser, which lists
+all 91 with real thumbnails; `tests/e2e/vizzy-library.mjs` asserts the manifest, all 91 rows,
+a loaded thumbnail and one template load.
 
 ---
 
@@ -206,20 +250,28 @@ Every one of the 91 templates can be opened, previewed and saved as a video temp
 | PIPE-T11 | Profile selection | A saved template id round-trips through Settings and the pipeline resolves it |
 | PIPE-T12 | Missing/deleted selection | An explicit error is shown; no silent fallback |
 
+Coverage today: `tests/e2e/vizzy-templates.mjs` covers T1–T5 (including the duplicate guard
+and a real render), `tests/unit/vizzy-template-model.test.ts` covers detection, option lists,
+duplicate/incompatible errors and kind inference, and `tests/e2e/vizzy-library.mjs` covers the
+91-template catalogue, thumbnails and one load. T7's frame-level tolerance, T8's reel branch,
+T9's old-template rejection UI, T10's 91-save matrix and T11/T12's profile round-trip are still
+open.
+
 ---
 
 ## 9. Implementation checklist
 
-- [ ] `pipeline.json` schema + Zod validation
-- [ ] Save dialog with auto-detection and overrides
-- [ ] Atomic write + thumbnail
-- [ ] Template library entry with kind and bindings
-- [ ] Profile Video/Reel pickers read saved templates
-- [ ] Pipeline loader resolves bindings and missing-node errors
-- [ ] Preview-parity test
-- [ ] 91-template save matrix
-- [ ] Old Camxora template rejection
-- [ ] Docs and support copy
+- [x] `pipeline.json` schema + Zod validation
+- [x] Save dialog with auto-detection and overrides
+- [x] Atomic write + thumbnail
+- [x] Template library entry with kind and bindings
+- [x] Profile Video/Reel pickers read saved templates (Publication)
+- [x] Single-template loader resolves bindings and missing-node errors
+- [ ] Preview-parity test (semantic project verified; frame-level tolerance open)
+- [ ] 91-template save matrix (catalogue + one load verified)
+- [x] Old Camxora template rejection (never listed; policy copy)
+- [x] Docs and support copy
+- [ ] Batch render, merge, reel, upload (next milestone)
 
 ---
 
