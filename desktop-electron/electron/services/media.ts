@@ -18,6 +18,7 @@ export function registerMediaScheme(): void {
         secure: true,
         supportFetchAPI: true,
         stream: true,
+        corsEnabled: true,
       },
     },
   ]);
@@ -83,6 +84,8 @@ export async function handleMediaRequest(request: Request): Promise<Response> {
       "Cache-Control": "private, max-age=300",
       // Required when the Vizzy document is served with COEP: require-corp.
       "Cross-Origin-Resource-Policy": "cross-origin",
+      // The shell may load from file:// in production; the token is the capability.
+      "Access-Control-Allow-Origin": "*",
     };
     if (range) headers["Content-Range"] = `bytes ${start}-${end}/${stat.size}`;
 

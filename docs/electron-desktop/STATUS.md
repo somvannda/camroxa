@@ -67,9 +67,11 @@ Merge order and file ownership: [`WORKSTREAMS.md`](WORKSTREAMS.md).
 - **Recommendation:** `camxora-vizzy://` custom protocol primary, tokenised loopback fallback.
 - **Measured:** `crossOriginIsolated`, SharedArrayBuffer/Atomics, WebGL2 draw, classic+module
   worker, WASM/SIMD all true on both transports.
-- **Gap fixed:** `camxora-media://` now sends `Cross-Origin-Resource-Policy: cross-origin`.
-- **Still to prove:** `Range`/HEAD seeking for `<video>`, real Rea bundle, macOS/Linux and
-  SwiftShader.
+- **Gap fixed:** `camxora-media://` now sends `Cross-Origin-Resource-Policy: cross-origin`
+  and `Access-Control-Allow-Origin: *`; CORS enabled on the scheme.
+- **Range/HEAD verified:** `tests/e2e/media.mjs` returns HTTP 206 for `bytes=10-19/256`,
+  correct bytes, and a valid HEAD response.
+- **Still to prove:** real Rea bundle, macOS/Linux and SwiftShader.
 - Details: [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md).
 
 ## Remaining before Phase 0 exit
