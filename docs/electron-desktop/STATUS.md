@@ -88,7 +88,7 @@ This is a backend contract decision, not a renderer bug.
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
 | Settings | **Running** — Profiles, Publication, Preferences |
-| Vizzy | Host spike merged; full port remains P7 |
+| Vizzy | **Running** — real Rea editor host, native project open/save; host spike merged |
 
 Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /
 #0f1322 / #a855f7 palette, 28 px page titles, gradient primary CTA. Pages are lazy-loaded; the
