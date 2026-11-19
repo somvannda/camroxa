@@ -2,8 +2,8 @@
 
 > **Integrator worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Integrator branch:** `desktop/electron-v1`
-> **Base commit:** `fa82fda`
-> **Updated:** 2026-11-19 (wave 2)
+> **Base commit:** `1e70f6a`
+> **Updated:** 2026-11-19 (wave 3)
 
 The project follows the repo rule: **one agent per worktree**. Agents do not share a
 directory and do not push. The integrator reviews and merges each branch in order.
@@ -15,15 +15,15 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | Worktree | Branch | Agent scope | Status |
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
-| `Camxora Desktop Settings` | `desktop/settings` | P2 Settings core: Profiles, Publication, Preferences | Running |
 | `Camxora Desktop Vizzy` | `desktop/vizzy` | P7 real editor host, native project I/O, save/open bridge | Running |
+| ~~`Camxora Desktop Settings`~~ | ~~`desktop/settings`~~ | P2 Settings core: Profiles, Publication, Preferences | **Merged** |
 | ~~`Camxora Desktop Progress`~~ | ~~`desktop/progress`~~ | P3 Progress page | **Merged** |
 | ~~`Camxora Desktop Music`~~ | ~~`desktop/music`~~ | P4 Music page | **Merged** |
 | ~~`Camxora Desktop Image Marketplace`~~ | ~~`desktop/image-marketplace`~~ | P5 Image + P6 Marketplace | **Merged** |
 
-Wave 1 (Auth, Account, Vizzy Host) and wave 2 (Progress, Music, Image/Marketplace) are merged
-and removed. Settings remains, then the next wave starts from the latest
-`desktop/electron-v1` commit.
+Wave 1 (Auth, Account, Vizzy Host), wave 2 (Progress, Music, Image/Marketplace) and
+Settings are merged and removed. Vizzy is the only active page workstream; new work starts
+from the latest `desktop/electron-v1` commit.
 
 Create future worktrees from the latest integrator commit, not from an older page branch.
 

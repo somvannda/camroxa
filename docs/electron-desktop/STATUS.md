@@ -3,7 +3,7 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1 auth complete (except update gate); P2 Dashboard/Profile merged
+> **Phase:** P1 auth complete (update gate shipped); P2 Dashboard/Profile/Settings merged; P3–P6 pages merged
 
 ---
 
@@ -23,6 +23,7 @@
 | **P1 auth** | Email/password, remember-me, Google OAuth loopback, paid gate, email-confirmation gate, onboarding gate, sign-out, dev/E2E bypass |
 | **P1 updates** | HTTPS release manifest, mandatory blocking gate, optional update card, download hand-off, unit + E2E coverage |
 | **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
+| **P2 settings** | Profiles (list/create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics) |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 
 ### Verification
@@ -30,9 +31,9 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               132/132 PASS
-npm run build          PASS (shell 330 kB / 102 kB gzip, pages split)
-npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, update)
+npm test               147/147 PASS
+npm run build          PASS (shell 331 kB / 103 kB gzip, pages split)
+npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
@@ -69,13 +70,29 @@ This is a backend contract decision, not a renderer bug.
 - `6fdaef8` media range/CORS verification
 - Auth merge (`c771a18`) — Google OAuth + bootstrap gates
 - Account merge (`ed6a7d5`) — Dashboard + Profile
-- Working tree has the final polish fixes pending commit
+- `a982e63` brand alignment
+- Wave 2: Progress `8d52316`, Music `950ae2b`, Image/Marketplace `4282787`
+- `e908a88` Font Awesome sweep + lazy routes
+- `e25f67e` mandatory update gate
+- `886d82d` window title/build stamp
+- Settings merge `9c2b788` (`b568624` on `desktop/settings`)
+- `1e70f6a` Settings brand sweep + settings E2E in the chain
 
 ## Remaining
 
 - P1: startup/bootstrap polish only; the mandatory update gate is complete.
-- P2: Settings core (profiles, publication, preferences) — **running** in `desktop/settings`.
-- P3–P6, P7 integration and P8–P9 remain.
+- P5/P6/P7: Vizzy integration (real editor host, project I/O, pipeline) — **running** in `desktop/vizzy`.
+- P8–P9 remain.
+
+### Settings follow-ups
+
+- Unsaved-settings navigation guard is `beforeunload` only; blocking sidebar navigation needs a
+  shared router guard.
+- Device-local paths (`ffmpegPath`, `sunoOutputDir`) live in account `/settings`; a local store
+  would match 1.7.1.
+- Diagnostics prepare a local reference; upload is not enabled.
+- No IPC yet to measure/clear the analysis cache or probe a custom FFmpeg binary.
+- `PUT /profiles/{id}` treats `null` as “leave unchanged”, so logo/cover cannot be removed.
 
 ## Merged pages
 
@@ -87,7 +104,7 @@ This is a backend contract decision, not a renderer bug.
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
-| Settings | **Running** — Profiles, Publication, Preferences |
+| Settings | **Merged** — Profiles (create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics), deep link |
 | Vizzy | **Running** — real Rea editor host, native project open/save; host spike merged |
 
 Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /
