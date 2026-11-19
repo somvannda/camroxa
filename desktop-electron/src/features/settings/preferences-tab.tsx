@@ -346,8 +346,8 @@ export function PreferencesTab({ workspace }: { workspace: SettingsWorkspace }) 
         </div>
         {workerWarning ? <Note tone="warning">{workerWarning}</Note> : null}
         <Note>
-          Worker counts are saved with your account settings. The rendering pipeline arrives in P7 and
-          reads these values when a batch runs; until then they do not change any running work.
+          Worker counts are saved with your account settings. The current renderer processes one
+          video at a time; these values are kept for future concurrency.
         </Note>
       </Section>
 
