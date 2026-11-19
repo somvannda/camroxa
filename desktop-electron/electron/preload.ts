@@ -18,6 +18,7 @@ const bridge = {
     login: (email: string, password: string, remember = true) =>
       invoke("auth:login", { email, password, remember }),
     google: (remember = true) => invoke("auth:google", { remember }),
+    googleAvailable: () => invoke("auth:google-available"),
     cancelGoogle: () => invoke("auth:google-cancel"),
     bootstrap: () => invoke("auth:bootstrap"),
     restore: () => invoke("auth:restore"),

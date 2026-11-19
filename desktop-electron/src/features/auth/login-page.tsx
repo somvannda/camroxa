@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import logoUrl from "../../assets/brand/camxora-logo.svg";
 import { Icon } from "../../components/icon";
 import type { ApiError } from "../../../electron/shared/types";
@@ -51,6 +51,10 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleWaiting, setGoogleWaiting] = useState(false);
+  const [googleAvailability, setGoogleAvailability] = useState<{
+    available: boolean;
+    message: string | null;
+  } | null>(null);
   const [paidGate, setPaidGate] = useState<{ message: string; portalUrl: string } | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
 
@@ -59,6 +63,21 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
       ? { message: notice.message ?? "Desktop studio requires a paid plan.", portalUrl: notice.portalUrl ?? portalUrl }
       : null;
   const gate = paidGate ?? noticePaid;
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.camxora?.auth
+      ?.googleAvailable?.()
+      .then((result) => {
+        if (!cancelled && result.ok) setGoogleAvailability(result.data);
+      })
+      .catch(() => {
+        /* keep the button enabled on a failed probe */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function openAccountPortal(url: string) {
     setError("");
@@ -231,13 +250,19 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
           <button
             type="button"
             className="flex h-[46px] w-full items-center justify-center gap-2.5 rounded-control border border-border bg-surface-2 text-body-sm font-semibold text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={busy}
+            disabled={busy || googleAvailability?.available === false}
             onClick={() => void startGoogle()}
           >
             <GoogleGlyph />
             Continue with Google
           </button>
         )}
+
+        {googleAvailability?.available === false && googleAvailability.message ? (
+          <p className="text-[11.5px] leading-5 text-warning" role="status">
+            {googleAvailability.message}
+          </p>
+        ) : null}
 
         <div className="flex items-center gap-3 text-caption uppercase tracking-[0.14em] text-text-muted">
           <span className="h-px flex-1 bg-border" />

@@ -1,12 +1,13 @@
 import { ipcMain, shell } from "electron";
 import { z } from "zod";
 import {
+  ApiClientError,
   bootstrapSession,
   completeGoogleLogin,
   login,
   requestGoogleAuthUrl,
 } from "../services/api-client";
-import { GoogleLoopbackServer, GoogleOAuthError } from "../services/google-oauth";
+import { DEFAULT_LOOPBACK_PORT, GoogleLoopbackServer, GoogleOAuthError } from "../services/google-oauth";
 import { logger } from "../services/logger";
 import { sessionStore } from "../services/session";
 import { fail, ok } from "../shared/types";
@@ -94,13 +95,29 @@ async function runGoogleFlow(remember: boolean) {
   }
 }
 
-export function registerAuthIpc(): void {
-  ipcMain.handle("auth:login", async (_event, payload: unknown) => {
+export function registerAuthIpc(): void {  ipcMain.handle("auth:login", async (_event, payload: unknown) => {
     try {
       const input = loginSchema.parse(payload);
       return ok(await login(input.email, input.password, input.remember));
     } catch (error) {
       return toAuthError(error);
+    }
+  });
+
+  ipcMain.handle("auth:google-available", async () => {
+    try {
+      await requestGoogleAuthUrl(DEFAULT_LOOPBACK_PORT);
+      return ok({ available: true, message: null });
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 503) {
+        return ok({
+          available: false,
+          message: "Google sign-in is not configured on this server. Use email and password.",
+        });
+      }
+      // Transient/network/unknown states keep the button usable: clicking gives
+      // the specific failure instead of disabling sign-in on a bad probe.
+      return ok({ available: true, message: null });
     }
   });
 

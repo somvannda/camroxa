@@ -55,6 +55,7 @@ export interface CamxoraBridge {
   auth: {
     login(email: string, password: string, remember?: boolean): Promise<IpcResult<BootstrapResult>>;
     google(remember?: boolean): Promise<IpcResult<BootstrapResult>>;
+    googleAvailable(): Promise<IpcResult<{ available: boolean; message: string | null }>>;
     cancelGoogle(): Promise<IpcResult<boolean>>;
     bootstrap(): Promise<IpcResult<BootstrapResult>>;
     restore(): Promise<IpcResult<BootstrapResult>>;
