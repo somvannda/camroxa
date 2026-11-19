@@ -2,14 +2,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, StatusDot } from "../../components/status";
 import { Button } from "../../components/button";
 import { Icon } from "../../components/icon";
+import { toast } from "../../components/toast";
+import type { VizzyTemplateDraftInfo } from "../../../electron/shared/types";
 import { VizzyExportMenu } from "./vizzy-export-menu";
 import { VizzyExportStatus } from "./vizzy-export-status";
 import { VizzyRendersPanel } from "./vizzy-renders-panel";
+import { VizzyTemplateDialog } from "./vizzy-template-dialog";
+import { VizzyTemplatesPanel } from "./vizzy-templates-panel";
 import { useVizzyExport } from "./use-vizzy-export";
 import { useVizzyHost } from "./use-vizzy-host";
 import { useVizzyRenders } from "./use-vizzy-renders";
+import { useVizzyTemplates } from "./use-vizzy-templates";
+import type { TemplateDraftState } from "./vizzy-template-model";
 
-type Panel = "export" | "renders" | null;
+type Panel = "export" | "renders" | "templates" | null;
 
 /**
  * Vizzy page: a thin shell strip plus the hosted Rea/Vizzy editor.
@@ -18,9 +24,10 @@ type Panel = "export" | "renders" | null;
  * positioned over the rectangle below. It is not an iframe and not React; the
  * strip is the only Camxora UI on the page.
  *
- * Export and Renders open in a rail beside the editor, not on top of it: a
- * native child view always paints over DOM, so a floating popover would be
+ * Export, Renders and Templates open in a rail beside the editor, not on top of
+ * it: a native child view always paints over DOM, so a floating popover would be
  * hidden. The rail shrinks the editor column and the host re-places the view.
+ * The only modal (Save as video template) hides the view while it is open.
  */
 export function VizzyPage() {
   const { state, busy, closed, containerRef, save, open, reload, closeEditor, openEditor } =
@@ -28,12 +35,23 @@ export function VizzyPage() {
   const exporter = useVizzyExport();
   const [panel, setPanel] = useState<Panel>(null);
   const renders = useVizzyRenders(panel === "renders");
-  const {
-    refresh: refreshRenders,
-    reveal: revealRender,
-    play: playRender,
-    remove: removeRender,
-  } = renders;
+  const templates = useVizzyTemplates(panel === "templates");
+  const { refresh: refreshRenders, reveal: revealRender, play: playRender, remove: removeRender } =
+    renders;
+  const { refresh: refreshTemplates, preview: previewTemplateOpen, openLibrary } = templates;
+
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateInfo, setTemplateInfo] = useState<VizzyTemplateDraftInfo | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateSaveError, setTemplateSaveError] = useState<string | null>(null);
+  const [renderingTemplateId, setRenderingTemplateId] = useState<string | null>(null);
+  const [templateRenderResult, setTemplateRenderResult] = useState<{
+    templateId: string;
+    name: string;
+  } | null>(null);
+  const [templateRenderError, setTemplateRenderError] = useState<string | null>(null);
 
   const attached = state.attached && !closed;
   const saveLabel = state.dirty ? "Unsaved changes" : "Saved";
@@ -42,6 +60,14 @@ export function VizzyPage() {
   useEffect(() => {
     if (exporter.result && panel === "renders") void refreshRenders();
   }, [exporter.result, panel, refreshRenders]);
+
+  // A dialog can be left open by a route change; never leave the view hidden.
+  useEffect(
+    () => () => {
+      void window.camxora?.vizzy?.setVisible(true);
+    },
+    [],
+  );
 
   const reveal = useCallback(
     (name: string) => {
@@ -53,6 +79,129 @@ export function VizzyPage() {
   const togglePanel = (next: Panel): void => {
     setPanel((current) => (current === next ? null : next));
   };
+
+  /* video templates -------------------------------------------------- */
+
+  const openTemplateDialog = useCallback(async () => {
+    if (!attached || exporter.running) return;
+    setTemplateDialogOpen(true);
+    setTemplateInfo(null);
+    setTemplateLoadError(null);
+    setTemplateSaveError(null);
+    setTemplateLoading(true);
+    // A WebContentsView paints above shell DOM; hide it while the modal is up.
+    void window.camxora?.vizzy?.setVisible(false);
+    try {
+      const response = await window.camxora.vizzy.templateOptions();
+      if (response.ok) {
+        setTemplateInfo(response.data);
+      } else {
+        setTemplateLoadError(response.error.message);
+      }
+    } catch (cause) {
+      setTemplateLoadError(
+        cause instanceof Error ? cause.message : "Could not read the current preview.",
+      );
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, [attached, exporter.running]);
+
+  const closeTemplateDialog = useCallback(() => {
+    if (templateSaving) return;
+    setTemplateDialogOpen(false);
+    void window.camxora?.vizzy?.setVisible(true);
+  }, [templateSaving]);
+
+  const saveTemplate = useCallback(
+    async (draft: TemplateDraftState) => {
+      setTemplateSaving(true);
+      setTemplateSaveError(null);
+      try {
+        const response = await window.camxora.vizzy.saveTemplate({
+          name: draft.name.trim(),
+          kind: draft.kind,
+          bindings: draft.selection,
+        });
+        if (!response.ok) {
+          setTemplateSaveError(response.error.message);
+          return;
+        }
+        setTemplateDialogOpen(false);
+        void window.camxora?.vizzy?.setVisible(true);
+        toast(`Saved video template ${response.data.name}.`, "success");
+        setPanel("templates");
+        await refreshTemplates();
+      } catch (cause) {
+        setTemplateSaveError(
+          cause instanceof Error ? cause.message : "The template could not be saved.",
+        );
+      } finally {
+        setTemplateSaving(false);
+      }
+    },
+    [refreshTemplates],
+  );
+
+  const previewTemplate = useCallback(
+    async (id: string) => {
+      const opened = await previewTemplateOpen(id);
+      if (!opened) return;
+      toast(`Opened ${opened.name} in the editor.`, "success");
+      setPanel(null);
+    },
+    [previewTemplateOpen],
+  );
+
+  const openTemplateLibrary = useCallback(async () => {
+    const opened = await openLibrary();
+    if (opened) toast("Creations browser opened in the editor.", "info");
+  }, [openLibrary]);
+
+  const renderTemplate = useCallback(
+    async (id: string) => {
+      if (exporter.running) return;
+      setTemplateRenderError(null);
+      setTemplateRenderResult(null);
+      const picked = await window.camxora.files.pick({
+        kind: "file",
+        title: "Choose the run audio",
+        filters: [
+          { name: "Audio", extensions: ["mp3", "wav", "m4a", "flac", "ogg"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+      });
+      if (!picked.ok) {
+        setTemplateRenderError(picked.error.message);
+        return;
+      }
+      const audioPath = picked.data[0];
+      if (!audioPath) return;
+      setRenderingTemplateId(id);
+      const outcome = await exporter.startTemplate({ templateId: id, audioPath });
+      setRenderingTemplateId(null);
+      if (outcome.status === "done" && outcome.result) {
+        setTemplateRenderResult({ templateId: id, name: outcome.result.name });
+        toast(`Rendered ${outcome.result.name}.`, "success");
+        void refreshRenders();
+      } else if (outcome.status === "failed") {
+        setTemplateRenderError(outcome.message ?? "The render failed.");
+      }
+    },
+    [exporter, refreshRenders],
+  );
+
+  const deleteTemplate = useCallback(
+    async (id: string) => {
+      const removed = await templates.remove(id);
+      if (removed) {
+        toast("Video template deleted.", "success");
+        if (templateRenderResult?.templateId === id) setTemplateRenderResult(null);
+      }
+      return removed;
+    },
+    [templates, templateRenderResult],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -89,6 +238,15 @@ export function VizzyPage() {
             Export
           </Button>
           <Button
+            variant="secondary"
+            onClick={() => void openTemplateDialog()}
+            disabled={!attached || exporter.running}
+            data-testid="vizzy-template-open"
+          >
+            <Icon name="fa-floppy-disk" size={12} />
+            Save as template
+          </Button>
+          <Button
             variant="ghost"
             onClick={() => togglePanel("renders")}
             aria-expanded={panel === "renders"}
@@ -96,6 +254,15 @@ export function VizzyPage() {
           >
             <Icon name="fa-photo-film" size={12} />
             Renders
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => togglePanel("templates")}
+            aria-expanded={panel === "templates"}
+            data-testid="vizzy-templates-open"
+          >
+            <Icon name="fa-layer-group" size={12} />
+            Templates
           </Button>
           <span className="h-4 w-px bg-border" />
           <Button
@@ -190,6 +357,24 @@ export function VizzyPage() {
                 onReveal={reveal}
                 onOpenRenders={() => setPanel("renders")}
               />
+            ) : panel === "templates" ? (
+              <VizzyTemplatesPanel
+                items={templates.items}
+                loading={templates.loading}
+                error={templates.error}
+                running={exporter.running}
+                progress={exporter.progress}
+                renderingId={renderingTemplateId}
+                renderResult={templateRenderResult}
+                renderError={templateRenderError}
+                onClose={() => setPanel(null)}
+                onRefresh={() => void refreshTemplates()}
+                onSaveCurrent={() => void openTemplateDialog()}
+                onPreview={(id) => void previewTemplate(id)}
+                onRender={(id) => void renderTemplate(id)}
+                onDelete={deleteTemplate}
+                onLibrary={() => void openTemplateLibrary()}
+              />
             ) : (
               <VizzyRendersPanel
                 items={renders.items}
@@ -205,6 +390,17 @@ export function VizzyPage() {
           </aside>
         ) : null}
       </div>
+
+      <VizzyTemplateDialog
+        open={templateDialogOpen}
+        info={templateInfo}
+        loading={templateLoading}
+        loadError={templateLoadError}
+        saving={templateSaving}
+        error={templateSaveError}
+        onClose={closeTemplateDialog}
+        onSave={(draft) => void saveTemplate(draft)}
+      />
     </div>
   );
 }

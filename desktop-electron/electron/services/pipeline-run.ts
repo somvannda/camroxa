@@ -79,7 +79,8 @@ export function buildPipelineRenderPlan(
       height,
       fps,
       codec: "h264",
-      bitrate: 12_000_000,
+      /** Mbps, matching the editor exporter (`0` = CRF only). */
+      bitrate: 12,
       crf: 18,
       audioBitrate: 192,
       start: 0,

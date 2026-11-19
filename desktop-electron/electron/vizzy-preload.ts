@@ -59,6 +59,7 @@ type VizzyHostCommand =
       json: string;
     }
   | { v: 1; type: "project-saved"; path: string; name: string }
+  | { v: 1; type: "load-audio"; requestId: string; name: string; url: string }
   | { v: 1; type: "export-run"; jobId: string; settings: VizzyExportSettings }
   | { v: 1; type: "export-cancel"; jobId: string };
 
@@ -68,6 +69,7 @@ interface HostMessage {
   requestId?: string;
   path?: string;
   name?: string;
+  url?: string;
   json?: string;
   jobId?: string;
   settings?: Partial<VizzyExportSettings>;
@@ -99,6 +101,22 @@ function toCommand(message: HostMessage): VizzyHostCommand | null {
   }
   if (message.type === "vizzy:project-saved" && typeof message.path === "string") {
     return { v: 1, type: "project-saved", path: message.path, name: "" };
+  }
+  if (message.type === "vizzy:load-audio") {
+    if (
+      typeof message.requestId !== "string" ||
+      typeof message.name !== "string" ||
+      typeof message.url !== "string"
+    ) {
+      return null;
+    }
+    return {
+      v: 1,
+      type: "load-audio",
+      requestId: message.requestId,
+      name: message.name,
+      url: message.url,
+    };
   }
   if (message.type === "vizzy:export-run" && typeof message.jobId === "string") {
     const settings = message.settings ?? {};

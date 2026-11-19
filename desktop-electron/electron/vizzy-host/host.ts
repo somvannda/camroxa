@@ -28,7 +28,7 @@ import type {
 } from "../shared/types";
 import { probe } from "../services/ffmpeg";
 import { logger } from "../services/logger";
-import { createMediaUrl } from "../services/media";
+import { allowPickedFile, createMediaUrl } from "../services/media";
 import { VIZZY_INDEX_URL } from "./assets";
 import { createVizzyBridge, type VizzyBridge } from "./bridge";
 import {
@@ -46,7 +46,7 @@ import {
   ensureRendersDir,
   listRenderFiles,
   managedRenderPath,
-  renderFileName,
+  renderFileNameForTemplate,
   resolveExportSettings,
   uniqueRenderPath,
   type ResolvedVizzyExportSettings,
@@ -62,6 +62,10 @@ const EXPORT_CANCEL_GRACE_MS = 5_000;
 const EXPORT_START_TIMEOUT_MS = 60_000;
 /** Hard ceiling for one export; a stuck encoder must not hold the file open. */
 const EXPORT_TIMEOUT_MS = 60 * 60_000;
+/** Decoding and analysing a run track may take a little while on a long song. */
+const AUDIO_LOAD_TIMEOUT_MS = 180_000;
+/** How long a re-shown view gets to paint before `capturePage()`. */
+const THUMBNAIL_PAINT_TIMEOUT_MS = 2_000;
 /** `camxora-vizzy://vizzy` — the only origin the editor may navigate to. */
 const VIZZY_ORIGIN = new URL(VIZZY_INDEX_URL).origin;
 
@@ -129,6 +133,8 @@ export class VizzyHost {
   private lastPath: string | null = null;
   private lastBounds: VizzyBounds | null = null;
   private attached = false;
+  /** Shell modals hide the native view, which always paints above DOM. */
+  private viewVisible = true;
   private exportJob: ExportJob | null = null;
   private state: VizzyState = {
     attached: false,
@@ -196,8 +202,24 @@ export class VizzyHost {
       window.contentView.addChildView(this.view!);
       this.attached = true;
     }
+    this.view!.setVisible(this.viewVisible);
     this.update({ attached: true, error: null });
     return this.getState();
+  }
+
+  /**
+   * Show or hide the native editor view.
+   *
+   * A `WebContentsView` always paints above the shell DOM, so a shell dialog or
+   * modal would be hidden behind it. Hiding the view keeps the editor process
+   * (and its project) alive while the modal is open; the next shell layout
+   * change re-applies the bounds and the visibility is restored explicitly.
+   */
+  setVisible(visible: boolean): void {
+    this.viewVisible = visible;
+    const view = this.view;
+    if (!view || view.webContents.isDestroyed()) return;
+    view.setVisible(visible);
   }
 
   setBounds(bounds: VizzyBounds): void {
@@ -338,6 +360,128 @@ export class VizzyHost {
     return this.saveProject(this.state.projectName || "untitled-project", json);
   }
 
+  /** The live project as the editor serialises it, plus its parsed snapshot. */
+  async readSnapshot(): Promise<{ json: string; snapshot: Record<string, unknown> }> {
+    const json = await this.readProjectJson();
+    const parsed = parseProjectText(json);
+    if (!parsed.ok) throw new Error(parsed.message);
+    return { json, snapshot: parsed.snapshot };
+  }
+
+  /**
+   * Everything "Save as video template" needs from the live preview: the exact
+   * snapshot JSON and a PNG capture of the editor.
+   *
+   * The shell hides the view while its modal is open, so re-show it briefly for
+   * the capture. `capturePage()` on a hidden view would be blank on Windows.
+   */
+  async captureTemplateSource(): Promise<{
+    json: string;
+    snapshot: Record<string, unknown>;
+    thumbnail: Uint8Array;
+  }> {
+    if (!this.hasView()) throw new Error("Open the Vizzy editor first.");
+    if (!this.state.ready) throw new Error("The Vizzy editor is still starting.");
+    const wasVisible = this.viewVisible;
+    if (!wasVisible) {
+      this.setVisible(true);
+      await this.waitForPaint();
+    }
+    try {
+      const { json, snapshot } = await this.readSnapshot();
+      const contents = this.view?.webContents;
+      if (!contents || contents.isDestroyed()) {
+        throw new Error("The Vizzy editor is not attached.");
+      }
+      const image = await contents.capturePage();
+      if (image.isEmpty()) {
+        throw new Error("The editor preview could not be captured for the thumbnail.");
+      }
+      return { json, snapshot, thumbnail: new Uint8Array(image.toPNG()) };
+    } finally {
+      if (!wasVisible) this.setVisible(false);
+    }
+  }
+
+  /**
+   * Load a saved project (a video template, or any studio snapshot) into the
+   * editor without going through a file on disk. This is the same command the
+   * native Open path sends; the editor applies it with `applyProjectSnapshot`.
+   */
+  async openProjectJson(input: {
+    json: string;
+    name: string;
+    path?: string | null;
+  }): Promise<VizzyOpenResult> {
+    if (!this.hasView() || !this.bridge) throw new Error("Open the Vizzy editor first.");
+    const read = parseProjectText(input.json);
+    if (!read.ok) throw new Error(read.message);
+    const header = read.snapshot.project as Record<string, unknown>;
+    const name =
+      input.name.trim() || (typeof header.name === "string" ? header.name : "Video template");
+    const resolved = input.path ? path.resolve(input.path) : null;
+    const ack = await this.sendOpenProject({ json: read.text, name, path: resolved ?? "" });
+    if (!ack.ok) throw new Error(ack.error ?? "The editor could not open that template.");
+    this.lastPath = resolved;
+    const nodeCount = Array.isArray(read.snapshot.nodes) ? read.snapshot.nodes.length : 0;
+    const number = (value: unknown): number =>
+      typeof value === "number" && Number.isFinite(value) ? value : 0;
+    this.update({
+      projectName: name,
+      dirty: false,
+      nodeCount,
+      projectWidth: number(header.width),
+      projectHeight: number(header.height),
+      projectFps: number(header.fps),
+      projectDuration: number(header.duration),
+      path: resolved,
+      error: null,
+    });
+    return { path: resolved ?? "", name, nodeCount };
+  }
+
+  /**
+   * Load a run track into the editor. The file is streamed over
+   * `camxora-media://` and decoded by the editor's own audio loader; the bytes
+   * never enter the project file or a bridge payload.
+   */
+  async loadAudioTrack(filePath: string): Promise<{ name: string }> {
+    if (!this.hasView() || !this.bridge) throw new Error("Open the Vizzy editor first.");
+    if (!this.state.ready) throw new Error("The Vizzy editor is still starting.");
+    const resolved = path.resolve(filePath);
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(resolved);
+    } catch {
+      throw new Error(`The audio file does not exist: ${resolved}`);
+    }
+    if (!stat.isFile()) throw new Error("The audio path is not a file.");
+    if (stat.size <= 0) throw new Error("The audio file is empty.");
+    allowPickedFile(resolved);
+    const url = createMediaUrl(resolved);
+    const name = path.basename(resolved);
+    const requestId = crypto.randomUUID();
+    const ack = this.waitForAck(requestId, AUDIO_LOAD_TIMEOUT_MS);
+    this.bridge.send({ v: 1, type: "vizzy:load-audio", requestId, name, url });
+    const result = await ack;
+    if (!result.ok) {
+      throw new Error(result.error ?? "The editor could not load the run audio.");
+    }
+    return { name };
+  }
+
+  /** Open the editor's own Creations browser (all 91 staged templates). */
+  async openCreationsBrowser(): Promise<boolean> {
+    const contents = this.view?.webContents;
+    if (!contents || contents.isDestroyed()) throw new Error("Open the Vizzy editor first.");
+    const opened: unknown = await contents.executeJavaScript(
+      "typeof window.editorOpenCreations === 'function' ? (window.editorOpenCreations(), true) : false",
+      true,
+    );
+    if (opened !== true) throw new Error("The editor does not expose its Creations browser.");
+    return true;
+  }
+
   /** Native Open dialog, defaulting to the managed projects directory. */
   async openFromDialog(): Promise<VizzyOpenResult | null> {
     if (!this.hasView()) throw new Error("Open the Vizzy editor first.");
@@ -376,17 +520,7 @@ export class VizzyHost {
     const project = read.snapshot.project as Record<string, unknown>;
     const name = typeof project.name === "string" ? project.name : path.basename(resolved);
 
-    const requestId = crypto.randomUUID();
-    const ack = this.waitForAck(requestId);
-    this.bridge.send({
-      v: 1,
-      type: "vizzy:open-project-json",
-      requestId,
-      path: resolved,
-      name,
-      json: read.text,
-    });
-    const result = await ack;
+    const result = await this.sendOpenProject({ json: read.text, name, path: resolved });
     if (!result.ok) throw new Error(result.error ?? "The editor could not open that project.");
 
     this.lastPath = resolved;
@@ -421,8 +555,12 @@ export class VizzyHost {
    *
    * The editor's own exporter does the rendering; the host owns the file and
    * the settings. Resolves when the job settles (done / cancelled / failed).
+   * `outputName` names the file from a template id instead of the project name.
    */
-  async exportVideo(input: VizzyExportSettingsInput | null): Promise<VizzyExportOutcome> {
+  async exportVideo(
+    input: VizzyExportSettingsInput | null,
+    options: { outputName?: string } = {},
+  ): Promise<VizzyExportOutcome> {
     if (!this.hasView() || !this.bridge) throw new Error("Open the Vizzy editor first.");
     if (!this.state.ready) throw new Error("The Vizzy editor is still starting.");
     if (this.exportJob) throw new Error("An export is already running.");
@@ -430,11 +568,12 @@ export class VizzyHost {
     const project = await this.readProjectInfo();
     const settings = resolveExportSettings(input, project);
     const directory = ensureRendersDir(this.deps.rendersDir);
-    const filePath = uniqueRenderPath(
-      directory,
-      renderFileName(project?.name || this.state.projectName || "untitled-project", settings.format),
+    const requestedName = options.outputName?.trim();
+    const fileName = renderFileNameForTemplate(
+      requestedName || project?.name || this.state.projectName || "untitled-project",
+      settings.format,
     );
-    const fileName = path.basename(filePath);
+    const filePath = uniqueRenderPath(directory, fileName);
     const handle = await fs.promises.open(filePath, "w+");
 
     const writer = new RenderChunkWriter({
@@ -632,6 +771,39 @@ export class VizzyHost {
 
   /* ---------------------------------------------------------------- */
 
+  /** Send the editor an open command and wait for its acknowledgement. */
+  private async sendOpenProject(input: {
+    json: string;
+    name: string;
+    path: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    const bridge = this.bridge;
+    if (!bridge) throw new Error("Open the Vizzy editor first.");
+    const requestId = crypto.randomUUID();
+    const ack = this.waitForAck(requestId);
+    bridge.send({
+      v: 1,
+      type: "vizzy:open-project-json",
+      requestId,
+      path: input.path,
+      name: input.name,
+      json: input.json,
+    });
+    return ack;
+  }
+
+  /** Give a re-shown native view a couple of frames to paint. */
+  private async waitForPaint(): Promise<void> {
+    const contents = this.view?.webContents;
+    if (!contents || contents.isDestroyed()) return;
+    const script =
+      "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
+    await Promise.race([
+      contents.executeJavaScript(script, true),
+      new Promise((resolve) => setTimeout(resolve, THUMBNAIL_PAINT_TIMEOUT_MS)),
+    ]);
+  }
+
   /** Project defaults for the export popover, read from the live editor. */
   private async readProjectInfo(): Promise<VizzyProjectInfo | null> {
     const contents = this.view?.webContents;
@@ -789,6 +961,7 @@ export class VizzyHost {
       },
     });
     view.setBackgroundColor("#070a13");
+    view.setVisible(this.viewVisible);
     this.view = view;
     this.attached = false;
 
@@ -875,6 +1048,7 @@ export class VizzyHost {
   private destroyView(): void {
     const view = this.view;
     this.view = null;
+    this.viewVisible = true;
     this.bridge?.dispose();
     this.bridge = null;
     this.clearViewState();
@@ -913,12 +1087,15 @@ export class VizzyHost {
     }, 1_000);
   }
 
-  private waitForAck(requestId: string): Promise<{ ok: boolean; error?: string }> {
+  private waitForAck(
+    requestId: string,
+    timeoutMs = ACK_TIMEOUT_MS,
+  ): Promise<{ ok: boolean; error?: string }> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pendingAcks.delete(requestId);
         resolve({ ok: false, error: "The editor did not confirm the project." });
-      }, ACK_TIMEOUT_MS);
+      }, timeoutMs);
       this.pendingAcks.set(requestId, { resolve, timer });
     });
   }
@@ -936,7 +1113,11 @@ export class VizzyHost {
   }
 
   private update(patch: Partial<VizzyState>): VizzyState {
-    this.state = { ...this.state, ...patch, path: this.lastPath ?? this.state.path };
+    this.state = {
+      ...this.state,
+      ...patch,
+      path: patch.path !== undefined ? patch.path : (this.lastPath ?? this.state.path),
+    };
     this.deps.onState(this.getState());
     return this.state;
   }

@@ -76,6 +76,11 @@ const bridge = {
     list: () => invoke("video-templates:list"),
     read: (id: string) => invoke("video-templates:read", { id }),
     remove: (id: string) => invoke("video-templates:delete", { id }),
+    onChange: (callback: (payload: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on("video-templates:changed", listener);
+      return () => ipcRenderer.removeListener("video-templates:changed", listener);
+    },
   },
   diagnostics: {
     send: (note?: string) => invoke("diagnostics:send", { note }),
@@ -100,6 +105,12 @@ const bridge = {
     deleteRender: (name: string) => invoke("vizzy:renders:delete", { name }),
     revealRender: (name: string) => invoke("vizzy:renders:reveal", { name }),
     renderUrl: (name: string) => invoke("vizzy:renders:url", { name }),
+    setVisible: (visible: boolean) => invoke("vizzy:set-visible", { visible }),
+    templateOptions: () => invoke("vizzy:template-options"),
+    saveTemplate: (input: unknown) => invoke("vizzy:save-template", input),
+    previewTemplate: (id: string) => invoke("vizzy:preview-template", { id }),
+    openLibrary: () => invoke("vizzy:open-library"),
+    renderTemplate: (request: unknown) => invoke("vizzy:render-template", request),
     onState: (callback: (state: unknown) => void) => {
       const listener = (_event: unknown, state: unknown) => callback(state);
       ipcRenderer.on("vizzy:state", listener);

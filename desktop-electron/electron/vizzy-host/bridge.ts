@@ -115,6 +115,14 @@ export type VizzyHostMessage =
       json: string;
     }
   | { v: 1; type: "vizzy:project-saved"; path: string }
+  | {
+      /** Host-driven run audio: the editor streams and decodes this URL. */
+      v: 1;
+      type: "vizzy:load-audio";
+      requestId: string;
+      name: string;
+      url: string;
+    }
   | { v: 1; type: "vizzy:media-picked"; kind: VizzyMediaKind; url: string }
   | {
       /** Host-driven export: the editor runs its own exporter for this job. */

@@ -568,9 +568,9 @@ async function settingsSuccess() {
     assert(state.connections.length === 1, "Cancelling must keep the connection");
     assert(
       (await page.locator('[data-testid="settings-profile-templates"]').innerText()).includes(
-        "Vizzy pipeline templates arrive in P7",
+        "Save video and reel templates in Vizzy",
       ),
-      "Template card must show the P7 note",
+      "Template card must point at Vizzy and Publication",
     );
     assert(
       (await page.locator('[data-testid="settings-profile-templates"] select').count()) === 0,

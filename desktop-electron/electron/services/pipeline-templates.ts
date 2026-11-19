@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  inferKind as sharedInferKind,
+  type BindingOption,
+  type BindingOptions,
+  type PipelineKind,
+} from "../shared/pipeline";
 
 /**
  * Pipeline template contract (see docs/electron-desktop/vizzy/PIPELINE-TEMPLATE-CONTRACT.md).
@@ -9,7 +15,7 @@ import { z } from "zod";
  * clearly match, and the save dialog lets the user override every field.
  */
 
-export type PipelineKind = "long" | "reel";
+export type { PipelineKind } from "../shared/pipeline";
 
 export interface PipelineBinding {
   nodeId: string;
@@ -137,6 +143,46 @@ function firstMatch<T>(items: T[], test: (item: T) => boolean): T | null {
   return items.find(test) ?? null;
 }
 
+function hasColorProp(node: SnapshotNode): boolean {
+  const props = isRecord(node.props) ? node.props : {};
+  return typeof props.color === "string" || typeof props.fillStyle === "string";
+}
+
+function optionOf(node: SnapshotNode): BindingOption {
+  const props = isRecord(node.props) ? node.props : {};
+  const kind = textOf(node.kind) || "node";
+  const preview = TEXT_KINDS.has(kind)
+    ? textOf(props.textValue) || textOf(props.text)
+    : "";
+  return {
+    nodeId: String(node.id),
+    label: nodeName(node) || kind,
+    detail: preview ? `${kind} · ${preview.slice(0, 40)}` : kind,
+  };
+}
+
+/**
+ * Every node the save dialog may offer for each binding. The dialog renders
+ * these lists and validates against them; the host recomputes them from the
+ * same live snapshot before writing, so a stale dialog cannot invent a binding.
+ */
+export function collectBindingOptions(snapshot: ProjectSnapshot): BindingOptions {
+  const nodes = nodesOf(snapshot).filter(
+    (node) => node.visible !== false && typeof node.id === "string" && node.id.length > 0,
+  );
+  const texts = nodes.filter((node) => TEXT_KINDS.has(textOf(node.kind)));
+  return {
+    background: nodes.filter((node) => textOf(node.kind) === "media").map(optionOf),
+    logo: nodes
+      .filter((node) => textOf(node.kind) === "logo" || textOf(node.kind) === "media")
+      .map(optionOf),
+    title: texts.map(optionOf),
+    artist: texts.map(optionOf),
+    album: texts.map(optionOf),
+    palette: nodes.filter(hasColorProp).map(optionOf),
+  };
+}
+
 function textCandidate(
   nodes: SnapshotNode[],
   used: Set<string>,
@@ -193,11 +239,9 @@ export function detectBindings(snapshot: ProjectSnapshot): PipelineBindings {
     used.add(String(album.id));
   }
 
-  const palette = nodes.filter((node) => {
-    if (textOf(node.kind) !== "effects") return false;
-    const props = isRecord(node.props) ? node.props : {};
-    return Boolean(textOf(props.color) || textOf(props.fillStyle) || Array.isArray(props.layers));
-  });
+  const palette = nodes.filter(
+    (node) => node.visible !== false && typeof node.id === "string" && hasColorProp(node),
+  );
   if (palette.length) {
     bindings.palette = { nodeIds: palette.slice(0, 3).map((node) => String(node.id)), mode: "accent" };
   }
@@ -250,7 +294,7 @@ export function validatePipelineTemplate(value: unknown): PipelineTemplate {
 }
 
 export function inferKind(width: number, height: number): PipelineKind {
-  return width >= height ? "long" : "reel";
+  return sharedInferKind(width, height);
 }
 
 export interface PipelineRunInputs {
@@ -320,7 +364,9 @@ export function applyPipelineBindings(
   if (bindings.palette && inputs.palette?.length) {
     for (const [index, nodeId] of bindings.palette.nodeIds.entries()) {
       const props = propsFor(nodeId, "palette");
-      if ("color" in props) props.color = inputs.palette[index % inputs.palette.length];
+      const colour = inputs.palette[index % inputs.palette.length];
+      if (typeof props.color === "string") props.color = colour;
+      else if (typeof props.fillStyle === "string") props.fillStyle = colour;
     }
   }
 

@@ -162,6 +162,20 @@ export function renderFileName(
   return `${slugifyProjectName(projectName)}-${renderTimestamp(date)}.${extension}`;
 }
 
+/**
+ * `<template-slug>-<timestamp>.<ext>` for a saved video template render. The
+ * template id is already a slug; it is normalised again so a hand-edited
+ * `pipeline.json` cannot choose a path.
+ */
+export function renderFileNameForTemplate(
+  templateId: string,
+  extension: RenderExtension,
+  date: Date = new Date(),
+): string {
+  const slug = slugifyProjectName(templateId) || "template";
+  return `${slug}-${renderTimestamp(date)}.${extension}`;
+}
+
 /** A bare managed render name: no separators, no traversal, known extension. */
 export function isRenderFileName(name: unknown): name is string {
   if (typeof name !== "string" || name.length === 0 || name.length > 160) return false;

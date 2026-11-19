@@ -1,13 +1,13 @@
 # Vizzy — Integration Status (P7, second milestone)
 
 > **Document ID:** CAMXORA-ED-VZ-INT-01
-> **Version:** 1.1.0
-> **Status:** Verified — editor hosted, native open/save and native export working
+> **Version:** 1.2.0
+> **Status:** Verified: editor hosted, native open/save, native export, and video-template save/preview/single render
 > **Last updated:** 2026-11-19
-> **Scope:** Host the real Rea/Vizzy editor in Electron, prove native project I/O, and
-> render the open project to a real video file with progress, cancel and a Renders panel.
-> Pipeline templates, batch rendering, merge/reel and the 91-template pack are **not**
-> part of this milestone.
+> **Scope:** Host the real Rea/Vizzy editor in Electron, prove native project I/O, render the
+> open project to a real video file with progress, cancel and a Renders panel, and save the
+> current preview as a pipeline video template that can be previewed and rendered with a real
+> run track. Batch rendering, merge/reel and upload are **not** part of this milestone.
 
 ---
 
@@ -31,11 +31,19 @@
 | Export settings | width/height/fps/format/start/end from the strip; defaults 1920×1080/30/H.264 when the project reports nothing |
 | Renders panel | lists `renders/` (name, size, date), inline `<video>` over `camxora-media://`, Reveal, Delete with confirmation; delete outside `renders/` refused |
 | Export validation | ffprobe reports codec/size/duration back to the shell; the E2E re-probes the file independently |
+| Save as video template | strip action → `vizzy:template-options` pre-fills Audio/Background/Logo/Title/Artist/Album/Palette from `detectBindings()` → `vizzy:save-template` writes `template.json` + `pipeline.json` + `thumbnail.png` atomically; duplicate/incompatible bindings and a kind/aspect mismatch block the save; `tests/e2e/vizzy-templates.mjs` |
+| Templates panel | rail listing thumbnail, name, kind, output size and date; Preview loads the saved project via `vizzy:open-project-json`; Delete is confirmed and emits `video-templates:changed`; empty state points at Save preview |
+| Preview parity (project) | the editor's project after Preview is semantically identical to the saved `template.json` (runtime-only counters ignored) |
+| Render one saved template | Templates rail Render → native audio pick → `vizzy:render-template` → plan from `buildPipelineRenderPlan()` → saved project loaded → run audio streamed over `camxora-media://` into the editor's loader → existing exporter → `renders/<template-slug>-<timestamp>.mp4`; measured 1920×1080/30, 2 s WAV: 60 frames, h264+aac, 1.97 s, ~2.0 MB, 10.1–11.1 s wall clock |
+| 91-template library | Templates rail **Library** → editor's own Creations browser; `tests/e2e/vizzy-library.mjs` asserts 91 rows, manifest 200, a loaded thumbnail 200 and one template load (nebula-staff, 5 items) |
 | No leaks | project file and editor DOM contain no session email and no token fields |
 
 Screenshots: `desktop-electron/artifacts/vizzy/shell.png` (shell strip),
 `desktop-electron/artifacts/vizzy/editor.png` (`capturePage` of the hosted editor),
-`export-settings.png` (Export rail) and `renders.png` (Renders rail with inline playback) —
+`export-settings.png` (Export rail), `renders.png` (Renders rail with inline playback),
+`save-dialog.png` (Save as video template), `templates-panel.png` (Templates rail),
+`rendered-preview.png` + `rendered-editor.png` (a rendered saved template),
+`library.png` + `library-shell.png` (the 91-template Creations browser) —
 all git-ignored, produced by the E2E runs.
 
 ### 1.1 Boot facts measured on this machine
@@ -50,6 +58,8 @@ all git-ignored, produced by the E2E runs.
 | Stage fps in the harness | 27 fps at 534×300, synthetic audio source |
 | Export (fixture, 480×270, 30 fps, 2 s, H.264) | 2.4–4.7 s wall clock, ~400–450 KB, ffprobe `h264` + `aac`, 60 frames, 1.97 s |
 | Export CPU floor | the reference wasm encoder runs one frame at a time; 1080p30 is roughly 8–10× slower than 480p30 |
+| Saved-template render (1920×1080, 30 fps, 2 s WAV, H.264) | 10.1–11.1 s wall clock, 60 frames, 1.97 s, ~2.0 MB, ffprobe `h264` + `aac` |
+| Template save | `capturePage()` thumbnail 343 KB; `template.json` + `pipeline.json` written atomically |
 
 ---
 
@@ -124,13 +134,20 @@ src/features/vizzy/use-vizzy-export.ts export job state + progress events
 src/features/vizzy/use-vizzy-renders.ts renders list / delete / reveal / media URL
 src/features/vizzy/vizzy-export-menu.tsx  settings rail + progress + result
 src/features/vizzy/vizzy-renders-panel.tsx renders rail with inline <video>
+src/features/vizzy/vizzy-template-dialog.tsx  Save as video template modal
+src/features/vizzy/vizzy-templates-panel.tsx  Templates rail (preview/render/delete/library)
+src/features/vizzy/vizzy-template-model.ts    pure binding/kind validation for the dialog
+src/features/vizzy/use-vizzy-templates.ts     saved-template list + change events
 electron/vizzy-preload.ts              the only bridge inside the view
-electron/vizzy-host/host.ts            VizzyHost: view lifecycle, save/open, export job, renders
+electron/vizzy-host/host.ts            VizzyHost: view lifecycle, save/open, audio load, export job, renders
 electron/vizzy-host/protocol.ts        registerHostSchemes() + installVizzyProtocol()
 electron/vizzy-host/assets.ts          MIME, CSP, streaming + Range responses
 electron/vizzy-host/project-store.ts   slug, atomic write, validation, semantic equality
 electron/vizzy-host/renders.ts         export settings, render names, containment, chunk writer
 electron/vizzy-host/bridge.ts          versioned view↔host message router
+electron/services/pipeline-templates.ts  pipeline schema, detection, binding options
+electron/services/pipeline-run.ts      render plan (project + bindings + output + duration)
+electron/services/video-templates.ts   template store (atomic write, list, read, delete)
 electron/ipc/vizzy.ts                  IPC surface with sender checks
 ```
 
@@ -147,8 +164,17 @@ electron/ipc/vizzy.ts                  IPC surface with sender checks
 | `vizzy:export:cancel` | shell | cancel the active job |
 | `vizzy:export:progress` (event) | main → shell | `{ jobId, done, total, percent, stage }` |
 | `vizzy:renders:list` / `:delete` / `:reveal` / `:url` | shell | managed `renders/` |
+| `vizzy:set-visible` | shell | hide/show the native view while a shell modal is open |
+| `vizzy:template-options` | shell | live snapshot → detected bindings + compatible node lists |
+| `vizzy:save-template` | shell | atomic `template.json` + `pipeline.json` + `capturePage()` thumbnail |
+| `vizzy:preview-template` | shell | load a saved template's project into the editor |
+| `vizzy:render-template` | shell | bind run inputs, load project + track, render one MP4 |
+| `vizzy:open-library` | shell | run the editor's `editorOpenCreations()` |
+| `video-templates:list` / `:read` / `:delete` | shell | saved-template library |
+| `video-templates:changed` (event) | main → shell | save/delete invalidation for the rail and Settings |
 | `vizzy:export:chunk` (invoke) | view | one encoded chunk at an absolute offset |
 | `vizzy:bridge` | view | `vizzy:state`, `vizzy:dirty`, `vizzy:ack`, `vizzy:export-progress`, `vizzy:export-finished`, `vizzy:log` |
+| `vizzy:load-audio` (host → view) | main → view | stream a run track into the editor for a template render |
 | `vizzy:project:save` / `vizzy:project:open` | view | the patched editor Save, native Open |
 
 Every handler validates the sender's webContents id; the view cannot call shell channels and
@@ -161,6 +187,26 @@ the shell cannot call view channels.
 - Read: size cap 64 MB, JSON parse, `format === "studio-project"`, `project` object,
   `nodes`/`layers` arrays. Anything else is rejected before it reaches the editor.
 - Open outside `projects/` is refused unless `CAMXORA_E2E=1` (the harness needs a fixture path).
+
+### 3.2.1 Saved video templates
+
+```
+<userData>/templates/<slug>/
+  template.json   the exact studio-project snapshot the user previewed
+  pipeline.json   kind, output, duration, bindings, requirements
+  thumbnail.png   webContents.capturePage() at save time
+```
+
+- `vizzy:save-template` re-reads the live snapshot, captures the thumbnail, validates the
+  user's binding selection against `collectBindingOptions()` and writes the three files through
+  a temp directory + rename (`saveVideoTemplate()`); an existing id is never overwritten.
+- `vizzy:preview-template` loads `template.json` through `vizzy:open-project-json`; the editor
+  applies it with `applyProjectSnapshot`, so Preview is the same project, not a rebuild.
+- `vizzy:render-template` calls `buildPipelineRenderPlan()`, opens the bound project, streams
+  the run audio (`vizzy:load-audio` → `fetch(camxora-media://…)` → `editorLoadAudio`) and runs
+  the normal export path. Output: `renders/<template-slug>-<timestamp>.mp4`.
+- Delete/save emits `video-templates:changed`; the Templates rail and the Publication pickers
+  re-read `video-templates:list`.
 
 ### 3.3 Native export mechanism
 
@@ -195,6 +241,10 @@ shell Export button
   `0..51`, start/end clamped to the project duration. Defaults: **1920×1080 / 30 fps /
   H.264 + AAC in MP4** when the project reports nothing. MP4 always encodes H.264; WebM
   encodes VP9 (VP8 on request).
+- **Run audio for templates.** `vizzy:load-audio` hands the editor a `camxora-media://` URL;
+  the adapter fetches it inside the view (CSP `connect-src camxora-media:`) and calls the
+  editor's own `editorLoadAudio`. The file is streamed from disk and never embedded in the
+  project or sent through IPC as a payload.
 - **Progress + cancel.** `runExport` is patched to forward its own frame counter and to
   read a host cancel flag in `shouldCancel`. Cancel aborts between frames, the host waits
   up to 5 s for the view to settle, then closes the handle and deletes the partial file
@@ -227,13 +277,13 @@ shell Export button
 
 | Area | Status | Notes |
 |---|---|---|
-| Pipeline templates (`template.json`/`pipeline.json`) | **not built** | Next milestone. |
+| Pipeline templates (`template.json`/`pipeline.json`) | **working (single template)** | Save from the preview, manage in the Templates rail, preview and render one saved template with a real run track. Batch selection per profile is stored and read by Publication. |
 | Native video export (MP4 + WebM) | **working** | Shell-owned job, editor-owned encoder, chunked to `renders/`, ffprobe-validated. MP4/H.264 is the reference path; WebM uses WebCodecs when the build has it. |
 | Renders panel | **working** | List, inline playback, Reveal, Delete with confirmation. No thumbnails yet. |
-| Batch render, merge/reel/upload | **not built** | One export at a time; no queue, no reel, no upload. |
+| Batch render, merge/reel/upload | **not built** | One render at a time; no queue, no merge, no reel variant, no upload. `vizzy:render-template` renders one template/one track. |
 | Export of a closed editor / headless render | **not built** | A job needs the attached, ready editor. Route leave, close or crash cancels the job and deletes the partial file. |
-| Media picker / `camxora-media://` inside the editor | **stubbed** | `pickMedia` returns `null`. Local drag-drop still works inside the editor for files the user drops; project assets that reference `camxora-media://` are not produced yet. |
-| 91-template library, 5 presets, 32 catalogue, 18 particle, 6 Butterchurn | **shipped as-is** | Preset/catalogue JSON is vendored and loads. The 265 MB `creations/` corpus is **not** shipped, so the Projects → Creations browser shows "No creations captured yet." |
+| Media picker / `camxora-media://` inside the editor | **partial** | `pickMedia` still returns `null`, but the host can stream a run track into the editor through `vizzy:load-audio` (used by template renders). Background/logo bindings from `vizzy:render-template` use `camxora-media://` URLs. |
+| 91-template library | **served when staged** | Preset/catalogue JSON is vendored. With `CAMXORA_VIZZY_LIBRARY_DIR` (or the packaged `vizzy-library/`), `/creations/*` is served from the staged pack and the editor's Creations browser lists all 91 with thumbnails; without it the browser is empty. |
 | Recent-projects list / autosave / recovery | **not built** | The strip has Save/Open/Close only. Rea's own IndexedDB autosave still runs as a browser-local cache. |
 | Save As (new file) | **partial** | `Ctrl+Shift+S` renames the project and overwrites `<new-slug>.camxora-vizzy.json`; there is no "choose a path" dialog. |
 | Account/sign-in inside the editor | **unchanged from Rea** | Rea's own "Sign in" dialog is inert ("Accounts are not part of this build"); Camxora's session is not surfaced in the editor. |
@@ -248,14 +298,20 @@ shell Export button
 ```powershell
 cd desktop-electron
 npm ci
+npm --prefix vizzy ci
+npm run vizzy:build
 node scripts/sync-vizzy.mjs --check     # vendored tree matches UPSTREAM.md
 npm run typecheck
 npm run lint
-npm test                                # 23 files / 194 tests
+npm test                                # 28 files / 233 tests
 npm run build                           # includes build:vizzy-preload
 node tests/e2e/vizzy.mjs                # ~25 s
 node tests/e2e/vizzy-export.mjs         # ~40 s, writes export-settings.png + renders.png
-npm run test:e2e                        # all 12 suites, both Vizzy suites included
+node tests/e2e/vizzy-templates.mjs      # save → preview → render, writes save-dialog.png,
+                                        # templates-panel.png, rendered-preview.png
+$env:CAMXORA_VIZZY_LIBRARY_DIR="...\desktop-electron\vizzy-library"
+node tests/e2e/vizzy-library.mjs        # 91 rows + one load, writes library.png
+npm run test:e2e                        # all 14 suites (library needs the env above)
 ```
 
 ---
@@ -264,7 +320,9 @@ npm run test:e2e                        # all 12 suites, both Vizzy suites inclu
 
 | Item | Detail | Impact / next step |
 |---|---|---|
-| Rea's snapshot stores live analyser counters | `nodes[*].props.currentData`, `cumulativeData`, `cumMult` change every time the playhead moves, so two saves of the "same" project are not byte-identical. | The round-trip assertion ignores exactly these three keys (`tests/e2e/vizzy.mjs`). No authored state is ignored. Revisit if the snapshot format is ever owned by Camxora. |
+| Rea's snapshot stores live analyser counters | `nodes[*].props.currentData`, `cumulativeData`, `cumMult` change every time the playhead moves, and a loaded particle node gains a null `particleTexture` cache slot, so two saves of the "same" project are not byte-identical. | The round-trip and template-preview assertions ignore exactly those runtime keys (`tests/e2e/vizzy.mjs`, `tests/e2e/vizzy-templates.mjs`). No authored state is ignored. Revisit if the snapshot format is ever owned by Camxora. |
+| A saved template keeps the project's own name | `template.json` is the exact snapshot, so `project.name` stays whatever the previewed composition was called; the template name lives in `pipeline.json`. | The Templates rail uses `pipeline.name`; the editor strip shows `project.name`. Do not "fix" one from the other — it would break preview parity. |
+| Settings template pickers can be up to 10 s stale | `useVideoTemplatesQuery` has a 10 s `staleTime`; the Vizzy rail subscribes to `video-templates:changed`, Settings does not. | Navigate to Publication after saving; a refetch on mount returns the new list. Wire the event into the query if it becomes visible in practice. |
 | Dirty flag is history-depth based | Rea has no dirty flag. The adapter marks dirty when `editHistory.labels().length` differs from the depth at the last save/open. Undo back to the saved state stays "dirty". | Honest but coarse; a project hash in the adapter would be exact and cheap enough on demand. |
 | Project file names are slug-based | Two projects with the same name share one file. | Add an id suffix (or a recent-project index) before the pipeline milestone needs many projects. |
 | `detach()` destroys the view | Returning to `/vizzy` reloads the editor (~1.5 s) and re-creates the default project. | Keep a suspended view per window if the reload becomes annoying; the crash path already proves recreate works. |
@@ -278,7 +336,9 @@ npm run test:e2e                        # all 12 suites, both Vizzy suites inclu
 | `protocol.handle` streams every asset | `Range` is honoured for single ranges (video seeking, wasm streaming). | Multi-range requests fall back to the full body, which is the safe default. |
 | The host is Windows-tested only | macOS/Linux packaging paths (`process.resourcesPath`) are implemented but unverified. | Re-run the E2E on each release platform; it is machine-checkable. |
 | Native dialogs cannot be driven by Playwright | The E2E exercises `vizzy:open-path` (the same code path the dialog feeds). | The dialog itself is a 3-line wrapper (`openFromDialog`) with no branching. |
-| Editor assets outside `public/` | `creations/` is not shipped, and `/audio/haende-hoch.mp3` is absent, so the editor boots on the synthetic analyser source and the Creations browser is empty. | Expected for this milestone; the 91-template pack lands with the pipeline work. |
+| Editor assets outside `public/` | `creations/` is not shipped inside the editor bundle, and `/audio/haende-hoch.mp3` is absent, so the editor boots on the synthetic analyser source. | The staged library is served separately from `CAMXORA_VIZZY_LIBRARY_DIR`; without it the Creations browser is empty. |
+| Determinism is not measured yet | The saved-template render reuses the same project/renderer/analyser, but no repeat-render frame comparison exists. | Next milestone: render the same template/inputs twice and compare frames at tolerance. |
+| A template render needs the attached editor | `vizzy:render-template` loads the plan into the live editor and runs its exporter. | Same constraint as Export; headless rendering is not built. |
 
 ---
 
@@ -307,9 +367,24 @@ npm run test:e2e                        # all 12 suites, both Vizzy suites inclu
 | `src/features/vizzy/vizzy-export-menu.tsx`, `vizzy-export-status.tsx`, `vizzy-renders-panel.tsx`, `vizzy-format.ts` | new — rail UI |
 | `src/app.tsx` | `/vizzy` route (route only) |
 | `tests/e2e/vizzy.mjs`, `tests/e2e/vizzy-export.mjs` | host harness + export/renders harness |
-| `tests/unit/vizzy-project-store.test.ts`, `vizzy-protocol.test.ts`, `vizzy-renders.test.ts` | project, protocol and render/export unit tests |
+| `tests/e2e/vizzy-templates.mjs`, `tests/e2e/vizzy-library.mjs` | save → preview → render harness; 91-template catalogue/load harness |
+| `tests/unit/vizzy-project-store.test.ts`, `vizzy-protocol.test.ts`, `vizzy-renders.test.ts`, `vizzy-template-model.test.ts` | project, protocol, render/export and template-model unit tests |
 | `tests/fixtures/vizzy/trap-motion.camxora-vizzy.json` | 31 KB round-trip fixture |
-| `package.json` | `vizzy:*`, `build:vizzy-preload`, e2e (incl. `vizzy-export.mjs`) + dev integration |
+| `electron/shared/pipeline.ts` | new — pure binding options, selection, duplicate/incompatible validation, kind inference |
+| `electron/services/pipeline-templates.ts` | binding option collection, palette detection (`color`/`fillStyle`), palette apply |
+| `electron/services/pipeline-run.ts` | plan bitrate corrected to Mbps |
+| `electron/services/video-templates.ts` | template store used by the new IPC (unchanged shape) |
+| `electron/vizzy-host/host.ts` | `readSnapshot`, `captureTemplateSource`, `openProjectJson`, `loadAudioTrack`, `openCreationsBrowser`, `setVisible`, template output names |
+| `electron/vizzy-host/renders.ts` | `renderFileNameForTemplate()` |
+| `electron/ipc/vizzy.ts` | template options/save/preview/render, library, view visibility |
+| `electron/ipc/video-templates.ts` | exports `toVideoTemplateInfo()`, emits `video-templates:changed` |
+| `electron/vizzy-preload.ts`, `vizzy/patches/*` | `vizzy:load-audio` command + editor fetch/load handler |
+| `electron/vizzy-host/assets.ts` | CSP `connect-src` allows `camxora-media:` for the streamed run track |
+| `electron/main.ts` | library root from `resolveLibraryRoot()` (honours `CAMXORA_VIZZY_LIBRARY_DIR`) |
+| `electron/preload.ts`, `src/lib/bridge.ts`, `electron/shared/types.ts` | template IPC typings + change event |
+| `src/features/vizzy/*` | Save dialog, Templates rail, template model, templates hook, page integration |
+| `src/features/settings/profiles-tab.tsx` | template card copy points at Vizzy + Publication |
+| `package.json` | e2e includes `vizzy-templates.mjs` and `vizzy-library.mjs` |
 | `eslint.config.js` | ignores the vendored tree and its build output |
 | `electron-builder.yml` | ships `vizzy-dist` as an extra resource |
 | `.gitignore` | ignores `vizzy-dist/` |
