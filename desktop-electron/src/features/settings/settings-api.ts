@@ -1,5 +1,18 @@
 import { apiRequest } from "../../lib/api";
+import type { components } from "../../lib/api-schema";
 import type { ChannelProfile, UserMe } from "../dashboard/account-types";
+import {
+  normalizePoolItems,
+  normalizePoolStats,
+  normalizePromptOptions,
+  normalizeUserPrompts,
+  type PoolItem,
+  type PoolKind,
+  type PoolStats,
+  type PromptKind,
+  type PromptOption,
+  type UserPromptEntry,
+} from "./settings-types";
 
 /**
  * Settings API surface.
@@ -189,4 +202,105 @@ export async function createPlaylist(profileId: string, title: string): Promise<
   const id = asString(record.id);
   if (!id) return null;
   return { id, title: asString(record.title) ?? title };
+}
+
+// ---------------------------------------------------------------------------
+// Prompt catalogs — workspace selectors and the user-owned library
+// ---------------------------------------------------------------------------
+
+/**
+ * Generated types for the prompt contract, so a backend field rename shows up
+ * as a type error instead of a silently empty panel.
+ */
+export type WorkspacePromptOption = components["schemas"]["WorkspacePromptOption"];
+export type UserPromptResponse =
+  | components["schemas"]["UserDescriptionResponse"]
+  | components["schemas"]["UserStructureResponse"]
+  | components["schemas"]["UserMoodResponse"];
+export type UserPromptRequest = components["schemas"]["UserPromptRequest"];
+export type ContentPoolListResponse =
+  components["schemas"]["platform_api__routers__content_pools__ContentPoolListResponse"];
+export type ContentPoolStatsResponse =
+  components["schemas"]["platform_api__routers__content_pools__ContentPoolStatsResponse"];
+
+export async function fetchPromptWorkspace(kind: PromptKind): Promise<PromptOption[]> {
+  const data = await apiRequest<WorkspacePromptOption[]>({
+    method: "GET",
+    path: `/prompts/${kind}/workspace`,
+  });
+  return normalizePromptOptions(data);
+}
+
+export async function fetchMyPrompts(kind: PromptKind): Promise<UserPromptEntry[]> {
+  const data = await apiRequest<UserPromptResponse[]>({
+    method: "GET",
+    path: `/prompts/me/${kind}`,
+  });
+  return normalizeUserPrompts(data);
+}
+
+export async function createMyPrompt(
+  kind: PromptKind,
+  payload: UserPromptRequest,
+): Promise<UserPromptEntry> {
+  const data = await apiRequest<UserPromptResponse>({
+    method: "POST",
+    path: `/prompts/me/${kind}`,
+    body: payload,
+  });
+  const entry = normalizeUserPrompts([data])[0];
+  if (!entry) throw new Error("The server did not return the saved prompt.");
+  return entry;
+}
+
+export async function updateMyPrompt(
+  kind: PromptKind,
+  promptId: string,
+  payload: UserPromptRequest,
+): Promise<UserPromptEntry> {
+  const data = await apiRequest<UserPromptResponse>({
+    method: "PUT",
+    path: `/prompts/me/${kind}/${encodeURIComponent(promptId)}`,
+    body: payload,
+  });
+  const entry = normalizeUserPrompts([data])[0];
+  if (!entry) throw new Error("The server did not return the saved prompt.");
+  return entry;
+}
+
+export async function deleteMyPrompt(kind: PromptKind, promptId: string): Promise<void> {
+  await apiRequest<unknown>({
+    method: "DELETE",
+    path: `/prompts/me/${kind}/${encodeURIComponent(promptId)}`,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Content pools (read-only)
+// ---------------------------------------------------------------------------
+
+export async function fetchContentPoolStats(): Promise<PoolStats> {
+  const data = await apiRequest<ContentPoolStatsResponse>({
+    method: "GET",
+    path: "/content-pools/stats",
+  });
+  return normalizePoolStats(data);
+}
+
+export async function fetchContentPoolItems(
+  kind: PoolKind,
+  limit: number,
+  offset: number,
+): Promise<{ items: PoolItem[]; total: number; limit: number; offset: number }> {
+  const data = await apiRequest<ContentPoolListResponse>({
+    method: "GET",
+    path: `/content-pools/${kind}?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+  });
+  const record = asRecord(data);
+  return {
+    items: normalizePoolItems(record.items),
+    total: typeof record.total === "number" ? record.total : 0,
+    limit: typeof record.limit === "number" ? record.limit : limit,
+    offset: typeof record.offset === "number" ? record.offset : offset,
+  };
 }

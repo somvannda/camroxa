@@ -9,13 +9,30 @@ import type { ChannelProfile } from "../dashboard/account-types";
  * is read by the same pipeline when it runs.
  */
 
-export type SettingsTab = "profiles" | "publication" | "preferences";
+export type SettingsTab =
+  | "profiles"
+  | "publication"
+  | "preferences"
+  | "descriptions"
+  | "structures"
+  | "moods"
+  | "pools"
+  | "suno";
 
 export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "profiles", label: "Profiles" },
   { id: "publication", label: "Publication" },
   { id: "preferences", label: "Preferences" },
+  { id: "descriptions", label: "Descriptions" },
+  { id: "structures", label: "Structures" },
+  { id: "moods", label: "Moods" },
+  { id: "pools", label: "Pools" },
+  { id: "suno", label: "Suno" },
 ];
+
+export function settingsTabLabel(tab: SettingsTab): string {
+  return SETTINGS_TABS.find((item) => item.id === tab)?.label ?? tab;
+}
 
 export type OutputResolution = "1920x1080" | "1080x1920" | "1080x1080" | "1280x720";
 
@@ -793,4 +810,459 @@ export function dirtyTabLabel(tabs: SettingsTab[]): string {
   const labels = SETTINGS_TABS.filter((tab) => tabs.includes(tab.id)).map((tab) => tab.label);
   const noun = tabs.length === 1 ? "tab" : "tabs";
   return `${tabs.length} ${noun} with unsaved changes: ${labels.join(", ")}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt catalogs (Descriptions / Structures / Moods)
+// ---------------------------------------------------------------------------
+
+export type PromptKind = "descriptions" | "structures" | "moods";
+
+export interface PromptKindInfo {
+  id: PromptKind;
+  label: string;
+  singular: string;
+  contentLabel: string;
+  placeholder: string;
+}
+
+export const PROMPT_KINDS: PromptKindInfo[] = [
+  {
+    id: "descriptions",
+    label: "Descriptions",
+    singular: "description",
+    contentLabel: "Description",
+    placeholder: "Describe genre, mood, energy, and instrumentation…",
+  },
+  {
+    id: "structures",
+    label: "Structures",
+    singular: "structure",
+    contentLabel: "Structure",
+    placeholder: "[Verse]\n[Chorus]\n[Verse]\n[Chorus]\n[Bridge]\n[Chorus]",
+  },
+  {
+    id: "moods",
+    label: "Moods",
+    singular: "mood",
+    contentLabel: "Mood",
+    placeholder: "Describe the emotional tone, narrative feeling, and lyric atmosphere…",
+  },
+];
+
+export function promptKindInfo(kind: PromptKind): PromptKindInfo {
+  return PROMPT_KINDS.find((item) => item.id === kind) ?? PROMPT_KINDS[0];
+}
+
+export const PROMPT_NAME_MAX_LENGTH = 100;
+export const PROMPT_CONTENT_MAX_LENGTH = 5000;
+export const PROMPT_PAGE_SIZE = 8;
+
+export interface PromptOption {
+  id: string;
+  name: string;
+  owned: boolean;
+  matchKey: string | null;
+}
+
+export function normalizePromptOption(value: unknown): PromptOption | null {
+  const record = recordOf(value);
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id) return null;
+  const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
+  return {
+    id,
+    name,
+    owned: Boolean(record.is_owned),
+    matchKey: typeof record.match_key === "string" && record.match_key.trim() ? record.match_key.trim() : null,
+  };
+}
+
+export function normalizePromptOptions(value: unknown): PromptOption[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => normalizePromptOption(item))
+    .filter((item): item is PromptOption => Boolean(item));
+}
+
+export function filterPromptOptions(options: PromptOption[], term: string): PromptOption[] {
+  const needle = term.trim().toLowerCase();
+  const sorted = [...options].sort((left, right) =>
+    left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+  );
+  if (!needle) return sorted;
+  return sorted.filter(
+    (option) => option.name.toLowerCase().includes(needle) || option.id.toLowerCase().includes(needle),
+  );
+}
+
+export function promptOptionLabel(option: PromptOption): string {
+  return `${option.name} · ${option.owned ? "Yours" : "Camxora"}`;
+}
+
+export function paginatePromptOptions(
+  options: PromptOption[],
+  pageIndex: number,
+  pageSize = PROMPT_PAGE_SIZE,
+): { items: PromptOption[]; pageCount: number; page: number } {
+  const pageCount = Math.max(1, Math.ceil(options.length / pageSize));
+  const page = clamp(Math.trunc(pageIndex), 0, pageCount - 1);
+  return {
+    items: options.slice(page * pageSize, page * pageSize + pageSize),
+    pageCount,
+    page,
+  };
+}
+
+export interface PromptDefaultsDraft {
+  descriptionId: string;
+  structureId: string;
+  moodId: string;
+}
+
+export function emptyPromptDefaultsDraft(): PromptDefaultsDraft {
+  return { descriptionId: "", structureId: "", moodId: "" };
+}
+
+export function buildPromptDefaultsDraft(
+  settings: Record<string, unknown> | null | undefined,
+): PromptDefaultsDraft {
+  return {
+    descriptionId: readStringSetting(settings, "defaultDescriptionId"),
+    structureId: readStringSetting(settings, "defaultStructureId"),
+    moodId: readStringSetting(settings, "defaultMoodId"),
+  };
+}
+
+const PROMPT_DEFAULT_KEYS: Array<[keyof PromptDefaultsDraft, string]> = [
+  ["descriptionId", "defaultDescriptionId"],
+  ["structureId", "defaultStructureId"],
+  ["moodId", "defaultMoodId"],
+];
+
+/** Only the workspace defaults the given tab owns can make that tab dirty. */
+export function promptDefaultsDirtyFor(
+  kind: PromptKind,
+  draft: PromptDefaultsDraft,
+  baseline: PromptDefaultsDraft,
+): boolean {
+  if (kind === "descriptions") return draft.descriptionId !== baseline.descriptionId;
+  if (kind === "structures") return draft.structureId !== baseline.structureId;
+  return draft.moodId !== baseline.moodId;
+}
+
+/** Minimal settings patch for the changed workspace defaults only. */
+export function buildPromptDefaultsPatch(
+  draft: PromptDefaultsDraft,
+  baseline: PromptDefaultsDraft,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const [field, key] of PROMPT_DEFAULT_KEYS) {
+    if (draft[field] !== baseline[field]) patch[key] = draft[field].trim();
+  }
+  return patch;
+}
+
+export interface UserPromptEntry {
+  id: string;
+  name: string;
+  content: string;
+  updatedAt: string | null;
+}
+
+export function normalizeUserPrompt(value: unknown): UserPromptEntry | null {
+  const record = recordOf(value);
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id) return null;
+  return {
+    id,
+    name: typeof record.name === "string" ? record.name : "",
+    content: typeof record.content === "string" ? record.content : "",
+    updatedAt: typeof record.updated_at === "string" ? record.updated_at : null,
+  };
+}
+
+export function normalizeUserPrompts(value: unknown): UserPromptEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => normalizeUserPrompt(item))
+    .filter((item): item is UserPromptEntry => Boolean(item));
+}
+
+export function promptEntriesToOptions(entries: UserPromptEntry[]): PromptOption[] {
+  return entries.map((entry) => ({ id: entry.id, name: entry.name, owned: true, matchKey: null }));
+}
+
+export interface PromptEditorDraft {
+  id: string | null;
+  name: string;
+  content: string;
+}
+
+export function emptyPromptEditorDraft(): PromptEditorDraft {
+  return { id: null, name: "", content: "" };
+}
+
+export function buildPromptEditorDraft(entry: UserPromptEntry | null | undefined): PromptEditorDraft {
+  if (!entry) return emptyPromptEditorDraft();
+  return { id: entry.id, name: entry.name, content: entry.content };
+}
+
+export function promptEditorDraftDirty(draft: PromptEditorDraft, baseline: PromptEditorDraft): boolean {
+  return !deepEqual(draft, baseline);
+}
+
+export function upsertUserPrompt(list: UserPromptEntry[], entry: UserPromptEntry): UserPromptEntry[] {
+  const found = list.some((item) => item.id === entry.id);
+  const next = found ? list.map((item) => (item.id === entry.id ? entry : item)) : [...list, entry];
+  return next.sort((left, right) =>
+    left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+  );
+}
+
+export function removeUserPrompt(list: UserPromptEntry[], entryId: string): UserPromptEntry[] {
+  return list.filter((item) => item.id !== entryId);
+}
+
+export function buildUserPromptPayload(draft: PromptEditorDraft): { name: string; content: string } {
+  return { name: draft.name.trim(), content: draft.content.trim() };
+}
+
+export type PromptEditorField = "name" | "content";
+
+export function validatePromptEditorDraft(
+  draft: PromptEditorDraft,
+  userPrompts: UserPromptEntry[],
+): Partial<Record<PromptEditorField, string>> {
+  const errors: Partial<Record<PromptEditorField, string>> = {};
+  const name = draft.name.trim();
+  if (!name) {
+    errors.name = "Enter a name.";
+  } else if (name.length > PROMPT_NAME_MAX_LENGTH) {
+    errors.name = `Use ${PROMPT_NAME_MAX_LENGTH} characters or fewer.`;
+  } else {
+    const clash = userPrompts.find(
+      (item) => item.id !== draft.id && item.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (clash) errors.name = "You already have a prompt with this name.";
+  }
+
+  const content = draft.content.trim();
+  if (!content) {
+    errors.content = "Enter the prompt text.";
+  } else if (content.length > PROMPT_CONTENT_MAX_LENGTH) {
+    errors.content = `Use ${PROMPT_CONTENT_MAX_LENGTH} characters or fewer.`;
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Content pools
+// ---------------------------------------------------------------------------
+
+export type PoolKind = "openings" | "titles" | "albums";
+
+export const POOL_KINDS: Array<{ id: PoolKind; label: string }> = [
+  { id: "openings", label: "Openings" },
+  { id: "titles", label: "Titles" },
+  { id: "albums", label: "Albums" },
+];
+
+export const POOL_PAGE_SIZE = 50;
+
+export interface PoolStat {
+  total: number;
+  unused: number;
+}
+
+export interface PoolStats {
+  openings: PoolStat;
+  titles: PoolStat;
+  albums: PoolStat;
+}
+
+export interface PoolItem {
+  id: number;
+  text: string;
+  secondaryText: string | null;
+  usedCount: number;
+  createdAt: string | null;
+}
+
+function readCount(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+}
+
+export function normalizePoolStat(value: unknown): PoolStat {
+  const record = recordOf(value);
+  return { total: readCount(record.total), unused: readCount(record.unused) };
+}
+
+export function normalizePoolStats(value: unknown): PoolStats {
+  const record = recordOf(value);
+  return {
+    openings: normalizePoolStat(record.openings),
+    titles: normalizePoolStat(record.titles),
+    albums: normalizePoolStat(record.albums),
+  };
+}
+
+export function normalizePoolItems(value: unknown): PoolItem[] {
+  if (!Array.isArray(value)) return [];
+  const items: PoolItem[] = [];
+  for (const raw of value) {
+    const record = recordOf(raw);
+    const id = readCount(record.id);
+    if (!id) continue;
+    items.push({
+      id,
+      text: typeof record.text === "string" ? record.text : "",
+      secondaryText:
+        typeof record.secondary_text === "string" && record.secondary_text.trim()
+          ? record.secondary_text
+          : null,
+      usedCount: readCount(record.used_count),
+      createdAt: typeof record.created_at === "string" ? record.created_at : null,
+    });
+  }
+  return items;
+}
+
+export function poolPageCount(total: number, pageSize = POOL_PAGE_SIZE): number {
+  return Math.max(1, Math.ceil(readCount(total) / Math.max(1, pageSize)));
+}
+
+export function clampPoolOffset(offset: number, total: number, pageSize = POOL_PAGE_SIZE): number {
+  const lastPage = poolPageCount(total, pageSize) - 1;
+  return clamp(Math.trunc(offset), 0, lastPage * pageSize);
+}
+
+export function poolOffsetForPage(pageIndex: number, pageSize = POOL_PAGE_SIZE): number {
+  return Math.max(0, Math.trunc(pageIndex)) * Math.max(1, pageSize);
+}
+
+export function poolPageNumber(offset: number, pageSize = POOL_PAGE_SIZE): number {
+  return Math.floor(Math.max(0, offset) / Math.max(1, pageSize)) + 1;
+}
+
+export function canPoolPrevious(offset: number): boolean {
+  return offset > 0;
+}
+
+export function canPoolNext(total: number, offset: number, pageSize = POOL_PAGE_SIZE): boolean {
+  return offset + pageSize < readCount(total);
+}
+
+export function poolRangeLabel(total: number, offset: number, pageSize = POOL_PAGE_SIZE): string {
+  const count = readCount(total);
+  if (count === 0) return "0 items";
+  const start = Math.min(offset, count - 1) + 1;
+  const end = Math.min(offset + pageSize, count);
+  return `${start}–${end} of ${count}`;
+}
+
+export function poolPageLabel(total: number, offset: number, pageSize = POOL_PAGE_SIZE): string {
+  return `Page ${poolPageNumber(offset, pageSize)} of ${poolPageCount(total, pageSize)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Suno defaults
+// ---------------------------------------------------------------------------
+
+export const SUNO_VERSION_OPTIONS = ["v6", "v6 mini", "v6 wild", "v5.5", "v5"] as const;
+
+export const SUNO_TIMEOUT_MIN_MS = 1000;
+export const SUNO_TIMEOUT_MAX_MS = 600000;
+export const SUNO_RETRY_MIN = 0;
+export const SUNO_RETRY_MAX = 20;
+export const SUNO_MERGE_GROUP_MIN = 0;
+export const SUNO_MERGE_GROUP_MAX = 20;
+
+export interface SunoSettingsDraft {
+  defaultVersion: string;
+  mergeEnabled: boolean;
+  mergeGroupSize: number;
+  timeoutMs: number;
+  retryCount: number;
+}
+
+export function buildSunoSettingsDraft(
+  settings: Record<string, unknown> | null | undefined,
+): SunoSettingsDraft {
+  const version = readStringSetting(settings, "sunoDefaultVersion").trim();
+  return {
+    defaultVersion: version || "v6",
+    mergeEnabled: readBooleanSetting(settings, "sunoMergeEnabled", false),
+    mergeGroupSize: clamp(Math.round(readNumberSetting(settings, "sunoMergeGroupSize", 0)), 0, 20),
+    timeoutMs: Math.max(
+      SUNO_TIMEOUT_MIN_MS,
+      Math.round(readNumberSetting(settings, "sunoTimeoutMs", 90000)),
+    ),
+    retryCount: clamp(Math.round(readNumberSetting(settings, "sunoRetryCount", 3)), 0, 20),
+  };
+}
+
+export function isSupportedSunoVersion(version: string): boolean {
+  return (SUNO_VERSION_OPTIONS as readonly string[]).includes(version);
+}
+
+export function sunoSettingsDirty(draft: SunoSettingsDraft, baseline: SunoSettingsDraft): boolean {
+  return !deepEqual(draft, baseline);
+}
+
+/**
+ * Only the keys that changed are patched, so unrelated settings (including
+ * keys this build does not know about) stay exactly as the server has them.
+ */
+export function buildSunoSettingsPatch(
+  draft: SunoSettingsDraft,
+  settings: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const current = buildSunoSettingsDraft(settings);
+  const patch: Record<string, unknown> = {};
+  if (draft.defaultVersion.trim() !== current.defaultVersion) {
+    patch.sunoDefaultVersion = draft.defaultVersion.trim();
+  }
+  if (draft.mergeEnabled !== current.mergeEnabled) {
+    patch.sunoMergeEnabled = draft.mergeEnabled;
+  }
+  if (Number(draft.mergeGroupSize) !== current.mergeGroupSize) {
+    patch.sunoMergeGroupSize = Number(draft.mergeGroupSize);
+  }
+  if (Number(draft.timeoutMs) !== current.timeoutMs) {
+    patch.sunoTimeoutMs = Number(draft.timeoutMs);
+  }
+  if (Number(draft.retryCount) !== current.retryCount) {
+    patch.sunoRetryCount = Number(draft.retryCount);
+  }
+  return patch;
+}
+
+export type SunoField = "defaultVersion" | "mergeGroupSize" | "timeoutMs" | "retryCount";
+
+export function validateSunoSettingsDraft(
+  draft: SunoSettingsDraft,
+  supportedVersions: readonly string[] = SUNO_VERSION_OPTIONS,
+): Partial<Record<SunoField, string>> {
+  const errors: Partial<Record<SunoField, string>> = {};
+  const version = draft.defaultVersion.trim();
+  if (!version) {
+    errors.defaultVersion = "Choose a Suno version.";
+  } else if (!supportedVersions.includes(version)) {
+    errors.defaultVersion = "This version is not supported. Choose one of the listed versions.";
+  }
+
+  const integerBounds: Array<[SunoField, number, number, number, string]> = [
+    ["mergeGroupSize", draft.mergeGroupSize, SUNO_MERGE_GROUP_MIN, SUNO_MERGE_GROUP_MAX, `Merge group size must be between ${SUNO_MERGE_GROUP_MIN} and ${SUNO_MERGE_GROUP_MAX}.`],
+    ["timeoutMs", draft.timeoutMs, SUNO_TIMEOUT_MIN_MS, SUNO_TIMEOUT_MAX_MS, `Timeout must be between ${SUNO_TIMEOUT_MIN_MS} and ${SUNO_TIMEOUT_MAX_MS} ms.`],
+    ["retryCount", draft.retryCount, SUNO_RETRY_MIN, SUNO_RETRY_MAX, `Retry count must be between ${SUNO_RETRY_MIN} and ${SUNO_RETRY_MAX}.`],
+  ];
+  for (const [field, value, minimum, maximum, message] of integerBounds) {
+    const numeric = Number(value);
+    if (!Number.isInteger(numeric) || numeric < minimum || numeric > maximum) {
+      errors[field] = message;
+    }
+  }
+  return errors;
 }

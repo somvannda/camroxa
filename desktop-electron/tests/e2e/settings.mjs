@@ -24,7 +24,7 @@ function step(name) {
 const watchdog = setTimeout(() => {
   console.error(`settings e2e timed out at step: ${currentStep}`);
   process.exit(1);
-}, 300000);
+}, 600000);
 watchdog.unref?.();
 
 const ME = {
@@ -157,7 +157,78 @@ const SETTINGS = {
   imageThumbnailPromptSource: "custom",
   thumbnailReferenceMode: "background_text",
   imagePromptLibraryOnly: false,
+  defaultDescriptionId: "desc-admin-1",
+  defaultStructureId: "struct-admin-1",
+  defaultMoodId: "mood-admin-1",
+  sunoDefaultVersion: "v6",
+  sunoMergeEnabled: false,
+  sunoMergeGroupSize: 0,
+  sunoTimeoutMs: 90000,
+  sunoRetryCount: 3,
+  // A key this build does not read: a settings patch must leave it alone.
+  customSunoPreset: "keep-me",
 };
+
+function promptOption(id, name, owned, matchKey = null) {
+  return { id, name, is_owned: owned, match_key: matchKey };
+}
+
+const PROMPT_WORKSPACE = {
+  descriptions: [
+    promptOption("desc-admin-1", "Camxora Anthem", false, "anthem"),
+    promptOption("desc-admin-2", "Night Drive", false),
+    promptOption("desc-user-1", "My Late Night", true),
+  ],
+  structures: [
+    promptOption("struct-admin-1", "Radio Edit", false),
+    promptOption("struct-user-1", "My Build", true),
+  ],
+  moods: [promptOption("mood-admin-1", "Cinematic", false), promptOption("mood-user-1", "Restless", true)],
+};
+
+function userPrompt(id, name, content) {
+  return {
+    id,
+    name,
+    content,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-02-01T00:00:00Z",
+  };
+}
+
+const MY_PROMPTS = {
+  descriptions: [userPrompt("desc-user-1", "My Late Night", "Slow, warm, analog.")],
+  structures: [userPrompt("struct-user-1", "My Build", "[Verse]\n[Chorus]")],
+  moods: [userPrompt("mood-user-1", "Restless", "Anxious, driving energy.")],
+};
+
+function poolRows(kind, count) {
+  return Array.from({ length: count }, (_, index) => {
+    const id = count - index;
+    if (kind === "openings") {
+      return {
+        id,
+        text: `Opening line ${id}`,
+        secondary_text: index % 3 === 0 ? `Response ${id}` : null,
+        used_count: index < 20 ? 1 : 0,
+        created_at: "2026-01-01T00:00:00Z",
+      };
+    }
+    return {
+      id,
+      text: `${kind === "titles" ? "Title" : "Album"} ${id}`,
+      used_count: 0,
+      created_at: "2026-01-02T00:00:00Z",
+    };
+  });
+}
+
+const POOLS = {
+  openings: poolRows("openings", 120),
+  titles: poolRows("titles", 2),
+  albums: [],
+};
+
 
 function json(response, status, payload) {
   const body = JSON.stringify(payload);
@@ -189,6 +260,9 @@ function createBackend(options = {}) {
     profiles: (options.profiles ?? PROFILES).map((item) => structuredClone(item)),
     settings: { ...(options.settings ?? SETTINGS) },
     connections: (options.connections ?? CONNECTIONS).map((item) => structuredClone(item)),
+    promptWorkspace: structuredClone(options.promptWorkspace ?? PROMPT_WORKSPACE),
+    myPrompts: structuredClone(options.myPrompts ?? MY_PROMPTS),
+    pools: structuredClone(options.pools ?? POOLS),
     playlists: [
       { id: "PL1", title: "Night Mixes" },
       { id: "PL2", title: "Focus Deep" },
@@ -283,6 +357,81 @@ function createBackend(options = {}) {
       state.calls.push({ method, path: pathname, body });
       state.settings = { ...state.settings, ...body };
       json(response, 200, state.settings);
+      return;
+    }
+
+    const workspaceMatch = pathname.match(/^\/prompts\/(descriptions|structures|moods)\/workspace$/);
+    if (workspaceMatch && method === "GET") {
+      return json(response, 200, state.promptWorkspace[workspaceMatch[1]] ?? []);
+    }
+
+    const myPromptsMatch = pathname.match(/^\/prompts\/me\/(descriptions|structures|moods)$/);
+    if (myPromptsMatch && method === "GET") {
+      return json(response, 200, state.myPrompts[myPromptsMatch[1]] ?? []);
+    }
+    if (myPromptsMatch && method === "POST") {
+      const kind = myPromptsMatch[1];
+      const body = await readJson(request);
+      state.calls.push({ method, path: pathname, body });
+      const created = userPrompt(`created-${kind}-${state.myPrompts[kind].length + 1}`, body.name, body.content);
+      state.myPrompts[kind].push(created);
+      state.promptWorkspace[kind].push(promptOption(created.id, created.name, true));
+      json(response, 201, created);
+      return;
+    }
+
+    const myPromptMatch = pathname.match(/^\/prompts\/me\/(descriptions|structures|moods)\/([^/]+)$/);
+    if (myPromptMatch && method === "PUT") {
+      const kind = myPromptMatch[1];
+      const id = decodeURIComponent(myPromptMatch[2]);
+      const body = await readJson(request);
+      state.calls.push({ method, path: pathname, body });
+      const current = state.myPrompts[kind].find((item) => item.id === id);
+      if (!current) return json(response, 404, { detail: "Prompt not found" });
+      current.name = body.name;
+      current.content = body.content;
+      current.updated_at = new Date().toISOString();
+      const option = state.promptWorkspace[kind].find((item) => item.id === id);
+      if (option) option.name = body.name;
+      json(response, 200, current);
+      return;
+    }
+    if (myPromptMatch && method === "DELETE") {
+      const kind = myPromptMatch[1];
+      const id = decodeURIComponent(myPromptMatch[2]);
+      state.calls.push({ method, path: pathname });
+      state.myPrompts[kind] = state.myPrompts[kind].filter((item) => item.id !== id);
+      state.promptWorkspace[kind] = state.promptWorkspace[kind].filter((item) => item.id !== id);
+      json(response, 200, { message: "Prompt archived." });
+      return;
+    }
+
+    if (route === "GET /content-pools/stats") {
+      const stat = (kind) => ({
+        total: state.pools[kind].length,
+        unused: state.pools[kind].filter((item) => item.used_count === 0).length,
+      });
+      return json(response, 200, {
+        openings: stat("openings"),
+        titles: stat("titles"),
+        albums: stat("albums"),
+      });
+    }
+    const poolMatch = pathname.match(/^\/content-pools\/(openings|titles|albums)$/);
+    if (poolMatch && method === "GET") {
+      const kind = poolMatch[1];
+      const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      const limit = Number(url.searchParams.get("limit") ?? 100);
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      state.calls.push({ method, path: pathname, query: { limit, offset } });
+      const rows = state.pools[kind];
+      json(response, 200, {
+        kind,
+        total: rows.length,
+        limit,
+        offset,
+        items: rows.slice(offset, offset + limit),
+      });
       return;
     }
 
@@ -389,6 +538,26 @@ async function openApp(name, apiPort, options = {}) {
   return { app, page };
 }
 
+/**
+ * Closing a window whose Settings tab has unsaved changes can be held by the
+ * page's `beforeunload` handler, which leaves Playwright waiting forever.
+ * Bound the graceful close and force-exit the app if it does not finish.
+ */
+async function closeApp(app) {
+  try {
+    await Promise.race([
+      app.close(),
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
+  } finally {
+    try {
+      await app.evaluate(({ app: electronApp }) => electronApp.exit(0));
+    } catch {
+      // Already closed.
+    }
+  }
+}
+
 async function resize(app, page, width, height) {
   await app.evaluate(async ({ BrowserWindow }, size) => {
     const window = BrowserWindow.getAllWindows()[0];
@@ -446,7 +615,7 @@ async function settingsLoading() {
     await page.locator("#settings-preferences-image-workers").waitFor({ timeout: 8000 });
     step("loading: done");
   } finally {
-    await app.close();
+    await closeApp(app);
     server.close();
   }
 }
@@ -464,18 +633,21 @@ async function settingsSuccess() {
       "Deep link must select the requested profile",
     );
 
-    // Shell: three live tabs, P8 note, no P8 tabs.
-    assert((await page.getByRole("tab").count()) === 3, "Settings must render three live tabs");
+    // Shell: all eight live tabs, immediate-action note, no placeholder copy.
+    assert((await page.getByRole("tab").count()) === 8, "Settings must render eight live tabs");
     const tabNames = (await page.getByRole("tab").allInnerTexts()).map((text) => text.trim());
     assert(
-      tabNames.join("|") === "Profiles|Publication|Preferences",
-      `Only the three live tabs may render, got: ${tabNames.join("|")}`,
+      tabNames.join("|") ===
+        "Profiles|Publication|Preferences|Descriptions|Structures|Moods|Pools|Suno",
+      `All eight tabs must render, got: ${tabNames.join("|")}`,
     );
     const navText = await page.getByRole("tablist", { name: "Settings sections" }).innerText();
     assert(
-      navText.includes("Descriptions, Structures, Moods, Pools and Suno arrive in P8"),
-      "P8 note missing",
+      navText.includes("Defaults save with Save all") &&
+        navText.includes("pool refresh act immediately"),
+      "Immediate-action note missing",
     );
+    assert(!navText.includes("arrive in P8"), "The P8 placeholder note must be gone");
 
     // Search and select.
     const list = page.locator('[data-testid="settings-profile-list"]');
@@ -810,7 +982,270 @@ async function settingsSuccess() {
     await page.getByText("Prepared ·").waitFor({ timeout: 5000 });
     step("success: preferences saved");
 
-    // Save all changes in a deterministic order.
+    // Descriptions: catalog, paired structure, user CRUD, default selection.
+    await page.getByRole("tab", { name: /Descriptions/ }).click();
+    await page.locator('[data-testid="settings-descriptions-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    assert(
+      (await page.locator("#settings-descriptions-default-select").inputValue()) === "desc-admin-1",
+      "The description default must load from account settings",
+    );
+    assert(
+      (await page.locator("#settings-descriptions-default-structure").inputValue()) === "struct-admin-1",
+      "The paired structure default must load from account settings",
+    );
+    const descriptionsText = await page.locator('[data-testid="settings-descriptions-tab"]').innerText();
+    assert(descriptionsText.includes("Camxora Anthem"), "The Camxora catalog must be listed");
+    assert(descriptionsText.includes("My Late Night"), "The user catalog must be listed");
+    assert(descriptionsText.includes("Read-only"), "Admin entries must be labelled read-only");
+    assert(descriptionsText.includes("Selected name"), "The selected entry name must be shown");
+    assert(!descriptionsText.includes("operator@example.com"), "Descriptions must not show the email");
+    assert(!descriptionsText.includes("e2e-token"), "Descriptions must not show the token");
+
+    await page.getByTestId("settings-descriptions-new").click();
+    await page.locator("#settings-descriptions-name").fill("E2E Description");
+    await page.locator("#settings-descriptions-content").fill("A slow, warm opener.");
+    await pause(page);
+    assert(
+      (await page.getByTestId("settings-descriptions-count").innerText()).includes("/ 5000"),
+      "The editor must show a character count",
+    );
+    await page.getByTestId("settings-descriptions-save").click();
+    await page.getByText("Created E2E Description.").waitFor({ timeout: 5000 });
+    const createPromptCall = state.calls.find(
+      (call) => call.method === "POST" && call.path === "/prompts/me/descriptions",
+    );
+    assert(Boolean(createPromptCall), "Create must POST /prompts/me/descriptions");
+    assert(createPromptCall.body.name === "E2E Description", "Create must send the name");
+    assert(createPromptCall.body.content === "A slow, warm opener.", "Create must send the content");
+    assert(
+      (await page.locator('[data-testid="settings-descriptions-list"]').innerText()).includes(
+        "E2E Description",
+      ),
+      "The created prompt must appear in the user catalog",
+    );
+
+    await page.locator("#settings-descriptions-name").fill("E2E Description Edited");
+    await page.getByTestId("settings-descriptions-save").click();
+    await page.getByText("Saved E2E Description Edited.").waitFor({ timeout: 5000 });
+    const updatePromptCall = [...state.calls]
+      .reverse()
+      .find(
+        (call) => call.method === "PUT" && call.path.startsWith("/prompts/me/descriptions/"),
+      );
+    assert(Boolean(updatePromptCall), "Edit must PUT /prompts/me/descriptions/{id}");
+    assert(updatePromptCall.body.name === "E2E Description Edited", "Edit must send the new name");
+
+    const descriptionEditor = page.locator('[data-testid="settings-descriptions-editor"]');
+    await descriptionEditor.getByRole("button", { name: "Use as default" }).click();
+    await pause(page);
+    assert(
+      (await page.locator("#settings-descriptions-default-select").inputValue()).startsWith(
+        "created-descriptions",
+      ),
+      "Use as default must select the saved prompt",
+    );
+    step("success: created and edited description");
+
+    await descriptionEditor.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("dialog").getByText("Delete E2E Description Edited?").waitFor();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete prompt" }).click();
+    await page.getByText("Deleted E2E Description Edited.").waitFor({ timeout: 5000 });
+    await pause(page);
+    assert(
+      state.calls.some(
+        (call) => call.method === "DELETE" && call.path.startsWith("/prompts/me/descriptions/"),
+      ),
+      "Delete must call DELETE /prompts/me/descriptions/{id}",
+    );
+    assert(
+      !(await page.locator('[data-testid="settings-descriptions-list"]').innerText()).includes(
+        "E2E Description",
+      ),
+      "The deleted prompt must leave the catalog",
+    );
+    assert(
+      (await page.locator("#settings-descriptions-default-select").inputValue()) === "",
+      "Deleting the selected default must clear the draft",
+    );
+    step("success: deleted description");
+
+    await page.locator("#settings-descriptions-default-select").selectOption("desc-admin-2");
+    await page.locator("#settings-descriptions-default-structure").selectOption("struct-user-1");
+    await pause(page);
+
+    // Structures: same component, its own default.
+    await page.getByRole("tab", { name: /^Structures/ }).click();
+    await page.locator('[data-testid="settings-structures-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    assert(
+      (await page.locator("#settings-structures-default-select").inputValue()) === "struct-user-1",
+      "The shared structure default must be reflected on the Structures tab",
+    );
+    assert(
+      (await page.locator('[data-testid="settings-structures-tab"]').innerText()).includes(
+        "My Build",
+      ),
+      "The user structure must be listed",
+    );
+
+    // Moods: same component, its own default.
+    await page.getByRole("tab", { name: /^Moods/ }).click();
+    await page.locator('[data-testid="settings-moods-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    assert(
+      (await page.locator("#settings-moods-default-select").inputValue()) === "mood-admin-1",
+      "The mood default must load from account settings",
+    );
+    await page.locator("#settings-moods-default-select").selectOption("mood-user-1");
+    await pause(page);
+    step("success: structures and moods");
+
+    // Pools: read-only stats, table, pager bounds, kind switch.
+    await page.getByRole("tab", { name: /^Pools/ }).click();
+    await page.locator('[data-testid="settings-pools-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 400);
+    const poolsTab = page.locator('[data-testid="settings-pools-tab"]');
+    const poolsText = await poolsTab.innerText();
+    assert(poolsText.includes("Account-wide"), "The ownership summary must be shown");
+    assert(poolsText.includes("Admin Portal"), "Pools must explain where editing happens");
+    const statsText = await page.getByTestId("settings-pools-stats").innerText();
+    assert(statsText.includes("120"), `Openings total missing: ${statsText}`);
+    assert(statsText.includes("100"), `Openings unused count missing: ${statsText}`);
+    assert(!poolsText.includes("operator@example.com"), "Pools must not show the email");
+    assert(!poolsText.includes("e2e-token"), "Pools must not show the token");
+    assert(
+      (await poolsTab.locator("input, select, textarea").count()) === 0,
+      "Pools must be read-only: no form controls",
+    );
+    assert(
+      (await page.locator('[data-testid="settings-pools-table"] tbody tr').count()) === 50,
+      "The first pool page must show 50 rows",
+    );
+    assert(
+      (await page.getByTestId("settings-pools-page-label").innerText()).includes(
+        "Page 1 of 3 · 1–50 of 120",
+      ),
+      "The first page label must state the range",
+    );
+    assert(await page.getByTestId("settings-pools-prev").isDisabled(), "Previous must be disabled on page 1");
+    assert(!(await page.getByTestId("settings-pools-next").isDisabled()), "Next must be enabled on page 1");
+    await page.getByTestId("settings-pools-next").click();
+    await pause(page, 400);
+    assert(
+      (await page.getByTestId("settings-pools-page-label").innerText()).includes(
+        "Page 2 of 3 · 51–100 of 120",
+      ),
+      "Next must load the second page",
+    );
+    assert(
+      state.calls.some(
+        (call) =>
+          call.method === "GET" &&
+          call.path === "/content-pools/openings" &&
+          call.query?.offset === 50 &&
+          call.query?.limit === 50,
+      ),
+      "The second page must request offset 50 with a 50-row page size",
+    );
+    await page.getByTestId("settings-pools-next").click();
+    await pause(page, 400);
+    assert(
+      (await page.getByTestId("settings-pools-page-label").innerText()).includes(
+        "Page 3 of 3 · 101–120 of 120",
+      ),
+      "The last page label must state the final range",
+    );
+    assert(
+      (await page.getByTestId("settings-pools-table").locator("tbody tr").count()) === 20,
+      "The last page must show the remaining rows",
+    );
+    assert(await page.getByTestId("settings-pools-next").isDisabled(), "Next must be disabled on the last page");
+    assert(!(await page.getByTestId("settings-pools-prev").isDisabled()), "Previous must be enabled on page 3");
+    await page.getByTestId("settings-pools-prev").click();
+    await pause(page, 300);
+    assert(
+      (await page.getByTestId("settings-pools-page-label").innerText()).includes("Page 2 of 3"),
+      "Previous must step back one page",
+    );
+
+    await page.locator('[data-pool-kind="titles"]').click();
+    await pause(page, 400);
+    assert(
+      (await page.getByTestId("settings-pools-page-label").innerText()).includes("Page 1 of 1 · 1–2 of 2"),
+      "Switching pool kind must reset to the first page",
+    );
+    assert(await page.getByTestId("settings-pools-next").isDisabled(), "A single page must disable Next");
+    await page.locator('[data-pool-kind="albums"]').click();
+    await pause(page, 400);
+    assert(
+      (await poolsTab.innerText()).includes("no entries yet"),
+      "An empty pool must say so explicitly",
+    );
+    step("success: pools");
+
+    // Suno: bounds block the save; a valid patch writes only changed keys.
+    await page.getByRole("tab", { name: /^Suno/ }).click();
+    await page.locator('[data-testid="settings-suno-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    assert(
+      (await page.locator("#settings-suno-version").inputValue()) === "v6",
+      "The Suno version must load",
+    );
+    assert(
+      (await page.locator("#settings-suno-timeout").inputValue()) === "90000",
+      "The Suno timeout must load",
+    );
+    assert(
+      (await page.locator('[data-testid="settings-suno-tab"]').innerText()).includes(
+        "Only the supported Suno defaults are shown here",
+      ),
+      "The supported-defaults note must be shown",
+    );
+    assert(!(await page.locator('[data-testid="settings-suno-tab"]').innerText()).includes("e2e-token"));
+
+    const beforeInvalidSuno = state.calls.length;
+    await page.locator("#settings-suno-timeout").fill("100");
+    await page.getByTestId("settings-suno-save").click();
+    await pause(page, 400);
+    assert(
+      (await page.locator('[data-testid="settings-suno-tab"]').innerText()).includes(
+        "Timeout must be between 1000 and 600000 ms.",
+      ),
+      "Out-of-bounds values must show a field error",
+    );
+    assert(
+      state.calls.length === beforeInvalidSuno,
+      "Invalid Suno defaults must not call the API",
+    );
+
+    await page.locator("#settings-suno-timeout").fill("120000");
+    await page.locator("#settings-suno-retry").fill("6");
+    await page.locator("#settings-suno-merge").check();
+    await page.locator("#settings-suno-merge-group").fill("3");
+    await page.locator("#settings-suno-version").selectOption("v5.5");
+    await page.getByTestId("settings-suno-save").click();
+    await page.getByText("Suno defaults saved.").waitFor({ timeout: 5000 });
+    const sunoPatchCall = [...state.calls]
+      .reverse()
+      .find((call) => call.method === "PATCH" && call.path === "/settings");
+    assert(sunoPatchCall.body.sunoDefaultVersion === "v5.5", "Suno must patch the version");
+    assert(sunoPatchCall.body.sunoTimeoutMs === 120000, "Suno must patch the timeout");
+    assert(sunoPatchCall.body.sunoRetryCount === 6, "Suno must patch the retry count");
+    assert(sunoPatchCall.body.sunoMergeEnabled === true, "Suno must patch auto merge");
+    assert(sunoPatchCall.body.sunoMergeGroupSize === 3, "Suno must patch the merge group size");
+    assert(
+      !("customSunoPreset" in sunoPatchCall.body),
+      "Suno must not resend settings keys it does not own",
+    );
+    assert(state.settings.customSunoPreset === "keep-me", "Unknown settings keys must be preserved");
+    step("success: suno bounds and patch");
+
+    // Re-dirty Suno for the save-all order check.
+    await page.locator("#settings-suno-retry").fill("4");
+    await pause(page);
+
+    // Save all changes in a deterministic order across every writable tab.
     await page.getByRole("tab", { name: /Profiles/ }).click();
     await pause(page);
     await page.locator("#settings-profile-prefix").fill("NS2");
@@ -824,26 +1259,71 @@ async function settingsSuccess() {
     step("success: edited all tabs");
     const dirtyFooter = await page.locator('[data-testid="settings-footer-status"]').innerText();
     assert(
-      dirtyFooter.includes("3 tabs with unsaved changes") &&
-        dirtyFooter.includes("Profiles, Publication, Preferences"),
+      dirtyFooter.includes("7 tabs with unsaved changes") &&
+        dirtyFooter.includes(
+          "Profiles, Publication, Preferences, Descriptions, Structures, Moods, Suno",
+        ),
       `Footer must list every dirty tab, got: ${dirtyFooter}`,
+    );
+    assert(
+      !dirtyFooter.includes("Pools"),
+      "The read-only Pools tab must never be dirty",
     );
 
     const callStart = state.calls.length;
     await page.getByRole("button", { name: "Save all changes" }).click();
-    await page.getByText("Saved all changes.").waitFor({ timeout: 8000 });
-    await pause(page, 300);
-    const saveAllCalls = state.calls.slice(callStart).map((call) => `${call.method} ${call.path}`);
-    assert(saveAllCalls[0] === "PUT /profiles/profile-1", `Save all order: ${saveAllCalls.join(", ")}`);
-    assert(saveAllCalls[1] === "PUT /profiles/profile-1", `Save all publication: ${saveAllCalls.join(", ")}`);
-    assert(saveAllCalls[2] === "PATCH /settings", `Save all preferences: ${saveAllCalls.join(", ")}`);
+    await page.getByText("Saved all changes.").waitFor({ timeout: 10000 });
+    await pause(page, 400);
+    const saveAllCalls = state.calls.slice(callStart);
+    assert(
+      saveAllCalls
+        .map((call) => `${call.method} ${call.path}`)
+        .join(" | ") ===
+        [
+          "PUT /profiles/profile-1",
+          "PUT /profiles/profile-1",
+          "PATCH /settings",
+          "PATCH /settings",
+          "PATCH /settings",
+          "PATCH /settings",
+          "PATCH /settings",
+        ].join(" | "),
+      `Save all order: ${saveAllCalls.map((call) => `${call.method} ${call.path}`).join(", ")}`,
+    );
+    const savesByTab = saveAllCalls.map((call) => call.body ?? {});
+    assert(savesByTab[0].run_prefix === "NS2", "Profiles must save first");
+    assert(savesByTab[1].youtube_config.category === "24", "Publication must save second");
+    assert(savesByTab[2].perfMusicWorkers === 2, "Preferences must save third");
+    assert(
+      savesByTab[3].defaultDescriptionId === "desc-admin-2" &&
+        !("defaultStructureId" in savesByTab[3]),
+      `Descriptions must save its own default: ${JSON.stringify(savesByTab[3])}`,
+    );
+    assert(
+      savesByTab[4].defaultStructureId === "struct-user-1",
+      `Structures must save its default: ${JSON.stringify(savesByTab[4])}`,
+    );
+    assert(savesByTab[5].defaultMoodId === "mood-user-1", "Moods must save its default");
+    assert(savesByTab[6].sunoRetryCount === 4, "Suno must save fourth");
+    assert(
+      !("customSunoPreset" in savesByTab[6]),
+      "Save all must not resend unknown settings keys",
+    );
     assert(
       (await page.locator('[data-testid="settings-footer-status"]').innerText()).includes("All changes saved"),
       "Footer must report the save",
     );
     step("success: saved all");
 
-    // Discard all reverts every draft.
+    // Discard all reverts every draft, including the new tabs.
+    await page.getByRole("tab", { name: /^Suno/ }).click();
+    await pause(page);
+    await page.locator("#settings-suno-retry").fill("9");
+    await pause(page);
+    assert(
+      (await page.locator('[data-testid="settings-footer-status"]').innerText()).includes("Suno"),
+      "The Suno draft must be dirty before Discard",
+    );
     await page.getByRole("tab", { name: /Profiles/ }).click();
     await pause(page);
     await page.locator("#settings-profile-name").fill("Renamed Draft");
@@ -855,6 +1335,14 @@ async function settingsSuccess() {
       (await page.locator("#settings-profile-name").inputValue()) === "Night Shift",
       "Discard must revert the profile draft",
     );
+    await page.getByRole("tab", { name: /^Suno/ }).click();
+    await pause(page);
+    assert(
+      (await page.locator("#settings-suno-retry").inputValue()) === "4",
+      "Discard must revert the Suno draft",
+    );
+    await page.getByRole("tab", { name: /Profiles/ }).click();
+    await pause(page);
 
     // Later `/settings?profile=` navigation switches the editor.
     await page.evaluate(() => {
@@ -897,7 +1385,7 @@ async function settingsSuccess() {
     assert(!html.includes("e2e-token"), "The access token must never reach the DOM");
     step("success: done");
   } finally {
-    await app.close();
+    await closeApp(app);
     server.close();
   }
 }
@@ -922,14 +1410,58 @@ async function settingsScreens(which) {
     }
     step(`screens ${which}: done`);
   } finally {
-    await app.close();
+    await closeApp(app);
+    server.close();
+  }
+}
+
+async function settingsP8Screens() {
+  step("screens p8: start");
+  const { server, port } = await createBackend();
+  const { app, page } = await openApp("screens-p8", port);
+  const outDir = path.join(artifacts, "settings-p8");
+  fs.mkdirSync(outDir, { recursive: true });
+  const tabs = [
+    ["descriptions", /^Descriptions/],
+    ["structures", /^Structures/],
+    ["moods", /^Moods/],
+    ["pools", /^Pools/],
+    ["suno", /^Suno/],
+  ];
+  try {
+    await openSettings(page);
+    await resize(app, page, 1440, 900);
+    for (const [name, pattern] of tabs) {
+      await page.getByRole("tab", { name: pattern }).click();
+      await page.locator(`[data-testid="settings-${name}-tab"]`).waitFor({ timeout: 8000 });
+      await pause(page, 500);
+      await page.evaluate(() => {
+        const scroller = document.querySelector("main");
+        if (scroller) scroller.scrollTop = 0;
+      });
+      await page.screenshot({
+        path: path.join(outDir, `settings-${name}-1440.png`),
+        timeout: 15000,
+      });
+    }
+    step("screens p8: done");
+  } finally {
+    await closeApp(app);
     server.close();
   }
 }
 
 async function settingsEmpty() {
   step("empty: start");
-  const { server, port } = await createBackend({ profiles: [], connections: [] });
+  const emptyPrompts = { descriptions: [], structures: [], moods: [] };
+  const emptyPools = { openings: [], titles: [], albums: [] };
+  const { server, port } = await createBackend({
+    profiles: [],
+    connections: [],
+    promptWorkspace: emptyPrompts,
+    myPrompts: emptyPrompts,
+    pools: emptyPools,
+  });
   const { app, page } = await openApp("empty", port);
   try {
     await openSettings(page);
@@ -952,12 +1484,35 @@ async function settingsEmpty() {
       (await page.locator("#settings-preferences-image-workers").inputValue()) === "4",
       "Preferences must still load without profiles",
     );
+
+    await page.getByRole("tab", { name: /^Descriptions/ }).click();
+    await page.locator('[data-testid="settings-descriptions-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    const descriptionsText = await page.locator('[data-testid="settings-descriptions-tab"]').innerText();
+    assert(descriptionsText.includes("No user descriptions yet."), "The prompt empty state must be explicit");
+    assert(
+      descriptionsText.includes("No Camxora descriptions are available."),
+      "The empty Camxora catalog must be explicit",
+    );
+
+    await page.getByRole("tab", { name: /^Pools/ }).click();
+    await page.locator('[data-testid="settings-pools-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    assert(
+      (await page.locator('[data-testid="settings-pools-tab"]').innerText()).includes("no entries yet"),
+      "The empty pool state must be explicit",
+    );
+    assert(
+      (await page.getByTestId("settings-pools-page-label").innerText()).includes("Page 1 of 1"),
+      "An empty pool must still show a bounded pager",
+    );
+
     await page.getByRole("tab", { name: /Profiles/ }).click();
     await pause(page);
     await capture(app, page, "settings-empty");
     step("empty: done");
   } finally {
-    await app.close();
+    await closeApp(app);
     server.close();
   }
 }
@@ -965,7 +1520,12 @@ async function settingsEmpty() {
 async function settingsErrors() {
   step("errors: start");
   const { server, port } = await createBackend({
-    failures: { "GET /profiles": true, "GET /settings": true },
+    failures: {
+      "GET /profiles": true,
+      "GET /settings": true,
+      "GET /prompts/descriptions/workspace": true,
+      "GET /content-pools/stats": true,
+    },
   });
   const { app, page } = await openApp("errors", port);
   try {
@@ -982,9 +1542,38 @@ async function settingsErrors() {
       ),
       "Preferences error banner missing",
     );
+
+    await page.getByRole("tab", { name: /^Descriptions/ }).click();
+    await page.locator('[data-testid="settings-descriptions-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    assert(
+      (await page.locator('[data-testid="settings-descriptions-tab"]').innerText()).includes(
+        "Unable to load the description catalog.",
+      ),
+      "Prompt catalog error banner missing",
+    );
+
+    await page.getByRole("tab", { name: /^Pools/ }).click();
+    await page.locator('[data-testid="settings-pools-tab"]').waitFor({ timeout: 8000 });
+    await pause(page, 300);
+    assert(
+      (await page.locator('[data-testid="settings-pools-tab"]').innerText()).includes(
+        "Pool counts are unavailable right now.",
+      ),
+      "Pool stats error banner missing",
+    );
+
+    await page.getByRole("tab", { name: /^Suno/ }).click();
+    await pause(page);
+    assert(
+      (await page.locator('[data-testid="settings-suno-tab"]').innerText()).includes(
+        "Unable to load Suno defaults.",
+      ),
+      "Suno error banner missing",
+    );
     await capture(app, page, "settings-error");
   } finally {
-    await app.close();
+    await closeApp(app);
     server.close();
   }
 }
@@ -993,6 +1582,7 @@ const only = process.env.SETTINGS_E2E_ONLY;
 if (!only || only === "success") await settingsSuccess();
 if (!only || only === "screens-publication") await settingsScreens("publication");
 if (!only || only === "screens-preferences") await settingsScreens("preferences");
+if (!only || only === "screens-p8") await settingsP8Screens();
 if (!only || only === "empty") await settingsEmpty();
 if (!only || only === "errors") await settingsErrors();
 if (!only || only === "loading") await settingsLoading();
