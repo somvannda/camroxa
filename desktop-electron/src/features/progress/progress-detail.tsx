@@ -161,7 +161,7 @@ export function ProgressDetail({
       ? "Image retry is not available in manual image mode."
       : retryable
         ? null
-        : `Stage retry is wired with the pipeline service in P7 for ${failedStage ?? "this stage"}.`;
+        : `Stage retry is not available for ${failedStage ?? "this stage"} yet.`;
 
   const paths = [
     meta.run_dir ? { label: "Run folder", value: meta.run_dir, kind: "folder" as const } : null,
@@ -251,7 +251,7 @@ export function ProgressDetail({
           {meta.profile_id || "--"}
         </Field>
         <Field label="Updated">{updated.primary}</Field>
-        <Field label="Pipeline">{video.source === "local" ? "Local output" : video.source === "api" ? "API values" : "P7 integration"}</Field>
+        <Field label="Pipeline">{video.source === "local" ? "Local output" : video.source === "api" ? "API values" : "Not reported"}</Field>
       </dl>
 
       <dl className="mt-3 grid grid-cols-3 gap-4 border-b border-border pb-3">

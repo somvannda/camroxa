@@ -302,7 +302,7 @@ export interface LocalVideoState {
 /**
  * PG-18/PG-19: local runtime truth wins over the API text. Without local
  * output (and without a meaningful API value) the cell stays honest and points
- * at the P7 pipeline integration.
+ * at the Vizzy pipeline integration.
  */
 export function localVideoState(row: ProgressRow): LocalVideoState {
   const meta = row.meta;

@@ -483,10 +483,10 @@ export function PreferencesTab({ workspace }: { workspace: SettingsWorkspace }) 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-control border border-border bg-surface-1 p-3">
             <p className="text-meta text-text-secondary">Audio analysis cache</p>
-            <p className="mt-1 text-body text-text-primary">Managed by the P7 pipeline</p>
+            <p className="mt-1 text-body text-text-primary">Managed by the Vizzy pipeline</p>
             <p className="mt-1 text-caption text-text-muted">
-              The cache size and the clear action arrive with the pipeline. Nothing is cleared from
-              this build.
+              Cache size measurement and clearing are not available yet; nothing is cleared by this
+              build.
             </p>
           </div>
           <div className="rounded-control border border-border bg-surface-1 p-3">
