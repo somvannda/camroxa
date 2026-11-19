@@ -52,6 +52,9 @@ analyser settings. §5.1 describes a separate offscreen worker as the scale-out 
 does not need it for correctness, and adding it must keep the same project/analyser path.
 Native FFmpeg remains the merge/reel/validation tool.
 
+The wiring details for Music/Progress/merge/reel are in
+[`vizzy/BATCH-ORCHESTRATION.md`](vizzy/BATCH-ORCHESTRATION.md).
+
 ---
 
 ## 2. Pipeline flow
