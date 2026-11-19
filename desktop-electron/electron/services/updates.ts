@@ -1,10 +1,12 @@
 import { shell } from "electron";
 import { logger } from "./logger";
 import { getApiBaseUrl } from "./api-client";
+import { getStore } from "./store";
 import { APP_VERSION } from "../shared/version";
 import type { UpdateCheckResult, UpdateOffer } from "../shared/types";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const STORED_OFFER_KEY = "updates.mandatory";
 
 export function compareVersions(left: string, right: string): number {
   const parse = (value: string): number[] =>
@@ -61,6 +63,30 @@ export function parseUpdateManifest(
   };
 }
 
+function readStoredMandatory(): UpdateOffer | null {
+  try {
+    const raw = getStore().getMeta(STORED_OFFER_KEY);
+    if (!raw) return null;
+    const offer = parseUpdateManifest(JSON.parse(raw), APP_VERSION);
+    return offer?.mandatory ? offer : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeMandatory(offer: UpdateOffer | null): void {
+  try {
+    const store = getStore();
+    if (offer?.mandatory) {
+      store.setMeta(STORED_OFFER_KEY, JSON.stringify(offer));
+    } else {
+      store.setMeta(STORED_OFFER_KEY, "");
+    }
+  } catch {
+    // A missing store must never turn an update check into a crash.
+  }
+}
+
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
   const manifestUrl = (process.env.CAMXORA_UPDATE_MANIFEST_URL ?? "").trim();
   const target = manifestUrl || `${getApiBaseUrl()}/public/desktop-release`;
@@ -84,18 +110,21 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     // A confirmed 404 is the published-release withdrawal signal: no offer,
-    // no error. Other failures are reported without blocking the app.
+    // no error, and any persisted mandatory gate is cleared.
     if (response.status === 404) {
+      storeMandatory(null);
       return { currentVersion: APP_VERSION, offer: null };
     }
     if (!response.ok) {
+      const stored = readStoredMandatory();
       return {
         currentVersion: APP_VERSION,
-        offer: null,
+        offer: stored,
         message: `Update check failed (${response.status}).`,
       };
     }
     const offer = parseUpdateManifest(await response.json());
+    storeMandatory(offer?.mandatory ? offer : null);
     logger.info("update check completed", {
       current: APP_VERSION,
       offered: offer?.version ?? null,
@@ -107,14 +136,13 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     logger.warn("update check unavailable", { error: String(error) });
     return {
       currentVersion: APP_VERSION,
-      offer: null,
+      offer: readStoredMandatory(),
       message: "Cannot reach the update service right now.",
     };
   }
 }
 
-export async function openUpdateDownload(offer: UpdateOffer): Promise<boolean> {
-  if (!offer.url || !/^https:\/\//i.test(offer.url)) return false;
+export async function openUpdateDownload(offer: UpdateOffer): Promise<boolean> {  if (!offer.url || !/^https:\/\//i.test(offer.url)) return false;
   await shell.openExternal(offer.url);
   return true;
 }
