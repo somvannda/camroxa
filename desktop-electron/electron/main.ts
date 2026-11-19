@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { app, BrowserWindow, protocol, session, shell } from "electron";
 import { registerIpc } from "./ipc";
+import { stopDownloadCoordinator } from "./ipc/downloads";
 import { logger } from "./services/logger";
 import { handleMediaRequest } from "./services/media";
 import { ensureAppDirs, getAppPaths } from "./services/paths";
@@ -184,6 +185,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  // Abort live downloads and delete their partial files before the store closes.
+  stopDownloadCoordinator();
   vizzyHost?.dispose();
   closeStore();
 });

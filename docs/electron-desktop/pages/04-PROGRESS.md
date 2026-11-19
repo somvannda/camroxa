@@ -31,7 +31,8 @@ stage. Historical runs with stored values still render correctly.
 |---|---|---|
 | Progress rows | `GET /progress` | Main table |
 | Settings | `GET /settings` | `imageSourceMode` for manual recovery UI |
-| Pending downloads | `GET /music/downloads/pending?limit=12` | Download queue card |
+| Pending downloads | `GET /music/downloads/pending?limit=24` | Main-process coordinator (download queue card reads its snapshot) |
+| Download completion | `POST /music/downloads/sync` | Acknowledge finished targets (1.7.1 parity) |
 | Manual sync | `POST /image-jobs/sync-manual` | Continue pipeline after manual images |
 | Local overlay | `video_runtime_inspection` | Converter/merge truth from local files |
 
@@ -122,13 +123,37 @@ The toolbar sits on the page background, not inside a card.
 
 ### 4.6 Download queue
 
+**Status: implemented in the main process (P4).** The shell no longer just displays
+pending rows: `electron/services/download-coordinator.ts` polls the endpoint, writes the
+files and reports completion. The renderer reads snapshots over IPC.
+
 | ID | Feature | Acceptance | Pri |
 |---|---|---|---|
-| PG-39 | Visibility | Card hidden when no pending items | P0 |
-| PG-40 | Rows | Song, channel, target path, state, progress | P0 |
-| PG-41 | Live progress | Updates from the main-process coordinator | P0 |
-| PG-42 | Retry failed | Re-queues one item; shows an error if the URL is gone | P1 |
-| PG-43 | Open folder | Reveals the downloaded file | P1 |
+| PG-39 | Visibility | Card hidden when the coordinator tracks nothing | P0 |
+| PG-40 | Rows | Song, channel, target path, state, progress (live bytes) | P0 |
+| PG-41 | Live progress | `downloads:list` snapshots at 5 s + `downloads:changed`; state machine `queued → downloading → done/failed/cancelled` | P0 |
+| PG-42 | Retry failed | Re-queues one failed/cancelled row; disabled with a reason when the row has no URL; a gone URL fails with `DOWNLOAD_URL_GONE` | P1 |
+| PG-43 | Open folder | Reveals a finished file inside the output root, or opens the target folder | P1 |
+
+#### 4.6.1 Shell coordinator
+
+| Concern | Rule |
+|---|---|
+| Poll | `GET /music/downloads/pending?limit=24` through the authenticated API client. 12 s idle, 4 s while work is queued or running (1.7.1 parity). The shell asks for an early poll when the card is visible (1.5 s minimum gap), coalesced single-flight. |
+| Output root | The device **Suno output dir** from Settings; the managed `<userData>/downloads` folder when it is unset. Nothing is ever written outside that root. |
+| Target resolution | Absolute `target_path` must already be inside the root; a relative target is joined to it; otherwise `output_dir` (inside the root) + a sanitised `<track> <title>.mp3`. `..` segments, absolute escapes and folder targets are rejected with specific errors. Parent folders are created. |
+| Download | `fetch` the URL, stream chunks to `<name>.camxora-part-<uuid>` in the target folder, then rename over the real name. A cancel, failure or quit deletes the partial file. |
+| Concurrency | 2 by default (`CAMXORA_DOWNLOAD_CONCURRENCY`, clamped 1–3). |
+| Retry | 3 attempts for retryable failures (HTTP 429/5xx/network/truncated body) with 0.75 s then 2 s backoff. 404/410, 401/403, unsupported URLs and containment failures are permanent and never retried automatically. |
+| Dedupe | Key is `task_id::primary|secondary`. A repeated pending item is never fetched twice, a finished row is not re-downloaded, and an existing non-empty file is accepted as done without a request. |
+| Report | Finished rows are acknowledged once through `POST /music/downloads/sync` (`downloaded_primary/secondary` + output dirs) so the server stops listing them as pending. Failures keep the file and retry the acknowledgement on the next cycle. |
+| URLs | Only `http(s)`. `http` on loopback is accepted only when `CAMXORA_E2E=1`. URLs never reach the renderer, and the session bearer token is never attached to a download request. |
+| Lifecycle | Runs in the main process, so route changes and focus changes do not stop it. `before-quit` aborts streams and deletes partial files. Pause/resume is a real shell control. |
+
+Deliberate deviations from 1.7.1: the poll cadence is unchanged, but polling is never paused
+for a preview/modal (it is network I/O in the main process, not the UI thread); an existing
+file is accepted instead of re-downloaded; and a missing/invalid/gone URL surfaces as a failed
+row with a specific message instead of a silent skip.
 
 ### 4.7 Polling and lifecycle
 
@@ -136,7 +161,7 @@ The toolbar sits on the page background, not inside a card.
 |---|---|---|---|
 | PG-44 | Default poll | 12 s while the page is active | P0 |
 | PG-45 | Active-only poll | 4 s when "Active only" is on | P0 |
-| PG-46 | Downloads poll | 5 s while visible | P0 |
+| PG-46 | Downloads poll | 5 s while visible (`use-download-queue`), stopped when hidden; the coordinator keeps its own 12 s/4 s cadence in the main process | P0 |
 | PG-47 | Hidden page | All timers stop; a single refresh on return | P0 |
 | PG-48 | Single-flight | Overlapping polls never stack requests | P0 |
 | PG-49 | Error/stale | On poll failure, keep rows and mark "Stale · last updated …" | P0 |
@@ -149,7 +174,7 @@ The toolbar sits on the page background, not inside a card.
 | State | Toolbar | Stats | Table | Downloads |
 |---|---|---|---|---|
 | Loading | enabled | `--` | skeleton | hidden |
-| Success | enabled | numbers | rows | visible if pending |
+| Success | enabled | numbers | rows | visible while the coordinator tracks items |
 | Empty | enabled | 0s | empty message | hidden |
 | Error | enabled | last values | stale rows or empty + banner | last values |
 | Manual mode | enabled | waiting count | manual actions | visible |
@@ -167,15 +192,19 @@ The toolbar sits on the page background, not inside a card.
 | PG-T5 | Poll cadence | 12 s / 4 s / 5 s; stopped when hidden |
 | PG-T6 | Error retention | Rows remain and stale label appears |
 | PG-T7 | Empty | Empty message + clear filters |
-| PG-T8 | Download queue | Appears/disappears with pending items |
+| PG-T8 | Download queue | Appears/disappears with pending items; live bytes and states; pause/resume, retry, cancel and reveal are real actions |
 | PG-T9 | Live pipeline | Render/merge/reel stages update; retry only the failed stage; upload uses the existing flow; historical values still render |
+| PG-T10 | Coordinator unit | Target resolution/containment, URL guard, dedupe, retry/backoff, cancel, pause/resume, write atomicity (fake fetcher/IO) |
+| PG-T11 | Downloads E2E | Real files with real bytes, live progress, dedupe of a repeated item, 500 auto-retry, manual retry, cancel without a partial file, traversal rejection, completion sync |
 
 ---
 
 ## 7. Dependencies
 
-- Music downloads coordinator (shell service).
-- Settings `imageSourceMode`.
+- Music downloads coordinator (shell service): `electron/services/download-coordinator.ts`,
+  `download-targets.ts`, `download-io.ts`, `electron/ipc/downloads.ts`; renderer
+  `use-download-queue.ts` + `download-queue.tsx`.
+- Settings `imageSourceMode` and the device Suno output folder.
 - Vizzy automation pipeline — **2.0.0**, see
   [`../09-PIPELINE-AUTOMATION.md`](../09-PIPELINE-AUTOMATION.md).
 - Local file access for inspection and open-folder.
@@ -185,9 +214,11 @@ The toolbar sits on the page background, not inside a card.
 ## 8. Definition of Done
 
 - [ ] PG-01 … PG-49 implemented; all `P0` verified against sandbox.
+- [x] PG-39 … PG-43 verified: real MP3 files under the configured root, no partial file after
+  cancel/failure/quit, dedupe, retry and live progress (`downloads` E2E + coordinator unit tests).
 - [ ] Table renders 200 rows without layout jank.
 - [ ] Polling stops when the page is hidden.
 - [ ] Manual recovery end-to-end verified with a real run folder.
-- [ ] PG-T1 … PG-T9 pass.
+- [ ] PG-T1 … PG-T11 pass.
 - [ ] Render/merge/reel stages are live and retryable; upload uses the existing flow.
 - [ ] Visual baseline approved.

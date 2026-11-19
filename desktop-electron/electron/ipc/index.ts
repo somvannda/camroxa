@@ -3,6 +3,7 @@ import type { VizzyHost } from "../vizzy-host/host";
 import type { BrowserWindow } from "electron";
 import { registerApiIpc } from "./api";
 import { registerAuthIpc } from "./auth";
+import { registerDownloadsIpc } from "./downloads";
 import { registerFfmpegIpc } from "./ffmpeg";
 import { registerFilesIpc } from "./files";
 import { registerPipelineIpc } from "./pipeline";
@@ -34,7 +35,10 @@ export function registerIpc(vizzyHost: VizzyHost, options?: IpcWindowOptions): v
   registerTemplatesIpc();
   registerVideoTemplatesIpc();
   registerVizzyIpc(vizzyHost);
-  if (options) registerPipelineIpc({ host: vizzyHost, getWindow: options.getWindow });
+  if (options) {
+    registerPipelineIpc({ host: vizzyHost, getWindow: options.getWindow });
+    registerDownloadsIpc({ getWindow: options.getWindow });
+  }
 
   logger.info("ipc registered");
 }

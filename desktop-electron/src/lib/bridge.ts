@@ -4,6 +4,8 @@ import type {
   AppInfo,
   BootstrapResult,
   DevicePreferences,
+  DownloadChangedEvent,
+  DownloadSnapshot,
   InstallTemplateRequest,
   InstallTemplateResult,
   InstalledTemplate,
@@ -105,6 +107,15 @@ export interface CamxoraBridge {
     read(id: string): Promise<IpcResult<VideoTemplateInfo & { pipeline: unknown }>>;
     remove(id: string): Promise<IpcResult<boolean>>;
     onChange(callback: (payload: VideoTemplateChangedEvent) => void): () => void;
+  };
+  downloads: {
+    list(): Promise<IpcResult<DownloadSnapshot>>;
+    start(): Promise<IpcResult<DownloadSnapshot>>;
+    stop(): Promise<IpcResult<DownloadSnapshot>>;
+    retry(key: string): Promise<IpcResult<DownloadSnapshot>>;
+    cancel(key: string): Promise<IpcResult<DownloadSnapshot>>;
+    reveal(key: string): Promise<IpcResult<boolean>>;
+    onChange(callback: (payload: DownloadChangedEvent) => void): () => void;
   };
   pipeline: {
     list(): Promise<IpcResult<PipelineSnapshot>>;

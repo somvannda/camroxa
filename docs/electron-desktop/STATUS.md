@@ -1,9 +1,9 @@
 # Implementation Status
 
 > **Updated:** 2026-11-19
-> **Worktree:** `G:\Developments\Projects\Camxora Desktop`
-> **Branch:** `desktop/electron-v1`
-> **Phase:** P1 auth complete; P2–P6 pages merged; P7 editor, library, templates, render, Renders and batch orchestration merged; upload and P8–P9 remain
+> **Worktree:** `G:\Developments\Projects\Camxora Desktop Downloads`
+> **Branch:** `desktop/downloads` (from `desktop/electron-v1` @ `58353b4`)
+> **Phase:** P1 auth complete; P2–P6 pages merged; P7 editor, library, templates, render, Renders and batch orchestration merged; P4 music downloads coordinator added; upload and P8–P9 remain
 
 ---
 
@@ -37,15 +37,16 @@
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
 | **P8 settings** | Descriptions, Structures, Moods, Pools and Suno tabs are **running** in `desktop/settings-p8` |
+| **P4 music downloads** | Main-process coordinator (`electron/services/download-coordinator.ts` + `download-targets.ts` + `download-io.ts`, `electron/ipc/downloads.ts`): polls pending downloads at 12 s/4 s, streams to the device Suno root with bounded concurrency, atomic temp→rename, 3-attempt backoff, dedupe by `task_id::role`, skip-if-present, cancel/pause/retry/reveal, completion sync; Progress card shows live bytes and real actions; unit + `downloads` E2E |
 
 ### Verification
 
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               278/278 PASS
+npm test               301/301 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
-npm run test:e2e       PASS (15 suites incl. pipeline-batch)
+npm run test:e2e       PASS (16 suites incl. pipeline-batch and downloads)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
@@ -78,6 +79,25 @@ reserved for the logo and the one primary CTA.
 degrade to `null` and fall back to `/users/me` + `/stats/dashboard`; plan expiry will show
 “Not provided” until the endpoint exists or the licence fields move to an existing endpoint.
 This is a backend contract decision, not a renderer bug.
+
+The music **history** payload (`MusicHistorySong`) exposes output folders and
+`downloaded_ok/alt` but **no per-song download URL**, so Music does not get a Download action:
+the shell can only reveal a file that already exists. The download queue
+(`/music/downloads/pending`) is the only source of download URLs. Completion is acknowledged
+through `POST /music/downloads/sync`, which exists in the contract and matches 1.7.1; a
+download URL therefore never needs the session token.
+
+## P4 download coordinator
+
+| Concern | Implementation |
+|---|---|
+| Entry points | `electron/ipc/downloads.ts` (shell-only `list`, `start`, `stop`, `retry`, `cancel`, `reveal`, `downloads:changed`), started at app boot, stopped in `before-quit` |
+| Files | `download-targets.ts` (containment + URL guard, pure), `download-coordinator.ts` (state machine), `download-io.ts` (part file → rename) |
+| Renderer | `use-download-queue.ts` (5 s visible poll, hidden-aware, single-flight, change events), `download-queue.tsx` (live bytes, retry/cancel/reveal/pause) |
+| Output | Device Suno folder, else `<userData>/downloads`; `..`, absolute escapes and folder targets are rejected |
+| Concurrency / retry | 2 (max 3); 3 attempts with 0.75 s/2 s backoff; permanent errors for 404/410, 401/403, unsupported URLs |
+| Dedupe | `task_id::role`; repeated pending items and existing non-empty files are never re-downloaded |
+| Measured (`downloads` E2E) | 4 real files written with exact bytes; repeated item fetched once; 500 retried 3× then manual retry succeeded; cancel left no `.part`; traversal target never fetched; 4 completions synced |
 
 ## Merge history
 
@@ -112,6 +132,9 @@ This is a backend contract decision, not a renderer bug.
 ## Remaining
 
 - P1: startup/bootstrap polish only.
+- P4: the download coordinator writes real audio and reports completion. Music has no per-song
+  Download action because the history contract exposes no URL (see “Open API gap”); the only
+  honest actions there stay folder reveal for existing files.
 - P7: editor, 91-template library, save-as-template, single-template render, Renders and batch
   orchestration (offscreen render, merge, reel branch, cancel/retry, Music trigger, Progress
   table) are merged. **Upload is the remaining P7 gap**: Auto-Upload stays disabled exactly as
@@ -131,7 +154,7 @@ This is a backend contract decision, not a renderer bug.
 |---|---|
 | Dashboard | Merged — KPIs, chart, quota, activity, fixture E2E |
 | Profile | Merged, fixture E2E |
-| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, downloads, polling, 200-row E2E; **Video pipeline** table (durable queue, cancel/retry/reveal, merged output) |
+| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, download queue, polling, 200-row E2E; **Download queue** now driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output) |
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; “Render videos” queues the profile's saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |

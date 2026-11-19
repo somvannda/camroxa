@@ -419,6 +419,71 @@ export interface PipelineChangedEvent {
   reason: "enqueued" | "started" | "progress" | "done" | "failed" | "cancelled" | "cleared";
 }
 
+/* ------------------------------------------------------------------ */
+/* Music download coordinator (P4)                                     */
+/* ------------------------------------------------------------------ */
+
+export type DownloadItemState = "queued" | "downloading" | "done" | "failed" | "cancelled";
+
+export type DownloadTargetRole = "primary" | "secondary";
+
+/** One pending target, as the shell renders it. No URL: it may be signed. */
+export interface DownloadItemInfo {
+  key: string;
+  taskId: string;
+  songId: string | null;
+  batchId: string | null;
+  title: string;
+  trackNumber: number | null;
+  role: DownloadTargetRole;
+  state: DownloadItemState;
+  /** Retry is only possible while the item still holds a download URL. */
+  hasUrl: boolean;
+  targetPath: string | null;
+  receivedBytes: number;
+  totalBytes: number | null;
+  /** 0…100, or null when the server sent no content length. */
+  percent: number | null;
+  attempts: number;
+  error: string | null;
+  errorCode: string | null;
+  updatedAt: number;
+  completedAt: number | null;
+}
+
+export interface DownloadSnapshot {
+  items: DownloadItemInfo[];
+  /** The coordinator is polling the server. */
+  running: boolean;
+  /** Downloads were stopped from the shell; queued work resumes on start. */
+  paused: boolean;
+  active: number;
+  concurrency: number;
+  /** Absolute output root. Never contains credentials. */
+  root: string;
+  /** True when no Suno output folder is configured and the managed dir is used. */
+  rootIsManaged: boolean;
+  lastPolledAt: number | null;
+  lastError: string | null;
+}
+
+export type DownloadChangedReason =
+  | "queued"
+  | "started"
+  | "progress"
+  | "done"
+  | "failed"
+  | "cancelled"
+  | "retried"
+  | "paused"
+  | "resumed";
+
+/** `downloads:changed` payload (main → shell). The shell re-reads the snapshot. */
+export interface DownloadChangedEvent {
+  reason: DownloadChangedReason;
+  key: string | null;
+}
+
 export function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data };
 }
