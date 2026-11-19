@@ -148,6 +148,7 @@ export class VizzyHost {
    * and on window close, so no editor process survives the page.
    */
   detach(): void {
+    this.clearPendingAcks("The Vizzy view was closed.");
     this.destroyView();
     this.update({ attached: false, ready: false });
   }
@@ -325,15 +326,19 @@ export class VizzyHost {
   }
 
   dispose(): void {
-    for (const [, pending] of this.pendingAcks) {
-      clearTimeout(pending.timer);
-      pending.resolve({ ok: false, error: "The Vizzy view was closed." });
-    }
-    this.pendingAcks.clear();
+    this.clearPendingAcks("The Vizzy view was closed.");
     this.destroyView();
   }
 
   /* ---------------------------------------------------------------- */
+
+  private clearPendingAcks(reason: string): void {
+    for (const [, pending] of this.pendingAcks) {
+      clearTimeout(pending.timer);
+      pending.resolve({ ok: false, error: reason });
+    }
+    this.pendingAcks.clear();
+  }
 
   private createView(): void {
     const view = new WebContentsView({
