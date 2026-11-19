@@ -516,13 +516,16 @@ async function successWithManualRecovery() {
       `All twelve columns must fit at 1440 (scroll ${fit.scrollWidth} vs ${fit.clientWidth})`,
     );
 
-    // Failed row: stage retry stays disabled and names P7.
+    // Failed row: stage retry stays disabled and explains why.
     const failedRow = page.locator('[data-testid="progress-row"]', { hasText: "NS-2606" });
     await failedRow.click();
     await page.locator('[data-testid="progress-detail"]').waitFor();
     const retry = page.locator('[data-testid="progress-retry-stage"]');
     assert(await retry.isDisabled(), "Non-image retry must be disabled");
-    assert((await retry.getAttribute("title") ?? "").includes("P7"), "Retry must explain P7");
+    assert(
+      (await retry.getAttribute("title") ?? "").toLowerCase().includes("not available"),
+      "Retry must explain why the stage cannot be retried",
+    );
     const failureText = await page.locator('[data-testid="progress-detail"]').innerText();
     assert(failureText.includes("Merge failed"), "Failure note missing from detail");
     await page.locator('[aria-label="Close row detail"]').click();
