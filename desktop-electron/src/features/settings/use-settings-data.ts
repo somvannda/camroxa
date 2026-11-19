@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { DevicePreferences } from "../../../electron/shared/types";
 import type { ChannelProfile, UserMe } from "../dashboard/account-types";
 import {
   fetchMe,
@@ -16,6 +17,7 @@ export const settingsKeys = {
   me: ["settings", "me"] as const,
   values: ["settings", "values"] as const,
   youtube: ["settings", "youtube-connections"] as const,
+  device: ["settings", "device"] as const,
   playlists: (profileId: string | null) => ["settings", "playlists", profileId] as const,
 };
 
@@ -68,6 +70,26 @@ export function usePlaylistsQuery(profileId: string | null, enabled: boolean) {
     queryKey: settingsKeys.playlists(profileId),
     queryFn: () => fetchPlaylists(profileId as string),
     enabled: Boolean(profileId) && enabled,
+    ...baseOptions,
+  });
+}
+
+const emptyDevicePreferences: DevicePreferences = { ffmpegPath: "", sunoOutputDir: "" };
+
+async function fetchDevicePreferences(): Promise<DevicePreferences> {
+  if (!window.camxora?.preferences) return emptyDevicePreferences;
+  try {
+    const result = await window.camxora.preferences.getDevice();
+    return result.ok ? result.data : emptyDevicePreferences;
+  } catch {
+    return emptyDevicePreferences;
+  }
+}
+
+export function useDevicePreferencesQuery() {
+  return useQuery<DevicePreferences>({
+    queryKey: settingsKeys.device,
+    queryFn: fetchDevicePreferences,
     ...baseOptions,
   });
 }

@@ -49,6 +49,7 @@ import {
 } from "./settings-types";
 import {
   settingsKeys,
+  useDevicePreferencesQuery,
   useMeQuery,
   usePlaylistsQuery,
   useProfilesQuery,
@@ -81,6 +82,7 @@ export function useSettingsWorkspace() {
   const profilesQuery = useProfilesQuery();
   const meQuery = useMeQuery();
   const settingsQuery = useSettingsQuery();
+  const deviceQuery = useDevicePreferencesQuery();
   const connectionsQuery = useYoutubeConnectionsQuery();
   const requestedProfileId = searchParams.get("profile");
 
@@ -272,13 +274,35 @@ export function useSettingsWorkspace() {
   }, [applyProfile, profileDirty, profiles, requestedProfileId, selectedProfileId]);
 
   const settingsInitializedRef = useRef(false);
+  const devicePreferences = deviceQuery.data ?? { ffmpegPath: "", sunoOutputDir: "" };
   useEffect(() => {
-    if (settingsInitializedRef.current || !settingsQuery.data) return;
+    if (settingsInitializedRef.current || !settingsQuery.data || !deviceQuery.isFetched) return;
     settingsInitializedRef.current = true;
-    const draft = buildPreferencesDraft(settingsQuery.data);
+    const fromAccount = buildPreferencesDraft(settingsQuery.data);
+    const draft: PreferencesDraft = {
+      ...fromAccount,
+      ffmpegPath: devicePreferences.ffmpegPath || fromAccount.ffmpegPath,
+      sunoOutputDir: devicePreferences.sunoOutputDir || fromAccount.sunoOutputDir,
+    };
     setPreferencesDraft(draft);
     setPreferencesBaseline(draft);
-  }, [settingsQuery.data]);
+    if (
+      (!devicePreferences.ffmpegPath && fromAccount.ffmpegPath) ||
+      (!devicePreferences.sunoOutputDir && fromAccount.sunoOutputDir)
+    ) {
+      void window.camxora?.preferences
+        ?.setDevice({ ffmpegPath: draft.ffmpegPath, sunoOutputDir: draft.sunoOutputDir })
+        .then((result) => {
+          if (result.ok) queryClient.setQueryData(settingsKeys.device, result.data);
+        });
+    }
+  }, [
+    devicePreferences.ffmpegPath,
+    devicePreferences.sunoOutputDir,
+    deviceQuery.isFetched,
+    queryClient,
+    settingsQuery.data,
+  ]);
 
   const checkFfmpeg = useCallback(async () => {
     if (!window.camxora?.ffmpeg) {
@@ -630,6 +654,21 @@ export function useSettingsWorkspace() {
         }
       } catch {
         warnings.push("The Suno output folder could not be checked. The path was still saved.");
+      }
+    }
+    if (window.camxora?.preferences) {
+      try {
+        const device = await window.camxora.preferences.setDevice({
+          ffmpegPath: preferencesDraft.ffmpegPath.trim(),
+          sunoOutputDir: sunoDir,
+        });
+        if (device.ok) {
+          queryClient.setQueryData(settingsKeys.device, device.data);
+        } else {
+          warnings.push(`The device paths were not saved (${device.error.message}).`);
+        }
+      } catch {
+        warnings.push("The device paths were not saved locally.");
       }
     }
     try {

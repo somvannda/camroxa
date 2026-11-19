@@ -3,6 +3,7 @@ import { registerApiIpc } from "./api";
 import { registerAuthIpc } from "./auth";
 import { registerFfmpegIpc } from "./ffmpeg";
 import { registerFilesIpc } from "./files";
+import { registerPreferencesIpc } from "./preferences";
 import { registerSystemIpc } from "./system";
 import { registerUpdatesIpc } from "./updates";
 import { registerTemplatesIpc } from "./templates";
@@ -17,6 +18,7 @@ export function registerIpc(): void {
   registerAuthIpc();
   registerApiIpc();
   registerFilesIpc();
+  registerPreferencesIpc();
   registerFfmpegIpc();
   registerUpdatesIpc();
   registerTemplatesIpc();

@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "electron";
 import { logger } from "./logger";
 import { parseProgressLine, progressPercent } from "./ffmpeg-utils";
+import { getDevicePreferences } from "./device-settings";
 
 export interface ProbeResult {
   durationSec: number;
@@ -46,10 +47,21 @@ function bundledTool(name: string): string | null {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
+function deviceTool(name: "ffmpeg" | "ffprobe"): string | null {
+  const custom = getDevicePreferences().ffmpegPath;
+  if (!custom || !path.isAbsolute(custom) || !fs.existsSync(custom)) return null;
+  if (name === "ffmpeg") return custom;
+  const sibling = path.join(
+    path.dirname(custom),
+    process.platform === "win32" ? "ffprobe.exe" : "ffprobe",
+  );
+  return fs.existsSync(sibling) ? sibling : null;
+}
+
 function resolveTool(name: "ffmpeg" | "ffprobe"): string {
   const fromEnv = process.env[name === "ffmpeg" ? "CAMXORA_FFMPEG_PATH" : "CAMXORA_FFPROBE_PATH"];
   if (fromEnv) return fromEnv;
-  return bundledTool(name) ?? name;
+  return deviceTool(name) ?? bundledTool(name) ?? name;
 }
 
 function runCapture(command: string, args: string[], timeoutMs = 30_000): Promise<string> {

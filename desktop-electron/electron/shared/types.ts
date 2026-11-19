@@ -97,6 +97,12 @@ export interface UpdateCheckResult {
   message?: string;
 }
 
+/** Preferences that belong to this computer, not the account. */
+export interface DevicePreferences {
+  ffmpegPath: string;
+  sunoOutputDir: string;
+}
+
 export interface PickFileRequest {
   kind: "file" | "directory";
   title?: string;

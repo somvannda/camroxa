@@ -3,6 +3,7 @@ import type {
   ApiResponse,
   AppInfo,
   BootstrapResult,
+  DevicePreferences,
   InstallTemplateRequest,
   InstallTemplateResult,
   InstalledTemplate,
@@ -47,6 +48,10 @@ export interface CamxoraBridge {
   };
   media: {
     url(request: { path: string }): Promise<IpcResult<{ url: string }>>;
+  };
+  preferences: {
+    getDevice(): Promise<IpcResult<DevicePreferences>>;
+    setDevice(request: Partial<DevicePreferences>): Promise<IpcResult<DevicePreferences>>;
   };
   ffmpeg: {
     available(): Promise<IpcResult<{ available: boolean }>>;

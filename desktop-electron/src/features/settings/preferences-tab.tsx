@@ -218,7 +218,7 @@ export function PreferencesTab({ workspace }: { workspace: SettingsWorkspace }) 
           label="FFmpeg path"
           value={draft.ffmpegPath}
           kind="file"
-          hint="Leave empty to use the FFmpeg resolved by the desktop app."
+          hint="Leave empty to use the FFmpeg bundled with the desktop app."
           disabled={busy}
           onChange={(value) => ws.updatePreferences({ ffmpegPath: value })}
         />
@@ -256,8 +256,8 @@ export function PreferencesTab({ workspace }: { workspace: SettingsWorkspace }) 
           </div>
         </div>
         <p className="text-caption text-text-muted">
-          The build resolves its bundled FFmpeg first. A custom path is saved with your settings and
-          used when it points at a working binary.
+          Paths stay on this computer. The app uses this FFmpeg when it exists and falls back to
+          the bundled copy otherwise.
         </p>
 
         <PathRow

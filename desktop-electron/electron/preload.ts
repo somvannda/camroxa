@@ -37,6 +37,10 @@ const bridge = {
   media: {
     url: (request: unknown) => invoke("media:url", request),
   },
+  preferences: {
+    getDevice: () => invoke("preferences:device:get"),
+    setDevice: (request: unknown) => invoke("preferences:device:set", request),
+  },
   ffmpeg: {
     available: () => invoke("ffmpeg:available"),
     probe: (request: unknown) => invoke("ffmpeg:probe", request),
