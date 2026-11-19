@@ -82,11 +82,19 @@ npm run vizzy:library          # copy from CAMXORA_VIZZY_SOURCE (default G:/Deve
 npm run vizzy:library:check    # manifest + file presence gate
 ```
 
-- Output: `desktop-electron/vizzy-library/` (git-ignored), **263.9 MB**:
-  91 project JSON files, 88 asset folders, 91 thumbnails and `manifest.json`.
-- `manifest.json` rows: `slug, name, project, thumbnail, hasAssets, jsonBytes, assetBytes`.
-- `electron-builder.yml` ships it as `extraResources/vizzy-library`; the app reads it from
-  `process.resourcesPath` (packaged) or `desktop-electron/vizzy-library` (dev).
+- Output: `desktop-electron/vizzy-library/` (git-ignored), **263.4 MB**:
+  91 audio-stripped project files, 88 asset folders, 91 thumbnails, plus two manifests.
+- Layout mirrors the editor's `/creations/` tree so the host can serve it directly:
+  `creations/templates/*.json`, `creations/assets/templates/**`, `creations/thumbs/**`,
+  `creations/manifest.json` (Rea's browser format `{ creations: [...] }`) and a root
+  `manifest.json` (Camxora metadata: slug, name, paths, sizes, audio provenance).
+- The licensed reference track is removed from the staged projects (`values.Audio.src = ""`,
+  `audioName = ""`) so previews never fetch it; the provenance URL stays in the root manifest.
+  The user can load their own track in the editor, and the pipeline binds the run audio.
+- `electron-builder.yml` ships the folder as `extraResources/vizzy-library`; the app reads it
+  from `process.resourcesPath` (packaged) or `desktop-electron/vizzy-library` (dev).
+- The `camxora-vizzy://` handler must map `/creations/*` to the staged library (next milestone);
+  then the editor's built-in Creations browser lists all 91 with thumbnails.
 - The release build requires the staged library; `package:win` runs the check first.
 
 | Option | Behaviour | Trade-off |
