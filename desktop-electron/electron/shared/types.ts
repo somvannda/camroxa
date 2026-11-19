@@ -80,6 +80,7 @@ export interface AppInfo {
   node: string;
   devBypass: boolean;
   portalUrl: string;
+  build: string;
 }
 
 export interface UpdateOffer {

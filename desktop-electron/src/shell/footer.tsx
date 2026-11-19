@@ -18,6 +18,7 @@ export function Footer() {
             node: "",
             devBypass: true,
             portalUrl: "https://app.camxora.com",
+            build: "browser",
           }),
     staleTime: Infinity,
   });
@@ -31,6 +32,7 @@ export function Footer() {
       <div className="flex items-center gap-4 font-mono text-tabular">
         <span>{info.data?.env ?? "development"}</span>
         <span>v{info.data?.version ?? "2.0.0"}</span>
+        <span>{info.data?.build ?? "dev"}</span>
         <span>{info.data?.platform ?? "desktop"}</span>
       </div>
     </footer>

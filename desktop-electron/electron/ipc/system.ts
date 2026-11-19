@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { logger } from "../services/logger";
 import { devAuthBypass } from "../shared/flags";
 import { ok, type AppInfo } from "../shared/types";
@@ -15,6 +15,7 @@ export function registerSystemIpc(): void {
     node: process.versions.node ?? "",
     devBypass: devAuthBypass(),
     portalUrl: process.env.CAMXORA_PORTAL_BASE_URL ?? "https://app.camxora.com",
+    build: process.env.CAMXORA_BUILD_ID ?? (app.isPackaged ? "release" : "dev"),
   }));
 
   ipcMain.handle("window:minimize", (event) => {
