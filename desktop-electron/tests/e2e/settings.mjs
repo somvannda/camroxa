@@ -597,6 +597,11 @@ async function settingsSuccess() {
       firstPlaylistOptions.some((text) => text.includes("Night Mixes")),
       "Playlists must load for a connected profile",
     );
+    await page.getByText("No saved video templates yet").waitFor({ timeout: 5000 });
+    assert(
+      (await page.locator("#settings-publication-video-template").count()) === 0,
+      "No template picker is shown before a template exists",
+    );
 
     // Profile switch loads that profile's publication defaults.
     await page.locator("#settings-publication-profile-select").selectOption("profile-2");

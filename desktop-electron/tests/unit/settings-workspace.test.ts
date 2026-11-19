@@ -198,6 +198,22 @@ describe("settings publication helpers", () => {
     expect(unscheduled.publish_at).toBeNull();
   });
 
+  it("carries the saved template ids without forcing them into youtube_config", () => {
+    const draft = buildPublicationDraft({
+      ...profile,
+      video_template_id: "night-drive-long",
+      reel_template_id: "night-drive-reel",
+    });
+    expect(draft.videoTemplateId).toBe("night-drive-long");
+    expect(draft.reelTemplateId).toBe("night-drive-reel");
+    const payload = buildPublicationPayload(draft, null);
+    expect(payload).not.toHaveProperty("video_template_id");
+    expect(payload).not.toHaveProperty("reel_template_id");
+    const empty = buildPublicationDraft(profile);
+    expect(empty.videoTemplateId).toBe("");
+    expect(empty.reelTemplateId).toBe("");
+  });
+
   it("rounds schedule minutes to five and ignores invalid values", () => {
     expect(splitPublishAt("21:37")).toEqual({ hour: "21", minute: "35" });
     expect(splitPublishAt("2026-11-20T07:05:00Z")).toEqual({ hour: "07", minute: "05" });

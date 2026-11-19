@@ -197,6 +197,18 @@ export interface VizzyOpenResult {
   nodeCount: number;
 }
 
+/** Shell-facing summary of a saved video template. */
+export interface VideoTemplateInfo {
+  id: string;
+  name: string;
+  kind: "long" | "reel";
+  width: number;
+  height: number;
+  fps: number;
+  createdAt: string;
+  thumbnailUrl: string | null;
+}
+
 export function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data };
 }

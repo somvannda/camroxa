@@ -13,6 +13,7 @@ import type {
   TemplateChangedEvent,
   UpdateCheckResult,
   UpdateOffer,
+  VideoTemplateInfo,
   VizzyBounds,
   VizzyOpenResult,
   VizzyProbe,
@@ -76,8 +77,7 @@ export interface CamxoraBridge {
     onFailed(callback: (payload: unknown) => void): () => void;
   };
   templates: {
-    list(): Promise<IpcResult<InstalledTemplate[]>>;
-    install(request: InstallTemplateRequest): Promise<IpcResult<InstallTemplateResult>>;
+    list(): Promise<IpcResult<InstalledTemplate[]>>;    install(request: InstallTemplateRequest): Promise<IpcResult<InstallTemplateResult>>;
     preview(request: { itemId: string; url: string }): Promise<IpcResult<{ dataUrl: string }>>;
     onChange(callback: (payload: TemplateChangedEvent) => void): () => void;
   };
@@ -87,6 +87,11 @@ export interface CamxoraBridge {
   updates: {
     check(): Promise<IpcResult<UpdateCheckResult>>;
     open(offer: UpdateOffer): Promise<IpcResult<boolean>>;
+  };
+  videoTemplates: {
+    list(): Promise<IpcResult<VideoTemplateInfo[]>>;
+    read(id: string): Promise<IpcResult<VideoTemplateInfo & { pipeline: unknown }>>;
+    remove(id: string): Promise<IpcResult<boolean>>;
   };
   vizzy: {
     attach(bounds: VizzyBounds): Promise<IpcResult<VizzyState>>;

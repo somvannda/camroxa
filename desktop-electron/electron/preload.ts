@@ -72,6 +72,11 @@ const bridge = {
       return () => ipcRenderer.removeListener("templates:changed", listener);
     },
   },
+  videoTemplates: {
+    list: () => invoke("video-templates:list"),
+    read: (id: string) => invoke("video-templates:read", { id }),
+    remove: (id: string) => invoke("video-templates:delete", { id }),
+  },
   diagnostics: {
     send: (note?: string) => invoke("diagnostics:send", { note }),
   },

@@ -368,6 +368,8 @@ export interface PublicationDraft {
   tags: string;
   titleTemplate: string;
   descriptionTemplate: string;
+  videoTemplateId: string;
+  reelTemplateId: string;
 }
 
 export function normalizeVisibility(value: unknown): Visibility {
@@ -402,6 +404,8 @@ export function emptyPublicationDraft(): PublicationDraft {
     tags: "",
     titleTemplate: "",
     descriptionTemplate: "",
+    videoTemplateId: "",
+    reelTemplateId: "",
   };
 }
 
@@ -423,6 +427,9 @@ export function buildPublicationDraft(profile: ChannelProfile | null | undefined
     titleTemplate: typeof config.title_template === "string" ? config.title_template : "",
     descriptionTemplate:
       typeof config.description_template === "string" ? config.description_template : "",
+    videoTemplateId:
+      typeof profile?.video_template_id === "string" ? profile.video_template_id : "",
+    reelTemplateId: typeof profile?.reel_template_id === "string" ? profile.reel_template_id : "",
   };
 }
 

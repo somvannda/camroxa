@@ -54,6 +54,7 @@ import {
   usePlaylistsQuery,
   useProfilesQuery,
   useSettingsQuery,
+  useVideoTemplatesQuery,
   useYoutubeConnectionsQuery,
 } from "./use-settings-data";
 
@@ -84,6 +85,7 @@ export function useSettingsWorkspace() {
   const settingsQuery = useSettingsQuery();
   const deviceQuery = useDevicePreferencesQuery();
   const connectionsQuery = useYoutubeConnectionsQuery();
+  const videoTemplatesQuery = useVideoTemplatesQuery();
   const requestedProfileId = searchParams.get("profile");
 
   const profiles = useMemo(
@@ -549,7 +551,15 @@ export function useSettingsWorkspace() {
       recordOf(publicationProfile.youtube_config),
     );
     try {
-      const saved = await updateProfileApi(publicationProfile.id, { youtube_config: payload });
+      const saved = await updateProfileApi(publicationProfile.id, {
+        youtube_config: payload,
+        ...(publicationDraft.videoTemplateId.trim()
+          ? { video_template_id: publicationDraft.videoTemplateId.trim() }
+          : {}),
+        ...(publicationDraft.reelTemplateId.trim()
+          ? { reel_template_id: publicationDraft.reelTemplateId.trim() }
+          : {}),
+      });
       queryClient.setQueryData<ChannelProfile[]>(settingsKeys.profiles, (current) =>
         upsertProfile(current, saved),
       );
@@ -1003,6 +1013,9 @@ export function useSettingsWorkspace() {
     retryPlaylists: () => void playlistsQuery.refetch(),
     createPlaylist: addPlaylist,
     playlistBusy,
+    videoTemplates: videoTemplatesQuery.data ?? [],
+    videoTemplatesLoading: videoTemplatesQuery.isLoading,
+    retryVideoTemplates: () => void videoTemplatesQuery.refetch(),
     // preferences
     preferencesDraft,
     preferencesDirty,

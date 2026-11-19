@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { DevicePreferences } from "../../../electron/shared/types";
+import type { DevicePreferences, VideoTemplateInfo } from "../../../electron/shared/types";
 import type { ChannelProfile, UserMe } from "../dashboard/account-types";
 import {
   fetchMe,
@@ -18,6 +18,7 @@ export const settingsKeys = {
   values: ["settings", "values"] as const,
   youtube: ["settings", "youtube-connections"] as const,
   device: ["settings", "device"] as const,
+  videoTemplates: ["settings", "video-templates"] as const,
   playlists: (profileId: string | null) => ["settings", "playlists", profileId] as const,
 };
 
@@ -91,5 +92,25 @@ export function useDevicePreferencesQuery() {
     queryKey: settingsKeys.device,
     queryFn: fetchDevicePreferences,
     ...baseOptions,
+  });
+}
+
+async function fetchVideoTemplates(): Promise<VideoTemplateInfo[]> {
+  if (!window.camxora?.videoTemplates) return [];
+  try {
+    const result = await window.camxora.videoTemplates.list();
+    return result.ok ? result.data : [];
+  } catch {
+    return [];
+  }
+}
+
+export function useVideoTemplatesQuery() {
+  return useQuery<VideoTemplateInfo[]>({
+    queryKey: settingsKeys.videoTemplates,
+    queryFn: fetchVideoTemplates,
+    staleTime: 10_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
 }

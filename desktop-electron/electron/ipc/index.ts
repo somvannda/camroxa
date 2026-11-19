@@ -8,6 +8,7 @@ import { registerPreferencesIpc } from "./preferences";
 import { registerSystemIpc } from "./system";
 import { registerUpdatesIpc } from "./updates";
 import { registerTemplatesIpc } from "./templates";
+import { registerVideoTemplatesIpc } from "./video-templates";
 import { registerVizzyIpc } from "./vizzy";
 
 let registered = false;
@@ -24,6 +25,7 @@ export function registerIpc(vizzyHost: VizzyHost): void {
   registerFfmpegIpc();
   registerUpdatesIpc();
   registerTemplatesIpc();
+  registerVideoTemplatesIpc();
   registerVizzyIpc(vizzyHost);
 
   logger.info("ipc registered");
