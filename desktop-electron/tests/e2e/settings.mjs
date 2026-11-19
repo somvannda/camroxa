@@ -256,6 +256,8 @@ function createBackend(options = {}) {
       if (body.youtube_config) {
         current.youtube_config = { ...current.youtube_config, ...body.youtube_config };
       }
+      if (body.video_template_id !== undefined) current.video_template_id = body.video_template_id;
+      if (body.reel_template_id !== undefined) current.reel_template_id = body.reel_template_id;
       if (body.logo_base64) current.logo_path = `uploads/logos/${current.id}.png`;
       if (Array.isArray(body.cover_images) && body.cover_images.length > 0) {
         current.image_config = {
@@ -330,9 +332,38 @@ function createBackend(options = {}) {
   });
 }
 
-async function openApp(name, apiPort) {
+async function openApp(name, apiPort, options = {}) {
   const userData = path.join(artifacts, `e2e-settings-${name}`);
   fs.rmSync(userData, { recursive: true, force: true });
+  if (options.seedTemplates) {
+    const fixture = path.join(root, "tests", "fixtures", "vizzy", "trap-motion.camxora-vizzy.json");
+    for (const [id, kind, width, height, label] of [
+      ["night-drive-long", "long", 1920, 1080, "Night Drive Long"],
+      ["night-drive-reel", "reel", 1080, 1920, "Night Drive Reel"],
+    ]) {
+      const dir = path.join(userData, "templates", id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.copyFileSync(fixture, path.join(dir, "template.json"));
+      fs.writeFileSync(
+        path.join(dir, "pipeline.json"),
+        JSON.stringify(
+          {
+            schemaVersion: 1,
+            name: label,
+            kind,
+            project: "template.json",
+            output: { width, height, fps: 30 },
+            duration: { mode: "audio" },
+            bindings: { audio: { mode: "replace" } },
+            requirements: { renderer: "vizzy", minVersion: "2.0.0", features: ["audio-analysis"] },
+            createdAt: "2026-11-19T00:00:00.000Z",
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+    }
+  }
   const app = await electron.launch({
     args: ["dist-electron/main.cjs"],
     cwd: root,
@@ -423,7 +454,7 @@ async function settingsLoading() {
 async function settingsSuccess() {
   step("success: start");
   const { server, state, port } = await createBackend();
-  const { app, page } = await openApp("success", port);
+  const { app, page } = await openApp("success", port, { seedTemplates: true });
   try {
     // Deep link selects the requested profile on mount.
     await openSettings(page, "profile-1");
@@ -597,10 +628,20 @@ async function settingsSuccess() {
       firstPlaylistOptions.some((text) => text.includes("Night Mixes")),
       "Playlists must load for a connected profile",
     );
-    await page.getByText("No saved video templates yet").waitFor({ timeout: 5000 });
+    await page.locator("#settings-publication-video-template").waitFor({ timeout: 5000 });
+    const videoTemplateOptions = await page
+      .locator("#settings-publication-video-template option")
+      .allTextContents();
     assert(
-      (await page.locator("#settings-publication-video-template").count()) === 0,
-      "No template picker is shown before a template exists",
+      videoTemplateOptions.some((text) => text.includes("Night Drive Long")),
+      "Saved long templates must appear in the picker",
+    );
+    const reelTemplateOptions = await page
+      .locator("#settings-publication-reel-template option")
+      .allTextContents();
+    assert(
+      reelTemplateOptions.some((text) => text.includes("Night Drive Reel")),
+      "Saved reel templates must appear in the picker",
     );
 
     // Profile switch loads that profile's publication defaults.
@@ -649,6 +690,28 @@ async function settingsSuccess() {
       .reverse()
       .find((call) => call.method === "PUT" && call.path === "/profiles/profile-1");
     assert(playlistCall.body.youtube_config.playlist === "PL1", "Playlist must save");
+
+    // Template selection round-trips through the profile.
+    await page.locator("#settings-publication-video-template").selectOption("night-drive-long");
+    await page.locator("#settings-publication-reel-template").selectOption("night-drive-reel");
+    await page.getByRole("button", { name: "Save publication" }).click();
+    await page.getByText("Publication saved.").first().waitFor({ timeout: 5000 });
+    const templateCall = [...state.calls]
+      .reverse()
+      .find((call) => call.method === "PUT" && call.path === "/profiles/profile-1");
+    assert(
+      templateCall.body.video_template_id === "night-drive-long",
+      "The long template id must be saved on the profile",
+    );
+    assert(
+      templateCall.body.reel_template_id === "night-drive-reel",
+      "The reel template id must be saved on the profile",
+    );
+    assert(
+      (await page.locator("#settings-publication-video-template").inputValue()) ===
+        "night-drive-long",
+      "The picker must keep the saved template after the round-trip",
+    );
 
     await page.locator("#settings-publication-new-playlist").fill("Fresh Mixes");
     await page.getByRole("button", { name: "Create playlist" }).click();
