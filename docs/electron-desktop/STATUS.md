@@ -24,6 +24,7 @@
 | **P1 updates** | HTTPS release manifest, mandatory blocking gate, optional update card, download hand-off, unit + E2E coverage |
 | **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
 | **P2 settings** | Profiles (list/create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics) |
+| **Shell guard** | Unsaved settings block sidebar navigation with a Stay / Discard-and-leave confirm |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 
 ### Verification
@@ -32,7 +33,7 @@
 npm run typecheck      PASS
 npm run lint           PASS
 npm test               147/147 PASS
-npm run build          PASS (shell 331 kB / 103 kB gzip, pages split)
+npm run build          PASS (shell 333 kB / 103 kB gzip, pages split)
 npm run test:e2e       PASS (smoke, login/gates, media, account, progress, progress-retry, music, image-marketplace, settings, update)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
@@ -77,6 +78,7 @@ This is a backend contract decision, not a renderer bug.
 - `886d82d` window title/build stamp
 - Settings merge `9c2b788` (`b568624` on `desktop/settings`)
 - `1e70f6a` Settings brand sweep + settings E2E in the chain
+- `9f8aac7` shell unsaved-navigation guard
 
 ## Remaining
 
@@ -86,8 +88,6 @@ This is a backend contract decision, not a renderer bug.
 
 ### Settings follow-ups
 
-- Unsaved-settings navigation guard is `beforeunload` only; blocking sidebar navigation needs a
-  shared router guard.
 - Device-local paths (`ffmpegPath`, `sunoOutputDir`) live in account `/settings`; a local store
   would match 1.7.1.
 - Diagnostics prepare a local reference; upload is not enabled.
