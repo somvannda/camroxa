@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { Input } from "../../components/input";
 import { classNames } from "../../lib/format";
@@ -125,7 +125,7 @@ export function ProgressToolbar({
           disabled={busy || Boolean(rangeMessage)}
           data-testid="progress-refresh"
         >
-          <RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />
+          <Icon name="fa-rotate" size={14} />
           {busy ? "Refreshing" : "Refresh"}
         </Button>
         {updated ? (

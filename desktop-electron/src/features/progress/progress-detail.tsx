@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Copy, ExternalLink, FolderOpen, Image as ImageIcon, RefreshCw, RotateCcw, X } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Dialog, DialogContent } from "../../components/dialog";
@@ -86,19 +86,19 @@ function PathRow({
       </div>
       {kind === "folder" ? (
         <Button variant="ghost" className="shrink-0" onClick={() => onOpenFolder(value)}>
-          <FolderOpen size={14} aria-hidden="true" />
+          <Icon name="fa-folder-open" size={14} />
           Open folder
         </Button>
       ) : null}
       {kind === "file" ? (
         <Button variant="ghost" className="shrink-0" onClick={() => onReveal(value)}>
-          <FolderOpen size={14} aria-hidden="true" />
+          <Icon name="fa-folder-open" size={14} />
           Reveal
         </Button>
       ) : null}
       {kind === "link" ? (
         <Button variant="ghost" className="shrink-0" onClick={() => onOpenExternal(value)}>
-          <ExternalLink size={14} aria-hidden="true" />
+          <Icon name="fa-arrow-up-right-from-square" size={14} />
           Open link
         </Button>
       ) : null}
@@ -220,7 +220,7 @@ export function ProgressDetail({
           </div>
         </div>
         <Button variant="ghost" aria-label="Close row detail" onClick={onClose}>
-          <X size={15} aria-hidden="true" />
+          <Icon name="fa-xmark" size={15} />
         </Button>
       </div>
 
@@ -235,7 +235,7 @@ export function ProgressDetail({
               aria-label="Copy run id"
               onClick={copyRunId}
             >
-              <Copy size={12} aria-hidden="true" />
+              <Icon name="fa-copy" size={12} />
             </button>
             {copied ? <span className="text-caption text-success">Copied</span> : null}
           </span>
@@ -280,7 +280,7 @@ export function ProgressDetail({
               title={retryReason ?? undefined}
               data-testid="progress-retry-stage"
             >
-              <RotateCcw size={14} aria-hidden="true" />
+              <Icon name="fa-rotate-left" size={14} />
               {retrying ? "Retrying" : "Retry failed stage"}
             </Button>
             {retryReason ? <span className="text-caption text-text-secondary">{retryReason}</span> : null}
@@ -368,7 +368,7 @@ export function ProgressDetail({
               {inspection.files.map((file) => (
                 <li key={file.key} className="flex items-center justify-between gap-2 text-meta">
                   <span className="flex min-w-0 items-center gap-2 text-text-secondary">
-                    <ImageIcon size={13} aria-hidden="true" className="shrink-0" />
+                    <Icon name="fa-image" size={13} className="shrink-0" />
                     <span className="truncate">{file.label}</span>
                   </span>
                   <Badge tone={file.present ? "success" : "danger"}>
@@ -394,7 +394,7 @@ export function ProgressDetail({
               onClick={() => onInspect(row)}
               disabled={inspecting}
             >
-              <RefreshCw size={14} aria-hidden="true" />
+              <Icon name="fa-rotate" size={14} />
               {inspecting ? "Checking" : "Check files"}
             </Button>
             <Button
@@ -402,7 +402,7 @@ export function ProgressDetail({
               onClick={() => onOpenFolder(meta.run_dir ?? "")}
               disabled={!meta.run_dir}
             >
-              <FolderOpen size={14} aria-hidden="true" />
+              <Icon name="fa-folder-open" size={14} />
               Open folder
             </Button>
             <Button

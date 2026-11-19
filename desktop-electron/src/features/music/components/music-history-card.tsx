@@ -1,4 +1,4 @@
-import { FolderOpen } from "lucide-react";
+import { Icon } from "../../../components/icon";
 import { Card } from "../../../components/card";
 import { Badge } from "../../../components/status";
 import { Table, TBody, TD, TH, THead, TR } from "../../../components/table";
@@ -71,7 +71,7 @@ function FolderButton({
         onClick();
       }}
     >
-      <FolderOpen size={14} strokeWidth={1.5} />
+      <Icon name="fa-folder-open" size={14} />
     </button>
   );
 }

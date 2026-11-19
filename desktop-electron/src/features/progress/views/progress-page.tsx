@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Info } from "lucide-react";
+import { Icon } from "../../../components/icon";
 import { PageHeader } from "../../../components/page-header";
 import { Card } from "../../../components/card";
 import { apiRequest, errorMessage } from "../../../lib/api";
@@ -215,7 +215,7 @@ export function ProgressPage() {
             className="flex items-start gap-3 rounded-card border border-border bg-surface-1 px-4 py-3"
             data-testid="progress-manual-notice"
           >
-            <Info size={16} className="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
+            <Icon name="fa-circle-info" size={16} className="mt-0.5 shrink-0 text-text-muted" />
             <p className="text-body text-text-secondary">
               Manual image mode is active. This page is the recovery handoff for missing
               background-16x9, background-9x16, thumbnail-16x9 and thumbnail-9x16 assets before

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { RotateCw, Search } from "lucide-react";
+import { Icon } from "../../../components/icon";
 import { Button } from "../../../components/button";
 import { Card } from "../../../components/card";
 import { Dialog, DialogClose, DialogContent } from "../../../components/dialog";
@@ -169,7 +169,7 @@ export function MarketplacePage() {
               onClick={() => void catalog.refetch()}
               disabled={catalog.isFetching}
             >
-              <RotateCw size={14} className={catalog.isFetching ? "animate-spin" : undefined} />
+              <Icon name="fa-rotate-right" size={14} className={catalog.isFetching ? "animate-spin" : undefined} />
               Refresh
             </Button>
           </>
@@ -201,7 +201,8 @@ export function MarketplacePage() {
           </div>
 
           <div className="relative ml-auto w-[280px] max-w-full">
-            <Search
+            <Icon
+              name="fa-magnifying-glass"
               size={14}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
             />

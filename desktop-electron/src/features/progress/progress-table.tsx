@@ -1,4 +1,4 @@
-import { ExternalLink } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Badge } from "../../components/status";
@@ -212,7 +212,7 @@ export function ProgressTable({
                           onOpenExternal(youtube.url ?? "");
                         }}
                       >
-                        <ExternalLink size={12} aria-hidden="true" />
+                        <Icon name="fa-arrow-up-right-from-square" size={12} />
                         <span className="truncate">{youtube.primary}</span>
                       </button>
                     ) : (

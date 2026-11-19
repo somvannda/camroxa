@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ImageOff } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { classNames } from "../../lib/format";
 import { bytesToDataUrl } from "./image-model";
 
@@ -96,7 +96,7 @@ export function ImagePreviewCard({
               state.status === "error" ? "text-danger" : "text-text-muted",
             )}
           >
-            <ImageOff size={18} />
+            <Icon name="fa-image" size={18} />
             <p className="text-caption">
               {state.status === "loading"
                 ? "Loading preview…"

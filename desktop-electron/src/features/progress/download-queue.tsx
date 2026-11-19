@@ -1,4 +1,4 @@
-import { FolderOpen, RotateCcw } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Badge } from "../../components/status";
@@ -92,22 +92,22 @@ export function DownloadQueue({ rows, error, onReveal, onOpenFolder }: DownloadQ
                           : "This task has no download URL."
                       }
                     >
-                      <RotateCcw size={13} aria-hidden="true" />
+                      <Icon name="fa-rotate-left" size={13} />
                       Retry
                     </Button>
                     {row.revealPath ? (
                       <Button variant="ghost" onClick={() => onReveal(row.revealPath ?? "")}>
-                        <FolderOpen size={13} aria-hidden="true" />
+                        <Icon name="fa-folder-open" size={13} />
                         Reveal
                       </Button>
                     ) : row.folderPath ? (
                       <Button variant="ghost" onClick={() => onOpenFolder(row.folderPath ?? "")}>
-                        <FolderOpen size={13} aria-hidden="true" />
+                        <Icon name="fa-folder-open" size={13} />
                         Open folder
                       </Button>
                     ) : (
                       <Button variant="ghost" disabled title="No target folder is reported.">
-                        <FolderOpen size={13} aria-hidden="true" />
+                        <Icon name="fa-folder-open" size={13} />
                         Open folder
                       </Button>
                     )}

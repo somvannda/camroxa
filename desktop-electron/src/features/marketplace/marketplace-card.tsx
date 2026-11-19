@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Download, ImageOff } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { classNames, formatCount } from "../../lib/format";
 import {
@@ -66,7 +66,7 @@ export function MarketplacePreview({
         />
       ) : (
         <div className="flex flex-col items-center gap-1.5 text-text-muted">
-          <ImageOff size={large ? 22 : 18} />
+          <Icon name="fa-image" size={large ? 22 : 18} />
           <span className="text-caption">
             {preview.status === "loading" ? "Loading preview…" : "No preview"}
           </span>
@@ -161,7 +161,7 @@ export function MarketplaceCard({
               className="inline-flex items-center gap-1 text-caption text-success"
               data-testid={`marketplace-installed-${item.id}`}
             >
-              <Check size={13} />
+              <Icon name="fa-check" size={13} />
               Installed
             </span>
           ) : (
@@ -178,7 +178,7 @@ export function MarketplaceCard({
             title={policy ?? undefined}
             onClick={onInstall}
           >
-            {installing ? null : installed ? <Check size={14} /> : <Download size={14} />}
+            {installing ? null : installed ? <Icon name="fa-check" size={14} /> : <Icon name="fa-download" size={14} />}
             {!supported ? "Not supported" : installLabel(installed, installing)}
           </Button>
         </div>

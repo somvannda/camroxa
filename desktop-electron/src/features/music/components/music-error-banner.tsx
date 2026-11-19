@@ -1,4 +1,4 @@
-import { AlertTriangle, X } from "lucide-react";
+import { Icon } from "../../../components/icon";
 
 export function MusicErrorBanner({
   message,
@@ -13,7 +13,7 @@ export function MusicErrorBanner({
       role="alert"
       data-testid="music-error"
     >
-      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-danger" aria-hidden="true" />
+      <Icon name="fa-triangle-exclamation" size={16} className="mt-0.5 shrink-0 text-danger" />
       <p className="flex-1 text-body text-danger">{message}</p>
       {onDismiss ? (
         <button
@@ -22,7 +22,7 @@ export function MusicErrorBanner({
           aria-label="Dismiss"
           onClick={onDismiss}
         >
-          <X size={14} />
+          <Icon name="fa-xmark" size={14} />
         </button>
       ) : null}
     </div>

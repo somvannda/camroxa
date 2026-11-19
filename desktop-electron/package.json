@@ -24,7 +24,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "node tests/e2e/smoke.mjs && node tests/e2e/login.mjs && node tests/e2e/media.mjs && node tests/e2e/account.mjs && node tests/e2e/image-marketplace.mjs",
+    "test:e2e": "node tests/e2e/smoke.mjs && node tests/e2e/login.mjs && node tests/e2e/media.mjs && node tests/e2e/account.mjs && node tests/e2e/progress.mjs && node tests/e2e/progress-retry.mjs && node tests/e2e/music.mjs && node tests/e2e/image-marketplace.mjs",
     "package:win": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {

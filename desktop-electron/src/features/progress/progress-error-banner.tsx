@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 
 interface ProgressErrorBannerProps {
@@ -25,7 +25,7 @@ export function ProgressErrorBanner({
       role="alert"
       data-testid="progress-error-banner"
     >
-      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-danger" aria-hidden="true" />
+      <Icon name="fa-triangle-exclamation" size={16} className="mt-0.5 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
         <p className="text-body text-danger">{progressErrorMessage(stale)}</p>
         {stale && lastLoadedLabel ? (
