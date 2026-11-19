@@ -96,22 +96,14 @@ export function YoutubeUploadPanel({
         </p>
       ) : null}
 
-      {upload?.videoUrl ? (
-        <button
-          type="button"
-          className="mt-2 inline-flex max-w-full items-center gap-1 truncate text-meta text-accent hover:text-accent-hover hover:underline"
-          title={upload.videoUrl}
-          onClick={() => onOpenExternal(upload.videoUrl ?? "")}
-          data-testid="progress-upload-link"
-        >
-          <Icon name="fa-arrow-up-right-from-square" size={12} />
-          <span className="truncate">Open on YouTube</span>
-        </button>
-      ) : null}
-
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {upload?.phase === "done" && upload.videoUrl ? (
-          <Button variant="secondary" onClick={() => onOpenExternal(upload.videoUrl ?? "")}>
+          <Button
+            variant="secondary"
+            title={upload.videoUrl}
+            data-testid="progress-upload-link"
+            onClick={() => onOpenExternal(upload.videoUrl ?? "")}
+          >
             <Icon name="fa-arrow-up-right-from-square" size={13} />
             Open on YouTube
           </Button>
