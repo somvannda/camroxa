@@ -133,6 +133,11 @@ Before public distribution:
 
 ## 5. Port acceptance per template
 
+**Current evidence:** `npm run test:e2e:library` imports all **91/91** projects through the real
+editor (`editorImportProject`) with **0 failures and 0 skipped nodes**. Time per template is
+0.36–1.06 s; the run is ~55 s. This covers LIB-01 and LIB-02 for the whole library; the matrix
+JSON and screenshots land in `desktop-electron/artifacts/vizzy/`.
+
 | ID | Check | Pass condition |
 |---|---|---|
 | LIB-01 | Open | Project loads with no console errors |
@@ -153,7 +158,8 @@ silently hidden.
 ## 6. Test matrix
 
 - **Per PR:** open/preview/save/reopen/export a rotating sample of 10 templates.
-- **Nightly:** all 91 templates through LIB-01 … LIB-09.
+- **Nightly / release:** all 91 templates through LIB-01 … LIB-09 (`npm run test:e2e:library`
+  covers the import/preview half).
 - **Release:** all 91 + the saved-video-template path for every template that has bindable
   audio/background/logo/text.
 - **Performance:** time-to-first-frame and memory for the four largest asset sets.
