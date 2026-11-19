@@ -39,6 +39,7 @@
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
 | **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **P4 downloads** | Main-process music download coordinator and live Progress queue are **running** in `desktop/downloads`; the shell currently only displays pending items |
+| **P7 manual upload** | Manual YouTube upload from a completed Progress batch is **running** in `desktop/youtube-upload`; Auto-Upload remains disabled |
 
 ### Verification
 
