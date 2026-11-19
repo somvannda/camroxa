@@ -2,8 +2,8 @@
 
 > **Integrator worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Integrator branch:** `desktop/electron-v1`
-> **Base commit:** `f79a256`
-> **Updated:** 2026-11-19 (wave 8)
+> **Base commit:** `c83238f`
+> **Updated:** 2026-11-19 (wave 9)
 
 The project follows the repo rule: **one agent per worktree**. Agents do not share a
 directory and do not push. The integrator reviews and merges each branch in order.
@@ -15,8 +15,8 @@ directory and do not push. The integrator reviews and merges each branch in orde
 | Worktree | Branch | Agent scope | Status |
 |---|---|---|---|
 | `Camxora Desktop` | `desktop/electron-v1` | Integrator: shared files, reviews, merges | Active |
-| `Camxora Desktop Downloads` | `desktop/downloads` | Main-process music download coordinator + Progress live queue | Running |
 | `Camxora Desktop Upload` | `desktop/youtube-upload` | Manual YouTube upload from Progress; Auto-Upload stays disabled | Running |
+| ~~`Camxora Desktop Downloads`~~ | ~~`desktop/downloads`~~ | Music download coordinator + Progress live queue | **Merged** |
 | ~~`Camxora Desktop P8`~~ | ~~`desktop/settings-p8`~~ | Descriptions, Structures, Moods, Pools, Suno tabs | **Merged** |
 | ~~`Camxora Desktop Batch`~~ | ~~`desktop/batch`~~ | Offscreen render host, queue wiring, Progress/Music triggers, merge | **Merged** |
 | ~~`Camxora Desktop Templates`~~ | ~~`desktop/templates`~~ | Save-as-template, template rail, single-template render | **Merged** |
