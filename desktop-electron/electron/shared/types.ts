@@ -89,6 +89,43 @@ export interface PickFileRequest {
   multiple?: boolean;
 }
 
+export type TemplateSchema = "vizzy" | "legacy";
+
+export interface InstalledTemplate {
+  id: string;
+  name: string;
+  kind: string;
+  schemaVersion: number;
+  schema: TemplateSchema;
+  path: string;
+  thumbnailPath: string | null;
+  marketplaceItemId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface InstallTemplateRequest {
+  itemId: string;
+  name?: string;
+  kind?: string;
+  previewUrl?: string;
+  reinstall?: boolean;
+}
+
+export interface InstallTemplateResult {
+  uid: string;
+  name: string;
+  kind: string;
+  schema: TemplateSchema;
+  reinstalled: boolean;
+}
+
+export interface TemplateChangedEvent {
+  uid: string;
+  itemId: string;
+  reinstalled: boolean;
+}
+
 export function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data };
 }

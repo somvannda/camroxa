@@ -3,9 +3,13 @@ import type {
   ApiResponse,
   AppInfo,
   BootstrapResult,
+  InstallTemplateRequest,
+  InstallTemplateResult,
+  InstalledTemplate,
   IpcResult,
   PickFileRequest,
   SavedAccount,
+  TemplateChangedEvent,
 } from "../../electron/shared/types";
 
 export interface CamxoraBridge {
@@ -58,6 +62,12 @@ export interface CamxoraBridge {
     onProgress(callback: (payload: unknown) => void): () => void;
     onDone(callback: (payload: unknown) => void): () => void;
     onFailed(callback: (payload: unknown) => void): () => void;
+  };
+  templates: {
+    list(): Promise<IpcResult<InstalledTemplate[]>>;
+    install(request: InstallTemplateRequest): Promise<IpcResult<InstallTemplateResult>>;
+    preview(request: { itemId: string; url: string }): Promise<IpcResult<{ dataUrl: string }>>;
+    onChange(callback: (payload: TemplateChangedEvent) => void): () => void;
   };
   diagnostics: {
     send(note?: string): Promise<IpcResult<{ uploadId: string }>>;

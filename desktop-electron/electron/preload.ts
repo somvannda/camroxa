@@ -58,6 +58,16 @@ const bridge = {
       return () => ipcRenderer.removeListener("ffmpeg:failed", listener);
     },
   },
+  templates: {
+    list: () => invoke("templates:list"),
+    install: (request: unknown) => invoke("templates:install", request),
+    preview: (request: unknown) => invoke("templates:preview", request),
+    onChange: (callback: (payload: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on("templates:changed", listener);
+      return () => ipcRenderer.removeListener("templates:changed", listener);
+    },
+  },
   diagnostics: {
     send: (note?: string) => invoke("diagnostics:send", { note }),
   },
