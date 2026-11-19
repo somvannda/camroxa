@@ -36,6 +36,7 @@
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
+| **P8 settings** | Descriptions, Structures, Moods, Pools and Suno tabs are **running** in `desktop/settings-p8` |
 
 ### Verification
 
