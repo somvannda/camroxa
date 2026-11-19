@@ -1,13 +1,13 @@
-# Vizzy — Integration Status (P7, second milestone)
+# Vizzy — Integration Status (P7, third milestone)
 
 > **Document ID:** CAMXORA-ED-VZ-INT-01
-> **Version:** 1.2.0
-> **Status:** Verified: editor hosted, native open/save, native export, and video-template save/preview/single render
+> **Version:** 1.3.0
+> **Status:** Verified: editor hosted, native open/save, native export, template save/preview/render, offscreen batch rendering with queue → Music → Progress
 > **Last updated:** 2026-11-19
 > **Scope:** Host the real Rea/Vizzy editor in Electron, prove native project I/O, render the
-> open project to a real video file with progress, cancel and a Renders panel, and save the
-> current preview as a pipeline video template that can be previewed and rendered with a real
-> run track. Batch rendering, merge/reel and upload are **not** part of this milestone.
+> open project to a real video file with progress, cancel and a Renders panel, save the
+> current preview as a pipeline video template, and render queued batches offscreen without
+> the `/vizzy` route. Upload is **not** part of this milestone.
 
 ---
 
@@ -36,14 +36,21 @@
 | Preview parity (project) | the editor's project after Preview is semantically identical to the saved `template.json` (runtime-only counters ignored) |
 | Render one saved template | Templates rail Render → native audio pick → `vizzy:render-template` → plan from `buildPipelineRenderPlan()` → saved project loaded → run audio streamed over `camxora-media://` into the editor's loader → existing exporter → `renders/<template-slug>-<timestamp>.mp4`; measured 1920×1080/30, 2 s WAV: 60 frames, h264+aac, 1.97 s, ~2.0 MB, 10.1–11.1 s wall clock |
 | 91-template library | Templates rail **Library** → editor's own Creations browser; `tests/e2e/vizzy-library.mjs` asserts 91 rows, manifest 200, a loaded thumbnail 200 and one template load (nebula-staff, 5 items) |
-| No leaks | project file and editor DOM contain no session email and no token fields |
+| Offscreen batch render | `electron/vizzy-host/render-window.ts`: hidden `BrowserWindow` (sandboxed, `vizzy-render` partition, no Node, throttling off) loads the same editor bundle, applies a template project JSON, streams the run audio and runs the same exporter. `vizzy.state().attached === false` throughout `tests/e2e/pipeline-batch.mjs` |
+| Queue → render → ffprobe | `electron/services/pipeline-orchestrator.ts` + `electron/ipc/pipeline.ts`: `pipeline:enqueue/start/cancel/retry/list/reveal`. Two 2 s songs rendered 320×180 in **4.7–4.9 s** total, ffprobe h264+aac/60 frames each |
+| Merge | Batch-level long-form merge (`-c copy`, re-encode fallback): 4.01 s / 120 frames MP4 in the run folder, ffprobe-validated |
+| Cancel / retry | Cancel marks the row `cancelled` and leaves `renders/` untouched (no partial file); retry re-enqueues only failed/cancelled rows and produced exactly one new file in the E2E |
+| Music trigger | “Render videos” in the Automation card resolves the profile's saved long/reel templates, queues one job per ready song/branch and starts the batch without leaving Music; missing templates/audio report a specific message + Settings link |
+| Progress UI | Compact “Video pipeline” table from the durable SQLite queue: status, template, song, progress, error, Cancel/Retry/Reveal, merged file per batch, honest empty state |
+| No leaks | project file and editor DOM contain no session email and no token fields; the render window adds no storage shared with the visible editor |
 
 Screenshots: `desktop-electron/artifacts/vizzy/shell.png` (shell strip),
 `desktop-electron/artifacts/vizzy/editor.png` (`capturePage` of the hosted editor),
 `export-settings.png` (Export rail), `renders.png` (Renders rail with inline playback),
 `save-dialog.png` (Save as video template), `templates-panel.png` (Templates rail),
 `rendered-preview.png` + `rendered-editor.png` (a rendered saved template),
-`library.png` + `library-shell.png` (the 91-template Creations browser) —
+`library.png` + `library-shell.png` (the 91-template Creations browser),
+`batch-progress.png` + `batch-complete.png` (Video pipeline rows on Progress) —
 all git-ignored, produced by the E2E runs.
 
 ### 1.1 Boot facts measured on this machine
@@ -139,16 +146,24 @@ src/features/vizzy/vizzy-templates-panel.tsx  Templates rail (preview/render/del
 src/features/vizzy/vizzy-template-model.ts    pure binding/kind validation for the dialog
 src/features/vizzy/use-vizzy-templates.ts     saved-template list + change events
 electron/vizzy-preload.ts              the only bridge inside the view
-electron/vizzy-host/host.ts            VizzyHost: view lifecycle, save/open, audio load, export job, renders
-electron/vizzy-host/protocol.ts        registerHostSchemes() + installVizzyProtocol()
+electron/vizzy-host/host.ts            VizzyHost: view lifecycle, save/open, audio load, export delegation, renders
+electron/vizzy-host/export-session.ts  one export job shared by the visible view and the batch window
+electron/vizzy-host/render-window.ts   OffscreenVizzyRenderer: hidden window, partition, ready probe, open/load/export
+electron/vizzy-host/protocol.ts        registerHostSchemes() + installVizzyProtocol() (+ per-session install)
 electron/vizzy-host/assets.ts          MIME, CSP, streaming + Range responses
 electron/vizzy-host/project-store.ts   slug, atomic write, validation, semantic equality
 electron/vizzy-host/renders.ts         export settings, render names, containment, chunk writer
 electron/vizzy-host/bridge.ts          versioned view↔host message router
 electron/services/pipeline-templates.ts  pipeline schema, detection, binding options
 electron/services/pipeline-run.ts      render plan (project + bindings + output + duration)
+electron/services/pipeline-sources.ts  song title → run-folder audio resolution, unique merge path
+electron/services/pipeline-orchestrator.ts  queue → offscreen render → ffprobe → merge, cancel/retry
+electron/services/pipeline-queue.ts    durable queue rows (dedupe, retry, cancel-queued, output path)
+electron/services/pipeline-batch.ts    sequential runner, failure isolation, per-batch merge
+electron/services/pipeline-merge.ts    FFmpeg concat list, copy/re-encode, timeout/cleanup
 electron/services/video-templates.ts   template store (atomic write, list, read, delete)
 electron/ipc/vizzy.ts                  IPC surface with sender checks
+electron/ipc/pipeline.ts               pipeline:list/enqueue/start/cancel/retry/clear/reveal
 ```
 
 ### 3.1 IPC surface
@@ -176,9 +191,16 @@ electron/ipc/vizzy.ts                  IPC surface with sender checks
 | `vizzy:bridge` | view | `vizzy:state`, `vizzy:dirty`, `vizzy:ack`, `vizzy:export-progress`, `vizzy:export-finished`, `vizzy:log` |
 | `vizzy:load-audio` (host → view) | main → view | stream a run track into the editor for a template render |
 | `vizzy:project:save` / `vizzy:project:open` | view | the patched editor Save, native Open |
+| `pipeline:list` | shell | durable queue + batches snapshot |
+| `pipeline:enqueue` | shell | resolve templates/audio, create rows, optional autostart |
+| `pipeline:start` / `pipeline:cancel` / `pipeline:retry` / `pipeline:clear` | shell | run control; retry re-enqueues failed/cancelled rows only |
+| `pipeline:reveal` | shell | reveal a known render/merged output |
+| `pipeline:changed` (event) | main → shell | queue invalidation, coalesced to ~150 ms |
 
 Every handler validates the sender's webContents id; the view cannot call shell channels and
-the shell cannot call view channels.
+the shell cannot call view channels. The offscreen render window is accepted as a second
+legitimate view sender, and `vizzy:export:chunk` routes by job id to whichever surface owns
+the running job.
 
 ### 3.2 Project files
 
@@ -273,6 +295,41 @@ shell Export button
 
 ---
 
+## 3.5 Batch render (offscreen)
+
+```
+Music "Render videos"                         Progress "Video pipeline"
+  → pipeline:enqueue (resolve templates+audio)      ← pipeline:list / pipeline:changed
+  → pipeline:start
+  → PipelineRunner.run()
+      next queued row → buildPipelineRenderPlan
+      → OffscreenVizzyRenderer.render()
+          hidden BrowserWindow (vizzy-render partition)
+          → vizzy:open-project-json (ack) → applyProjectSnapshot
+          → vizzy:load-audio (camxora-media:// fetch) → editorLoadAudio
+          → vizzy:export-run → editor runExport() → vizzy:export:chunk → renders/<slug>-<ts>.mp4
+      → ffprobe → row done
+      → batch merge (-c copy, re-encode fallback) → <run folder>/<batch>-merged.mp4 → ffprobe
+```
+
+- **Single exporter implementation.** `export-session.ts` owns the file handle, progress,
+  cancel grace and cleanup for both surfaces; the visible editor and the batch window cannot
+  drift apart.
+- **Second sender.** `VizzyHost.isViewSender()` accepts the render window; the bridge is routed
+  by sender and export chunks by job id. The page still runs with sandbox + no Node.
+- **No shared storage.** The render window uses `partition: "vizzy-render"`, so the editor's
+  autosave/localStorage cannot overwrite the user's visible session. Both custom schemes are
+  installed on that partition (`installVizzyProtocolForSession`).
+- **Lifecycle.** Created on demand, closed when the queue drains; disposing never deletes user
+  files. Renderer crash / load failure fails the row with the reason.
+- **Cancel.** Stop flag + `session.cancel`; queued rows are cancelled, the partial file is
+  deleted, and a cancel during window load never starts an export.
+- **Merge** is batch-level (`pipeline_batches`), so a row never pretends to be the merge.
+- **Reel** is a separate render of the reel template; a profile without one is reported, not
+  silently cropped.
+
+---
+
 ## 4. Still stubbed
 
 | Area | Status | Notes |
@@ -280,8 +337,8 @@ shell Export button
 | Pipeline templates (`template.json`/`pipeline.json`) | **working (single template)** | Save from the preview, manage in the Templates rail, preview and render one saved template with a real run track. Batch selection per profile is stored and read by Publication. |
 | Native video export (MP4 + WebM) | **working** | Shell-owned job, editor-owned encoder, chunked to `renders/`, ffprobe-validated. MP4/H.264 is the reference path; WebM uses WebCodecs when the build has it. |
 | Renders panel | **working** | List, inline playback, Reveal, Delete with confirmation. No thumbnails yet. |
-| Batch render, merge/reel/upload | **not built** | One render at a time; no queue, no merge, no reel variant, no upload. `vizzy:render-template` renders one template/one track. |
-| Export of a closed editor / headless render | **not built** | A job needs the attached, ready editor. Route leave, close or crash cancels the job and deletes the partial file. |
+| Batch render, merge/reel/upload | **partial** | Batch render, cancel/retry and long-form merge are **working** offscreen (no `/vizzy` needed). Reel is a separate render; a missing reel template is reported. **Upload is not built** — Auto-Upload stays disabled. |
+| Export of a closed editor / headless render | **working (hidden window)** | The pipeline renders in a hidden `BrowserWindow` on its own partition; the visible editor never has to be attached. It is not a fully headless/offscreen (OSR) renderer, so a compositor/GPU is still required. |
 | Media picker / `camxora-media://` inside the editor | **partial** | `pickMedia` still returns `null`, but the host can stream a run track into the editor through `vizzy:load-audio` (used by template renders). Background/logo bindings from `vizzy:render-template` use `camxora-media://` URLs. |
 | 91-template library | **served when staged** | Preset/catalogue JSON is vendored. With `CAMXORA_VIZZY_LIBRARY_DIR` (or the packaged `vizzy-library/`), `/creations/*` is served from the staged pack and the editor's Creations browser lists all 91 with thumbnails; without it the browser is empty. |
 | Recent-projects list / autosave / recovery | **not built** | The strip has Save/Open/Close only. Rea's own IndexedDB autosave still runs as a browser-local cache. |
@@ -303,7 +360,7 @@ npm run vizzy:build
 node scripts/sync-vizzy.mjs --check     # vendored tree matches UPSTREAM.md
 npm run typecheck
 npm run lint
-npm test                                # 28 files / 233 tests
+npm test                                # 36 files / 278 tests
 npm run build                           # includes build:vizzy-preload
 node tests/e2e/vizzy.mjs                # ~25 s
 node tests/e2e/vizzy-export.mjs         # ~40 s, writes export-settings.png + renders.png
@@ -311,7 +368,9 @@ node tests/e2e/vizzy-templates.mjs      # save → preview → render, writes sa
                                         # templates-panel.png, rendered-preview.png
 $env:CAMXORA_VIZZY_LIBRARY_DIR="...\desktop-electron\vizzy-library"
 node tests/e2e/vizzy-library.mjs        # 91 rows + one load, writes library.png
-npm run test:e2e                        # all 14 suites (library needs the env above)
+node tests/e2e/pipeline-batch.mjs       # offscreen batch + merge + cancel/retry (~30 s),
+                                        # writes batch-progress.png + batch-complete.png
+npm run test:e2e                        # all 15 suites (library needs the env above)
 ```
 
 ---
@@ -326,8 +385,14 @@ npm run test:e2e                        # all 14 suites (library needs the env a
 | Dirty flag is history-depth based | Rea has no dirty flag. The adapter marks dirty when `editHistory.labels().length` differs from the depth at the last save/open. Undo back to the saved state stays "dirty". | Honest but coarse; a project hash in the adapter would be exact and cheap enough on demand. |
 | Project file names are slug-based | Two projects with the same name share one file. | Add an id suffix (or a recent-project index) before the pipeline milestone needs many projects. |
 | `detach()` destroys the view | Returning to `/vizzy` reloads the editor (~1.5 s) and re-creates the default project. | Keep a suspended view per window if the reload becomes annoying; the crash path already proves recreate works. |
-| Export runs inside the attached editor | The job needs the live renderer and analyser state. | Route leave / window close / crash cancels the job and deletes the partial file. A headless/offscreen renderer is a later milestone. |
-| One export at a time | `VizzyHost` keeps a single job; a second request is refused. | Enough for the strip; the batch/reel milestone needs a queue. |
+| Export runs inside the attached editor | The job needs the live renderer and analyser state. | Route leave / window close / crash cancels the job and deletes the partial file. Batch renders use the hidden window instead. |
+| One export at a time | Each surface keeps a single job; `pipeline:start` refuses a second batch while one runs. | Enough for the pipeline; concurrent renders would need one render window per worker. |
+| Batch render needs a compositor | The hidden window is a real window (`show:false`), not an OSR renderer, so WebGL needs a usable GPU/compositor. | Verified on Windows; a fully headless CI would need `--disable-gpu` acceptance or an OSR renderer. |
+| Merge has no percentage | ffmpeg concat runs as one process; the batch shows `merging` then `done`. | Add `-progress` parsing if merge time becomes visible to users. |
+| Render outputs live in `renders/` | Only the merged long-form file is written to the run folder. | Keeps playback/reveal/delete on the managed surface; revisit if 1.7.1 folder parity is required. |
+| Auto-Upload is intentionally absent | No upload/publish IPC exists for the pipeline. | Keep it that way until a dedicated, independently retryable upload stage is designed. |
+| Music trigger needs downloaded songs | A song is queued only when the backend recorded a run folder and the download is done; the file is matched by title. | A renamed/ambiguous audio file is reported by name instead of guessed. |
+| A template render needs the attached editor | The single-template action (`vizzy:render-template`) still uses the live editor. | Batch work does not; unify on the offscreen host if the rail action becomes batch-like. |
 | Cancel has a 5 s grace | The host asks the editor to abort, then closes the handle and deletes the partial file itself. | A wedged encoder cannot leave a file behind; the editor's own UI settles a moment later. |
 | Progress is frame-based | The editor reports `done/total` per rendered frame; the encode phase reuses the same counter. | Honest but coarse for the final mux; exact per-stage weights would need exporter changes. |
 | Renders are listed without thumbnails | `listRenderFiles` reads name/size/mtime only; no poster frames. | Add a thumbnail pass (ffmpeg screenshot) when the library milestone needs previews. |
@@ -384,7 +449,23 @@ npm run test:e2e                        # all 14 suites (library needs the env a
 | `electron/preload.ts`, `src/lib/bridge.ts`, `electron/shared/types.ts` | template IPC typings + change event |
 | `src/features/vizzy/*` | Save dialog, Templates rail, template model, templates hook, page integration |
 | `src/features/settings/profiles-tab.tsx` | template card copy points at Vizzy + Publication |
-| `package.json` | e2e includes `vizzy-templates.mjs` and `vizzy-library.mjs` |
+| `package.json` | e2e includes `vizzy-templates.mjs`, `vizzy-library.mjs` and `pipeline-batch.mjs` |
+| `electron/vizzy-host/export-session.ts` | new — shared export job (settings, file, progress, cancel, ffprobe) |
+| `electron/vizzy-host/render-window.ts` | new — offscreen render host + dedicated partition |
+| `electron/vizzy-host/host.ts` | delegates to the export session; accepts the render window as a view sender; `renderTemplateOffscreen` |
+| `electron/vizzy-host/protocol.ts` | `installVizzyProtocolForSession()` for the render partition |
+| `electron/services/pipeline-orchestrator.ts` | new — queue → render → ffprobe → merge, cancel/retry |
+| `electron/services/pipeline-queue.ts` | merge intent, `output`, retry/cancel/batch helpers |
+| `electron/services/pipeline-batch.ts` | per-batch merge, `PipelineCancelledError`, cancelled rows |
+| `electron/services/pipeline-sources.ts` | new — run-folder audio resolution, unique merge path |
+| `electron/services/database.ts` | migration 3: `pipeline_jobs.output_path`, `pipeline_batches` |
+| `electron/ipc/pipeline.ts` | new — pipeline IPC + coalesced `pipeline:changed` |
+| `electron/ipc/index.ts`, `electron/main.ts` | register pipeline IPC; install the render partition protocols |
+| `electron/preload.ts`, `src/lib/bridge.ts`, `electron/shared/types.ts` | pipeline bridge + types |
+| `src/features/progress/use-video-pipeline.ts`, `video-pipeline-table.tsx`, `video-pipeline-format.ts` | new — durable queue UI on Progress |
+| `src/features/music/music-pipeline.ts`, `components/automation-card.tsx`, `views/music-page.tsx` | “Render videos” trigger, plan builder, Settings link |
+| `tests/e2e/pipeline-batch.mjs` | new — offscreen batch, merge, Progress rows, cancel/retry |
+| `tests/unit/pipeline-orchestrator.test.ts`, `pipeline-sources.test.ts`, `music-pipeline.test.ts`, `video-pipeline-format.test.ts` | new — orchestration, audio resolution, plan, formatting |
 | `eslint.config.js` | ignores the vendored tree and its build output |
 | `electron-builder.yml` | ships `vizzy-dist` as an extra resource |
 | `.gitignore` | ignores `vizzy-dist/` |

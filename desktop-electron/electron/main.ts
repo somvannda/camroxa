@@ -9,7 +9,8 @@ import { resolveLibraryRoot } from "./services/vizzy-library";
 import { closeStore, initStore } from "./services/store";
 import { APP_NAME, APP_VERSION, USER_DATA_FOLDER } from "./shared/version";
 import { VizzyHost } from "./vizzy-host/host";
-import { installVizzyProtocol, registerHostSchemes } from "./vizzy-host/protocol";
+import { installVizzyProtocol, installVizzyProtocolForSession, registerHostSchemes } from "./vizzy-host/protocol";
+import { VIZZY_RENDER_PARTITION } from "./vizzy-host/render-window";
 
 // Privileged scheme registration must run before the app is ready; the handlers
 // themselves are installed after `whenReady()`. One call registers both
@@ -113,14 +114,29 @@ app.whenReady().then(() => {
   protocol.handle("camxora-media", handleMediaRequest);
 
   const vizzyRoot = vizzyBundleRoot();
+  const vizzyLibrary = vizzyLibraryRoot();
   try {
     installVizzyProtocol({
       root: vizzyRoot,
-      libraryRoot: vizzyLibraryRoot(),
+      libraryRoot: vizzyLibrary,
       onError: (error) => logger.error("vizzy protocol", { error: String(error) }),
     });
   } catch (error) {
     logger.error("vizzy bundle unavailable", { error: String(error), root: vizzyRoot });
+  }
+
+  // Protocol handlers are per session. The batch render window runs on a
+  // dedicated partition, so it needs the same two handlers installed there.
+  try {
+    const renderSession = session.fromPartition(VIZZY_RENDER_PARTITION);
+    renderSession.protocol.handle("camxora-media", handleMediaRequest);
+    installVizzyProtocolForSession(renderSession, {
+      root: vizzyRoot,
+      libraryRoot: vizzyLibrary,
+      onError: (error) => logger.error("vizzy render protocol", { error: String(error) }),
+    });
+  } catch (error) {
+    logger.error("vizzy render session unavailable", { error: String(error), root: vizzyRoot });
   }
 
   vizzyHost = new VizzyHost({
@@ -141,7 +157,7 @@ app.whenReady().then(() => {
     },
   });
 
-  registerIpc(vizzyHost);
+  registerIpc(vizzyHost, { getWindow: () => mainWindow });
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "notifications");

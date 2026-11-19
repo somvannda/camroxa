@@ -32,10 +32,16 @@ export interface PipelineQueueItem {
   title: string;
   artist: string;
   album: string;
+  /** The batch merges its long-form outputs when this is true. */
+  merge: boolean;
   status: PipelineJobStatus;
   stage: string;
   progress: number;
   error: string | null;
+  /** Absolute path of the validated render, written when the row is done. */
+  output: string | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface PipelineQueueInput {
@@ -49,6 +55,7 @@ export interface PipelineQueueInput {
   title?: string;
   artist?: string;
   album?: string;
+  merge?: boolean;
 }
 
 function keyOf(item: Pick<PipelineQueueInput, "batchId" | "branch" | "templateId" | "audioPath">) {
@@ -78,6 +85,7 @@ function parsePayload(payload: string): PipelineQueueInput | null {
       title: typeof value.title === "string" ? value.title : "",
       artist: typeof value.artist === "string" ? value.artist : "",
       album: typeof value.album === "string" ? value.album : "",
+      merge: value.merge === true,
     };
   } catch {
     return null;
@@ -97,10 +105,14 @@ export function listQueue(store: Store): PipelineQueueItem[] {
       title: input.title ?? "",
       artist: input.artist ?? "",
       album: input.album ?? "",
+      merge: input.merge === true,
       status: job.status as PipelineJobStatus,
       stage: job.stage,
       progress: job.progress,
       error: job.error,
+      output: job.outputPath ?? null,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
     });
   }
   return items;
@@ -132,6 +144,7 @@ export function enqueuePipelineJobs(store: Store, inputs: PipelineQueueInput[]):
       title: input.title ?? "",
       artist: input.artist ?? "",
       album: input.album ?? "",
+      merge: input.merge === true,
     };
     store.createJob({
       id,
@@ -141,6 +154,7 @@ export function enqueuePipelineJobs(store: Store, inputs: PipelineQueueInput[]):
       progress: 0,
       payload: JSON.stringify(normalized),
       error: null,
+      outputPath: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -152,10 +166,14 @@ export function enqueuePipelineJobs(store: Store, inputs: PipelineQueueInput[]):
       title: normalized.title ?? "",
       artist: normalized.artist ?? "",
       album: normalized.album ?? "",
+      merge: normalized.merge === true,
       status: "queued",
       stage: "queued",
       progress: 0,
       error: null,
+      output: null,
+      createdAt: now,
+      updatedAt: now,
     });
   }
   return created;
@@ -173,6 +191,7 @@ export function updateQueueJob(
     stage?: string;
     progress?: number;
     error?: string | null;
+    output?: string | null;
   },
 ): void {
   store.updateJob(id, {
@@ -180,6 +199,7 @@ export function updateQueueJob(
     ...(patch.stage ? { stage: patch.stage } : {}),
     ...(typeof patch.progress === "number" ? { progress: patch.progress } : {}),
     ...(patch.error !== undefined ? { error: patch.error } : {}),
+    ...(patch.output !== undefined ? { outputPath: patch.output } : {}),
   });
 }
 
@@ -192,4 +212,68 @@ export function clearFinishedJobs(store: Store): number {
     }
   }
   return removed;
+}
+
+/** Rows the user can retry: failed or cancelled work in one batch (or all). */
+export function retryableJobs(store: Store, batchId?: string): PipelineQueueItem[] {
+  return listQueue(store).filter(
+    (item) =>
+      (item.status === "failed" || item.status === "cancelled") &&
+      (batchId === undefined || item.batchId === batchId),
+  );
+}
+
+/**
+ * Cancel every row that has not started. The caller cancels the in-flight
+ * render separately; the runner turns that rejection into `cancelled`.
+ */
+export function cancelQueuedJobs(store: Store, batchId?: string): number {
+  let cancelled = 0;
+  for (const item of listQueue(store)) {
+    if (item.status !== "queued") continue;
+    if (batchId !== undefined && item.batchId !== batchId) continue;
+    updateQueueJob(store, item.id, {
+      status: "cancelled",
+      stage: "cancelled",
+      error: "Cancelled before it started.",
+    });
+    cancelled += 1;
+  }
+  return cancelled;
+}
+
+export function jobsForBatch(store: Store, batchId: string): PipelineQueueItem[] {
+  return listQueue(store).filter((item) => item.batchId === batchId);
+}
+
+/**
+ * A row caught in `rendering`/`encoding`/`merging` when the app starts cannot
+ * still be running: the process that owned the export is gone. Mark it failed
+ * so the row can be retried, and reset its batch, instead of leaving a spinner
+ * that never resolves.
+ */
+export function reconcileInterruptedJobs(store: Store): number {
+  const stale = listQueue(store).filter(
+    (item) =>
+      item.status === "rendering" || item.status === "encoding" || item.status === "merging",
+  );
+  for (const job of stale) {
+    updateQueueJob(store, job.id, {
+      status: "failed",
+      stage: "failed",
+      error: "The app closed before this render finished. Retry it.",
+    });
+  }
+  const touchedBatches = new Set(stale.map((job) => job.batchId));
+  for (const batchId of touchedBatches) {
+    const batch = store.getBatch(batchId);
+    if (!batch) continue;
+    store.upsertBatch({
+      ...batch,
+      status: "failed",
+      error: batch.error ?? "A render was interrupted by an app restart.",
+      updatedAt: Date.now(),
+    });
+  }
+  return stale.length;
 }

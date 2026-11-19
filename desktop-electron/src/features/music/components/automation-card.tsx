@@ -15,6 +15,13 @@ type ToggleKey =
   | "autoReelAfterVideo"
   | "autoUploadYouTube";
 
+export interface PipelineNotice {
+  tone: "success" | "warning" | "danger";
+  text: string;
+  /** Show the "Open Settings" link (missing template, missing audio). */
+  settings?: boolean;
+}
+
 interface AutomationCardProps {
   descriptionId: string;
   structureId: string;
@@ -35,6 +42,15 @@ interface AutomationCardProps {
   generateEnabled: boolean;
   generateLabel: string;
   onGenerate: () => void;
+  /** Video pipeline: resolved from the profile's saved templates. */
+  pipelineSummary: string;
+  pipelineJobCount: number;
+  pipelineBusy: boolean;
+  /** True when the plan is blocked by a missing template (show the Settings link). */
+  pipelineNeedsSettings: boolean;
+  pipelineNotice: PipelineNotice | null;
+  onRenderVideos: () => void;
+  onOpenSettings: () => void;
 }
 
 export function AutomationCard({
@@ -57,11 +73,24 @@ export function AutomationCard({
   generateEnabled,
   generateLabel,
   onGenerate,
+  pipelineSummary,
+  pipelineJobCount,
+  pipelineBusy,
+  pipelineNeedsSettings,
+  pipelineNotice,
+  onRenderVideos,
+  onOpenSettings,
 }: AutomationCardProps) {
   const pipelineSelected =
     toggles.autoVideoAfterSuno || toggles.autoMergeAfterVideo || toggles.autoReelAfterVideo;
   const saveTone =
     saveStatus === "saved" ? "success" : saveStatus === "error" ? "danger" : "neutral";
+  const noticeTone =
+    pipelineNotice?.tone === "danger"
+      ? "text-danger"
+      : pipelineNotice?.tone === "success"
+        ? "text-success"
+        : "text-warning";
 
   return (
     <Card className="flex min-h-0 min-w-0 flex-col p-4" data-testid="automation-card">
@@ -155,8 +184,8 @@ export function AutomationCard({
           className="mt-2 rounded-control border border-warning/30 bg-warning-soft px-2.5 py-1.5 text-caption text-text-secondary"
           data-testid="pipeline-note"
         >
-          Pipeline integration arrives in P7. These toggles keep the saved setting and Generate
-          still creates the batch; no video stage runs yet.
+          Auto-Upload stays disabled. “Render videos” below queues the profile’s saved template for
+          the ready songs and renders them without opening Vizzy.
         </p>
       ) : null}
 
@@ -232,6 +261,53 @@ export function AutomationCard({
         >
           {generating ? "Generating..." : generateLabel}
         </Button>
+
+        <Button
+          variant="secondary"
+          className="mt-2 h-9 w-full"
+          loading={pipelineBusy}
+          disabled={pipelineBusy || generating}
+          onClick={onRenderVideos}
+          data-testid="render-videos-button"
+        >
+          {pipelineJobCount > 0
+            ? `Render ${pipelineJobCount} video${pipelineJobCount === 1 ? "" : "s"}`
+            : "Render videos"}
+        </Button>
+
+        <p className="mt-1.5 text-caption text-text-muted" data-testid="pipeline-summary">
+          {pipelineSummary}
+        </p>
+        {pipelineNeedsSettings ? (
+          <button
+            type="button"
+            className="mt-0.5 block text-caption text-accent underline hover:no-underline"
+            onClick={onOpenSettings}
+            data-testid="pipeline-settings-hint"
+          >
+            Open Settings
+          </button>
+        ) : null}
+
+        {pipelineNotice ? (
+          <div
+            className={`mt-1 rounded-control border border-border bg-surface-2 px-2.5 py-1.5 text-caption ${noticeTone}`}
+            role="status"
+            data-testid="pipeline-message"
+          >
+            <span>{pipelineNotice.text}</span>
+            {pipelineNotice.settings ? (
+              <button
+                type="button"
+                className="ml-1 underline hover:no-underline"
+                onClick={onOpenSettings}
+                data-testid="pipeline-settings-link"
+              >
+                Open Settings
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {batchSummary || batchStatus ? (
           <div className="mt-2 space-y-0.5 text-caption">

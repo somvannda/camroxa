@@ -8,7 +8,7 @@
  * All path/MIME/header logic lives in `assets.ts` so it can be tested without
  * Electron.
  */
-import { protocol } from "electron";
+import { protocol, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { mediaSchemePrivileges } from "../services/media";
@@ -136,4 +136,23 @@ export function installVizzyProtocol(options: VizzyProtocolOptions): void {
   if (installed) return;
   installed = true;
   protocol.handle(VIZZY_SCHEME, createVizzyProtocolHandler({ ...options, root }));
+}
+
+/**
+ * Install the handler on an explicit session (Electron keeps protocol handlers
+ * per session, not per app). The batch render window runs on its own partition,
+ * so it needs its own `camxora-vizzy://` handler.
+ */
+export function installVizzyProtocolForSession(
+  target: Session,
+  options: VizzyProtocolOptions,
+): void {
+  const root = path.resolve(options.root);
+  const index = path.join(root, "index.html");
+  if (!fs.existsSync(index)) {
+    throw new Error(
+      `Vizzy bundle missing: ${index}. Run "npm run vizzy:build" in desktop-electron/.`,
+    );
+  }
+  target.protocol.handle(VIZZY_SCHEME, createVizzyProtocolHandler({ ...options, root }));
 }

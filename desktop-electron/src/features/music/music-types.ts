@@ -20,6 +20,8 @@ export interface ChannelProfile {
   folder_name?: string | null;
   run_prefix?: string | null;
   output_resolution?: string;
+  video_template_id?: string | null;
+  reel_template_id?: string | null;
   image_config?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
