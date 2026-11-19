@@ -24,6 +24,7 @@
 | **P1 updates** | HTTPS release manifest, mandatory blocking gate, optional update card, download hand-off, unit + E2E coverage |
 | **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
 | **P2 settings** | Profiles (list/create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics) |
+| **P8 settings catalogs** | Descriptions/Structures/Moods workspace defaults + user prompt CRUD, read-only Pools viewer, Suno defaults with bounds validation; save-all order covers all seven writable tabs (`desktop/settings-p8`) |
 | **Shell guard** | Unsaved settings block sidebar navigation with a Stay / Discard-and-leave confirm |
 | **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
@@ -44,13 +45,18 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               278/278 PASS
+npm test               296/296 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
 npm run test:e2e       PASS (15 suites incl. pipeline-batch)
+node tests/e2e/settings.mjs PASS (8 tabs, prompt CRUD, pools pager, Suno bounds, save-all order)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
 npx electron-builder --win --dir   PASS (unpacked app launched)
 ```
+
+P8 branch verification (`desktop/settings-p8`, not merged): `npm ci`, `npm run typecheck`, `npm run lint`,
+`npm test` (296/296), `npm run build` and `node tests/e2e/settings.mjs` all pass. The full
+`test:e2e` chain also needs `vizzy-dist`, which this branch does not build.
 
 E2E screenshots: `desktop-electron/artifacts/` (dashboard/profile success, empty, error; login; auth gates; settings; vizzy shell/editor, library, save dialog, templates, rendered preview; batch progress/complete).
 
@@ -117,7 +123,9 @@ This is a backend contract decision, not a renderer bug.
   orchestration (offscreen render, merge, reel branch, cancel/retry, Music trigger, Progress
   table) are merged. **Upload is the remaining P7 gap**: Auto-Upload stays disabled exactly as
   1.7.1 and no publish IPC exists for the pipeline.
-- P8–P9 remain.
+- P8 settings catalogs are implemented on `desktop/settings-p8`: five new tabs, prompt CRUD,
+  read-only pools and Suno defaults; not merged to `desktop/electron-v1` yet.
+- P8–P9 remain otherwise.
 
 ### Settings follow-ups
 
@@ -125,6 +133,17 @@ This is a backend contract decision, not a renderer bug.
 - No IPC yet to measure/clear the analysis cache.
 - `PUT /profiles/{id}` treats `null` as “leave unchanged”, so logo/cover and template ids
   cannot be cleared; replacing a template works.
+- Prompt CRUD is user-scoped: `/prompts/me/{descriptions|structures|moods}`. The
+  `/prompts/{kind}` and `/prompts/{kind}/user-prompts` routes are admin-only (AdminUserDep), so
+  the desktop Settings tabs cannot use them. Workspace selectors use
+  `/prompts/{kind}/workspace`.
+- `/prompts/me/*` writes archive the row; the list refreshes from the server, so the desktop
+  never assumes a hard delete.
+- `/content-pools/stats` reports only `total`/`unused` per pool. There are no per-user
+  ownership counts, so the Pools tab shows “Account-wide” and explains editing is in the Admin
+  Portal.
+- `/settings` is an untyped key/value map. Suno bounds (version list, timeout, retries, merge
+  group) are enforced by the desktop; the server accepts any value the client sends.
 
 ## Merged pages
 
@@ -136,7 +155,7 @@ This is a backend contract decision, not a renderer bug.
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; “Render videos” queues the profile's saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
-| Settings | **Merged** — Profiles (create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics), deep link |
+| Settings | **Merged** — Profiles (create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics), deep link; **P8 on `desktop/settings-p8`** — Descriptions, Structures, Moods (defaults + user prompt CRUD), Pools (read-only), Suno (bounded defaults) |
 | Vizzy | **Merged** — real Rea editor in a `WebContentsView`, `camxora-vizzy://`, native open/save, crash recovery, shell strip, templates, native export, renders, offscreen batch rendering |
 
 Branding is aligned to camxora.com: original logo, Inter/Niradei, Font Awesome, #070a13 /

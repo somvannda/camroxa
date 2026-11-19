@@ -3,18 +3,32 @@ import { PageHeader } from "../../../components/page-header";
 import { Button } from "../../../components/button";
 import { classNames } from "../../../lib/format";
 import { useUnsavedGuard } from "../../../shell/navigation-guard";
-import { SETTINGS_TABS, dirtyTabLabel, type SettingsTab } from "../settings-types";
+import { SETTINGS_TABS, dirtyTabLabel, promptKindInfo, type SettingsTab } from "../settings-types";
 import { ConfirmDialog } from "../settings-fields";
 import { ProfilesTab } from "../profiles-tab";
 import { PublicationTab } from "../publication-tab";
 import { PreferencesTab } from "../preferences-tab";
+import { PromptCatalogTab } from "../prompt-catalog-tab";
+import { PoolsTab } from "../pools-tab";
+import { SunoTab } from "../suno-tab";
 import { useSettingsWorkspace } from "../use-settings-workspace";
+import { useSettingsAccountId } from "../use-settings-data";
 
 function tabLabel(tab: SettingsTab): string {
   return SETTINGS_TABS.find((item) => item.id === tab)?.label ?? tab;
 }
 
+/**
+ * The workspace is keyed by the signed-in account: signing into another
+ * account remounts every draft, so no editor state can leak across accounts.
+ * The queries themselves are account-scoped in `use-settings-data`.
+ */
 export function SettingsPage() {
+  const accountId = useSettingsAccountId();
+  return <SettingsWorkspace key={accountId ?? "anonymous"} />;
+}
+
+function SettingsWorkspace() {
   const ws = useSettingsWorkspace();
   useUnsavedGuard({
     isBlocked: () => ws.dirtyCount > 0,
@@ -22,6 +36,8 @@ export function SettingsPage() {
       ws.discardProfiles();
       ws.discardPublication();
       ws.discardPreferences();
+      ws.discardAllPrompts();
+      ws.discardSuno();
     },
   });
   const saveAllRef = useRef(ws.saveAll);
@@ -50,11 +66,13 @@ export function SettingsPage() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
-  const dirtyPerTab: Record<SettingsTab, boolean> = {
-    profiles: ws.dirtyTabs.includes("profiles"),
-    publication: ws.dirtyTabs.includes("publication"),
-    preferences: ws.dirtyTabs.includes("preferences"),
-  };
+  const dirtyPerTab: Record<SettingsTab, boolean> = SETTINGS_TABS.reduce(
+    (flags, tab) => {
+      flags[tab.id] = ws.dirtyTabs.includes(tab.id);
+      return flags;
+    },
+    {} as Record<SettingsTab, boolean>,
+  );
 
   function onTabListKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     const keys = ["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End"];
@@ -110,6 +128,22 @@ export function SettingsPage() {
     confirmBody = `The channel is removed from ${pending.profile.name}. Publication defaults stay on the profile and uploads stop until a channel is connected again.`;
     confirmLabel = "Disconnect";
     confirmTone = "danger";
+  } else if (pending?.kind === "delete-prompt") {
+    const label = promptKindInfo(pending.promptKind).singular;
+    confirmTitle = `Delete ${pending.entry.name}?`;
+    confirmBody = `This removes your ${label} from the catalog and from the Music page selectors. Past songs keep their history.`;
+    confirmLabel = "Delete prompt";
+    confirmTone = "danger";
+  } else if (pending?.kind === "switch-prompt") {
+    confirmTitle = "Discard unsaved prompt edits?";
+    confirmBody = `Opening ${pending.entry.name} replaces the Editor contents. Unsaved edits are lost.`;
+    confirmLabel = "Discard and open";
+    confirmTone = "danger";
+  } else if (pending?.kind === "new-prompt") {
+    confirmTitle = "Discard unsaved prompt edits?";
+    confirmBody = "Starting a new prompt clears the Editor. Unsaved edits are lost.";
+    confirmLabel = "Discard and create";
+    confirmTone = "danger";
   }
 
   const savingLabel = ws.saving?.current ? `Saving ${tabLabel(ws.saving.current).toLowerCase()}…` : null;
@@ -126,7 +160,7 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Settings"
-        description="Channel profiles, YouTube publication defaults, and local preferences."
+        description="Channel profiles, publication defaults, prompt catalogs, content pools and Suno."
       />
 
       <div className="flex flex-1 items-start gap-6 p-6">
@@ -173,8 +207,7 @@ export function SettingsPage() {
             })}
           </div>
           <p className="mt-6 px-2.5 text-caption leading-5 text-text-muted">
-            Descriptions, Structures, Moods, Pools and Suno arrive in P8. They are not tabs in this
-            build yet.
+            Defaults save with Save all. Prompt saves, YouTube connect and pool refresh act immediately.
           </p>
         </nav>
 
@@ -187,6 +220,13 @@ export function SettingsPage() {
           {ws.activeTab === "profiles" ? <ProfilesTab workspace={ws} /> : null}
           {ws.activeTab === "publication" ? <PublicationTab workspace={ws} /> : null}
           {ws.activeTab === "preferences" ? <PreferencesTab workspace={ws} /> : null}
+          {ws.activeTab === "descriptions" ? (
+            <PromptCatalogTab workspace={ws} kind="descriptions" />
+          ) : null}
+          {ws.activeTab === "structures" ? <PromptCatalogTab workspace={ws} kind="structures" /> : null}
+          {ws.activeTab === "moods" ? <PromptCatalogTab workspace={ws} kind="moods" /> : null}
+          {ws.activeTab === "pools" ? <PoolsTab workspace={ws} /> : null}
+          {ws.activeTab === "suno" ? <SunoTab workspace={ws} /> : null}
         </div>
       </div>
 

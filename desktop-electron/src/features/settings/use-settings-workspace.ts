@@ -6,53 +6,88 @@ import { toast } from "../../components/toast";
 import type { ChannelProfile } from "../dashboard/account-types";
 import { openExternal } from "../auth/portal";
 import {
+  createMyPrompt as createMyPromptApi,
   createPlaylist as createPlaylistApi,
   createProfile as createProfileApi,
+  deleteMyPrompt as deleteMyPromptApi,
   deleteProfile as deleteProfileApi,
   disconnectYoutube as disconnectYoutubeApi,
   fetchYoutubeConnections,
   patchSettings,
   selectYoutubeChannel as selectYoutubeChannelApi,
   startYoutubeConnection,
+  updateMyPrompt as updateMyPromptApi,
   updateProfile as updateProfileApi,
   type SettingsMap,
   type YouTubeConnection,
 } from "./settings-api";
 import {
+  SETTINGS_TABS,
   buildPreferencesDraft,
   buildPreferencesPatch,
   buildProfileDraft,
   buildProfilePayload,
+  buildPromptDefaultsDraft,
+  buildPromptDefaultsPatch,
+  buildPromptEditorDraft,
   buildPublicationDraft,
   buildPublicationPayload,
+  buildSunoSettingsDraft,
+  buildSunoSettingsPatch,
+  buildUserPromptPayload,
+  clampPoolOffset,
   countDirtyTabs,
   defaultPreferencesDraft,
   emptyProfileDraft,
+  emptyPromptDefaultsDraft,
+  emptyPromptEditorDraft,
   emptyPublicationDraft,
   filterProfiles,
   imagePromptLibraryOnly,
   preferencesDraftDirty,
   profileDraftDirty,
+  promptDefaultsDirtyFor,
+  promptEditorDraftDirty,
+  promptKindInfo,
   publicationDraftDirty,
   recordOf,
+  removeUserPrompt,
+  settingsTabLabel,
   slugifyProfileFolder,
+  sunoSettingsDirty,
+  upsertUserPrompt,
   validatePreferencesDraft,
   validateProfileDraft,
+  validatePromptEditorDraft,
   validatePublicationDraft,
+  validateSunoSettingsDraft,
   type FfmpegStatus,
+  type PoolKind,
   type PreferencesDraft,
   type ProfileDraft,
   type ProfileField,
+  type PromptDefaultsDraft,
+  type PromptEditorDraft,
+  type PromptEditorField,
+  type PromptKind,
   type PublicationDraft,
   type PublicationField,
   type SettingsTab,
+  type SunoField,
+  type SunoSettingsDraft,
+  type UserPromptEntry,
 } from "./settings-types";
 import {
   settingsKeys,
   useDevicePreferencesQuery,
   useMeQuery,
+  useMyPromptsQuery,
   usePlaylistsQuery,
+  usePoolItemsQuery,
+  usePoolStatsQuery,
   useProfilesQuery,
+  usePromptWorkspaceQuery,
+  useSettingsAccountId,
   useSettingsQuery,
   useVideoTemplatesQuery,
   useYoutubeConnectionsQuery,
@@ -64,11 +99,35 @@ export type PendingConfirm =
   | { kind: "switch-publication"; profileId: string }
   | { kind: "discard-all" }
   | { kind: "delete-profile"; profile: ChannelProfile }
-  | { kind: "disconnect-youtube"; profile: ChannelProfile };
+  | { kind: "disconnect-youtube"; profile: ChannelProfile }
+  | { kind: "delete-prompt"; promptKind: PromptKind; entry: UserPromptEntry }
+  | { kind: "switch-prompt"; promptKind: PromptKind; entry: UserPromptEntry }
+  | { kind: "new-prompt"; promptKind: PromptKind };
 
 export interface SavingState {
   tabs: SettingsTab[];
   current: SettingsTab | null;
+}
+
+const PROMPT_DEFAULT_FIELDS: Array<[keyof PromptDefaultsDraft, string]> = [
+  ["descriptionId", "defaultDescriptionId"],
+  ["structureId", "defaultStructureId"],
+  ["moodId", "defaultMoodId"],
+];
+
+/** Which account settings key belongs to which catalog tab. */
+const PROMPT_DEFAULT_KEYS_BY_KIND: Record<PromptKind, string[]> = {
+  descriptions: ["defaultDescriptionId"],
+  structures: ["defaultStructureId"],
+  moods: ["defaultMoodId"],
+};
+
+function resetAllPromptEditors(): Record<PromptKind, PromptEditorDraft> {
+  return {
+    descriptions: emptyPromptEditorDraft(),
+    structures: emptyPromptEditorDraft(),
+    moods: emptyPromptEditorDraft(),
+  };
 }
 
 function upsertProfile(list: ChannelProfile[] | undefined, profile: ChannelProfile): ChannelProfile[] {
@@ -80,12 +139,25 @@ function upsertProfile(list: ChannelProfile[] | undefined, profile: ChannelProfi
 export function useSettingsWorkspace() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const accountId = useSettingsAccountId();
+  const keys = useMemo(() => settingsKeys(accountId), [accountId]);
   const profilesQuery = useProfilesQuery();
   const meQuery = useMeQuery();
   const settingsQuery = useSettingsQuery();
   const deviceQuery = useDevicePreferencesQuery();
   const connectionsQuery = useYoutubeConnectionsQuery();
   const videoTemplatesQuery = useVideoTemplatesQuery();
+  const descriptionWorkspaceQuery = usePromptWorkspaceQuery("descriptions");
+  const structureWorkspaceQuery = usePromptWorkspaceQuery("structures");
+  const moodWorkspaceQuery = usePromptWorkspaceQuery("moods");
+  const descriptionPromptsQuery = useMyPromptsQuery("descriptions");
+  const structurePromptsQuery = useMyPromptsQuery("structures");
+  const moodPromptsQuery = useMyPromptsQuery("moods");
+  const poolStatsQuery = usePoolStatsQuery();
+  const [poolKind, setPoolKindState] = useState<PoolKind>("openings");
+  const [poolOffset, setPoolOffset] = useState(0);
+  const poolItemsQuery = usePoolItemsQuery(poolKind, poolOffset);
+  const poolStats = poolStatsQuery.data ?? null;
   const requestedProfileId = searchParams.get("profile");
 
   const profiles = useMemo(
@@ -121,6 +193,30 @@ export function useSettingsWorkspace() {
     message: "Not checked yet.",
   });
 
+  // Prompt catalogs: the workspace defaults live in account settings, while
+  // the editor drafts are user-owned prompt writes with their own Save action.
+  const [promptDefaults, setPromptDefaults] = useState<PromptDefaultsDraft>(emptyPromptDefaultsDraft);
+  const [promptDefaultsBaseline, setPromptDefaultsBaseline] =
+    useState<PromptDefaultsDraft>(emptyPromptDefaultsDraft);
+  const [promptDrafts, setPromptDrafts] = useState<Record<PromptKind, PromptEditorDraft>>(() => ({
+    descriptions: emptyPromptEditorDraft(),
+    structures: emptyPromptEditorDraft(),
+    moods: emptyPromptEditorDraft(),
+  }));
+  const [promptBaselines, setPromptBaselines] = useState<Record<PromptKind, PromptEditorDraft>>(() => ({
+    descriptions: emptyPromptEditorDraft(),
+    structures: emptyPromptEditorDraft(),
+    moods: emptyPromptEditorDraft(),
+  }));
+  const [promptFieldErrors, setPromptFieldErrors] = useState<
+    Record<PromptKind, Partial<Record<PromptEditorField, string>>>
+  >(() => ({ descriptions: {}, structures: {}, moods: {} }));
+  const [promptBusy, setPromptBusy] = useState<PromptKind | null>(null);
+
+  const [sunoDraft, setSunoDraft] = useState<SunoSettingsDraft>(() => buildSunoSettingsDraft(null));
+  const [sunoBaseline, setSunoBaseline] = useState<SunoSettingsDraft>(() => buildSunoSettingsDraft(null));
+  const [sunoErrors, setSunoErrors] = useState<Partial<Record<SunoField, string>>>({});
+
   const [tabErrors, setTabErrors] = useState<Partial<Record<SettingsTab, string>>>({});
   const [saving, setSaving] = useState<SavingState | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -155,22 +251,92 @@ export function useSettingsWorkspace() {
 
   const filteredProfiles = useMemo(() => filterProfiles(profiles, profileSearch), [profiles, profileSearch]);
 
+  const promptWorkspace = useMemo(
+    () => ({
+      descriptions: descriptionWorkspaceQuery.data ?? [],
+      structures: structureWorkspaceQuery.data ?? [],
+      moods: moodWorkspaceQuery.data ?? [],
+    }),
+    [descriptionWorkspaceQuery.data, moodWorkspaceQuery.data, structureWorkspaceQuery.data],
+  );
+  const promptWorkspaceLoading: Record<PromptKind, boolean> = {
+    descriptions: descriptionWorkspaceQuery.isLoading,
+    structures: structureWorkspaceQuery.isLoading,
+    moods: moodWorkspaceQuery.isLoading,
+  };
+  const promptWorkspaceError: Record<PromptKind, string | null> = {
+    descriptions: descriptionWorkspaceQuery.isError ? errorMessage(descriptionWorkspaceQuery.error) : null,
+    structures: structureWorkspaceQuery.isError ? errorMessage(structureWorkspaceQuery.error) : null,
+    moods: moodWorkspaceQuery.isError ? errorMessage(moodWorkspaceQuery.error) : null,
+  };
+  const userPrompts = useMemo(
+    () => ({
+      descriptions: descriptionPromptsQuery.data ?? [],
+      structures: structurePromptsQuery.data ?? [],
+      moods: moodPromptsQuery.data ?? [],
+    }),
+    [descriptionPromptsQuery.data, moodPromptsQuery.data, structurePromptsQuery.data],
+  );
+  const userPromptsLoading: Record<PromptKind, boolean> = {
+    descriptions: descriptionPromptsQuery.isLoading,
+    structures: structurePromptsQuery.isLoading,
+    moods: moodPromptsQuery.isLoading,
+  };
+  const userPromptsError: Record<PromptKind, string | null> = {
+    descriptions: descriptionPromptsQuery.isError ? errorMessage(descriptionPromptsQuery.error) : null,
+    structures: structurePromptsQuery.isError ? errorMessage(structurePromptsQuery.error) : null,
+    moods: moodPromptsQuery.isError ? errorMessage(moodPromptsQuery.error) : null,
+  };
+
   const profileDirty = profileDraftDirty(profileDraft, profileBaseline);
   const publicationDirty = publicationDraftDirty(publicationDraft, publicationBaseline);
   const preferencesDirty = preferencesDraftDirty(preferencesDraft, preferencesBaseline);
+  const promptEditorDirty: Record<PromptKind, boolean> = useMemo(
+    () => ({
+      descriptions: promptEditorDraftDirty(promptDrafts.descriptions, promptBaselines.descriptions),
+      structures: promptEditorDraftDirty(promptDrafts.structures, promptBaselines.structures),
+      moods: promptEditorDraftDirty(promptDrafts.moods, promptBaselines.moods),
+    }),
+    [promptBaselines, promptDrafts],
+  );
+  const promptDefaultsDirty: Record<PromptKind, boolean> = {
+    descriptions: promptDefaultsDirtyFor("descriptions", promptDefaults, promptDefaultsBaseline),
+    structures: promptDefaultsDirtyFor("structures", promptDefaults, promptDefaultsBaseline),
+    moods: promptDefaultsDirtyFor("moods", promptDefaults, promptDefaultsBaseline),
+  };
+  const promptTabDirty: Record<PromptKind, boolean> = {
+    descriptions: promptEditorDirty.descriptions || promptDefaultsDirty.descriptions,
+    structures: promptEditorDirty.structures || promptDefaultsDirty.structures,
+    moods: promptEditorDirty.moods || promptDefaultsDirty.moods,
+  };
+  const sunoDirty = sunoSettingsDirty(sunoDraft, sunoBaseline);
 
-  const dirtyTabs = useMemo(() => {
-    const tabs: SettingsTab[] = [];
-    if (profileDirty) tabs.push("profiles");
-    if (publicationDirty) tabs.push("publication");
-    if (preferencesDirty) tabs.push("preferences");
-    return tabs;
-  }, [preferencesDirty, profileDirty, publicationDirty]);
-  const dirtyCount = countDirtyTabs({
-    profiles: profileDirty,
-    publication: publicationDirty,
-    preferences: preferencesDirty,
-  });
+  const dirtyFlags = useMemo(
+    () => ({
+      profiles: profileDirty,
+      publication: publicationDirty,
+      preferences: preferencesDirty,
+      descriptions: promptTabDirty.descriptions,
+      structures: promptTabDirty.structures,
+      moods: promptTabDirty.moods,
+      pools: false,
+      suno: sunoDirty,
+    }),
+    [
+      preferencesDirty,
+      profileDirty,
+      promptTabDirty.descriptions,
+      promptTabDirty.moods,
+      promptTabDirty.structures,
+      publicationDirty,
+      sunoDirty,
+    ],
+  );
+  const dirtyTabs = useMemo(
+    () => SETTINGS_TABS.filter((tab) => dirtyFlags[tab.id]).map((tab) => tab.id),
+    [dirtyFlags],
+  );
+  const dirtyCount = countDirtyTabs(dirtyFlags);
 
   const allowanceValue =
     meQuery.data?.effective_profile_allowance ?? meQuery.data?.profile_allowance ?? null;
@@ -295,16 +461,29 @@ export function useSettingsWorkspace() {
       void window.camxora?.preferences
         ?.setDevice({ ffmpegPath: draft.ffmpegPath, sunoOutputDir: draft.sunoOutputDir })
         .then((result) => {
-          if (result.ok) queryClient.setQueryData(settingsKeys.device, result.data);
+          if (result.ok) queryClient.setQueryData(keys.device, result.data);
         });
     }
   }, [
     devicePreferences.ffmpegPath,
     devicePreferences.sunoOutputDir,
     deviceQuery.isFetched,
+    keys.device,
     queryClient,
     settingsQuery.data,
   ]);
+
+  const promptSettingsInitializedRef = useRef(false);
+  useEffect(() => {
+    if (promptSettingsInitializedRef.current || !settingsQuery.data) return;
+    promptSettingsInitializedRef.current = true;
+    const defaults = buildPromptDefaultsDraft(settingsQuery.data);
+    setPromptDefaults(defaults);
+    setPromptDefaultsBaseline(defaults);
+    const suno = buildSunoSettingsDraft(settingsQuery.data);
+    setSunoDraft(suno);
+    setSunoBaseline(suno);
+  }, [settingsQuery.data]);
 
   const checkFfmpeg = useCallback(async () => {
     if (!window.camxora?.ffmpeg) {
@@ -419,7 +598,7 @@ export function useSettingsWorkspace() {
         isNewProfile || !selectedProfileId
           ? await createProfileApi(payload)
           : await updateProfileApi(selectedProfileId, payload);
-      queryClient.setQueryData<ChannelProfile[]>(settingsKeys.profiles, (current) =>
+      queryClient.setQueryData<ChannelProfile[]>(keys.profiles, (current) =>
         upsertProfile(current, saved),
       );
       const draft = buildProfileDraft(saved);
@@ -431,7 +610,7 @@ export function useSettingsWorkspace() {
       setProfileErrors({});
       clearTabError("profiles");
       toast(isNewProfile ? `Created profile ${saved.name}.` : "Profiles saved.", "success");
-      void queryClient.invalidateQueries({ queryKey: settingsKeys.me });
+      void queryClient.invalidateQueries({ queryKey: keys.me });
       return true;
     } catch (error) {
       const message = `Could not save the profile. ${errorMessage(error)}`;
@@ -442,6 +621,7 @@ export function useSettingsWorkspace() {
   }, [
     clearTabError,
     isNewProfile,
+    keys,
     profileDraft,
     profiles,
     queryClient,
@@ -456,7 +636,7 @@ export function useSettingsWorkspace() {
         await deleteProfileApi(profile.id);
         const remaining = profiles.filter((item) => item.id !== profile.id);
         const nextProfile = filterProfiles(remaining, "")[0] ?? null;
-        queryClient.setQueryData<ChannelProfile[]>(settingsKeys.profiles, (current) =>
+        queryClient.setQueryData<ChannelProfile[]>(keys.profiles, (current) =>
           Array.isArray(current) ? current.filter((item) => item.id !== profile.id) : [],
         );
         if (selectedProfileId === profile.id) {
@@ -467,7 +647,7 @@ export function useSettingsWorkspace() {
           applyPublicationProfile(nextProfile?.id ?? null);
         }
         toast(`Deleted profile ${profile.name}.`, "success");
-        void queryClient.invalidateQueries({ queryKey: settingsKeys.me });
+        void queryClient.invalidateQueries({ queryKey: keys.me });
       } catch (error) {
         const message = `Could not delete ${profile.name}. ${errorMessage(error)}`;
         setTabError("profiles", message);
@@ -480,6 +660,7 @@ export function useSettingsWorkspace() {
     [
       applyProfile,
       applyPublicationProfile,
+      keys,
       profiles,
       publicationProfileId,
       queryClient,
@@ -560,7 +741,7 @@ export function useSettingsWorkspace() {
           ? { reel_template_id: publicationDraft.reelTemplateId.trim() }
           : {}),
       });
-      queryClient.setQueryData<ChannelProfile[]>(settingsKeys.profiles, (current) =>
+      queryClient.setQueryData<ChannelProfile[]>(keys.profiles, (current) =>
         upsertProfile(current, saved),
       );
       const draft = buildPublicationDraft(saved);
@@ -578,6 +759,7 @@ export function useSettingsWorkspace() {
     }
   }, [
     clearTabError,
+    keys,
     playlists,
     playlistsQuery.isSuccess,
     publicationConnected,
@@ -607,7 +789,7 @@ export function useSettingsWorkspace() {
       try {
         const created = await createPlaylistApi(publicationProfileId, trimmed);
         await queryClient.invalidateQueries({
-          queryKey: settingsKeys.playlists(publicationProfileId),
+          queryKey: keys.playlists(publicationProfileId),
         });
         if (created) {
           setPublicationDraft((prev) => ({ ...prev, playlist: created.id }));
@@ -622,7 +804,7 @@ export function useSettingsWorkspace() {
         setPlaylistBusy(false);
       }
     },
-    [publicationProfileId, queryClient, setTabError],
+    [keys, publicationProfileId, queryClient, setTabError],
   );
 
   // -------------------------------------------------------------------------
@@ -673,7 +855,7 @@ export function useSettingsWorkspace() {
           sunoOutputDir: sunoDir,
         });
         if (device.ok) {
-          queryClient.setQueryData(settingsKeys.device, device.data);
+          queryClient.setQueryData(keys.device, device.data);
         } else {
           warnings.push(`The device paths were not saved (${device.error.message}).`);
         }
@@ -683,7 +865,7 @@ export function useSettingsWorkspace() {
     }
     try {
       const merged: SettingsMap = await patchSettings(patch);
-      queryClient.setQueryData(settingsKeys.values, merged);
+      queryClient.setQueryData(keys.values, merged);
       const draft = buildPreferencesDraft(merged);
       setPreferencesDraft(draft);
       setPreferencesBaseline(draft);
@@ -702,6 +884,7 @@ export function useSettingsWorkspace() {
   }, [
     checkFfmpeg,
     clearTabError,
+    keys,
     preferencesBaseline,
     preferencesDraft,
     queryClient,
@@ -721,16 +904,334 @@ export function useSettingsWorkspace() {
   }, [preferencesBaseline]);
 
   // -------------------------------------------------------------------------
+  // Prompt catalog actions
+  // -------------------------------------------------------------------------
+
+  const updatePromptDefault = useCallback(
+    (field: keyof PromptDefaultsDraft, value: string) => {
+      setPromptDefaults((prev) => ({ ...prev, [field]: value }));
+      clearTabError(field === "moodId" ? "moods" : "descriptions");
+      if (field === "structureId") clearTabError("structures");
+    },
+    [clearTabError],
+  );
+
+  const updatePromptDraft = useCallback((kind: PromptKind, patch: Partial<PromptEditorDraft>) => {
+    setPromptDrafts((prev) => ({ ...prev, [kind]: { ...prev[kind], ...patch } }));
+    setPromptFieldErrors((prev) => {
+      const current = prev[kind];
+      if (!Object.keys(current).length) return prev;
+      const next = { ...current };
+      for (const key of Object.keys(patch) as PromptEditorField[]) delete next[key];
+      return { ...prev, [kind]: next };
+    });
+  }, []);
+
+  const savePromptEditorInternal = useCallback(
+    async (kind: PromptKind): Promise<boolean> => {
+      const draft = promptDrafts[kind];
+      const errors = validatePromptEditorDraft(draft, userPrompts[kind] ?? []);
+      setPromptFieldErrors((prev) => ({ ...prev, [kind]: errors }));
+      if (Object.keys(errors).length > 0) {
+        setTabError(kind, "Fix the highlighted fields before saving.");
+        return false;
+      }
+      const payload = buildUserPromptPayload(draft);
+      setPromptBusy(kind);
+      try {
+        const saved = draft.id
+          ? await updateMyPromptApi(kind, draft.id, payload)
+          : await createMyPromptApi(kind, payload);
+        queryClient.setQueryData<UserPromptEntry[]>(keys.myPrompts(kind), (current) =>
+          upsertUserPrompt(Array.isArray(current) ? current : [], saved),
+        );
+        void queryClient.invalidateQueries({ queryKey: keys.promptWorkspace(kind) });
+        const next = buildPromptEditorDraft(saved);
+        setPromptDrafts((prev) => ({ ...prev, [kind]: next }));
+        setPromptBaselines((prev) => ({ ...prev, [kind]: next }));
+        setPromptFieldErrors((prev) => ({ ...prev, [kind]: {} }));
+        clearTabError(kind);
+        toast(draft.id ? `Saved ${saved.name}.` : `Created ${saved.name}.`, "success");
+        return true;
+      } catch (error) {
+        const message = `Could not save the ${promptKindInfo(kind).singular}. ${errorMessage(error)}`;
+        setTabError(kind, message);
+        toast(message, "danger");
+        return false;
+      } finally {
+        setPromptBusy(null);
+      }
+    },
+    [clearTabError, keys, promptDrafts, queryClient, setTabError, userPrompts],
+  );
+
+  const resetPromptFromBaseline = useCallback((kind: PromptKind) => {
+    setPromptDrafts((prev) => ({ ...prev, [kind]: promptBaselines[kind] }));
+    setPromptFieldErrors((prev) => ({ ...prev, [kind]: {} }));
+    setTabErrors((prev) => {
+      if (!prev[kind]) return prev;
+      const next = { ...prev };
+      delete next[kind];
+      return next;
+    });
+  }, [promptBaselines]);
+
+  const discardAllPrompts = useCallback(() => {
+    setPromptDrafts(resetAllPromptEditors());
+    setPromptBaselines(resetAllPromptEditors());
+    setPromptFieldErrors({ descriptions: {}, structures: {}, moods: {} });
+    setPromptDefaults(promptDefaultsBaseline);
+  }, [promptDefaultsBaseline]);
+
+  const loadPromptEntry = useCallback((kind: PromptKind, entry: UserPromptEntry) => {
+    const draft = buildPromptEditorDraft(entry);
+    setPromptDrafts((prev) => ({ ...prev, [kind]: draft }));
+    setPromptBaselines((prev) => ({ ...prev, [kind]: draft }));
+    setPromptFieldErrors((prev) => ({ ...prev, [kind]: {} }));
+  }, []);
+
+  const beginNewPrompt = useCallback((kind: PromptKind) => {
+    const draft = emptyPromptEditorDraft();
+    setPromptDrafts((prev) => ({ ...prev, [kind]: draft }));
+    setPromptBaselines((prev) => ({ ...prev, [kind]: draft }));
+    setPromptFieldErrors((prev) => ({ ...prev, [kind]: {} }));
+    setTabErrors((prev) => {
+      if (!prev[kind]) return prev;
+      const next = { ...prev };
+      delete next[kind];
+      return next;
+    });
+  }, []);
+
+  const requestSelectPrompt = useCallback(
+    (kind: PromptKind, entry: UserPromptEntry) => {
+      if (promptDrafts[kind].id === entry.id && !promptEditorDirty[kind]) return;
+      if (promptEditorDirty[kind]) {
+        setPendingConfirm({ kind: "switch-prompt", promptKind: kind, entry });
+        return;
+      }
+      loadPromptEntry(kind, entry);
+    },
+    [loadPromptEntry, promptDrafts, promptEditorDirty],
+  );
+
+  const requestNewPrompt = useCallback(
+    (kind: PromptKind) => {
+      if (promptEditorDirty[kind]) {
+        setPendingConfirm({ kind: "new-prompt", promptKind: kind });
+        return;
+      }
+      beginNewPrompt(kind);
+    },
+    [beginNewPrompt, promptEditorDirty],
+  );
+
+  const requestDeletePrompt = useCallback((kind: PromptKind, entry: UserPromptEntry) => {
+    setPendingConfirm({ kind: "delete-prompt", promptKind: kind, entry });
+  }, []);
+
+  const deletePromptNow = useCallback(
+    async (kind: PromptKind, entry: UserPromptEntry) => {
+      setConfirmBusy(true);
+      try {
+        await deleteMyPromptApi(kind, entry.id);
+        queryClient.setQueryData<UserPromptEntry[]>(keys.myPrompts(kind), (current) =>
+          removeUserPrompt(Array.isArray(current) ? current : [], entry.id),
+        );
+        void queryClient.invalidateQueries({ queryKey: keys.promptWorkspace(kind) });
+        if (promptDrafts[kind].id === entry.id) {
+          const draft = emptyPromptEditorDraft();
+          setPromptDrafts((prev) => ({ ...prev, [kind]: draft }));
+          setPromptBaselines((prev) => ({ ...prev, [kind]: draft }));
+        }
+        // A removed entry can no longer be a Music default. Clearing the draft
+        // marks the tab dirty so the next Save all persists the change.
+        setPromptDefaults((prev) => ({
+          ...prev,
+          ...(prev.descriptionId === entry.id ? { descriptionId: "" } : {}),
+          ...(prev.structureId === entry.id ? { structureId: "" } : {}),
+          ...(prev.moodId === entry.id ? { moodId: "" } : {}),
+        }));
+        clearTabError(kind);
+        toast(`Deleted ${entry.name}.`, "success");
+      } catch (error) {
+        const message = `Could not delete ${entry.name}. ${errorMessage(error)}`;
+        setTabError(kind, message);
+        toast(message, "danger");
+      } finally {
+        setConfirmBusy(false);
+        setPendingConfirm(null);
+      }
+    },
+    [clearTabError, keys, promptDrafts, queryClient, setTabError],
+  );
+
+  const savePromptTabInternal = useCallback(
+    async (kind: PromptKind): Promise<boolean> => {
+      if (promptEditorDirty[kind]) {
+        const saved = await savePromptEditorInternal(kind);
+        if (!saved) return false;
+      }
+      const allowed = PROMPT_DEFAULT_KEYS_BY_KIND[kind];
+      const fullPatch = buildPromptDefaultsPatch(promptDefaults, promptDefaultsBaseline);
+      const patch: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(fullPatch)) {
+        if (allowed.includes(key)) patch[key] = value;
+      }
+      if (Object.keys(patch).length === 0) {
+        clearTabError(kind);
+        return true;
+      }
+      try {
+        const merged: SettingsMap = await patchSettings(patch);
+        queryClient.setQueryData(keys.values, merged);
+        setPromptDefaults((prev) => {
+          const next = { ...prev };
+          for (const [field, key] of PROMPT_DEFAULT_FIELDS) {
+            if (key in patch) next[field] = String(patch[key] ?? "");
+          }
+          return next;
+        });
+        setPromptDefaultsBaseline((prev) => {
+          const next = { ...prev };
+          for (const [field, key] of PROMPT_DEFAULT_FIELDS) {
+            if (key in patch) next[field] = String(patch[key] ?? "");
+          }
+          return next;
+        });
+        clearTabError(kind);
+        toast(`${promptKindInfo(kind).label} default saved.`, "success");
+        return true;
+      } catch (error) {
+        const message = `Could not save the ${promptKindInfo(kind).singular} default. ${errorMessage(error)}`;
+        setTabError(kind, message);
+        toast(message, "danger");
+        return false;
+      }
+    },
+    [
+      clearTabError,
+      keys,
+      promptDefaults,
+      promptDefaultsBaseline,
+      promptEditorDirty,
+      queryClient,
+      savePromptEditorInternal,
+      setTabError,
+    ],
+  );
+
+  // -------------------------------------------------------------------------
+  // Pools actions (read-only)
+  // -------------------------------------------------------------------------
+
+  const selectPoolKind = useCallback((kind: PoolKind) => {
+    setPoolKindState(kind);
+    setPoolOffset(0);
+  }, []);
+
+  const nextPoolPage = useCallback(() => {
+    setPoolOffset((offset) => {
+      const total = poolItemsQuery.data?.total ?? 0;
+      return offset + 50 < total ? offset + 50 : offset;
+    });
+  }, [poolItemsQuery.data?.total]);
+
+  const previousPoolPage = useCallback(() => {
+    setPoolOffset((offset) => Math.max(0, offset - 50));
+  }, []);
+
+  const refreshPools = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: keys.poolStats });
+    void queryClient.invalidateQueries({ queryKey: keys.poolItems(poolKind, poolOffset) });
+  }, [keys, poolKind, poolOffset, queryClient]);
+
+  // A shorter pool (or a kind switch) must not strand the pager on an empty
+  // page beyond the last one.
+  useEffect(() => {
+    const total = poolItemsQuery.data?.total;
+    if (total === undefined) return;
+    const clamped = clampPoolOffset(poolOffset, total);
+    if (clamped !== poolOffset) setPoolOffset(clamped);
+  }, [poolItemsQuery.data?.total, poolOffset]);
+
+  // -------------------------------------------------------------------------
+  // Suno actions
+  // -------------------------------------------------------------------------
+
+  const updateSuno = useCallback(
+    (patch: Partial<SunoSettingsDraft>) => {
+      setSunoDraft((prev) => ({ ...prev, ...patch }));
+      setSunoErrors((prev) => {
+        if (!Object.keys(prev).length) return prev;
+        const next = { ...prev };
+        for (const key of Object.keys(patch) as SunoField[]) delete next[key];
+        return next;
+      });
+      clearTabError("suno");
+    },
+    [clearTabError],
+  );
+
+  const saveSunoInternal = useCallback(async (): Promise<boolean> => {
+    const errors = validateSunoSettingsDraft(sunoDraft);
+    setSunoErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setTabError("suno", "Fix the highlighted fields before saving.");
+      return false;
+    }
+    const patch = buildSunoSettingsPatch(sunoDraft, settingsQuery.data);
+    if (Object.keys(patch).length === 0) {
+      clearTabError("suno");
+      return true;
+    }
+    try {
+      const merged: SettingsMap = await patchSettings(patch);
+      queryClient.setQueryData(keys.values, merged);
+      const next = buildSunoSettingsDraft(merged);
+      setSunoDraft(next);
+      setSunoBaseline(next);
+      setSunoErrors({});
+      clearTabError("suno");
+      toast("Suno defaults saved.", "success");
+      return true;
+    } catch (error) {
+      const message = `Could not save Suno defaults. ${errorMessage(error)}`;
+      setTabError("suno", message);
+      toast(message, "danger");
+      return false;
+    }
+  }, [
+    clearTabError,
+    keys,
+    queryClient,
+    setTabError,
+    settingsQuery.data,
+    sunoDraft,
+  ]);
+
+  const discardSuno = useCallback(() => {
+    setSunoDraft(sunoBaseline);
+    setSunoErrors({});
+    setTabErrors((prev) => {
+      if (!prev.suno) return prev;
+      const next = { ...prev };
+      delete next.suno;
+      return next;
+    });
+  }, [sunoBaseline]);
+
+  // -------------------------------------------------------------------------
   // YouTube actions
   // -------------------------------------------------------------------------
 
   const refreshConnections = useCallback(async () => {
     try {
-      await queryClient.invalidateQueries({ queryKey: settingsKeys.youtube });
+      await queryClient.invalidateQueries({ queryKey: keys.youtube });
     } catch {
       // The card keeps the last loaded status.
     }
-  }, [queryClient]);
+  }, [keys, queryClient]);
 
   const connectYoutube = useCallback(
     async (profileId: string) => {
@@ -814,7 +1315,7 @@ export function useSettingsWorkspace() {
       attempts += 1;
       try {
         const list = await queryClient.fetchQuery({
-          queryKey: settingsKeys.youtube,
+          queryKey: keys.youtube,
           queryFn: fetchYoutubeConnections,
           staleTime: 0,
         });
@@ -846,7 +1347,7 @@ export function useSettingsWorkspace() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [pollingProfileId, queryClient, setTabError]);
+  }, [keys, pollingProfileId, queryClient, setTabError]);
 
   // -------------------------------------------------------------------------
   // Global save / discard
@@ -856,9 +1357,21 @@ export function useSettingsWorkspace() {
     async (tab: SettingsTab): Promise<boolean> => {
       if (tab === "profiles") return saveProfilesInternal();
       if (tab === "publication") return savePublicationInternal();
-      return savePreferencesInternal();
+      if (tab === "preferences") return savePreferencesInternal();
+      if (tab === "descriptions") return savePromptTabInternal("descriptions");
+      if (tab === "structures") return savePromptTabInternal("structures");
+      if (tab === "moods") return savePromptTabInternal("moods");
+      if (tab === "suno") return saveSunoInternal();
+      // Pools are read-only and never dirty.
+      return true;
     },
-    [savePreferencesInternal, saveProfilesInternal, savePublicationInternal],
+    [
+      savePreferencesInternal,
+      saveProfilesInternal,
+      savePromptTabInternal,
+      savePublicationInternal,
+      saveSunoInternal,
+    ],
   );
 
   const saveOne = useCallback(
@@ -894,9 +1407,7 @@ export function useSettingsWorkspace() {
     if (failed.length === 0) {
       toast("Saved all changes.", "success");
     } else {
-      const labels = failed
-        .map((tab) => (tab === "profiles" ? "Profiles" : tab === "publication" ? "Publication" : "Preferences"))
-        .join(", ");
+      const labels = failed.map((tab) => settingsTabLabel(tab)).join(", ");
       toast(`Some tabs were not saved: ${labels}.`, "danger");
     }
   }, [dirtyTabs, saveTab, saving]);
@@ -922,6 +1433,10 @@ export function useSettingsWorkspace() {
       await disconnectYoutubeNow(pending.profile);
       return;
     }
+    if (pending.kind === "delete-prompt") {
+      await deletePromptNow(pending.promptKind, pending.entry);
+      return;
+    }
     setPendingConfirm(null);
     if (pending.kind === "switch-profile") {
       applyProfile(pending.profile);
@@ -935,18 +1450,33 @@ export function useSettingsWorkspace() {
       applyPublicationProfile(pending.profileId);
       return;
     }
+    if (pending.kind === "switch-prompt") {
+      loadPromptEntry(pending.promptKind, pending.entry);
+      return;
+    }
+    if (pending.kind === "new-prompt") {
+      beginNewPrompt(pending.promptKind);
+      return;
+    }
     discardProfiles();
     discardPublication();
     discardPreferences();
+    discardAllPrompts();
+    discardSuno();
   }, [
     applyProfile,
     applyPublicationProfile,
     beginNewProfile,
+    beginNewPrompt,
     deleteProfileNow,
+    deletePromptNow,
+    discardAllPrompts,
     discardPreferences,
     discardProfiles,
     discardPublication,
+    discardSuno,
     disconnectYoutubeNow,
+    loadPromptEntry,
     pendingConfirm,
   ]);
 
@@ -1027,6 +1557,69 @@ export function useSettingsWorkspace() {
     ffmpegStatus,
     checkFfmpeg: () => void checkFfmpeg(),
     promptLibraryOnly,
+    // prompt catalogs
+    promptWorkspace,
+    promptWorkspaceLoading,
+    promptWorkspaceError,
+    userPrompts,
+    userPromptsLoading,
+    userPromptsError,
+    retryPromptWorkspace: (kind: PromptKind) => {
+      const query =
+        kind === "descriptions"
+          ? descriptionWorkspaceQuery
+          : kind === "structures"
+            ? structureWorkspaceQuery
+            : moodWorkspaceQuery;
+      void query.refetch();
+    },
+    retryUserPrompts: (kind: PromptKind) => {
+      const query =
+        kind === "descriptions"
+          ? descriptionPromptsQuery
+          : kind === "structures"
+            ? structurePromptsQuery
+            : moodPromptsQuery;
+      void query.refetch();
+    },
+    promptDefaults,
+    promptDefaultsDirty,
+    promptDrafts,
+    promptEditorDirty,
+    promptFieldErrors,
+    promptBusy,
+    updatePromptDefault,
+    updatePromptDraft,
+    requestSelectPrompt,
+    requestNewPrompt,
+    savePromptEditor: (kind: PromptKind) => savePromptEditorInternal(kind),
+    requestDeletePrompt,
+    savePromptTab: (kind: PromptKind) => saveOne(kind),
+    resetPromptEditor: resetPromptFromBaseline,
+    discardAllPrompts,
+    // content pools (read-only)
+    poolKind,
+    selectPoolKind,
+    poolOffset,
+    poolTotal: poolItemsQuery.data?.total ?? poolStats?.[poolKind]?.total ?? 0,
+    poolItems: poolItemsQuery.data?.items ?? [],
+    poolStats,
+    poolStatsLoading: poolStatsQuery.isLoading,
+    poolStatsError: poolStatsQuery.isError ? errorMessage(poolStatsQuery.error) : null,
+    poolItemsLoading: poolItemsQuery.isLoading,
+    poolItemsFetching: poolItemsQuery.isFetching,
+    poolItemsError: poolItemsQuery.isError ? errorMessage(poolItemsQuery.error) : null,
+    retryPools: refreshPools,
+    refreshPools,
+    nextPoolPage,
+    previousPoolPage,
+    // suno
+    sunoDraft,
+    sunoDirty,
+    sunoErrors,
+    updateSuno,
+    saveSuno: () => saveOne("suno"),
+    discardSuno,
     // youtube
     youtubeConnection,
     youtubeBusy,
