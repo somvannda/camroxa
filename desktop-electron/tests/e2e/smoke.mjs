@@ -29,7 +29,24 @@ try {
   const info = await window.evaluate(async () => window.camxora.app.info());
   const session = await window.evaluate(async () => window.camxora.auth.restore());
   const ffmpeg = await window.evaluate(async () => window.camxora.ffmpeg.available());
-  await window.screenshot({ path: path.join(artifacts, "foundation.png"), fullPage: true });
+
+  const hasDashboard = text.includes("Weekly Usage") && text.includes("Recent Activity");
+  const hasDashboardError = text.includes(
+    "Unable to load dashboard statistics right now",
+  );
+  const refreshButtons = await window
+    .getByRole("button", { name: /^refresh/i })
+    .count();
+  await window.screenshot({ path: path.join(artifacts, "dashboard-error.png"), fullPage: true });
+
+  await window.getByRole("link", { name: "Profile" }).click();
+  await window.getByRole("heading", { name: "Channel Profiles" }).waitFor({ timeout: 5000 });
+  const profileText = await window.locator("body").innerText();
+  const hasProfile =
+    profileText.includes("Membership") &&
+    profileText.includes("Channel Profiles") &&
+    profileText.includes("Activity");
+  await window.screenshot({ path: path.join(artifacts, "profile-error.png"), fullPage: true });
 
   console.log(
     JSON.stringify({
@@ -37,17 +54,31 @@ try {
       version: info.version,
       sessionRestored: session.ok,
       ffmpeg: ffmpeg.ok ? ffmpeg.data.available : false,
-      hasFoundation: text.includes("Foundation checks"),
+      hasDashboard,
+      hasDashboardError,
+      hasProfile,
+      refreshButtons,
     }),
   );
-  if (!text.includes("Foundation checks")) {
-    throw new Error("Foundation page did not render");
-  }
   if (info.version !== "2.0.0") {
     throw new Error(`Unexpected app version: ${info.version}`);
   }
   if (!session.ok) {
     throw new Error("Session bridge failed");
+  }
+  if (!hasDashboard) {
+    throw new Error("Dashboard page did not render");
+  }
+  if (!hasDashboardError) {
+    // The dev bypass has no token, so required endpoints fail and the page
+    // must show its error state instead of inventing data.
+    throw new Error("Dashboard error state did not render");
+  }
+  if (refreshButtons !== 0) {
+    throw new Error("Dashboard must not expose a refresh button");
+  }
+  if (!hasProfile) {
+    throw new Error("Profile page did not render");
   }
 } finally {
   await app.close();
