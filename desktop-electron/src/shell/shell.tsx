@@ -1,10 +1,11 @@
 import { Outlet } from "react-router-dom";
 import { ToastViewport } from "../components/toast";
 import { Footer } from "./footer";
+import { NavigationGuardProvider } from "./navigation-guard";
 import { Sidebar } from "./sidebar";
 import { TitleBar } from "./titlebar";
 
-export function Shell() {
+function ShellFrame() {
   return (
     <div className="flex h-full flex-col bg-bg">
       <TitleBar />
@@ -17,5 +18,13 @@ export function Shell() {
       <Footer />
       <ToastViewport />
     </div>
+  );
+}
+
+export function Shell() {
+  return (
+    <NavigationGuardProvider>
+      <ShellFrame />
+    </NavigationGuardProvider>
   );
 }

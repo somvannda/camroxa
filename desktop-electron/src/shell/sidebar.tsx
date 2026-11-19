@@ -1,13 +1,21 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { Icon } from "../components/icon";
 import { classNames } from "../lib/format";
 import { useSessionStore } from "../store/session";
+import { useNavigationGuard } from "./navigation-guard";
 import { UTILITY_ROUTES, WORKSPACE_ROUTES, type ShellRoute } from "./routes";
 
 function NavItem({ route }: { route: ShellRoute }) {
+  const navigate = useNavigate();
+  const guard = useNavigationGuard();
+
   return (
     <NavLink
       to={route.path}
+      onClick={(event) => {
+        event.preventDefault();
+        guard.attempt(() => navigate(route.path));
+      }}
       className={({ isActive }) =>
         classNames(
           "relative flex h-9 items-center gap-3 rounded-[8px] px-3 text-body-sm font-medium transition-colors",

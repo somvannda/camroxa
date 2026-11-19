@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "rea
 import { PageHeader } from "../../../components/page-header";
 import { Button } from "../../../components/button";
 import { classNames } from "../../../lib/format";
+import { useUnsavedGuard } from "../../../shell/navigation-guard";
 import { SETTINGS_TABS, dirtyTabLabel, type SettingsTab } from "../settings-types";
 import { ConfirmDialog } from "../settings-fields";
 import { ProfilesTab } from "../profiles-tab";
@@ -15,6 +16,14 @@ function tabLabel(tab: SettingsTab): string {
 
 export function SettingsPage() {
   const ws = useSettingsWorkspace();
+  useUnsavedGuard({
+    isBlocked: () => ws.dirtyCount > 0,
+    discard: () => {
+      ws.discardProfiles();
+      ws.discardPublication();
+      ws.discardPreferences();
+    },
+  });
   const saveAllRef = useRef(ws.saveAll);
   const dirtyRef = useRef(ws.dirtyCount);
   saveAllRef.current = ws.saveAll;

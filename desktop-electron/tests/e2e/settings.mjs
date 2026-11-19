@@ -798,6 +798,29 @@ async function settingsSuccess() {
       "Query param navigation must select the profile",
     );
 
+    // Sidebar navigation must not silently drop unsaved settings.
+    await page.locator("#settings-profile-name").fill("Deep Focus Draft");
+    await page.getByRole("link", { name: "Dashboard" }).click();
+    await page.getByRole("alertdialog").getByText("Discard unsaved changes?").waitFor();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Stay" }).click();
+    assert(
+      (await page.locator("#settings-profile-name").inputValue()) === "Deep Focus Draft",
+      "Stay must keep the draft",
+    );
+    await page.getByRole("link", { name: "Dashboard" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Discard and leave" }).click();
+    await page.waitForFunction(() => window.location.hash === "#/home");
+    await page.evaluate(() => {
+      window.location.hash = "#/settings";
+    });
+    await page.locator("#settings-tabpanel").waitFor({ timeout: 8000 });
+    await pause(page);
+    assert(
+      (await page.locator("#settings-profile-name").inputValue()) === "Deep Focus",
+      "Discard and leave must revert the draft",
+    );
+    step("success: navigation guard");
+
     // No credentials in the settings content.
     const settingsText = await page.locator("#settings-tabpanel").innerText();
     assert(!settingsText.includes("operator@example.com"), "Settings must not show the email");
