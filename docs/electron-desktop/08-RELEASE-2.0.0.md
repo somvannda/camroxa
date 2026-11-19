@@ -51,8 +51,8 @@ Settings and the pipeline service.
 | Image | Queue, previews, retry, clear, prompt autosave |
 | Vizzy | Full editor, project I/O, media, manual export, pipeline template authoring, Renders panel |
 | Vizzy content | All built-in presets, spectrum catalogue, particle presets, Butterchurn presets, community/user presets and templates work as-is |
-| Vizzy templates | All 91 templates are available to users, open/preview/save/reopen/export, and can be saved as video templates; delivered as a first-run template pack by default |
-| Pipeline | Headless render, long/reel, merge, YouTube upload, retry/resume, credits |
+| Vizzy templates | All 91 templates are available to users, open/preview/save/reopen/export, and can be saved as video templates; staged in a reproducible library and currently bundled (installer-size decision pending) |
+| Pipeline | Single-template render is live; headless/batch render, long/reel merge, retry/resume are in progress; YouTube upload stays the existing manual flow |
 | Marketplace | Catalog, filters, search, pagination, install/reinstall, pipeline template kind/compatibility |
 | Settings | Profiles, publication, preferences, descriptions, structures, moods, pools, Suno, template pickers |
 | Packaging | Signed Windows installer, auto-update, uninstall |
@@ -92,7 +92,7 @@ the Video/Merger pages with the Vizzy pipeline.
 | Converter/Merge/YouTube stages | **Live** | Progress shows stage/retry |
 | Profile Video/Reel templates | **Live** Vizzy pipeline template pickers | Validated on save |
 | Marketplace Video/Reel templates | **Live** for Vizzy templates; old Camxora templates are not selectable | Clear policy label |
-| Manual video export | **Vizzy native export** | Same project, native FFmpeg |
+| Manual video export | **Vizzy native export** | Same project and renderer; FFmpeg handles merge/reel |
 | Local paths/settings | Migration wizard or documented manual setup | Back up before first run |
 | Old Camxora video templates | **Not migrated in 2.0.0** | Users who need them stay on 1.7.x or re-author later |
 
@@ -123,6 +123,21 @@ Butterchurn presets and templates must work as-is.
 ## 5. Release gates
 
 A 2.0.0 candidate ships only when:
+
+### 5.1 Current evidence (2026-11-19)
+
+- 14 E2E suites pass, including login/gates, all pages, Vizzy host, export, save/preview/render
+  and the 91-template library.
+- 249 unit tests pass; `api:check` and `npm audit --omit=dev` pass.
+- All 91 templates import through the real editor (0 failures, 0 skipped) and one exports to a
+  validated MP4.
+- A real library template (`candy-wave`) completed save → render at 640×360/60 with a run track.
+- Old Camxora templates are refused; Auto-Upload remains disabled and is E2E-pinned.
+
+Still open for release: batch/merge/reel wiring, headless/batch evidence, installer size and
+asset clearance, a clean-VM gate, accessibility and signing.
+
+### 5.2 Gate checklist
 
 - [ ] Every page doc has all `P0` features `☑`.
 - [ ] Page acceptance suites pass on a clean Windows VM against sandbox.
@@ -165,9 +180,9 @@ A 2.0.0 candidate ships only when:
 
 - **"Where is the Video page?"** → Replaced by Vizzy. The editor and the Renders panel are
   in the Vizzy route; per-run automation is in Music/Progress.
-- **"Where are the 91 templates?"** → In the Vizzy template library. The first-run “Vizzy
-  Templates” pack installs them; all 91 are available. Open one, preview it, and save it as
-  your video template.
+- **"Where are the 91 templates?"** → In the Vizzy template library (Templates → Library).
+  All 91 are available. Open one, preview it, and save it as your video template. The current
+  build bundles the staged library; a first-run pack remains a packaging option.
 - **"Where is my old Camxora template?"** → Old templates are not migrated in 2.0.0. Use
   1.7.x if you need it, or re-author it in Vizzy. The pipeline uses Vizzy templates only.
 - **"Auto-Upload is still disabled."** → That is unchanged from 1.7.1. Upload through the
