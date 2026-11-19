@@ -136,9 +136,11 @@ A 2.0.0 candidate ships only when:
 - Offscreen batch rendering runs without `/vizzy` open: two songs rendered in 4.8–5.9 s at
   320×180/2 s, merged to a 4.0 s/120-frame MP4; cancel left no partial file and retry reran only
   the cancelled row.
+- Reel branch verified: a 1080×1920/30 reel template rendered a 1080×1920 H.264/AAC MP4
+  (1.97 s) through the same offscreen queue.
 
-Still open for release: reel branch evidence, upload flow, installer size and asset clearance,
-a clean-VM gate, accessibility and signing.
+Still open for release: upload flow, installer size and asset clearance, a clean-VM gate,
+accessibility and signing.
 
 ### 5.2 Gate checklist
 
