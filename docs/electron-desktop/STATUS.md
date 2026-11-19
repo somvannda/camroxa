@@ -3,7 +3,7 @@
 > **Updated:** 2026-11-19
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1–P8 complete; music download coordinator merged; manual YouTube upload running; packaging remains
+> **Phase:** P1–P8 complete; downloads and manual YouTube upload merged; packaging remains
 
 ---
 
@@ -46,7 +46,7 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               341/341 PASS
+npm test               364/364 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
 npm run test:e2e       PASS (17 suites incl. downloads, pipeline-batch and youtube-upload)
 node tests/e2e/settings.mjs PASS (8 tabs, prompt CRUD, pools pager, Suno bounds, save-all order)
@@ -139,6 +139,8 @@ download URL therefore never needs the session token.
 - P8 merge `4c7fb96` (`f2bc591` + `56174ae` on `desktop/settings-p8`) — five Settings tabs
 - Downloads merge `c83238f` (`dd06f71` on `desktop/downloads`) — coordinator, live Progress,
   `downloads` E2E
+- Upload merge `1bfcaae` (`6764b83` … `f08a8e3` on `desktop/youtube-upload`) — manual YouTube
+  upload, resumable transfer, cancel/retry, `youtube-upload` E2E
 
 ## Remaining
 
