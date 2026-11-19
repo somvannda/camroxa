@@ -1,42 +1,180 @@
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { _electron as electron } from "playwright";
 
 const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
-const userData = path.join(artifacts, "e2e-login");
 fs.mkdirSync(artifacts, { recursive: true });
-fs.rmSync(userData, { recursive: true, force: true });
 
-const app = await electron.launch({
-  args: ["dist-electron/main.cjs"],
-  cwd: root,
-  env: {
-    ...process.env,
-    CAMXORA_DEV_AUTH: "0",
-    CAMXORA_USER_DATA_DIR: userData,
-    CAMXORA_API_BASE_URL: process.env.CAMXORA_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1",
-  },
-});
+const API_BASE = process.env.CAMXORA_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
-try {
+async function launch(name, env = {}) {
+  const userData = path.join(artifacts, name);
+  fs.rmSync(userData, { recursive: true, force: true });
+  const app = await electron.launch({
+    args: ["dist-electron/main.cjs"],
+    cwd: root,
+    env: {
+      ...process.env,
+      CAMXORA_DEV_AUTH: "0",
+      CAMXORA_USER_DATA_DIR: userData,
+      CAMXORA_API_BASE_URL: API_BASE,
+      ...env,
+    },
+  });
   const window = await app.firstWindow();
   await window.waitForLoadState("domcontentloaded");
   await window.waitForTimeout(900);
+  return { app, window };
+}
 
-  const text = await window.locator("body").innerText();
-  await window.screenshot({ path: path.join(artifacts, "login.png"), fullPage: true });
+// 1. The login page renders without the dev bypass.
+{
+  const { app, window } = await launch("e2e-login");
+  try {
+    const text = await window.locator("body").innerText();
+    await window.screenshot({ path: path.join(artifacts, "login.png"), fullPage: true });
 
-  console.log(
-    JSON.stringify({
-      title: await window.title(),
-      hasLogin: text.includes("Sign in to continue"),
-      hasEmail: text.includes("Email"),
-    }),
-  );
-  if (!text.includes("Sign in to continue")) {
-    throw new Error("Login page did not render");
+    console.log(
+      JSON.stringify({
+        title: await window.title(),
+        hasLogin: text.includes("Sign in to continue"),
+        hasEmail: text.includes("Email"),
+        hasGoogle: text.includes("Continue with Google"),
+        hasRemember: text.includes("Remember me"),
+      }),
+    );
+    if (!text.includes("Sign in to continue")) {
+      throw new Error("Login page did not render");
+    }
+    if (!text.includes("Continue with Google")) {
+      throw new Error("Google sign-in is missing the login page");
+    }
+  } finally {
+    await app.close();
   }
-} finally {
-  await app.close();
+}
+
+// 2. Google sign-in reports a clear error when the server is unreachable,
+//    without waiting for the full loopback timeout.
+{
+  const { app, window } = await launch("e2e-login-google", {
+    CAMXORA_API_BASE_URL: "http://127.0.0.1:59998/api/v1",
+  });
+  try {
+    await window.getByRole("button", { name: "Continue with Google" }).click();
+    const alert = window.getByText("Cannot reach Camxora. Check your connection.");
+    await alert.waitFor({ timeout: 15_000 });
+    const text = await window.locator("body").innerText();
+    await window.screenshot({ path: path.join(artifacts, "login-google-unreachable.png"), fullPage: true });
+
+    console.log(
+      JSON.stringify({
+        googleErrorShown: text.includes("Cannot reach Camxora. Check your connection."),
+        waitingCleared: !text.includes("Waiting for browser"),
+      }),
+    );
+    if (text.includes("Waiting for browser")) {
+      throw new Error("Google sign-in stayed in the waiting state after the failure");
+    }
+  } finally {
+    await app.close();
+  }
+}
+
+// 3. Paid, email-confirmation and onboarding gates route through bootstrap.
+{
+  let scenario = "free";
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    const json = (status, body) => {
+      const raw = JSON.stringify(body);
+      response.writeHead(status, {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(raw),
+      });
+      response.end(raw);
+    };
+
+    if (url.pathname.endsWith("/auth/login") && request.method === "POST") {
+      request.resume();
+      if (scenario === "free") {
+        return json(403, {
+          error: {
+            code: "DESKTOP_PLAN_REQUIRED",
+            message:
+              "Desktop studio requires a paid plan. Choose Starter, Creator, or Studio on the web.",
+          },
+        });
+      }
+      return json(200, {
+        access_token: `access-${scenario}`,
+        refresh_token: `refresh-${scenario}`,
+        token_type: "bearer",
+        expires_in: 3600,
+      });
+    }
+
+    if (url.pathname.endsWith("/users/me") && request.method === "GET") {
+      if (!(request.headers.authorization ?? "").startsWith("Bearer ")) {
+        return json(401, { error: { code: "AUTHENTICATION_ERROR", message: "Invalid credentials." } });
+      }
+      return json(200, {
+        id: "e2e-user",
+        email: "e2e@example.com",
+        email_confirmed: scenario !== "unconfirmed",
+        display_name: "E2E User",
+        role: "user",
+        desktop_access: true,
+        onboarding_paid: true,
+        channel_profile_count: scenario === "ready" ? 2 : 0,
+      });
+    }
+
+    return json(404, { error: { code: "NOT_FOUND", message: "Not found" } });
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+
+  const { app, window } = await launch("e2e-login-gates", {
+    CAMXORA_API_BASE_URL: `http://127.0.0.1:${port}/api/v1`,
+    CAMXORA_PORTAL_BASE_URL: "https://app.camxora.com",
+  });
+  try {
+    async function signIn(email) {
+      await window.getByLabel("Email", { exact: true }).fill(email);
+      await window.getByLabel("Password", { exact: true }).fill("secret-password");
+      await window.getByRole("button", { name: /^Sign in$/ }).click();
+    }
+
+    await signIn("free@example.com");
+    await window.getByRole("heading", { name: "A paid plan is required" }).waitFor({ timeout: 8_000 });
+
+    await window.getByRole("button", { name: "Use a different account" }).click();
+    scenario = "unconfirmed";
+    await signIn("e2e@example.com");
+    await window.getByRole("heading", { name: "Confirm your email" }).waitFor({ timeout: 8_000 });
+
+    scenario = "onboarding";
+    await window.getByRole("button", { name: /I confirmed my email/ }).click();
+    await window.getByRole("heading", { name: "Complete your setup" }).waitFor({ timeout: 8_000 });
+
+    await window.getByRole("button", { name: "Open studio anyway" }).click();
+    await window.getByText("Foundation checks").waitFor({ timeout: 8_000 });
+
+    await window.screenshot({ path: path.join(artifacts, "auth-gates.png"), fullPage: true });
+    console.log(
+      JSON.stringify({
+        paidGate: true,
+        confirmEmailGate: true,
+        onboardingGate: true,
+        onboardingSkip: true,
+      }),
+    );
+  } finally {
+    await app.close();
+    server.close();
+  }
 }

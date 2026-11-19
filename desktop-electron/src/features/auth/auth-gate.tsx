@@ -2,7 +2,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { AppInfo, SessionSummary } from "../../../electron/shared/types";
 import { useSessionStore } from "../../store/session";
 import { BootSplash } from "./boot-splash";
+import { ConfirmEmailGate } from "./confirm-email-gate";
 import { LoginPage } from "./login-page";
+import { OnboardingGate } from "./onboarding-gate";
 
 const DEV_SESSION: SessionSummary = {
   userId: "dev",
@@ -13,30 +15,52 @@ const DEV_SESSION: SessionSummary = {
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const status = useSessionStore((state) => state.status);
+  const destination = useSessionStore((state) => state.destination);
+  const onboardingSkipped = useSessionStore((state) => state.onboardingSkipped);
+  const noticePortalUrl = useSessionStore((state) => state.notice?.portalUrl);
   const [booted, setBooted] = useState(false);
+  const [portalUrl, setPortalUrl] = useState("https://app.camxora.com");
 
   useEffect(() => {
     let cancelled = false;
 
     async function boot() {
+      const store = useSessionStore.getState();
       try {
         if (!window.camxora) {
-          useSessionStore.getState().setSession(DEV_SESSION);
+          store.setSession(DEV_SESSION);
           return;
         }
         const info = (await window.camxora.app.info()) as AppInfo;
+        if (cancelled) return;
+        if (info.portalUrl) setPortalUrl(info.portalUrl);
         if (info.devBypass) {
-          useSessionStore.getState().setSession(DEV_SESSION);
+          store.setSession(DEV_SESSION);
           return;
         }
         const restored = await window.camxora.auth.restore();
-        if (restored.ok && restored.data) {
-          useSessionStore.getState().setSession(restored.data);
+        if (cancelled) return;
+        if (restored.ok) {
+          store.applyBootstrap(restored.data);
         } else {
-          useSessionStore.getState().clear();
+          store.applyBootstrap({
+            destination: "login",
+            session: null,
+            message: restored.error.message,
+            code: restored.error.code,
+            portalUrl: info.portalUrl,
+          });
         }
       } catch {
-        useSessionStore.getState().clear();
+        if (!cancelled) {
+          store.applyBootstrap({
+            destination: "login",
+            session: null,
+            message: "Unable to reach the sign-in service. Try again.",
+            code: "BOOTSTRAP_FAILED",
+            portalUrl,
+          });
+        }
       } finally {
         if (!cancelled) setBooted(true);
       }
@@ -46,9 +70,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+    // Boot runs once for the app lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!booted || status === "loading") return <BootSplash />;
-  if (status !== "authenticated") return <LoginPage />;
+
+  const resolvedPortalUrl = noticePortalUrl ?? portalUrl;
+
+  if (status !== "authenticated") {
+    return <LoginPage portalUrl={resolvedPortalUrl} />;
+  }
+  if (destination === "confirm_email") {
+    return <ConfirmEmailGate portalUrl={resolvedPortalUrl} />;
+  }
+  if (destination === "onboarding" && !onboardingSkipped) {
+    return <OnboardingGate portalUrl={resolvedPortalUrl} />;
+  }
   return <>{children}</>;
 }
