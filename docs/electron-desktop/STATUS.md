@@ -119,8 +119,8 @@ This is a backend contract decision, not a renderer bug.
 ## Remaining
 
 - P1: startup/bootstrap polish only.
-- P7: editor, library, templates, render, Renders and batch orchestration are merged. Upload is
-  intentionally the existing manual flow; Auto-Upload stays disabled exactly as 1.7.1.
+- P7: editor, library, templates, render, Renders and batch orchestration are merged. **Manual
+  YouTube upload is not yet ported**; Auto-Upload stays disabled exactly as 1.7.1 either way.
 - P8: all eight Settings tabs are merged.
 - P4 downloads: coordinator running in `desktop/downloads`; it is the last functional gap before
   packaging.

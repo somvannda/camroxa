@@ -52,7 +52,7 @@ Settings and the pipeline service.
 | Vizzy | Full editor, project I/O, media, manual export, pipeline template authoring, Renders panel |
 | Vizzy content | All built-in presets, spectrum catalogue, particle presets, Butterchurn presets, community/user presets and templates work as-is |
 | Vizzy templates | All 91 templates are available to users, open/preview/save/reopen/export, and can be saved as video templates; staged in a reproducible library and currently bundled (installer-size decision pending) |
-| Pipeline | Single-template render and offscreen batch render/merge are live; reel branch, retry and Progress are wired. YouTube upload stays the existing manual flow |
+| Pipeline | Single-template and offscreen batch render/merge are live; reel, retry and Progress are wired. Manual YouTube upload is **not yet ported** and is a release blocker (Auto-Upload itself stays disabled) |
 | Marketplace | Catalog, filters, search, pagination, install/reinstall, pipeline template kind/compatibility |
 | Settings | Profiles, publication, preferences, descriptions, structures, moods, pools, Suno, template pickers |
 | Packaging | Signed Windows installer, auto-update, uninstall |
@@ -88,8 +88,8 @@ the Video/Merger pages with the Vizzy pipeline.
 | Video page | **Removed**; Vizzy is the editor and pipeline surface | No dead route |
 | Merger page | **Removed**; merge is a pipeline stage | Progress shows it |
 | Auto-Video / Auto-Merge / Auto-Reel | **Live** on the Vizzy renderer | Same toggles, now real |
-| Auto-Upload | **Unchanged from 1.7.1** | Toggle stays disabled; upload uses the existing publication/manual flow |
-| Converter/Merge/YouTube stages | **Live** | Progress shows stage/retry |
+| Auto-Upload | **Unchanged from 1.7.1** | Toggle stays disabled; the manual upload action still has to be ported |
+| Converter/Merge/YouTube stages | **Render/merge live; upload pending** | Progress shows render/merge; manual upload port is a release blocker |
 | Profile Video/Reel templates | **Live** Vizzy pipeline template pickers | Validated on save |
 | Marketplace Video/Reel templates | **Live** for Vizzy templates; old Camxora templates are not selectable | Clear policy label |
 | Manual video export | **Vizzy native export** | Same project and renderer; FFmpeg handles merge/reel |
@@ -141,8 +141,8 @@ A 2.0.0 candidate ships only when:
 - All eight Settings tabs are live and covered by the settings suite (prompt CRUD, pools pager,
   Suno bounds, deterministic save-all).
 
-Still open for release: upload flow, installer size and asset clearance, a clean-VM gate,
-accessibility and signing.
+Still open for release: manual YouTube upload port, installer size and asset clearance, a
+clean-VM gate, accessibility and signing.
 
 ### 5.2 Gate checklist
 
