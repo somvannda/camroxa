@@ -99,6 +99,18 @@ const bridge = {
   diagnostics: {
     send: (note?: string) => invoke("diagnostics:send", { note }),
   },
+  youtube: {
+    availability: (request: unknown) => invoke("youtube:availability", request),
+    plan: (request: unknown) => invoke("youtube:plan", request),
+    start: (request: unknown) => invoke("youtube:start", request),
+    cancel: (uploadId?: string) => invoke("youtube:cancel", uploadId ? { uploadId } : {}),
+    state: () => invoke("youtube:state"),
+    onChange: (callback: (payload: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on("youtube:changed", listener);
+      return () => ipcRenderer.removeListener("youtube:changed", listener);
+    },
+  },
   updates: {
     check: () => invoke("updates:check"),
     open: (offer: unknown) => invoke("updates:open", offer),

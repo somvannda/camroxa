@@ -12,6 +12,7 @@ import { registerUpdatesIpc } from "./updates";
 import { registerTemplatesIpc } from "./templates";
 import { registerVideoTemplatesIpc } from "./video-templates";
 import { registerVizzyIpc } from "./vizzy";
+import { registerYoutubeIpc } from "./youtube";
 
 let registered = false;
 
@@ -35,6 +36,7 @@ export function registerIpc(vizzyHost: VizzyHost, options?: IpcWindowOptions): v
   registerVideoTemplatesIpc();
   registerVizzyIpc(vizzyHost);
   if (options) registerPipelineIpc({ host: vizzyHost, getWindow: options.getWindow });
+  if (options) registerYoutubeIpc({ getWindow: options.getWindow });
 
   logger.info("ipc registered");
 }
