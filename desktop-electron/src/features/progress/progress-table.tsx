@@ -21,6 +21,7 @@ import {
   youtubeCellText,
 } from "./progress-format";
 import type { ProgressRow } from "./progress-types";
+import type { YoutubeUploadRowState } from "../../../electron/shared/types";
 
 const COLUMNS = [
   "Batch",
@@ -45,6 +46,11 @@ interface ProgressTableProps {
   onSelect: (row: ProgressRow) => void;
   onOpenExternal: (url: string) => void;
   onClearFilters: () => void;
+  /** Main-process upload verdict per row key. */
+  uploadState?: (key: string) => YoutubeUploadRowState | undefined;
+  /** Starts the confirmation dialog for that row's manual upload. */
+  onUpload?: (row: ProgressRow) => void;
+  uploadingKey?: string | null;
 }
 
 function SubLine({ children }: { children: string }) {
@@ -75,6 +81,9 @@ export function ProgressTable({
   onSelect,
   onOpenExternal,
   onClearFilters,
+  uploadState,
+  onUpload,
+  uploadingKey,
 }: ProgressTableProps) {
   const hasUnreportedVideo = rows.some((row) => localVideoState(row).source === "none");
   return (
@@ -218,6 +227,35 @@ export function ProgressTable({
                     ) : (
                       <Badge tone={youtube.tone}>{youtube.primary}</Badge>
                     )}
+                    {(() => {
+                      const upload = uploadState?.(key);
+                      if (!upload) return null;
+                      if (uploadingKey === key || upload.block === "uploading") {
+                        return (
+                          <span className="mt-1 flex items-center gap-1 text-caption text-accent">
+                            <Icon name="fa-arrow-up-from-bracket" size={11} />
+                            Uploading
+                          </span>
+                        );
+                      }
+                      if (upload.block !== "none" || !onUpload) return null;
+                      return (
+                        <button
+                          type="button"
+                          className="mt-1 flex items-center gap-1 text-caption text-accent hover:text-accent-hover hover:underline"
+                          title="Upload this merged video to YouTube"
+                          data-testid="progress-row-upload"
+                          data-row-key={key}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onUpload(row);
+                          }}
+                        >
+                          <Icon name="fa-arrow-up-from-bracket" size={11} />
+                          Upload
+                        </button>
+                      );
+                    })()}
                   </TD>
                   <TD className="py-2 align-top">
                     <Badge tone={stageBadgeTone(row.stage)}>{stageLabel(row.stage)}</Badge>
