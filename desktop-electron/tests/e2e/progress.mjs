@@ -431,14 +431,16 @@ async function successWithManualRecovery() {
     assert(!mainText.includes("e2e-token"), "Progress must not render the access token");
     const headers = await page.locator("thead th").allInnerTexts();
     for (const header of [
-      "Batch",
+      "Run Date",
       "Channel",
+      "Album",
+      "Stage",
+      "Progress",
       "Music",
       "Image",
-      "Render",
+      "Video (Render)",
       "Merge",
       "YouTube",
-      "Stage",
       "Updated",
     ]) {
       assert(headers.includes(header), `Missing column ${header}`);
@@ -459,11 +461,6 @@ async function successWithManualRecovery() {
       undefined,
       { timeout: 30000 },
     );
-    const meta = await page.locator('[data-testid="progress-meta"]').innerText();
-    assert(meta.includes("7 visible rows"), `Unexpected meta line: ${meta}`);
-    assert(meta.includes("2 downloads"), `Download count missing: ${meta}`);
-    assert(meta.includes("All stages"), `Stage filter missing: ${meta}`);
-
     const downloadRows = page.locator('[data-testid="progress-download-row"]');
     assert((await downloadRows.count()) === 2, "Download queue must show two targets");
     let downloadText = await page.locator('[data-testid="progress-download-card"]').innerText();
@@ -516,7 +513,7 @@ async function successWithManualRecovery() {
     });
     assert(
       fit.scrollWidth <= fit.clientWidth + 1,
-      `All nine columns must fit at 1440 (scroll ${fit.scrollWidth} vs ${fit.clientWidth})`,
+      `All eleven columns must fit at 1440 (scroll ${fit.scrollWidth} vs ${fit.clientWidth})`,
     );
 
     // Failed row: stage retry stays disabled and explains why.

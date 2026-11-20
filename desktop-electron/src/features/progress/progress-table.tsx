@@ -10,10 +10,11 @@ import {
   imageCellText,
   localVideoState,
   musicCellText,
+  progressPercent,
   rowKey,
   runDateLabel,
-  stageBadgeTone,
-  stageLabel,
+  statusBadgeTone,
+  statusLabel,
   updatedCellText,
   youtubeCellText,
 } from "./progress-format";
@@ -21,14 +22,16 @@ import type { ProgressRow } from "./progress-types";
 import type { YoutubeUploadRowState } from "../../../electron/shared/types";
 
 const COLUMNS = [
-  "Batch",
+  "Run Date",
   "Channel",
+  "Album",
+  "Stage",
+  "Progress",
   "Music",
   "Image",
-  "Render",
+  "Video (Render)",
   "Merge",
   "YouTube",
-  "Stage",
   "Updated",
 ];
 
@@ -90,22 +93,24 @@ export function ProgressTable({
           </p>
         </div>
         <span className="font-mono text-caption text-text-muted">
-          {loading ? "Loading" : `${rows.length} visible`}
+          {loading ? "Loading" : null}
         </span>
       </div>
 
       <div className="max-h-[560px] overflow-auto">
-        <table className="w-full min-w-[980px] table-fixed border-collapse text-body">
+        <table className="w-full min-w-[952px] table-fixed border-collapse text-body">
           <colgroup>
-            <col className="w-[132px]" />
-            <col className="w-[120px]" />
-            <col className="w-[100px]" />
-            <col className="w-[120px]" />
-            <col className="w-[104px]" />
-            <col className="w-[104px]" />
-            <col className="w-[110px]" />
-            <col className="w-[92px]" />
             <col className="w-[86px]" />
+            <col className="w-[104px]" />
+            <col className="w-[128px]" />
+            <col className="w-[76px]" />
+            <col className="w-[80px]" />
+            <col className="w-[76px]" />
+            <col className="w-[104px]" />
+            <col className="w-[88px]" />
+            <col className="w-[62px]" />
+            <col className="w-[76px]" />
+            <col className="w-[72px]" />
           </colgroup>
           <THead className="sticky top-0 z-10">
             <TR className="hover:bg-transparent">
@@ -139,6 +144,15 @@ export function ProgressTable({
               const youtube = youtubeCellText(row);
               const updated = updatedCellText(row);
               const channel = channelCellText(row);
+              const progress = progressPercent(row);
+              const stageText = statusLabel(row.status);
+              const stageTone = statusBadgeTone(row.status);
+              const role =
+                channel.secondary === "OK"
+                  ? "Primary"
+                  : channel.secondary === "ALT"
+                    ? "Secondary"
+                    : channel.secondary;
               return (
                 <TR
                   key={key}
@@ -147,7 +161,7 @@ export function ProgressTable({
                   aria-selected={selected}
                   tabIndex={0}
                   className={classNames(
-                    "cursor-pointer align-top focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
+                    "cursor-pointer align-middle focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
                     selected && "bg-accent-soft hover:bg-accent-soft",
                   )}
                   onClick={() => onSelect(row)}
@@ -158,45 +172,74 @@ export function ProgressTable({
                     }
                   }}
                 >
-                  <TD className="py-2 align-top">
-                    <span className="block truncate font-mono text-meta text-text-primary">
-                      {row.batch || "Not reported"}
+                  <TD className="py-2 font-mono text-meta text-text-primary">
+                    {runDateLabel(row.run_date)}
+                    <SubLine>{row.batch || "Not reported"}</SubLine>
+                  </TD>
+                  <TD className="py-2">
+                    <span className="block truncate text-meta text-text-primary">
+                      {channel.primary}
                     </span>
-                    <SubLine>
-                      {[runDateLabel(row.run_date), row.album].filter(Boolean).join(" · ")}
-                    </SubLine>
+                    {role ? <SubLine>{role}</SubLine> : null}
                   </TD>
-                  <TD className="py-2 align-top">
-                    <span className="block truncate">{channel.primary}</span>
-                    {channel.secondary ? <SubLine>{channel.secondary}</SubLine> : null}
+                  <TD className="py-2">
+                    <span className="block truncate text-meta text-text-primary" title={row.album ?? ""}>
+                      {row.album?.trim() || "—"}
+                    </span>
                   </TD>
-                  <TD className="py-2 align-top">
-                    <span className="block truncate">{music.primary}</span>
+                  <TD className="py-2">
+                    <Badge tone={stageTone}>{stageText}</Badge>
+                  </TD>
+                  <TD className="py-2">
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-3"
+                        role="progressbar"
+                        aria-label="Stage progress"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={progress.percent}
+                      >
+                        <div
+                          className={classNames(
+                            "h-full rounded-full",
+                            progress.percent >= 100 ? "bg-success" : "bg-accent",
+                          )}
+                          style={{ width: `${progress.percent}%` }}
+                        />
+                      </div>
+                      <span className="text-caption text-text-secondary text-tabular">
+                        {progress.text}
+                      </span>
+                    </div>
+                  </TD>
+                  <TD className="py-2">
+                    <span className="block truncate text-meta text-text-primary">{music.primary}</span>
                     {music.secondary ? <SubLine>{music.secondary}</SubLine> : null}
                   </TD>
-                  <TD className="py-2 align-top">
-                    <span className="block truncate">{image.primary}</span>
+                  <TD className="py-2">
+                    <span className="block truncate text-meta text-text-primary">{image.primary}</span>
                     {image.secondary ? <SubLine>{image.secondary}</SubLine> : null}
                   </TD>
-                  <TD className="py-2 align-top text-meta">
+                  <TD className="py-2 text-meta">
                     {video.converter ? (
                       <span className="block truncate">{video.converter}</span>
                     ) : (
                       <span className="block text-text-muted" title={PIPELINE_MISSING}>
-                        Not reported
+                        —
                       </span>
                     )}
                   </TD>
-                  <TD className="py-2 align-top text-meta">
+                  <TD className="py-2 text-meta">
                     {video.merge ? (
                       <span className="block truncate">{video.merge}</span>
                     ) : (
                       <span className="block text-text-muted" title={PIPELINE_MISSING}>
-                        Not reported
+                        —
                       </span>
                     )}
                   </TD>
-                  <TD className="py-2 align-top">
+                  <TD className="py-2">
                     {youtube.url ? (
                       <button
                         type="button"
@@ -243,10 +286,7 @@ export function ProgressTable({
                       );
                     })()}
                   </TD>
-                  <TD className="py-2 align-top">
-                    <Badge tone={stageBadgeTone(row.stage)}>{stageLabel(row.stage)}</Badge>
-                  </TD>
-                  <TD className="py-2 align-top font-mono text-meta">
+                  <TD className="py-2 font-mono text-caption text-text-secondary">
                     <span title={updated.title ?? undefined}>{updated.primary}</span>
                   </TD>
                 </TR>

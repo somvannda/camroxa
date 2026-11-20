@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { Dialog, DialogContent } from "../../components/dialog";
-import { formatCount } from "../../lib/format";
+import { formatCredits } from "../../lib/format";
 import type { CheckoutSession } from "./use-in-app-checkout";
 
 const CHMABA_QR_RENDERER = "https://pay.chmaba.com/api/v1/khqr/render.svg";
@@ -61,7 +61,7 @@ export function CheckoutDialog({ session, credits, onClose }: CheckoutDialogProp
           Open any KHQR-enabled banking app and scan the code.
         </p>
         <p className="mt-1 text-caption text-text-muted">
-          {formatCount(credits)} credits · closes automatically when paid
+          {formatCredits(credits)} credits · closes automatically when paid
         </p>
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2 text-[10px] text-text-muted">
           <span>Secured by ChmabaPay</span>

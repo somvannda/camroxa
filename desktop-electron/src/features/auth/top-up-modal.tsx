@@ -4,7 +4,7 @@ import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Icon } from "../../components/icon";
 import { apiRequest, errorMessage } from "../../lib/api";
-import { formatCount } from "../../lib/format";
+import { formatCount, formatCredits } from "../../lib/format";
 import { useSessionStore } from "../../store/session";
 import { CheckoutDialog } from "../plan/checkout-dialog";
 import { useInAppCheckout, type PaymentStatus } from "../plan/use-in-app-checkout";
@@ -103,7 +103,7 @@ export function TopUpModal() {
     async (status: PaymentStatus) => {
       setNotice({
         tone: "success",
-        text: `${status.credits.toLocaleString()} credits added. Unlocking Desktop Studio…`,
+        text: `${formatCredits(status.credits)} credits added. Unlocking Desktop Studio…`,
       });
       await refreshAccess();
     },
@@ -251,7 +251,7 @@ export function TopUpModal() {
                     <p className="text-meta text-text-secondary">{formatMoney(pack.price_cents)}</p>
                   </div>
                   <p className="mt-2 text-[24px] font-semibold leading-7 text-text-primary text-tabular">
-                    {formatCount(pack.total_credits)}
+                    {formatCredits(pack.total_credits)}
                     <span className="ml-1 text-meta font-normal text-text-muted">credits</span>
                   </p>
                   <p className="text-caption text-text-muted">

@@ -1,4 +1,4 @@
-import { formatCount, formatDateTime } from "../../lib/format";
+import { formatCount, formatCredits, formatDateTime } from "../../lib/format";
 import type {
   DashboardStats,
   DailyUsage,
@@ -42,7 +42,7 @@ export function kpiValues(
   const total = stats.credits_total || stats.credits_spent + stats.credits_remaining;
   const balance = stats.credits_remaining || me?.credit_balance || 0;
   const hints: Record<KpiKey, string> = {
-    balance: total > 0 ? `${formatCount(total)} credits granted` : "Available now",
+    balance: total > 0 ? `${formatCredits(total)} credits granted` : "Available now",
     spent: "Across all runs",
     songs: "Suno tracks",
     images: "Covers and thumbnails",
@@ -50,8 +50,8 @@ export function kpiValues(
     uploads: "Published manually",
   };
   const values: Record<KpiKey, string> = {
-    balance: formatCount(balance),
-    spent: formatCount(stats.credits_spent),
+    balance: formatCredits(balance),
+    spent: formatCredits(stats.credits_spent),
     songs: formatCount(stats.songs_generated),
     images: formatCount(stats.images_generated),
     videos: formatCount(stats.videos_generated),

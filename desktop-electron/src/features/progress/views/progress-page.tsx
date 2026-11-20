@@ -15,9 +15,7 @@ import {
   countStats,
   downloadQueueRows,
   filterProgressRows,
-  metaLine,
   rowKey,
-  summaryText,
   todayYmd,
   type StageFilter,
 } from "../progress-format";
@@ -222,7 +220,6 @@ export function ProgressPage() {
   }, []);
 
   const stale = Boolean(feed.error) && feed.rows.length > 0;
-  const pendingDownloads = downloadsFeed.snapshot ? downloads.length : null;
 
   const youtubePanelFor = (row: ProgressRow) => {
     if (!isUploadCandidate(row)) return undefined;
@@ -289,18 +286,6 @@ export function ProgressPage() {
           }}
         />
 
-        <div className="space-y-2">
-          <p className="text-meta text-text-secondary">
-            Rows combine the API stage with the local render and merge output available on this
-            device. Missing pipeline stages are named, not guessed.
-          </p>
-          <p className="text-meta text-text-secondary" data-testid="progress-summary">
-            {feed.error && !feed.data
-              ? "Progress rows are unavailable."
-              : summaryText(feed.data, feed.rows)}
-          </p>
-        </div>
-
         {manualMode ? (
           <div
             className="flex items-start gap-3 rounded-card border border-border bg-surface-1 px-4 py-3"
@@ -323,12 +308,8 @@ export function ProgressPage() {
 
         <ProgressStatCards stats={stats} loading={feed.loading && !feed.data} />
 
-        <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid items-start gap-4 min-[1600px]:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0 space-y-3">
-            <p className="text-caption text-text-muted" data-testid="progress-meta">
-              {metaLine(visibleRows.length, feed.rows.length, pendingDownloads, stage, limit)}
-            </p>
-
             {feed.error ? (
               <ProgressErrorBanner
                 stale={stale}
@@ -372,7 +353,7 @@ export function ProgressPage() {
             />
           </div>
 
-          <div className="space-y-3 2xl:sticky 2xl:top-3">
+          <div className="space-y-3 min-[1600px]:sticky min-[1600px]:top-3">
             {selectedRow ? (
               <ProgressDetail
                 key={rowKey(selectedRow)}

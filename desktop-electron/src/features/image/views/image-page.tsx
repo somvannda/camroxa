@@ -374,6 +374,8 @@ export function ImagePage() {
   );
   const backgroundPreview = useImagePreview(backgroundCandidates, previewSignature);
   const thumbnailPreview = useImagePreview(thumbnailCandidates, previewSignature);
+  const backgroundPath = selectedRow?.bgJob?.output_image_path ?? null;
+  const thumbnailPath = selectedRow?.thJob?.output_image_path ?? null;
 
   const footer = useMemo(() => splitFooterDetail(buildFooterDetail(selectedRow)), [selectedRow]);
   const initialLoading = query.isLoading && !data;
@@ -465,8 +467,7 @@ export function ImagePage() {
     [busyJobId, query],
   );
 
-  const openJob = useCallback(async (job: ImageJobListItem) => {
-    const path = job.output_image_path;
+  const openOutput = useCallback(async (path: string | null | undefined) => {
     if (!path) {
       setBanner({ title: "This job has no output file yet." });
       return;
@@ -479,6 +480,43 @@ export function ImagePage() {
       });
     }
   }, []);
+
+  const openJob = useCallback(
+    async (job: ImageJobListItem) => {
+      await openOutput(job.output_image_path);
+    },
+    [openOutput],
+  );
+
+  const revealOutput = useCallback(async (path: string | null | undefined) => {
+    if (!path) return;
+    const result = await window.camxora.files.reveal(path);
+    if (!result.ok) {
+      setBanner({
+        title: "Unable to open the output folder.",
+        detail: result.error.message || "The file may have been moved or deleted.",
+      });
+    }
+  }, []);
+
+  const openRowJob = useCallback(
+    async (job: ImageJobListItem | null | undefined) => {
+      if (!job) return;
+      const status = String(job.status ?? "")
+        .trim()
+        .toLowerCase();
+      const retryable =
+        status === "failed" ||
+        status === "cancelled" ||
+        (status === "pending" && Boolean(job.error));
+      if (retryable) {
+        await retryJob(job);
+        return;
+      }
+      if (job.output_image_path) await openJob(job);
+    },
+    [openJob, retryJob],
+  );
 
   const clearQueue = useCallback(async () => {
     if (batchIds.length === 0 || clearing) return;
@@ -743,7 +781,11 @@ export function ImagePage() {
                               {row.profileName}
                             </TD>
                             <TD className="h-8 truncate">{row.role || "—"}</TD>
-                            <TD className="h-8">
+                            <TD
+                              className="h-8"
+                              title="Double-click to open the output, or retry a failed job"
+                              onDoubleClick={() => void openRowJob(row.bgJob)}
+                            >
                               <StatusChip
                                 job={row.bgJob}
                                 onRetry={retryJob}
@@ -751,7 +793,11 @@ export function ImagePage() {
                                 busy={busyJobId === row.bgJob?.id}
                               />
                             </TD>
-                            <TD className="h-8">
+                            <TD
+                              className="h-8"
+                              title="Double-click to open the output, or retry a failed job"
+                              onDoubleClick={() => void openRowJob(row.thJob)}
+                            >
                               <StatusChip
                                 job={row.thJob}
                                 onRetry={retryJob}
@@ -906,10 +952,12 @@ export function ImagePage() {
             <div className="space-y-4">
               <ImagePreviewCard
                 title="Background Preview"
-                subtitle={basenameOrDash(selectedRow?.bgJob?.output_image_path)}
+                subtitle={basenameOrDash(backgroundPath)}
                 state={backgroundPreview}
                 hasSelection={Boolean(selectedRow)}
                 testId="image-preview-background"
+                onOpen={backgroundPath ? () => void openOutput(backgroundPath) : undefined}
+                onReveal={backgroundPath ? () => void revealOutput(backgroundPath) : undefined}
                 sourceValue={sourceValue(backgroundSource, backgroundPromptSource)}
                 sourceOptions={SOURCE_OPTIONS.map((option) => ({
                   value: option.value,
@@ -924,10 +972,12 @@ export function ImagePage() {
               />
               <ImagePreviewCard
                 title="Thumbnail Preview"
-                subtitle={basenameOrDash(selectedRow?.thJob?.output_image_path)}
+                subtitle={basenameOrDash(thumbnailPath)}
                 state={thumbnailPreview}
                 hasSelection={Boolean(selectedRow)}
                 testId="image-preview-thumbnail"
+                onOpen={thumbnailPath ? () => void openOutput(thumbnailPath) : undefined}
+                onReveal={thumbnailPath ? () => void revealOutput(thumbnailPath) : undefined}
                 sourceValue={sourceValue(thumbnailSource, thumbnailPromptSource)}
                 sourceOptions={SOURCE_OPTIONS.map((option) => ({
                   value: option.value,
@@ -989,6 +1039,55 @@ export function ImagePage() {
               }
             >
               Retry thumbnail
+            </button>
+            <div className="my-1 h-px bg-border" />
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.bgJob?.output_image_path}
+              onClick={() => {
+                setRowMenu(null);
+                void openOutput(rowMenu.row.bgJob?.output_image_path);
+              }}
+            >
+              Open background
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.thJob?.output_image_path}
+              onClick={() => {
+                setRowMenu(null);
+                void openOutput(rowMenu.row.thJob?.output_image_path);
+              }}
+            >
+              Open thumbnail
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.bgJob?.output_image_path}
+              onClick={() => {
+                setRowMenu(null);
+                void revealOutput(rowMenu.row.bgJob?.output_image_path);
+              }}
+            >
+              Open background folder
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.thJob?.output_image_path}
+              onClick={() => {
+                setRowMenu(null);
+                void revealOutput(rowMenu.row.thJob?.output_image_path);
+              }}
+            >
+              Open thumbnail folder
             </button>
             <div className="my-1 h-px bg-border" />
             <button

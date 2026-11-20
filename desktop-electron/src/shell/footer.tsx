@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Badge, StatusDot } from "../components/status";
 import type { AppInfo } from "../../electron/shared/types";
 import { apiRequest } from "../lib/api";
+import { formatCredits } from "../lib/format";
 import type { ChannelProfile, UserMe } from "../features/dashboard/account-types";
 import { useSessionStore } from "../store/session";
 
@@ -74,7 +75,7 @@ export function Footer({ variant = "app" }: { variant?: "app" | "auth" }) {
         : "Dev API";
 
   const credits =
-    summary.data?.credits != null ? `${summary.data.credits.toLocaleString()} credits` : "-- credits";
+    summary.data?.credits != null ? `${formatCredits(summary.data.credits)} credits` : "-- credits";
   const profiles =
     summary.data?.profiles != null
       ? summary.data.profileCap != null

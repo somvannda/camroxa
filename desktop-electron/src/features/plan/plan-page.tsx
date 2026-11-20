@@ -7,7 +7,7 @@ import { Badge } from "../../components/status";
 import { Icon } from "../../components/icon";
 import { toast } from "../../components/toast";
 import { apiRequest, errorMessage } from "../../lib/api";
-import { formatCount, formatDateTime } from "../../lib/format";
+import { formatCount, formatCredits, formatDateTime } from "../../lib/format";
 import { useAccountOverview } from "../dashboard/use-account-overview";
 import { CheckoutDialog } from "./checkout-dialog";
 import { useInAppCheckout, type PaymentStatus } from "./use-in-app-checkout";
@@ -210,9 +210,9 @@ export function PlanPage() {
     async (status: PaymentStatus) => {
       setNotice({
         tone: "success",
-        text: `${formatCount(status.credits)} credits were added to your balance.`,
+        text: `${formatCredits(status.credits)} credits were added to your balance.`,
       });
-      toast(`${formatCount(status.credits)} credits added.`, "success");
+      toast(`${formatCredits(status.credits)} credits added.`, "success");
       await refresh();
     },
     [refresh],
@@ -271,7 +271,7 @@ export function PlanPage() {
             <div>
               <p className="text-caption text-text-muted">Available credits</p>
               <p className="mt-1 text-[32px] font-semibold leading-9 text-text-primary text-tabular">
-                {loadingAccount ? "--" : formatCount(balance)}
+                {loadingAccount ? "--" : formatCredits(balance)}
               </p>
               <p className="text-meta text-text-secondary">
                 Every generation is paid from this balance. No plans or quotas.
@@ -307,7 +307,7 @@ export function PlanPage() {
                       </div>
                       <div className="text-right">
                         <p className="text-meta text-text-primary text-tabular">
-                          +{formatCount(purchase.credits_purchased)}
+                          +{formatCredits(purchase.credits_purchased)}
                         </p>
                         <p className="text-caption text-text-muted">
                           {formatMoney(purchase.amount_paid_cents)}
@@ -416,7 +416,7 @@ export function PlanPage() {
                   <div className="mt-3 flex items-end justify-between gap-3">
                     <div>
                       <p className="text-[26px] font-semibold leading-8 text-text-primary text-tabular">
-                        {formatCount(pack.total_credits)}
+                        {formatCredits(pack.total_credits)}
                       </p>
                       <p className="text-[10px] uppercase tracking-wide text-text-muted">Credits</p>
                     </div>

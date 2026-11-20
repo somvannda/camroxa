@@ -1,6 +1,6 @@
 import { Card } from "../../components/card";
 import { Badge } from "../../components/status";
-import { formatCount } from "../../lib/format";
+import { formatCount, formatCredits } from "../../lib/format";
 import type { CreditPosition } from "./dashboard-format";
 
 interface CreditBalanceCardProps {
@@ -30,12 +30,12 @@ export function CreditBalanceCard({ position }: CreditBalanceCardProps) {
           className="mt-0.5 text-[28px] font-semibold leading-8 text-text-primary text-tabular"
           data-testid="credit-balance-value"
         >
-          {loading ? "--" : formatCount(position.balance)}
+          {loading ? "--" : formatCredits(position.balance)}
         </p>
         <p className="text-meta text-text-secondary">
           {loading
             ? "Loading your wallet…"
-            : `${formatCount(position.spent)} of ${formatCount(position.total)} credits used`}
+            : `${formatCredits(position.spent)} of ${formatCredits(position.total)} credits used`}
         </p>
       </div>
 
@@ -57,19 +57,19 @@ export function CreditBalanceCard({ position }: CreditBalanceCardProps) {
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-meta text-text-secondary">Credits granted</dt>
           <dd className="text-meta text-text-primary text-tabular">
-            {loading ? "--" : formatCount(position.total)}
+            {loading ? "--" : formatCredits(position.total)}
           </dd>
         </div>
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-meta text-text-secondary">Credits spent</dt>
           <dd className="text-meta text-text-primary text-tabular" data-testid="credit-spent">
-            {loading ? "--" : formatCount(position.spent)}
+            {loading ? "--" : formatCredits(position.spent)}
           </dd>
         </div>
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-meta text-text-secondary">Credits remaining</dt>
           <dd className="text-meta font-medium text-text-primary text-tabular">
-            {loading ? "--" : formatCount(position.balance)}
+            {loading ? "--" : formatCredits(position.balance)}
           </dd>
         </div>
       </dl>

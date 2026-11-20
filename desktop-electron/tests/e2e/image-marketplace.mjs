@@ -437,6 +437,10 @@ async function imageFlow() {
     assert(rowText.includes("success") && rowText.includes("failed"), "Status cells missing");
     assert(rowText.includes("today-bg.svg"), "Background file name missing");
     assert((await page.getByTestId("image-preview-background").locator("img").count()) === 1, "Background preview did not load");
+    assert(
+      (await page.getByTestId("image-preview-background").getByLabel("Open Background Preview folder").count()) === 1,
+      "Preview must expose its output folder",
+    );
 
     // Date range widens to include yesterday; both rows render.
     await page.getByTestId("image-from").fill(YESTERDAY);
@@ -467,8 +471,11 @@ async function imageFlow() {
     await page.getByTestId("image-row-b-today-profile-1-ok").click({ button: "right" });
     const menu = page.getByTestId("image-row-menu");
     await menu.waitFor({ timeout: 3000 });
-    assert((await menu.getByRole("menuitem").count()) === 5, "Row menu must offer five actions");
-    assert((await menu.innerText()).includes("Regenerate both"), "Regenerate both missing");
+    assert((await menu.getByRole("menuitem").count()) === 9, "Row menu must offer nine actions");
+    const menuText = await menu.innerText();
+    for (const action of ["Open background", "Open background folder", "Open thumbnail folder", "Regenerate both"]) {
+      assert(menuText.includes(action), `Row menu is missing ${action}`);
+    }
     await page.mouse.click(5, 5);
     await menu.waitFor({ state: "detached", timeout: 3000 });
 

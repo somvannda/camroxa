@@ -1,6 +1,6 @@
 import { Card } from "../../components/card";
 import type { DashboardStats, LicenseInfo, UserMe } from "../dashboard/account-types";
-import { formatCount } from "../../lib/format";
+import { formatCredits } from "../../lib/format";
 import {
   membershipFields,
   membershipMetrics,
@@ -44,7 +44,7 @@ export function MembershipCard({
 
       <div className="mt-2 flex items-baseline gap-2">
         <p className="text-[28px] font-semibold leading-8 text-text-primary text-tabular">
-          {loading ? "--" : formatCount(me?.credit_balance ?? 0)}
+          {loading ? "--" : formatCredits(me?.credit_balance ?? 0)}
         </p>
         <p className="text-meta text-text-secondary">credits available</p>
       </div>

@@ -184,7 +184,7 @@ download URL therefore never needs the session token.
 | Dashboard | Merged — credits-only KPIs, weekly chart, credit wallet, grouped activity, fixture E2E |
 | Profile | Merged, fixture E2E — identity, member since, role, desktop access, credits & usage, profiles, live activity |
 | Plan | **Merged** — credit packs, hosted checkout, top-up history |
-| Progress | **Merged** — filters, stats, 9-column table, right-hand detail, manual recovery, polling, 200-row E2E; **Download queue** driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output); **manual YouTube upload** (confirm → resumable → report → link, cancel/retry, Auto-Upload still off) |
+| Progress | **Merged** — filters, stats, desktop-parity 11-column table, right-hand detail, manual recovery, polling, 200-row E2E; **Download queue** driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output); **manual YouTube upload** (confirm → resumable → report → link, cancel/retry, Auto-Upload still off) |
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; **Simple mode** (Description + Songs per batch only); “Render videos” queues the profile’s saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
@@ -209,10 +209,18 @@ shell chunk is ~333 kB (103 kB gzip).
   preselected on both sides.
 - Vizzy forces a first frame after `did-finish-load`/ready; the strip shows `Starting…` until the
   editor reports ready.
+- Music History matches the Python desktop table: No, Album 1, Album 2, Title, Description,
+  Structure, Mood, Primary Channel, Secondary Channel, Suno, Run date, grouped under a batch
+  separator with channel pair, albums, song count, run date and generated time. Rows still load
+  the composer; each channel keeps its folder button.
+- All credit displays use at most two decimals (`formatCredits`) instead of raw micro-units or
+  three-decimal `toLocaleString` output — footer, dashboard wallet/KPIs, Profile, Plan packs,
+  top-up and the QR modal.
 - Image parity with the Python app: Clear Filters, Deselect, per-kind source selectors in the
   preview cards, Manual Generation (regenerate the selected job, or create a today row through
-  `/image-jobs/manual-generate`) and a right-click row menu (Retry / Regenerate background,
-  thumbnail or both).
+  `/image-jobs/manual-generate`), a right-click row menu (Open output/folder, Retry or Regenerate
+  background, thumbnail or both), and double-click to open a preview or queue job (failed jobs
+  retry instead, like the Python app). Preview headers expose an output-folder button.
 - Dashboard is credits-only and compact: six KPIs (balance, spent, songs, images, videos, uploads),
   a credit wallet card (granted/spent/remaining, exports, uploads, last export), a weekly chart
   with a labelled shared axis, and a grouped recent-activity timeline. Plan, song quota and image
@@ -220,7 +228,8 @@ shell chunk is ~333 kB (103 kB gzip).
 - Profile matches: Account, Credits & usage (balance, profiles allowance, spend, counters),
   Channel Profiles, Activity at the same compact density.
 - Progress is denser (accent stat cards) and shows the selected run's detail in a sticky right
-  column from 1536 px; below that it sits under the table so all twelve columns still fit at 1440.
+  column from 1600 px; below that it sits under the table so all eleven columns still fit at 1440
+  and 1280. The old visible/loaded/downloads summary line is gone.
 - Window: 1440×900 by default, minimum 1280×800.
 - `npm run dev:sandbox` runs the dev app against the sandbox API
   (`https://api.sandbox.camxora.com/api/v1`) and portal (`https://app.sandbox.camxora.com`).
@@ -238,8 +247,9 @@ shell chunk is ~333 kB (103 kB gzip).
   **Discover** (Marketplace), **Account** (Profile, Plan, Settings).
 - The header update icon only appears when an update offer exists, matching the Python desktop;
   no manual "check for updates" control.
-- Progress table is nine columns (Batch with date/album, Channel, Music, Image, Render, Merge,
-  YouTube, Stage, Updated); "Converter" is now "Render". Status/Notes live in the detail panel.
+- Progress table matches the desktop's operational scan: Run Date, Channel, Album, Stage,
+  Progress, Music, Image, Video (Render), Merge, YouTube, Updated. The stage percent is shown with
+  a bar; status/notes live in the detail panel.
 - Notifications: toasts float top-right on an opaque card; the title bar has a bell with
   unread count, history, mark-read and clear, plus an update button.
 - Vizzy clears stale load errors when the editor becomes ready and ignores aborted navigations,

@@ -1,4 +1,4 @@
-import { formatCount } from "../../lib/format";
+import { formatCount, formatCredits } from "../../lib/format";
 import type {
   ChannelProfile,
   DashboardStats,
@@ -88,7 +88,7 @@ export function membershipMetrics(
     {
       key: "credits",
       label: "Credits used",
-      value: stats ? `${formatCount(spent)} / ${formatCount(total)}` : "Not provided",
+      value: stats ? `${formatCredits(spent)} / ${formatCredits(total)}` : "Not provided",
       percent: percentOf(spent, total),
       tone: "sky",
     },
@@ -106,8 +106,8 @@ export function membershipFields(
 ): MembershipField[] {
   const wallet = me?.credit_balance ?? null;
   return [
-    { label: "Credits balance", value: wallet !== null ? formatCount(wallet) : "--" },
-    { label: "Credits spent", value: stats ? formatCount(stats.credits_spent) : "--" },
+    { label: "Credits balance", value: wallet !== null ? formatCredits(wallet) : "--" },
+    { label: "Credits spent", value: stats ? formatCredits(stats.credits_spent) : "--" },
     { label: "Songs", value: stats ? formatCount(stats.songs_generated) : "--" },
     { label: "Images", value: stats ? formatCount(stats.images_generated) : "--" },
     { label: "Videos", value: stats ? formatCount(stats.videos_generated) : "--" },
@@ -155,6 +155,6 @@ export function profileCounters(
     { label: "Songs generated", value: formatCount(stats.songs_generated) },
     { label: "Images generated", value: formatCount(stats.images_generated) },
     { label: "Videos generated", value: formatCount(stats.videos_generated) },
-    { label: "Credits spent", value: formatCount(stats.credits_spent) },
+    { label: "Credits spent", value: formatCredits(stats.credits_spent) },
   ];
 }

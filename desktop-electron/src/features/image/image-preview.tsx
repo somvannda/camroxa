@@ -73,6 +73,8 @@ export function ImagePreviewCard({
   sourceValue,
   sourceOptions,
   onSourceChange,
+  onOpen,
+  onReveal,
 }: {
   title: string;
   subtitle: string;
@@ -82,14 +84,29 @@ export function ImagePreviewCard({
   sourceValue?: string;
   sourceOptions?: Array<{ value: string; label: string }>;
   onSourceChange?: (value: string) => void;
+  onOpen?: () => void;
+  onReveal?: () => void;
 }) {
   return (
     <section className="card overflow-hidden" data-testid={testId} aria-label={title}>
       <header className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-2">
         <h2 className="text-meta font-medium text-text-primary">{title}</h2>
-        <span className="truncate text-caption text-text-muted" title={subtitle}>
-          {subtitle}
-        </span>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-caption text-text-muted" title={subtitle}>
+            {subtitle}
+          </span>
+          {onReveal ? (
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-text-muted hover:bg-surface-hover hover:text-text-primary"
+              aria-label={`Open ${title} folder`}
+              title="Open output folder"
+              onClick={onReveal}
+            >
+              <Icon name="fa-folder-open" size={12} />
+            </button>
+          ) : null}
+        </div>
       </header>
       {sourceOptions && onSourceChange ? (
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
@@ -111,7 +128,12 @@ export function ImagePreviewCard({
           <img
             src={state.dataUrl}
             alt={`${title} output`}
-            className="h-full w-full object-contain"
+            title={onOpen ? "Double-click to open the full image" : undefined}
+            onDoubleClick={onOpen}
+            className={classNames(
+              "h-full w-full object-contain",
+              onOpen && "cursor-pointer",
+            )}
           />
         ) : (
           <div

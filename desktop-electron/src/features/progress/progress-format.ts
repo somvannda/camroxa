@@ -423,6 +423,57 @@ export function notesText(row: ProgressRow): string | null {
   return messages.length ? messages.join(" · ") : null;
 }
 
+function stageRunning(status: string): boolean {
+  return [
+    "running",
+    "processing",
+    "converting",
+    "merging",
+    "preparing",
+    "in progress",
+    "exporting",
+  ].includes(status);
+}
+
+/** Best-effort stage completion percentage for the Progress bar. */
+export function progressPercent(row: ProgressRow): { text: string; percent: number } {
+  const stage = stageKey(row.stage);
+  const status = normalizeStatus(row.status);
+  const meta = row.meta;
+  const pct = (part: number, total: number) =>
+    total > 0 ? Math.max(0, Math.min(100, Math.round((part / total) * 100))) : 0;
+
+  if (stage === "done" || stage === "completed" || status === "completed") {
+    return { text: "100%", percent: 100 };
+  }
+  if (stage === "error" || status === "failed" || status === "blocked") {
+    return { text: "—", percent: 0 };
+  }
+  if (stage === "merger" || stage === "merge" || stage === "converter" || stage === "export") {
+    const percent = status === "completed" ? 100 : stageRunning(status) ? 50 : 0;
+    return { text: `${percent}%`, percent };
+  }
+  if (stage === "youtube") {
+    if ((meta.youtube_success ?? 0) > 0) return { text: "100%", percent: 100 };
+    if ((meta.youtube_pending ?? 0) > 0 || ["uploading", "queued"].includes(status)) {
+      return { text: "50%", percent: 50 };
+    }
+    return { text: "0%", percent: 0 };
+  }
+  if (stage === "image") {
+    const parts: number[] = [];
+    if ((meta.bg_total ?? 0) > 0) parts.push(pct(meta.bg_ready ?? 0, meta.bg_total ?? 0));
+    if ((meta.th_total ?? 0) > 0) parts.push(pct(meta.th_ready ?? 0, meta.th_total ?? 0));
+    const percent =
+      parts.length > 0 ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : 0;
+    return { text: `${percent}%`, percent };
+  }
+  if (stage === "music") {
+    return { text: `${pct(meta.saved ?? 0, Math.max(1, meta.expected ?? 0))}%`, percent: pct(meta.saved ?? 0, Math.max(1, meta.expected ?? 0)) };
+  }
+  return { text: "—", percent: 0 };
+}
+
 export function formatAbsoluteTime(value: string | null | undefined): string | null {
   if (!value) return null;
   const parsed = new Date(value);
