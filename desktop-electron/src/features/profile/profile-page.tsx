@@ -29,11 +29,11 @@ export function ProfilePage() {
       <PageHeader
         eyebrow="Workspace"
         title="Profile"
-        description="Signed-in account, plan, credits, allowance and channel profiles."
+        description="Signed-in account, credits, usage and channel profiles."
       />
 
-      <div className="space-y-6 p-6">
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="space-y-4 p-5">
+        <div className="grid items-start gap-4 xl:grid-cols-[1.2fr_0.8fr]">
           <AccountCard me={data?.me} loading={loading} hasError={query.isError} />
           <MembershipCard
             me={data?.me}
@@ -44,7 +44,7 @@ export function ProfilePage() {
           />
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.55fr_0.75fr]">
+        <div className="grid gap-4 xl:grid-cols-[1.55fr_0.75fr]">
           <ChannelProfilesCard
             profiles={data?.profiles}
             allowanceText={loading ? "--" : allowance.text}

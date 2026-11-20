@@ -1,10 +1,9 @@
 import { Card } from "../../components/card";
 import type { DashboardStats, LicenseInfo, UserMe } from "../dashboard/account-types";
-import { formatPlanName } from "../dashboard/dashboard-format";
+import { formatCount } from "../../lib/format";
 import {
   membershipFields,
   membershipMetrics,
-  planSubtitle,
   type ProfileMetric,
 } from "./profile-format";
 
@@ -15,7 +14,7 @@ const BAR_COLORS: Record<ProfileMetric["tone"], string> = {
 
 const LOADING_METRICS: ProfileMetric[] = [
   { key: "profiles", label: "Profiles", value: "--", percent: 0, tone: "emerald" },
-  { key: "songs", label: "Songs", value: "--", percent: 0, tone: "sky" },
+  { key: "credits", label: "Credits used", value: "--", percent: 0, tone: "sky" },
 ];
 
 interface MembershipCardProps {
@@ -34,24 +33,23 @@ export function MembershipCard({
   loading,
 }: MembershipCardProps) {
   const metrics = loading ? LOADING_METRICS : membershipMetrics(me, stats, license, profileCount);
-  const fields = membershipFields(me, stats, license);
-  const formattedPlan = formatPlanName(me?.plan_name);
-  const planName = loading ? "--" : formattedPlan === "No plan" ? "No active plan" : formattedPlan;
+  const fields = membershipFields(me, stats);
 
   return (
-    <Card className="p-5" data-testid="profile-membership">
-      <h2 className="text-title font-semibold text-text-primary">Membership</h2>
-
-      <div className="mt-4">
-        <p className="text-[20px] font-semibold leading-7 text-text-primary">{planName}</p>
-        {loading ? (
-          <p className="text-meta text-text-secondary">Loading plan details...</p>
-        ) : me?.plan_name?.trim() ? (
-          <p className="text-meta text-text-secondary">{planSubtitle(me.plan_name)}</p>
-        ) : null}
+    <Card className="p-4" data-testid="profile-membership">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-title font-semibold text-text-primary">Credits & usage</h2>
+        <span className="text-caption text-text-muted">Credits only</span>
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-2 flex items-baseline gap-2">
+        <p className="text-[28px] font-semibold leading-8 text-text-primary text-tabular">
+          {loading ? "--" : formatCount(me?.credit_balance ?? 0)}
+        </p>
+        <p className="text-meta text-text-secondary">credits available</p>
+      </div>
+
+      <div className="mt-3 space-y-3">
         {metrics.map((metric) => (
           <div key={metric.key}>
             <div className="flex items-baseline justify-between gap-3">
@@ -61,7 +59,7 @@ export function MembershipCard({
               </span>
             </div>
             <div
-              className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3"
+              className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3"
               role="progressbar"
               aria-label={`${metric.label} used`}
               aria-valuemin={0}
@@ -77,11 +75,11 @@ export function MembershipCard({
         ))}
       </div>
 
-      <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-border pt-4">
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3">
         {fields.map((field) => (
           <div key={field.label}>
             <dt className="text-caption text-text-muted">{field.label}</dt>
-            <dd className="mt-0.5 truncate text-body text-text-primary text-tabular">
+            <dd className="mt-0.5 truncate text-meta text-text-primary text-tabular">
               {loading ? "--" : field.value}
             </dd>
           </div>

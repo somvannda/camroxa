@@ -69,19 +69,46 @@ export function ImagePreviewCard({
   state,
   hasSelection,
   testId,
+  sourceValue,
+  sourceOptions,
+  onSourceChange,
 }: {
   title: string;
   subtitle: string;
   state: PreviewState;
   hasSelection: boolean;
   testId: string;
+  sourceValue?: string;
+  sourceOptions?: Array<{ value: string; label: string }>;
+  onSourceChange?: (value: string) => void;
 }) {
   return (
     <section className="card overflow-hidden" data-testid={testId} aria-label={title}>
       <header className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-2">
         <h2 className="text-meta font-medium text-text-primary">{title}</h2>
-        <span className="text-caption text-text-muted">{subtitle}</span>
+        <span className="truncate text-caption text-text-muted" title={subtitle}>
+          {subtitle}
+        </span>
       </header>
+      {sourceOptions && onSourceChange ? (
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+          <label className="text-caption text-text-muted" htmlFor={`${testId}-source`}>
+            Source
+          </label>
+          <select
+            id={`${testId}-source`}
+            value={sourceValue}
+            onChange={(event) => onSourceChange(event.target.value)}
+            className="h-7 min-w-0 flex-1 rounded-control border border-border bg-surface-1 px-2 text-caption text-text-primary focus:border-accent focus:outline-none"
+          >
+            {sourceOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       <div className="relative flex h-[236px] items-center justify-center bg-surface-2">
         {state.status === "ready" && state.dataUrl ? (
           <img

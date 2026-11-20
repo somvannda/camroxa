@@ -266,7 +266,7 @@ export function VideoPipelineSection() {
       {!pipeline.loading && jobs.length === 0 ? (
         <div className="px-4 py-8 text-center" data-testid="pipeline-empty">
           <p className="text-body text-text-secondary">
-            No video renders yet. Turn on Auto-Video in Music and use “Render videos”.
+            No video renders yet. Turn on Video (16:9) or Video (9:16) in Music and press Generate.
           </p>
           <Link
             to="/music"

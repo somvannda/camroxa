@@ -199,19 +199,28 @@ shell chunk is ~333 kB (103 kB gzip).
 - Settings uses horizontal tabs instead of the vertical rail; the immediate-action note moved
   below the tab strip.
 - Music's **Simple mode** is a checkbox inside Run settings (not a separate page). When it is on,
-  only Description and Songs per batch are visible/used; it posts the batch with
-  `structure_mode: "suno"`, no structure/mood, default language/creativity and every automation
-  flag off. Studio mode is unchanged.
-- Primary/secondary channel lists are exclusive in both directions: a channel selected on one
-  side disappears from the other and is removed if it was already paired.
+  only Description and Songs per batch shape the generation; the Song card and the generation
+  options are hidden. The batch posts `structure_mode: "suno"` with no structure/mood and default
+  language/creativity. Automation stays visible and is honoured in both modes.
+- Automation labels/order: Music, Image, Video (16:9), Video (9:16), Merge Video, YouTube Upload
+  (disabled). One Generate button; the separate "Render videos" action is gone.
+- Primary/secondary channel lists are exclusive in both directions and a single profile is never
+  preselected on both sides.
 - Vizzy forces a first frame after `did-finish-load`/ready; the strip shows `Starting…` until the
   editor reports ready.
-- Image parity with the Python app: Clear Filters, Deselect, per-kind source selectors
-  (Prompt only / Category × custom / admin library) and Manual Generation (regenerate the
-  selected job, or create a today row through `/image-jobs/manual-generate`).
-- Dashboard is credits-only: six KPIs (balance, spent, songs, images, videos, uploads), a credit
-  wallet card (granted/spent/remaining, exports, uploads, last export), a weekly chart on one
-  shared scale, and a grouped recent-activity timeline. Plan, song quota and image quota are gone.
+- Image parity with the Python app: Clear Filters, Deselect, per-kind source selectors in the
+  preview cards, Manual Generation (regenerate the selected job, or create a today row through
+  `/image-jobs/manual-generate`) and a right-click row menu (Retry / Regenerate background,
+  thumbnail or both).
+- Dashboard is credits-only and compact: six KPIs (balance, spent, songs, images, videos, uploads),
+  a credit wallet card (granted/spent/remaining, exports, uploads, last export), a weekly chart
+  with a labelled shared axis, and a grouped recent-activity timeline. Plan, song quota and image
+  quota are gone.
+- Profile matches: Account, Credits & usage (balance, profiles allowance, spend, counters),
+  Channel Profiles, Activity at the same compact density.
+- Progress is denser (accent stat cards) and shows the selected run's detail in a sticky right
+  column from 1536 px; below that it sits under the table so all twelve columns still fit at 1440.
+- Window: 1440×900 by default, minimum 1280×800.
 
 - Local DB drift: `platform_db` had an `alembic_version` revision from a diverged checkout, so
   migrations 175-211 never ran and `/progress` 500ed on `batches.auto_upload_youtube`. The local

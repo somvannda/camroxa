@@ -25,18 +25,18 @@ export function ChannelProfilesCard({
   const rows = sortProfiles(profiles);
 
   return (
-    <Card className="p-5" data-testid="profile-channels">
+    <Card className="p-4" data-testid="profile-channels">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-title font-semibold text-text-primary">Channel Profiles</h2>
-          <p className="mt-1 text-body text-text-secondary">
+          <p className="mt-0.5 text-meta text-text-secondary">
             Profiles available for generation and publication workflows.
           </p>
         </div>
         <span className="shrink-0 text-meta text-text-secondary text-tabular">{allowanceText}</span>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3">
         <Table>
           <THead>
             <TR className="hover:bg-surface-2">

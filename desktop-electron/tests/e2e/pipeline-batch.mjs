@@ -210,7 +210,9 @@ try {
   await window.getByTestId("pipeline-empty").waitFor({ timeout: 20_000 });
   const emptyText = await window.getByTestId("pipeline-empty").innerText();
   if (!/No video renders yet/i.test(emptyText)) fail(`Unexpected empty state: ${emptyText}`);
-  if (!/Render videos/i.test(emptyText)) fail("The empty state must point at Music");
+  if (!/Video \(16:9\)/i.test(emptyText) || !/Music/i.test(emptyText)) {
+    fail("The empty state must point at Music");
+  }
   step("empty state verified");
 
   // --- Enqueue two songs with merge, no /vizzy route ---------------------

@@ -27,11 +27,11 @@ export function RecentActivityCard({ rows, loading }: RecentActivityCardProps) {
   const groups = groupRows(rows);
 
   return (
-    <Card className="p-5" data-testid="recent-activity">
+    <Card className="p-4" data-testid="recent-activity">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-title font-semibold text-text-primary">Recent Activity</h2>
-          <p className="mt-1 text-body text-text-secondary">
+          <p className="mt-0.5 text-meta text-text-secondary">
             The latest runs, renders and uploads on this account.
           </p>
         </div>
@@ -40,7 +40,7 @@ export function RecentActivityCard({ rows, loading }: RecentActivityCardProps) {
         ) : null}
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3">
         {loading ? (
           <div className="space-y-2" aria-hidden="true">
             {[0, 1, 2, 3].map((index) => (
@@ -59,15 +59,15 @@ export function RecentActivityCard({ rows, loading }: RecentActivityCardProps) {
             </p>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-3">
             {groups.map((group) => (
               <section key={group.label}>
-                <h3 className="text-caption font-medium uppercase tracking-wide text-text-muted">
+                <h3 className="text-[10px] font-medium uppercase tracking-wide text-text-muted">
                   {group.label}
                 </h3>
-                <ul className="mt-2 divide-y divide-border">
+                <ul className="mt-1 divide-y divide-border">
                   {group.rows.map((row) => (
-                    <li key={row.key} className="flex items-start gap-3 py-2.5">
+                    <li key={row.key} className="flex items-start gap-2.5 py-2">
                       <span
                         className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-secondary"
                         aria-hidden="true"

@@ -43,7 +43,7 @@ try {
   await window.getByRole("heading", { name: "Channel Profiles" }).waitFor({ timeout: 5000 });
   const profileText = await window.locator("body").innerText();
   const hasProfile =
-    profileText.includes("Membership") &&
+    profileText.includes("Credits & usage") &&
     profileText.includes("Channel Profiles") &&
     profileText.includes("Activity");
   await window.screenshot({ path: path.join(artifacts, "profile-error.png"), fullPage: true });

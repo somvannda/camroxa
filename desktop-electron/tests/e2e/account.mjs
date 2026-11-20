@@ -249,8 +249,8 @@ async function dashboardSuccess() {
     assert(account.includes("Verified") && account.includes("user-1"), "Account verification or id missing");
     const membership = await page.locator('[data-testid="profile-membership"]').innerText();
     assert(membership.includes("Profiles") && membership.includes("3 / 6"), "Membership profile metric missing");
-    assert(membership.includes("76 remaining"), "Membership song metric missing");
-    assert(membership.includes("410"), "Membership credits balance missing");
+    assert(membership.includes("1,234 / 2,000"), "Membership credit usage missing");
+    assert(membership.includes("500"), "Membership credits balance missing");
     const channels = await page.locator('[data-testid="profile-channels"]').innerText();
     assert(channels.includes("Night Shift") && channels.includes("Deep Focus"), "Channel profile rows missing");
     assert(channels.includes("BG Only") && channels.includes("Public"), "Image mode or visibility missing");
@@ -307,7 +307,8 @@ async function emptyAccount() {
     await page.getByRole("heading", { name: "Channel Profiles" }).waitFor({ timeout: 5000 });
     const profileText = await page.locator("body").innerText();
     assert(profileText.includes("No channel profiles found yet."), "Empty profiles copy missing");
-    assert(profileText.includes("No active plan"), "Plan fallback missing");
+    assert(profileText.includes("Credits & usage"), "Credits card missing");
+    assert(profileText.includes("credits available"), "Credits balance caption missing");
     await capture(app, page, "profile-empty");
   } finally {
     await app.close();

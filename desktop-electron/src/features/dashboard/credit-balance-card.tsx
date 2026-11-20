@@ -11,11 +11,11 @@ export function CreditBalanceCard({ position }: CreditBalanceCardProps) {
   const loading = !position;
 
   return (
-    <Card className="flex flex-col p-5" data-testid="credit-balance">
+    <Card className="flex flex-col p-4" data-testid="credit-balance">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-title font-semibold text-text-primary">Credit balance</h2>
-          <p className="mt-1 text-body text-text-secondary">
+          <p className="mt-0.5 text-meta text-text-secondary">
             Every generation is paid from your credit wallet.
           </p>
         </div>
@@ -24,10 +24,10 @@ export function CreditBalanceCard({ position }: CreditBalanceCardProps) {
         </Badge>
       </div>
 
-      <div className="mt-5">
+      <div className="mt-3">
         <p className="text-caption text-text-muted">Available now</p>
         <p
-          className="mt-1 text-[36px] font-semibold leading-10 text-text-primary text-tabular"
+          className="mt-0.5 text-[28px] font-semibold leading-8 text-text-primary text-tabular"
           data-testid="credit-balance-value"
         >
           {loading ? "--" : formatCount(position.balance)}
@@ -40,7 +40,7 @@ export function CreditBalanceCard({ position }: CreditBalanceCardProps) {
       </div>
 
       <div
-        className="mt-3 h-2 overflow-hidden rounded-full bg-surface-3"
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3"
         role="progressbar"
         aria-label="Credits used"
         aria-valuemin={0}
@@ -53,7 +53,7 @@ export function CreditBalanceCard({ position }: CreditBalanceCardProps) {
         />
       </div>
 
-      <dl className="mt-4 space-y-1.5">
+      <dl className="mt-3 space-y-1">
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-meta text-text-secondary">Credits granted</dt>
           <dd className="text-meta text-text-primary text-tabular">
@@ -74,28 +74,28 @@ export function CreditBalanceCard({ position }: CreditBalanceCardProps) {
         </div>
       </dl>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-4">
-        <div className="rounded-control bg-surface-2 px-3 py-2">
+      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3">
+        <div className="rounded-control bg-surface-2 px-2.5 py-1.5">
           <p className="text-caption text-text-muted">Studio exports</p>
-          <p className="text-body font-medium text-text-primary text-tabular">
+          <p className="text-meta font-medium text-text-primary text-tabular">
             {loading ? "--" : formatCount(position.studioExports)}
           </p>
         </div>
-        <div className="rounded-control bg-surface-2 px-3 py-2">
+        <div className="rounded-control bg-surface-2 px-2.5 py-1.5">
           <p className="text-caption text-text-muted">Manual exports</p>
-          <p className="text-body font-medium text-text-primary text-tabular">
+          <p className="text-meta font-medium text-text-primary text-tabular">
             {loading ? "--" : formatCount(position.manualExports)}
           </p>
         </div>
-        <div className="rounded-control bg-surface-2 px-3 py-2">
+        <div className="rounded-control bg-surface-2 px-2.5 py-1.5">
           <p className="text-caption text-text-muted">YouTube uploads</p>
-          <p className="text-body font-medium text-text-primary text-tabular">
+          <p className="text-meta font-medium text-text-primary text-tabular">
             {loading ? "--" : formatCount(position.youtubeUploads)}
           </p>
         </div>
-        <div className="rounded-control bg-surface-2 px-3 py-2">
+        <div className="rounded-control bg-surface-2 px-2.5 py-1.5">
           <p className="text-caption text-text-muted">Last export</p>
-          <p className="truncate text-meta font-medium text-text-primary" title={position?.lastExport}>
+          <p className="truncate text-caption font-medium text-text-primary" title={position?.lastExport}>
             {loading ? "--" : position.lastExport}
           </p>
         </div>

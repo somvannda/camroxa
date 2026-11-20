@@ -5,7 +5,7 @@ import type {
   LicenseInfo,
   UserMe,
 } from "../dashboard/account-types";
-import { percentOf, shortExpiry } from "../dashboard/dashboard-format";
+import { percentOf } from "../dashboard/dashboard-format";
 
 const IMAGE_MODE_LABELS: Record<string, string> = {
   bg_thumb: "BG + TH",
@@ -60,7 +60,7 @@ export function profileAllowance(
 }
 
 export interface ProfileMetric {
-  key: "profiles" | "songs";
+  key: "profiles" | "credits";
   label: string;
   value: string;
   percent: number;
@@ -70,17 +70,12 @@ export interface ProfileMetric {
 export function membershipMetrics(
   me: UserMe | null | undefined,
   stats: DashboardStats | null | undefined,
-  license: LicenseInfo | null | undefined,
+  _license: LicenseInfo | null | undefined,
   profileCount: number,
 ): ProfileMetric[] {
   const profiles = profileAllowance(me, profileCount);
-
-  const songQuota = license?.monthly_song_quota ?? stats?.songs_quota ?? null;
-  const songsRemaining = license?.songs_remaining ?? stats?.songs_remaining ?? null;
-  const songsUsed =
-    songQuota !== null && songsRemaining !== null
-      ? Math.max(0, songQuota - songsRemaining)
-      : 0;
+  const total = stats ? stats.credits_total || stats.credits_spent + stats.credits_remaining : 0;
+  const spent = stats?.credits_spent ?? 0;
 
   return [
     {
@@ -91,13 +86,10 @@ export function membershipMetrics(
       tone: "emerald",
     },
     {
-      key: "songs",
-      label: "Songs",
-      value:
-        songsRemaining !== null
-          ? `${formatCount(songsRemaining)} remaining`
-          : "Not provided",
-      percent: songQuota !== null ? percentOf(songsUsed, songQuota) : 0,
+      key: "credits",
+      label: "Credits used",
+      value: stats ? `${formatCount(spent)} / ${formatCount(total)}` : "Not provided",
+      percent: percentOf(spent, total),
       tone: "sky",
     },
   ];
@@ -111,19 +103,15 @@ export interface MembershipField {
 export function membershipFields(
   me: UserMe | null | undefined,
   stats: DashboardStats | null | undefined,
-  license: LicenseInfo | null | undefined,
 ): MembershipField[] {
-  const wallet = license?.wallet_balance ?? me?.credit_balance ?? null;
-  const songQuota = license?.monthly_song_quota ?? stats?.songs_quota ?? null;
-  const expiry = shortExpiry(license?.expiration_date);
-
+  const wallet = me?.credit_balance ?? null;
   return [
     { label: "Credits balance", value: wallet !== null ? formatCount(wallet) : "--" },
-    {
-      label: "Song quota",
-      value: songQuota !== null ? formatCount(songQuota) : "Not provided",
-    },
-    { label: "Plan expiry", value: expiry ?? "Not provided" },
+    { label: "Credits spent", value: stats ? formatCount(stats.credits_spent) : "--" },
+    { label: "Songs", value: stats ? formatCount(stats.songs_generated) : "--" },
+    { label: "Images", value: stats ? formatCount(stats.images_generated) : "--" },
+    { label: "Videos", value: stats ? formatCount(stats.videos_generated) : "--" },
+    { label: "YouTube uploads", value: stats ? formatCount(stats.youtube_uploads) : "--" },
   ];
 }
 

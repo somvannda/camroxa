@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { formatCount } from "../../../lib/format";
 import { apiRequest, errorMessage } from "../../../lib/api";
 import { Button } from "../../../components/button";
@@ -27,7 +27,7 @@ import {
   summarizeQueue,
   todayYmd,
 } from "../image-model";
-import type { StatusTone } from "../image-model";
+import type { StatusTone, QueueRow } from "../image-model";
 import { ImagePreviewCard, useImagePreview } from "../image-preview";
 import type { ImageJobListItem } from "../image-types";
 import { useImageWorkspace } from "../use-image-workspace";
@@ -183,6 +183,9 @@ export function ImagePage() {
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; row: QueueRow } | null>(
+    null,
+  );
 
   const [backgroundPrompt, setBackgroundPrompt] = useState("");
   const [thumbnailPrompt, setThumbnailPrompt] = useState("");
@@ -380,6 +383,54 @@ export function ImagePage() {
     setBanner(null);
     void query.refetch();
   }, [query]);
+
+  const runJobAction = useCallback(
+    async (row: QueueRow, jobIds: string[], force: boolean, label: string) => {
+      setRowMenu(null);
+      if (jobIds.length === 0) {
+        setBanner({
+          title: `No ${label.toLowerCase()} job yet`,
+          detail: "Wait for the pipeline to create it, or use Manual Generation.",
+        });
+        return;
+      }
+      if (busyJobId) return;
+      setBusyJobId("menu");
+      setBanner(null);
+      try {
+        const result = await apiRequest<{ updated?: number }>({
+          method: "POST",
+          path: "/image-jobs/retry",
+          body: { job_ids: jobIds, batch_id: row.batchId, force },
+        });
+        const updated = Number(result?.updated ?? 0);
+        if (updated > 0) {
+          setStatusLabel(force ? `${label} regeneration queued.` : `${label} retry queued.`);
+          toast(force ? `${label} regeneration queued.` : `${label} retry queued.`, "success");
+        } else {
+          setStatusLabel("No image jobs to reset.");
+          toast("No image jobs to reset.", "warning");
+        }
+        await query.refetch();
+      } catch (error) {
+        setStatusLabel("Unable to queue the image job.");
+        setBanner({ title: "Unable to queue the image job.", detail: errorMessage(error) });
+        toast("Unable to queue the image job.", "danger");
+      } finally {
+        setBusyJobId(null);
+      }
+    },
+    [busyJobId, query],
+  );
+
+  const openRowMenu = useCallback(
+    (event: MouseEvent<HTMLElement>, row: QueueRow) => {
+      event.preventDefault();
+      selectRow(row.key);
+      setRowMenu({ x: event.clientX, y: event.clientY, row });
+    },
+    [selectRow],
+  );
 
   const retryJob = useCallback(
     async (job: ImageJobListItem) => {
@@ -671,6 +722,7 @@ export function ImagePage() {
                             aria-selected={selected}
                             tabIndex={0}
                             onClick={() => selectRow(row.key)}
+                            onContextMenu={(event) => openRowMenu(event, row)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
@@ -793,28 +845,7 @@ export function ImagePage() {
                 </div>
                 <div className="mt-3 grid gap-4 xl:grid-cols-2">
                   <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-caption text-text-muted">Background prompt</span>
-                      <select
-                        aria-label="Background source"
-                        value={sourceValue(backgroundSource, backgroundPromptSource)}
-                        disabled={!promptsReady}
-                        onChange={(event) => {
-                          const option =
-                            SOURCE_OPTIONS.find((item) => item.value === event.target.value) ??
-                            SOURCE_OPTIONS[0];
-                          setBackgroundSource(option.mode);
-                          setBackgroundPromptSource(option.prompt);
-                        }}
-                        className="h-7 rounded-control border border-border bg-surface-1 px-2 text-caption text-text-primary focus:border-accent focus:outline-none"
-                      >
-                        {SOURCE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <span className="text-caption text-text-muted">Background prompt</span>
                     <textarea
                       value={backgroundPrompt}
                       onChange={(event) => setBackgroundPrompt(event.target.value)}
@@ -836,28 +867,7 @@ export function ImagePage() {
                     </Button>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-caption text-text-muted">Thumbnail prompt</span>
-                      <select
-                        aria-label="Thumbnail source"
-                        value={sourceValue(thumbnailSource, thumbnailPromptSource)}
-                        disabled={!promptsReady}
-                        onChange={(event) => {
-                          const option =
-                            SOURCE_OPTIONS.find((item) => item.value === event.target.value) ??
-                            SOURCE_OPTIONS[0];
-                          setThumbnailSource(option.mode);
-                          setThumbnailPromptSource(option.prompt);
-                        }}
-                        className="h-7 rounded-control border border-border bg-surface-1 px-2 text-caption text-text-primary focus:border-accent focus:outline-none"
-                      >
-                        {SOURCE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <span className="text-caption text-text-muted">Thumbnail prompt</span>
                     <textarea
                       value={thumbnailPrompt}
                       onChange={(event) => setThumbnailPrompt(event.target.value)}
@@ -902,6 +912,17 @@ export function ImagePage() {
                 state={backgroundPreview}
                 hasSelection={Boolean(selectedRow)}
                 testId="image-preview-background"
+                sourceValue={sourceValue(backgroundSource, backgroundPromptSource)}
+                sourceOptions={SOURCE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+                onSourceChange={(value) => {
+                  const option =
+                    SOURCE_OPTIONS.find((item) => item.value === value) ?? SOURCE_OPTIONS[0];
+                  setBackgroundSource(option.mode);
+                  setBackgroundPromptSource(option.prompt);
+                }}
               />
               <ImagePreviewCard
                 title="Thumbnail Preview"
@@ -909,11 +930,123 @@ export function ImagePage() {
                 state={thumbnailPreview}
                 hasSelection={Boolean(selectedRow)}
                 testId="image-preview-thumbnail"
+                sourceValue={sourceValue(thumbnailSource, thumbnailPromptSource)}
+                sourceOptions={SOURCE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+                onSourceChange={(value) => {
+                  const option =
+                    SOURCE_OPTIONS.find((item) => item.value === value) ?? SOURCE_OPTIONS[0];
+                  setThumbnailSource(option.mode);
+                  setThumbnailPromptSource(option.prompt);
+                }}
               />
             </div>
           </div>
         )}
       </div>
+
+      {rowMenu ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setRowMenu(null)} aria-hidden="true" />
+          <div
+            className="fixed z-50 w-52 overflow-hidden rounded-card border border-border bg-surface-1 py-1 shadow-lg"
+            style={{
+              left: Math.min(rowMenu.x, Math.max(8, window.innerWidth - 220)),
+              top: Math.min(rowMenu.y, Math.max(8, window.innerHeight - 240)),
+            }}
+            role="menu"
+            aria-label="Queue row actions"
+            data-testid="image-row-menu"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.bgJob}
+              onClick={() =>
+                void runJobAction(
+                  rowMenu.row,
+                  rowMenu.row.bgJob ? [rowMenu.row.bgJob.id] : [],
+                  false,
+                  "Background",
+                )
+              }
+            >
+              Retry background
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.thJob}
+              onClick={() =>
+                void runJobAction(
+                  rowMenu.row,
+                  rowMenu.row.thJob ? [rowMenu.row.thJob.id] : [],
+                  false,
+                  "Thumbnail",
+                )
+              }
+            >
+              Retry thumbnail
+            </button>
+            <div className="my-1 h-px bg-border" />
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.bgJob}
+              onClick={() =>
+                void runJobAction(
+                  rowMenu.row,
+                  rowMenu.row.bgJob ? [rowMenu.row.bgJob.id] : [],
+                  true,
+                  "Background",
+                )
+              }
+            >
+              Regenerate background
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.thJob}
+              onClick={() =>
+                void runJobAction(
+                  rowMenu.row,
+                  rowMenu.row.thJob ? [rowMenu.row.thJob.id] : [],
+                  true,
+                  "Thumbnail",
+                )
+              }
+            >
+              Regenerate thumbnail
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-meta text-text-primary hover:bg-surface-hover disabled:opacity-40"
+              disabled={!rowMenu.row.bgJob && !rowMenu.row.thJob}
+              onClick={() =>
+                void runJobAction(
+                  rowMenu.row,
+                  [
+                    ...(rowMenu.row.bgJob ? [rowMenu.row.bgJob.id] : []),
+                    ...(rowMenu.row.thJob ? [rowMenu.row.thJob.id] : []),
+                  ],
+                  true,
+                  "Background + thumbnail",
+                )
+              }
+            >
+              Regenerate both
+            </button>
+          </div>
+        </>
+      ) : null}
 
       <Dialog open={clearOpen} onOpenChange={setClearOpen}>
         <DialogContent

@@ -464,6 +464,15 @@ async function imageFlow() {
     const afterRetry = await page.getByTestId("image-row-b-today-profile-1-ok").innerText();
     assert(afterRetry.includes("pending"), "Retried job must refetch as pending");
 
+    // Right-click row menu mirrors the desktop app's recovery actions.
+    await page.getByTestId("image-row-b-today-profile-1-ok").click({ button: "right" });
+    const menu = page.getByTestId("image-row-menu");
+    await menu.waitFor({ timeout: 3000 });
+    assert((await menu.getByRole("menuitem").count()) === 5, "Row menu must offer five actions");
+    assert((await menu.innerText()).includes("Regenerate both"), "Regenerate both missing");
+    await page.mouse.click(5, 5);
+    await menu.waitFor({ state: "detached", timeout: 3000 });
+
     // Prompt autosave: 350 ms debounce, PATCH /settings.
     const prompt = page.getByTestId("image-prompt-background");
     assert((await prompt.inputValue()) === "legacy shared prompt", "Legacy imagePrompt fallback missing");

@@ -37,7 +37,7 @@ export function MusicSettingsStrip({
           <h2 className="text-title font-semibold text-text-primary">Run settings</h2>
           <p className="mt-0.5 text-meta text-text-secondary">
             {simple
-              ? "Simple mode uses only the Description and Songs per batch. Every other option is ignored."
+              ? "Simple mode uses only the Description and Songs per batch for generation. Automation below still applies."
               : "Defaults for drafting and the planned batch range. Changes save automatically."}
           </p>
         </div>

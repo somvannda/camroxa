@@ -23,26 +23,26 @@ const TINTS: Record<KpiValue["key"], string> = {
 
 export function KpiCard({ item }: { item: KpiValue }) {
   return (
-    <Card className="flex items-start justify-between gap-3 p-4" data-testid={`kpi-${item.key}`}>
+    <Card className="flex items-start justify-between gap-2 p-3" data-testid={`kpi-${item.key}`}>
       <div className="min-w-0">
-        <p className="text-meta leading-4 text-text-muted">{item.label}</p>
-        <p className="mt-1 text-[26px] font-semibold leading-8 text-text-primary text-tabular">
+        <p className="truncate text-[11px] leading-4 text-text-muted">{item.label}</p>
+        <p className="mt-0.5 text-[22px] font-semibold leading-7 text-text-primary text-tabular">
           {item.value}
         </p>
         {item.hint ? (
-          <p className="mt-0.5 truncate text-caption text-text-muted" title={item.hint}>
+          <p className="truncate text-[10px] leading-4 text-text-muted" title={item.hint}>
             {item.hint}
           </p>
         ) : null}
       </div>
       <span
         className={classNames(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-control",
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-control",
           TINTS[item.key],
         )}
         aria-hidden="true"
       >
-        <Icon name={ICONS[item.key]} size={16} />
+        <Icon name={ICONS[item.key]} size={14} />
       </span>
     </Card>
   );

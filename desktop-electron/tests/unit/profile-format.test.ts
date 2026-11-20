@@ -118,33 +118,36 @@ describe("profile helpers", () => {
     });
   });
 
-  it("builds membership metrics in the profile style", () => {
+  it("builds credits-first membership metrics in the profile style", () => {
     const licence: LicenseInfo = { monthly_song_quota: 120, songs_remaining: 76, wallet_balance: 400 };
     const metrics = membershipMetrics(me, stats, licence, 1);
     expect(metrics[0]).toMatchObject({ key: "profiles", label: "Profiles", value: "3 / 6", percent: 50 });
     expect(metrics[1]).toMatchObject({
-      key: "songs",
-      label: "Songs",
-      value: "76 remaining",
-      percent: 37,
+      key: "credits",
+      label: "Credits used",
+      value: "980 / 1,000",
+      percent: 98,
       tone: "sky",
     });
-    expect(membershipMetrics(me, { ...stats, songs_quota: null }, null, 1)[1].value).toBe("76 remaining");
-    expect(membershipMetrics(me, { ...stats, songs_remaining: null }, null, 1)[1].value).toBe("Not provided");
+    expect(membershipMetrics(me, null, null, 1)[1].value).toBe("Not provided");
   });
 
-  it("fills membership fields with wallet and expiry fallbacks", () => {
-    expect(membershipFields(me, stats, null)).toEqual([
+  it("fills membership fields from credits and lifetime counters", () => {
+    expect(membershipFields(me, stats)).toEqual([
       { label: "Credits balance", value: "320" },
-      { label: "Song quota", value: "120" },
-      { label: "Plan expiry", value: "Not provided" },
+      { label: "Credits spent", value: "980" },
+      { label: "Songs", value: "40" },
+      { label: "Images", value: "12" },
+      { label: "Videos", value: "3" },
+      { label: "YouTube uploads", value: "2" },
     ]);
-    expect(
-      membershipFields(me, stats, { wallet_balance: 410, expiration_date: "2026-12-31" }),
-    ).toEqual([
-      { label: "Credits balance", value: "410" },
-      { label: "Song quota", value: "120" },
-      { label: "Plan expiry", value: "Dec 31" },
+    expect(membershipFields(me, null).map((field) => field.value)).toEqual([
+      "320",
+      "--",
+      "--",
+      "--",
+      "--",
+      "--",
     ]);
     expect(planSubtitle("studio-yearly")).toBe("Annual plan");
     expect(planSubtitle("weekly")).toBe("Weekly plan");

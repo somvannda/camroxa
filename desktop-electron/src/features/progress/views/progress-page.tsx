@@ -269,7 +269,7 @@ export function ProgressPage() {
         description="Operational scan of active runs, failures and recovery actions."
       />
 
-      <div className="space-y-4 p-6">
+      <div className="space-y-3 p-5">
         <ProgressToolbar
           from={from}
           to={to}
@@ -323,80 +323,93 @@ export function ProgressPage() {
 
         <ProgressStatCards stats={stats} loading={feed.loading && !feed.data} />
 
-        <p className="text-caption text-text-muted" data-testid="progress-meta">
-          {metaLine(visibleRows.length, feed.rows.length, pendingDownloads, stage, limit)}
-        </p>
+        <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-3">
+            <p className="text-caption text-text-muted" data-testid="progress-meta">
+              {metaLine(visibleRows.length, feed.rows.length, pendingDownloads, stage, limit)}
+            </p>
 
-        {feed.error ? (
-          <ProgressErrorBanner
-            stale={stale}
-            lastLoadedLabel={clockLabel(feed.lastLoadedAt)}
-            onRetry={() => {
-              void feed.refresh();
-            }}
-          />
-        ) : null}
+            {feed.error ? (
+              <ProgressErrorBanner
+                stale={stale}
+                lastLoadedLabel={clockLabel(feed.lastLoadedAt)}
+                onRetry={() => {
+                  void feed.refresh();
+                }}
+              />
+            ) : null}
 
-        {notice ? (
-          <Card
-            className={
-              notice.tone === "danger"
-                ? "border-danger/30 bg-danger-soft px-4 py-2 text-body text-danger"
-                : notice.tone === "success"
-                  ? "border-success/30 bg-success-soft px-4 py-2 text-body text-success"
-                  : "border-warning/30 bg-warning-soft px-4 py-2 text-body text-warning"
-            }
-            role="status"
-          >
-            {notice.text}
-          </Card>
-        ) : null}
+            {notice ? (
+              <Card
+                className={
+                  notice.tone === "danger"
+                    ? "border-danger/30 bg-danger-soft px-4 py-2 text-body text-danger"
+                    : notice.tone === "success"
+                      ? "border-success/30 bg-success-soft px-4 py-2 text-body text-success"
+                      : "border-warning/30 bg-warning-soft px-4 py-2 text-body text-warning"
+                }
+                role="status"
+              >
+                {notice.text}
+              </Card>
+            ) : null}
 
-        <ProgressTable
-          rows={visibleRows}
-          loading={feed.loading}
-          selectedKey={selectedRow ? selectedKey : null}
-          manualMode={manualMode}
-          onSelect={(row) => setSelectedKey(rowKey(row) === selectedKey ? null : rowKey(row))}
-          onOpenExternal={(url) => {
-            void openExternal(url);
-          }}
-          onClearFilters={clearFilters}
-          uploadState={(key) => uploads.rowState(key)}
-          uploadingKey={uploads.active?.key ?? null}
-          onUpload={(row) => {
-            void uploads.openConfirm(row);
-          }}
-        />
+            <ProgressTable
+              rows={visibleRows}
+              loading={feed.loading}
+              selectedKey={selectedRow ? selectedKey : null}
+              manualMode={manualMode}
+              onSelect={(row) => setSelectedKey(rowKey(row) === selectedKey ? null : rowKey(row))}
+              onOpenExternal={(url) => {
+                void openExternal(url);
+              }}
+              onClearFilters={clearFilters}
+              uploadState={(key) => uploads.rowState(key)}
+              uploadingKey={uploads.active?.key ?? null}
+              onUpload={(row) => {
+                void uploads.openConfirm(row);
+              }}
+            />
+          </div>
 
-        {selectedRow ? (
-          <ProgressDetail
-            key={rowKey(selectedRow)}
-            row={selectedRow}
-            manualMode={manualMode}
-            inspection={manual.inspections[rowKey(selectedRow)]}
-            inspecting={Boolean(manual.inspecting[rowKey(selectedRow)])}
-            syncing={syncingBatch === (selectedRow.meta.batch_id || selectedRow.batch)}
-            onClose={() => setSelectedKey(null)}
-            onInspect={(row) => {
-              void manual.inspectRow(row);
-            }}
-            onOpenFolder={(path) => {
-              void runFolder(path);
-            }}
-            onReveal={(path) => {
-              void revealPath(path);
-            }}
-            onOpenExternal={(url) => {
-              void openExternal(url);
-            }}
-            onSyncManual={(row) => {
-              void syncManual(row);
-            }}
-            onRetryImage={retryImageStage}
-            youtubePanel={youtubePanelFor(selectedRow)}
-          />
-        ) : null}
+          <div className="space-y-3 2xl:sticky 2xl:top-3">
+            {selectedRow ? (
+              <ProgressDetail
+                key={rowKey(selectedRow)}
+                row={selectedRow}
+                manualMode={manualMode}
+                inspection={manual.inspections[rowKey(selectedRow)]}
+                inspecting={Boolean(manual.inspecting[rowKey(selectedRow)])}
+                syncing={syncingBatch === (selectedRow.meta.batch_id || selectedRow.batch)}
+                onClose={() => setSelectedKey(null)}
+                onInspect={(row) => {
+                  void manual.inspectRow(row);
+                }}
+                onOpenFolder={(path) => {
+                  void runFolder(path);
+                }}
+                onReveal={(path) => {
+                  void revealPath(path);
+                }}
+                onOpenExternal={(url) => {
+                  void openExternal(url);
+                }}
+                onSyncManual={(row) => {
+                  void syncManual(row);
+                }}
+                onRetryImage={retryImageStage}
+                youtubePanel={youtubePanelFor(selectedRow)}
+              />
+            ) : (
+              <Card className="p-4" data-testid="progress-detail-empty">
+                <p className="text-body font-medium text-text-primary">Select a run</p>
+                <p className="mt-1 text-meta text-text-secondary">
+                  Pick a row to see its stages, paths and recovery actions here.
+                </p>
+              </Card>
+            )}
+          </div>
+        </div>
 
         <YoutubeUploadDialog
           confirmation={uploads.confirmation}

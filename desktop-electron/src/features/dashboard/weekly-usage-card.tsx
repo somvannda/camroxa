@@ -1,11 +1,14 @@
 import { useId, useState } from "react";
 import { Card } from "../../components/card";
 import { classNames, formatCount } from "../../lib/format";
-import { CHART_PADDING, chartX, chartY, gridLineYs, seriesPoints } from "./chart";
+import { chartY, gridLineYs } from "./chart";
 import type { WeeklyDay } from "./dashboard-format";
 
 const WIDTH = 640;
-const HEIGHT = 220;
+const HEIGHT = 260;
+const AXIS_LEFT = 34;
+const PLOT_RIGHT = WIDTH - 12;
+const PLOT_PADDING = 18;
 const SERIES = [
   { key: "songs", label: "Songs", color: "var(--series-songs)" },
   { key: "images", label: "Images", color: "var(--series-images)" },
@@ -37,6 +40,24 @@ export function WeeklyUsageCard({ series, loading, hasError }: WeeklyUsageCardPr
     0,
     ...series.flatMap((day) => [day.songs, day.images, day.videos]),
   );
+  const scaleMax = Math.max(1, chartMax);
+
+  const plotX = (index: number): number =>
+    series.length <= 1
+      ? (AXIS_LEFT + PLOT_RIGHT) / 2
+      : AXIS_LEFT + (index * (PLOT_RIGHT - AXIS_LEFT)) / (series.length - 1);
+
+  const yTicks = gridLineYs(HEIGHT, PLOT_PADDING);
+  const gridLines =
+    scaleMax <= 5
+      ? Array.from({ length: scaleMax + 1 }, (_, index) => {
+          const value = scaleMax - index;
+          return { value, y: chartY(value, scaleMax, HEIGHT, PLOT_PADDING) };
+        })
+      : yTicks.map((y, index) => ({
+          y,
+          value: Math.round(scaleMax * (1 - index / (yTicks.length - 1))),
+        }));
 
   const active = hovered !== null ? series[hovered] : null;
   const readout = active
@@ -44,11 +65,11 @@ export function WeeklyUsageCard({ series, loading, hasError }: WeeklyUsageCardPr
     : "Hover or focus a day for values.";
 
   return (
-    <Card className="flex flex-col p-5" data-testid="weekly-usage">
+    <Card className="flex flex-col p-4" data-testid="weekly-usage">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-title font-semibold text-text-primary">Weekly Usage</h2>
-          <p className="mt-1 text-body text-text-secondary">
+          <p className="mt-0.5 text-meta text-text-secondary">
             Songs, images and videos generated over the recent 7-day window.
           </p>
         </div>
@@ -76,40 +97,49 @@ export function WeeklyUsageCard({ series, loading, hasError }: WeeklyUsageCardPr
 
       <div className="mt-4 flex-1">
         {loading ? (
-          <div className="h-[220px] rounded-control bg-surface-2" aria-hidden="true" />
+          <div className="h-[240px] rounded-control bg-surface-2" aria-hidden="true" />
         ) : hasError && series.length === 0 ? (
-          <div className="h-[220px]" aria-hidden="true" />
+          <div className="h-[240px]" aria-hidden="true" />
         ) : series.length === 0 ? (
-          <div className="flex h-[220px] items-center justify-center rounded-control border border-dashed border-border">
+          <div className="flex h-[240px] items-center justify-center rounded-control border border-dashed border-border">
             <p className="text-body text-text-secondary">No usage data available yet.</p>
           </div>
         ) : (
           <>
             <svg
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-              className="h-[220px] w-full"
+              className="h-[240px] w-full"
               role="img"
               aria-label={`Weekly usage chart: ${series.length} days, songs, images, and videos.`}
             >
-              {gridLineYs(HEIGHT).map((y) => (
-                <line
-                  key={y}
-                  x1={CHART_PADDING}
-                  x2={WIDTH - CHART_PADDING}
-                  y1={y}
-                  y2={y}
-                  stroke="var(--border)"
-                  strokeDasharray="4 6"
-                  strokeWidth={1}
-                />
+              {gridLines.map((line) => (
+                <g key={line.y}>
+                  <line
+                    x1={AXIS_LEFT}
+                    x2={PLOT_RIGHT}
+                    y1={line.y}
+                    y2={line.y}
+                    stroke="var(--border)"
+                    strokeDasharray="4 6"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={AXIS_LEFT - 6}
+                    y={line.y + 3}
+                    textAnchor="end"
+                    className="fill-[var(--text-muted)] text-[10px]"
+                  >
+                    {line.value}
+                  </text>
+                </g>
               ))}
 
               {hovered !== null ? (
                 <line
-                  x1={chartX(hovered, series.length, WIDTH)}
-                  x2={chartX(hovered, series.length, WIDTH)}
-                  y1={CHART_PADDING}
-                  y2={HEIGHT - CHART_PADDING}
+                  x1={plotX(hovered)}
+                  x2={plotX(hovered)}
+                  y1={PLOT_PADDING}
+                  y2={HEIGHT - PLOT_PADDING}
                   stroke="var(--border-strong)"
                   strokeDasharray="2 4"
                   strokeWidth={1}
@@ -118,24 +148,33 @@ export function WeeklyUsageCard({ series, loading, hasError }: WeeklyUsageCardPr
 
               {SERIES.map((entry) => {
                 const values = series.map((day) => day[entry.key]);
+                const points = values
+                  .map((value, index) => {
+                    const y = chartY(value, scaleMax, HEIGHT, PLOT_PADDING);
+                    return `${Math.round(plotX(index) * 100) / 100},${Math.round(y * 100) / 100}`;
+                  })
+                  .join(" ");
                 return (
                   <g key={entry.key}>
                     <polyline
-                      points={seriesPoints(values, WIDTH, HEIGHT, CHART_PADDING, chartMax)}
+                      points={points}
                       fill="none"
                       stroke={entry.color}
-                      strokeWidth={3}
+                      strokeWidth={2.5}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
-                    {hovered !== null ? (
+                    {values.map((value, index) => (
                       <circle
-                        cx={chartX(hovered, series.length, WIDTH)}
-                        cy={chartY(values[hovered], chartMax, HEIGHT)}
-                        r={3.5}
-                        fill={entry.color}
+                        key={`${entry.key}-${index}`}
+                        cx={plotX(index)}
+                        cy={chartY(value, scaleMax, HEIGHT, PLOT_PADDING)}
+                        r={hovered === index ? 4 : 2.5}
+                        fill="var(--surface-1)"
+                        stroke={entry.color}
+                        strokeWidth={2}
                       />
-                    ) : null}
+                    ))}
                   </g>
                 );
               })}
@@ -225,3 +264,4 @@ export function WeeklyUsageCard({ series, loading, hasError }: WeeklyUsageCardPr
     </Card>
   );
 }
+

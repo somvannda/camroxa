@@ -40,16 +40,16 @@ export function DashboardPage() {
         actions={stale ? <Badge tone="warning">Stale</Badge> : undefined}
       />
 
-      <div className="space-y-5 p-6">
+      <div className="space-y-4 p-5">
         {query.isError ? <DashboardErrorBanner /> : null}
 
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           {kpis.map((item) => (
             <KpiCard key={item.key} item={item} />
           ))}
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">
+        <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
           <WeeklyUsageCard series={series} loading={loading} hasError={query.isError} />
           <CreditBalanceCard position={position} />
         </div>
