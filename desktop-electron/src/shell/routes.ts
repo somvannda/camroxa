@@ -1,6 +1,7 @@
 export type ShellRouteKey =
   | "home"
   | "profile"
+  | "plan"
   | "progress"
   | "music"
   | "image"
@@ -24,7 +25,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     path: "/home",
     label: "Dashboard",
     phase: "P2",
-    description: "Usage, quota and recent activity at a glance.",
+    description: "Credits, generation output and recent activity at a glance.",
     icon: "fa-house",
   },
   {
@@ -32,8 +33,16 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     path: "/profile",
     label: "Profile",
     phase: "P2",
-    description: "Signed-in account, plan, credits, allowance and channel profiles.",
+    description: "Signed-in account, credits, usage and channel profiles.",
     icon: "fa-user",
+  },
+  {
+    key: "plan",
+    path: "/plan",
+    label: "Plan",
+    phase: "P10",
+    description: "Buy credit packs and review top-up history.",
+    icon: "fa-credit-card",
   },
   {
     key: "progress",

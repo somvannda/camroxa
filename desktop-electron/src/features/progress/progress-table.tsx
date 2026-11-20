@@ -10,13 +10,10 @@ import {
   imageCellText,
   localVideoState,
   musicCellText,
-  notesText,
   rowKey,
   runDateLabel,
   stageBadgeTone,
   stageLabel,
-  statusBadgeTone,
-  statusLabel,
   updatedCellText,
   youtubeCellText,
 } from "./progress-format";
@@ -25,16 +22,13 @@ import type { YoutubeUploadRowState } from "../../../electron/shared/types";
 
 const COLUMNS = [
   "Batch",
-  "Run date",
   "Channel",
-  "Status",
   "Music",
   "Image",
-  "Converter",
+  "Render",
   "Merge",
   "YouTube",
   "Stage",
-  "Notes",
   "Updated",
 ];
 
@@ -101,20 +95,17 @@ export function ProgressTable({
       </div>
 
       <div className="max-h-[560px] overflow-auto">
-        <table className="w-full min-w-[1100px] table-fixed border-collapse text-body">
+        <table className="w-full min-w-[980px] table-fixed border-collapse text-body">
           <colgroup>
+            <col className="w-[132px]" />
+            <col className="w-[120px]" />
             <col className="w-[100px]" />
-            <col className="w-[76px]" />
-            <col className="w-[100px]" />
+            <col className="w-[120px]" />
             <col className="w-[104px]" />
-            <col className="w-[84px]" />
-            <col className="w-[124px]" />
-            <col className="w-[96px]" />
-            <col className="w-[96px]" />
+            <col className="w-[104px]" />
+            <col className="w-[110px]" />
             <col className="w-[92px]" />
-            <col className="w-[74px]" />
-            <col className="w-[96px]" />
-            <col className="w-[74px]" />
+            <col className="w-[86px]" />
           </colgroup>
           <THead className="sticky top-0 z-10">
             <TR className="hover:bg-transparent">
@@ -147,7 +138,6 @@ export function ProgressTable({
               const video = localVideoState(row);
               const youtube = youtubeCellText(row);
               const updated = updatedCellText(row);
-              const note = notesText(row);
               const channel = channelCellText(row);
               return (
                 <TR
@@ -172,17 +162,13 @@ export function ProgressTable({
                     <span className="block truncate font-mono text-meta text-text-primary">
                       {row.batch || "Not reported"}
                     </span>
-                    {row.album ? <SubLine>{row.album}</SubLine> : null}
-                  </TD>
-                  <TD className="py-2 align-top font-mono text-meta">
-                    {runDateLabel(row.run_date)}
+                    <SubLine>
+                      {[runDateLabel(row.run_date), row.album].filter(Boolean).join(" · ")}
+                    </SubLine>
                   </TD>
                   <TD className="py-2 align-top">
                     <span className="block truncate">{channel.primary}</span>
                     {channel.secondary ? <SubLine>{channel.secondary}</SubLine> : null}
-                  </TD>
-                  <TD className="py-2 align-top">
-                    <Badge tone={statusBadgeTone(row.status)}>{statusLabel(row.status)}</Badge>
                   </TD>
                   <TD className="py-2 align-top">
                     <span className="block truncate">{music.primary}</span>
@@ -259,14 +245,6 @@ export function ProgressTable({
                   </TD>
                   <TD className="py-2 align-top">
                     <Badge tone={stageBadgeTone(row.stage)}>{stageLabel(row.stage)}</Badge>
-                  </TD>
-                  <TD className="py-2 align-top">
-                    <span
-                      className={classNames("block truncate", note ? "text-text-secondary" : "text-text-muted")}
-                      title={note ?? undefined}
-                    >
-                      {note ?? "—"}
-                    </span>
                   </TD>
                   <TD className="py-2 align-top font-mono text-meta">
                     <span title={updated.title ?? undefined}>{updated.primary}</span>

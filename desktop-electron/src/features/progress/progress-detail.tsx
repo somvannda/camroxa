@@ -426,7 +426,7 @@ export function ProgressDetail({
 
       {video.source === "none" ? (
         <p className="mt-3 text-caption text-text-muted">
-          Converter and merge have no local output or API value for this run.
+          Render and merge have no local output or API value for this run.
         </p>
       ) : null}
 

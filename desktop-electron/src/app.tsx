@@ -39,10 +39,14 @@ const SettingsPage = lazy(() =>
 const VizzyPage = lazy(() =>
   import("./features/vizzy/vizzy-page").then((module) => ({ default: module.VizzyPage })),
 );
+const PlanPage = lazy(() =>
+  import("./features/plan/plan-page").then((module) => ({ default: module.PlanPage })),
+);
 
 const IMPLEMENTED_ROUTES = new Set([
   "home",
   "profile",
+  "plan",
   "progress",
   "music",
   "image",
@@ -66,6 +70,7 @@ export function App() {
                 <Route index element={<Navigate to="/home" replace />} />
                 <Route path="/home" element={<DashboardPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/plan" element={<PlanPage />} />
                 <Route path="/progress" element={<ProgressPage />} />
                 <Route path="/music" element={<MusicPage />} />
                 <Route path="/image" element={<ImagePage />} />

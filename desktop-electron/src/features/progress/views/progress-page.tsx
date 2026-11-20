@@ -291,7 +291,7 @@ export function ProgressPage() {
 
         <div className="space-y-2">
           <p className="text-meta text-text-secondary">
-            Rows combine the API stage with the local converter and merge output available on this
+            Rows combine the API stage with the local render and merge output available on this
             device. Missing pipeline stages are named, not guessed.
           </p>
           <p className="text-meta text-text-secondary" data-testid="progress-summary">

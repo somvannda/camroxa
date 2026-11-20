@@ -1,5 +1,6 @@
 import logoUrl from "../assets/brand/camxora-logo.svg";
 import { Icon } from "../components/icon";
+import { NotificationsButton, UpdateButton } from "./notifications-button";
 
 function windowAction(action: "minimize" | "toggleMaximize" | "close"): void {
   void window.camxora?.window?.[action]?.();
@@ -14,6 +15,11 @@ export function TitleBar() {
       </div>
 
       <div className="no-drag flex items-center gap-4">
+        <div className="flex items-center gap-1">
+          <UpdateButton />
+          <NotificationsButton />
+        </div>
+        <span className="h-4 w-px bg-border" />
         <div className="flex items-center gap-1">
           <button
             className="flex h-7 w-8 items-center justify-center rounded-[6px] text-text-secondary hover:bg-surface-hover hover:text-text-primary"

@@ -34,7 +34,13 @@ export function ProfilePage() {
 
       <div className="space-y-4 p-5">
         <div className="grid items-start gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <AccountCard me={data?.me} loading={loading} hasError={query.isError} />
+          <AccountCard
+            me={data?.me}
+            loading={loading}
+            hasError={query.isError}
+            onTopUp={() => navigate("/plan")}
+            onManage={() => navigate("/settings")}
+          />
           <MembershipCard
             me={data?.me}
             stats={data?.stats}

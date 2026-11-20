@@ -824,7 +824,11 @@ export class VizzyHost {
     });
 
     void contents.loadURL(VIZZY_INDEX_URL).catch((error: unknown) => {
-      logger.error("vizzy load error", { error: String(error) });
+      const message = String(error);
+      // A reload or in-flight navigation aborts the previous load; that is not
+      // a failure and must not paint the red "could not be loaded" banner.
+      if (contents.isDestroyed() || message.includes("ERR_ABORTED")) return;
+      logger.error("vizzy load error", { error: message });
       this.update({ ready: false, error: "The Vizzy editor could not be loaded." });
     });
   }
@@ -906,6 +910,8 @@ export class VizzyHost {
     this.state = {
       ...this.state,
       ...patch,
+      // A transient navigation error must not survive the editor becoming ready.
+      ...(patch.ready === true && patch.error === undefined ? { error: null } : {}),
       path: patch.path !== undefined ? patch.path : (this.lastPath ?? this.state.path),
     };
     if (patch.ready === true && !wasReady) this.nudgeView();

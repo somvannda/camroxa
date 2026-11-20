@@ -182,8 +182,9 @@ download URL therefore never needs the session token.
 | Page | Status |
 |---|---|
 | Dashboard | Merged — credits-only KPIs, weekly chart, credit wallet, grouped activity, fixture E2E |
-| Profile | Merged, fixture E2E |
-| Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, polling, 200-row E2E; **Download queue** driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output); **manual YouTube upload** (confirm → resumable → report → link, cancel/retry, Auto-Upload still off) |
+| Profile | Merged, fixture E2E — identity, member since, role, desktop access, credits & usage, profiles, live activity |
+| Plan | **Merged** — credit packs, hosted checkout, top-up history |
+| Progress | **Merged** — filters, stats, 9-column table, right-hand detail, manual recovery, polling, 200-row E2E; **Download queue** driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output); **manual YouTube upload** (confirm → resumable → report → link, cancel/retry, Auto-Upload still off) |
 | Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; **Simple mode** (Description + Songs per batch only); “Render videos” queues the profile’s saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
@@ -221,6 +222,17 @@ shell chunk is ~333 kB (103 kB gzip).
 - Progress is denser (accent stat cards) and shows the selected run's detail in a sticky right
   column from 1536 px; below that it sits under the table so all twelve columns still fit at 1440.
 - Window: 1440×900 by default, minimum 1280×800.
+- Profile is identity + work, not repeated stats: member since, role, desktop access,
+  top-up/manage shortcuts, credits & usage, channel profiles, and a live activity feed.
+- New **Plan** page (`/plan`) lists credit packs from `/api/v3/topups/packs`, buys through
+  `/topups/purchase`, opens the hosted checkout, and shows top-up history. Added an
+  `apiVersion` option to the API bridge so v3-only routes work from the desktop.
+- Progress table is nine columns (Batch with date/album, Channel, Music, Image, Render, Merge,
+  YouTube, Stage, Updated); "Converter" is now "Render". Status/Notes live in the detail panel.
+- Notifications: toasts float top-right on an opaque card; the title bar has a bell with
+  unread count, history, mark-read and clear, plus an update button.
+- Vizzy clears stale load errors when the editor becomes ready and ignores aborted navigations,
+  so the red "could not be loaded" banner no longer appears after a successful load.
 
 - Local DB drift: `platform_db` had an `alembic_version` revision from a diverged checkout, so
   migrations 175-211 never ran and `/progress` 500ed on `batches.auto_upload_youtube`. The local

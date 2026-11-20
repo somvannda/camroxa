@@ -80,6 +80,14 @@ try {
   if (!hasProfile) {
     throw new Error("Profile page did not render");
   }
+  const headerActions = await window.locator('[data-testid="notifications-button"]').count();
+  const updateAction = await window.locator('[data-testid="update-button"]').count();
+  if (headerActions !== 1 || updateAction !== 1) {
+    throw new Error("Header actions did not render");
+  }
+  await window.locator('[data-testid="notifications-button"]').click();
+  await window.locator('[data-testid="notifications-panel"]').waitFor({ timeout: 3000 });
+  await window.screenshot({ path: path.join(artifacts, "notifications-panel.png") });
 } finally {
   await app.close();
 }

@@ -426,16 +426,13 @@ async function successWithManualRecovery() {
     const headers = await page.locator("thead th").allInnerTexts();
     for (const header of [
       "Batch",
-      "Run date",
       "Channel",
-      "Status",
       "Music",
       "Image",
-      "Converter",
+      "Render",
       "Merge",
       "YouTube",
       "Stage",
-      "Notes",
       "Updated",
     ]) {
       assert(headers.includes(header), `Missing column ${header}`);
@@ -513,7 +510,7 @@ async function successWithManualRecovery() {
     });
     assert(
       fit.scrollWidth <= fit.clientWidth + 1,
-      `All twelve columns must fit at 1440 (scroll ${fit.scrollWidth} vs ${fit.clientWidth})`,
+      `All nine columns must fit at 1440 (scroll ${fit.scrollWidth} vs ${fit.clientWidth})`,
     );
 
     // Failed row: stage retry stays disabled and explains why.

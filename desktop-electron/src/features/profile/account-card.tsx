@@ -1,5 +1,7 @@
 import { Card } from "../../components/card";
 import { Badge } from "../../components/status";
+import { Button } from "../../components/button";
+import { Icon } from "../../components/icon";
 import type { UserMe } from "../dashboard/account-types";
 import { accountInitials, accountName } from "./profile-format";
 
@@ -7,20 +9,31 @@ interface AccountCardProps {
   me: UserMe | null | undefined;
   loading: boolean;
   hasError: boolean;
+  onTopUp: () => void;
+  onManage: () => void;
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
       <dt className="text-caption text-text-muted">{label}</dt>
-      <dd className={mono ? "mt-0.5 truncate font-mono text-meta text-text-primary" : "mt-0.5 truncate text-body text-text-primary"}>
+      <dd className={mono ? "mt-0.5 truncate font-mono text-meta text-text-primary" : "mt-0.5 truncate text-meta text-text-primary"}>
         {value}
       </dd>
     </div>
   );
 }
 
-export function AccountCard({ me, loading, hasError }: AccountCardProps) {
+function memberSince(value: string | null | undefined): string {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(
+    date,
+  );
+}
+
+export function AccountCard({ me, loading, hasError, onTopUp, onManage }: AccountCardProps) {
   const verified = Boolean(me?.email_confirmed) && !hasError;
   const name = hasError ? "Loading account..." : loading ? "Loading account..." : accountName(me);
   const email = hasError
@@ -29,7 +42,6 @@ export function AccountCard({ me, loading, hasError }: AccountCardProps) {
       ? "Loading account email..."
       : me?.email?.trim() || "--";
   const userId = hasError || loading ? "--" : me?.id || "--";
-  const session = hasError ? "Needs attention" : "Active";
 
   return (
     <Card className="p-4" data-testid="profile-account">
@@ -48,10 +60,25 @@ export function AccountCard({ me, loading, hasError }: AccountCardProps) {
         </div>
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-4 border-t border-border pt-3">
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3">
         <Field label="User ID" value={userId} mono />
-        <Field label="Session" value={session} />
+        <Field label="Member since" value={loading || hasError ? "--" : memberSince(me?.created_at)} />
+        <Field label="Role" value={loading || hasError ? "--" : me?.role || "user"} />
+        <Field
+          label="Desktop access"
+          value={loading || hasError ? "--" : me?.desktop_access ? "Enabled" : "Not enabled"}
+        />
       </dl>
+
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+        <Button variant="secondary" className="h-8 px-3 text-caption" onClick={onTopUp}>
+          <Icon name="fa-credit-card" size={12} />
+          Top up credits
+        </Button>
+        <Button variant="ghost" className="h-8 px-3 text-caption" onClick={onManage}>
+          Manage profiles
+        </Button>
+      </div>
     </Card>
   );
 }

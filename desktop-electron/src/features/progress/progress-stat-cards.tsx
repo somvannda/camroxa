@@ -4,7 +4,7 @@ import type { ProgressStats } from "./progress-format";
 
 const CARDS = [
   { key: "active", label: "Active runs", testId: "progress-stat-active", accent: "var(--accent)" },
-  { key: "video", label: "Converter / merger", testId: "progress-stat-video", accent: "var(--info)" },
+  { key: "video", label: "Renders", testId: "progress-stat-video", accent: "var(--info)" },
   { key: "waiting", label: "Waiting on user", testId: "progress-stat-waiting", accent: "var(--warning)" },
   { key: "failed", label: "Failed / blocked", testId: "progress-stat-failed", accent: "var(--danger)" },
 ] as const;

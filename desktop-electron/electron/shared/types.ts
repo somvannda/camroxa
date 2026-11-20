@@ -5,6 +5,8 @@ export type ApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 export interface ApiRequest {
   method: ApiMethod;
   path: string;
+  /** API surface to call. Defaults to the desktop base (`/api/v1`). */
+  apiVersion?: "v1" | "v2" | "v3";
   query?: Record<string, string | number | boolean | undefined>;
   body?: unknown;
   auth?: boolean;

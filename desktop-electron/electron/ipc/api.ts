@@ -7,6 +7,7 @@ import { toError } from "./errors";
 const apiRequestSchema = z.object({
   method: z.enum(["GET", "POST", "PATCH", "PUT", "DELETE"]),
   path: z.string().min(1),
+  apiVersion: z.enum(["v1", "v2", "v3"]).optional(),
   query: z
     .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.undefined()]))
     .optional(),

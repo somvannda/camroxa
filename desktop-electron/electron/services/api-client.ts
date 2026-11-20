@@ -42,6 +42,13 @@ function apiBaseUrl(): string {
   );
 }
 
+/** Swap the trailing `/api/vN` when a route only exists on another surface. */
+function apiBaseUrlFor(version: ApiRequest["apiVersion"]): string {
+  const base = apiBaseUrl();
+  if (!version) return base;
+  return base.replace(/\/api\/v\d+$/, `/api/${version}`);
+}
+
 /** Public API origin used by update checks and other unauthenticated clients. */
 export function getApiBaseUrl(): string {
   return apiBaseUrl();
@@ -54,7 +61,7 @@ export function portalBaseUrl(): string {
 
 function buildUrl(request: ApiRequest): string {
   const path = request.path.startsWith("/") ? request.path : `/${request.path}`;
-  const url = new URL(`${apiBaseUrl()}${path}`);
+  const url = new URL(`${apiBaseUrlFor(request.apiVersion)}${path}`);
   for (const [key, value] of Object.entries(request.query ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value));
   }

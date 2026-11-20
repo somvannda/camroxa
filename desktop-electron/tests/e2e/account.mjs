@@ -216,6 +216,43 @@ async function dashboardSuccess() {
     "GET /stats/dashboard": (_request, response) => json(response, 200, STATS),
     "GET /profiles": (_request, response) => json(response, 200, PROFILES),
     "GET /licenses/validate": (_request, response) => json(response, 200, LICENSE),
+    "GET /topups/packs": (_request, response) =>
+      json(response, 200, {
+        packs: [
+          {
+            id: "pack-1",
+            slug: "small",
+            name: "Small Pack",
+            description: "",
+            total_credits: 1000,
+            price_cents: 500,
+            display_order: 1,
+            songs_equivalent: 100,
+          },
+          {
+            id: "pack-2",
+            slug: "medium",
+            name: "Medium Pack",
+            description: "",
+            total_credits: 2300,
+            price_cents: 1000,
+            display_order: 2,
+            songs_equivalent: 230,
+          },
+          {
+            id: "pack-3",
+            slug: "pro",
+            name: "Pro Pack",
+            description: "",
+            total_credits: 5500,
+            price_cents: 2000,
+            display_order: 3,
+            songs_equivalent: 550,
+          },
+        ],
+      }),
+    "GET /topups/history": (_request, response) =>
+      json(response, 200, { purchases: [], total: 0, limit: 12, offset: 0 }),
   });
 
   const { app, page } = await openApp("success", port);
@@ -257,6 +294,19 @@ async function dashboardSuccess() {
     const profileActivity = await page.locator('[data-testid="profile-activity"]').innerText();
     assert(profileActivity.includes("1,234"), "Activity counters missing");
     await capture(app, page, "profile-success");
+
+    await page.getByRole("link", { name: "Plan" }).click();
+    await page.getByRole("heading", { name: "Plan", exact: true }).waitFor({ timeout: 5000 });
+    await page.locator('[data-testid="plan-pack-small"]').waitFor({ timeout: 8000 });
+    assert(
+      (await page.locator('[data-testid^="plan-pack-"]').count()) === 3,
+      "Plan must render every credit pack",
+    );
+    const planText = await page.locator('[data-testid="plan-page"]').innerText();
+    assert(planText.includes("500") && planText.includes("Small Pack"), "Plan balance or pack missing");
+    assert(planText.includes("$5.00") && planText.includes("$20.00"), "Pack prices missing");
+    assert(planText.includes("No top-ups yet."), "Top-up history empty state missing");
+    await capture(app, page, "plan-success");
   } finally {
     await app.close();
     server.close();
