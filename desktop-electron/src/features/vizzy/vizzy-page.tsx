@@ -121,7 +121,6 @@ export function VizzyPage() {
         const response = await window.camxora.vizzy.saveTemplate({
           name: draft.name.trim(),
           kind: draft.kind,
-          bindings: draft.selection,
         });
         if (!response.ok) {
           setTemplateSaveError(response.error.message);

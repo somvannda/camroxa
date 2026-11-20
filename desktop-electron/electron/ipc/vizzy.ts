@@ -96,7 +96,8 @@ const saveTemplateSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     kind: z.enum(["long", "reel"]),
-    bindings: bindingSelectionSchema,
+    /** Optional legacy override; omitted means detect every binding automatically. */
+    bindings: bindingSelectionSchema.optional(),
   })
   .strict();
 
@@ -352,13 +353,20 @@ export function registerVizzyIpc(host: VizzyHost): void {
       const width = numberOf(project.width, 1920);
       const height = numberOf(project.height, 1080);
       const options = collectBindingOptions(source.snapshot as ProjectSnapshot);
-      const fieldErrors = validateBindingSelection(options, input.bindings);
+      const fieldErrors = input.bindings
+        ? validateBindingSelection(options, input.bindings)
+        : {};
       const kindError = kindAspectError(input.kind, width, height);
       const firstError = kindError ?? firstBindingError(fieldErrors);
       if (firstError) {
         return fail("TEMPLATE_INVALID", firstError, { fields: fieldErrors, kind: kindError });
       }
-      const bindings = bindingsFromSelection(input.bindings as BindingSelection);
+      // No selection in the dialog: save every detected binding, including all
+      // palette nodes. The contract keeps `nodeIds` so a design can recolor more
+      // than one effect from the same palette.
+      const bindings = input.bindings
+        ? bindingsFromSelection(input.bindings as BindingSelection)
+        : detectBindings(source.snapshot as ProjectSnapshot);
       const saved = saveVideoTemplate({
         root: getAppPaths().templates,
         name: input.name,

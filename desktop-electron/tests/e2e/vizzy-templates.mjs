@@ -41,12 +41,6 @@ function fail(message) {
   throw new Error(message);
 }
 
-async function chooseOption(scope, target, value) {
-  const trigger = typeof target === "string" ? scope.locator(target) : target;
-  await trigger.click();
-  await scope.locator(`[data-value="${value}"]`).click();
-}
-
 function step(name) {  process.stdout.write(`[vizzy-templates] ${name}\n`);
 }
 
@@ -230,7 +224,7 @@ try {
   const fixtureJson = fs.readFileSync(fixture, "utf8");
   step("fixture opened");
 
-  // --- Save dialog: detection, duplicate guard, then save -----------------
+  // --- Save dialog: everything is automatic; only name/kind are chosen ------
   await window.getByTestId("vizzy-template-open").click();
   const dialog = window.getByTestId("vizzy-template-dialog");
   await dialog.waitFor({ timeout: 20_000 });
@@ -242,41 +236,16 @@ try {
   if (!outputText.includes("1920") || !outputText.includes("1080") || !outputText.includes("30 fps")) {
     fail(`Unexpected output summary: ${outputText}`);
   }
-  const audioText = await window.getByTestId("vizzy-template-audio").innerText();
-  if (!/run track replaces project audio/i.test(audioText)) {
-    fail(`Unexpected audio binding copy: ${audioText}`);
+  const saveCopy = await window.getByTestId("vizzy-template-audio").innerText();
+  if (!/everything is saved/i.test(saveCopy) || !/spectrum/i.test(saveCopy) || !/particles/i.test(saveCopy)) {
+    fail(`Save dialog must say the whole composition is saved: ${saveCopy}`);
   }
-  const backgroundSelect = window.getByTestId("vizzy-template-binding-background");
-  await backgroundSelect.click();
-  const backgroundItems = window.locator("[data-value]");
-  if ((await backgroundItems.count()) < 2) {
-    fail("Background select has no detected node option");
+  if ((await window.getByTestId("vizzy-template-advanced").count()) !== 0) {
+    fail("Save dialog must not ask for node selections");
   }
-  const mediaNodeId = await backgroundItems.nth(1).getAttribute("data-value");
-  await backgroundItems.nth(1).click();
-  const paletteText = await window.getByTestId("vizzy-template-binding-palette").innerText();
-  if (!paletteText.trim() || /— none —/i.test(paletteText)) {
-    fail("The palette binding was not detected");
-  }
+
   await window.getByTestId("vizzy-template-name").fill(TEMPLATE_NAME);
   await window.screenshot({ path: path.join(artifacts, "save-dialog.png") });
-
-  // Duplicate: the same media node cannot be background and logo.
-  if (!mediaNodeId) fail("Could not read the media node id");
-  await backgroundSelect.click();
-  await window.locator(`[data-value="${mediaNodeId}"]`).click();
-  await chooseOption(window, window.getByTestId("vizzy-template-binding-logo"), mediaNodeId);
-  await window.getByTestId("vizzy-template-error-logo").waitFor({ timeout: 5_000 });
-  const duplicateMessage = await window.getByTestId("vizzy-template-error-logo").innerText();
-  if (!/already bound/i.test(duplicateMessage)) {
-    fail(`Expected a duplicate-binding error, got: ${duplicateMessage}`);
-  }
-  const saveDisabled = await window.getByTestId("vizzy-template-save").isDisabled();
-  if (!saveDisabled) fail("Save must be blocked while a duplicate binding is selected");
-
-  // Compatible selection: clear the logo, keep the background override.
-  await chooseOption(window, window.getByTestId("vizzy-template-binding-logo"), "");
-  await window.getByTestId("vizzy-template-error-logo").waitFor({ state: "detached", timeout: 5_000 });
   await window.getByTestId("vizzy-template-save").click();
   await dialog.waitFor({ state: "detached", timeout: 30_000 });
   step("template saved");
@@ -301,10 +270,12 @@ try {
   if (pipeline.kind !== "long" || pipeline.output.width !== 1920 || pipeline.output.height !== 1080) {
     fail(`Unexpected pipeline output: ${JSON.stringify(pipeline.output)}`);
   }
-  if (pipeline.bindings.background?.nodeId !== mediaNodeId) {
-    fail(`Background override not saved: ${JSON.stringify(pipeline.bindings.background)}`);
+  if (pipeline.bindings.background?.nodeId !== "node_mwn7736t2") {
+    fail(`Background binding not auto-detected: ${JSON.stringify(pipeline.bindings.background)}`);
   }
-  if (!pipeline.bindings.palette?.nodeIds?.length) fail("Palette binding not saved");
+  if (!pipeline.bindings.palette?.nodeIds?.includes("node_mwn7736u4")) {
+    fail(`Palette binding not auto-detected: ${JSON.stringify(pipeline.bindings.palette)}`);
+  }
   step("template files verified");
 
   // --- Templates rail -----------------------------------------------------

@@ -244,7 +244,8 @@ export interface VizzyTemplateDraftInfo {
 export interface VizzySaveTemplateInput {
   name: string;
   kind: "long" | "reel";
-  bindings: BindingSelection;
+  /** Omitted: the host saves every detected binding automatically. */
+  bindings?: BindingSelection;
 }
 
 /** `vizzy:render-template` — one saved template rendered with a real track. */

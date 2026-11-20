@@ -4,18 +4,9 @@ import { Dialog, DialogContent } from "../../components/dialog";
 import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
 import { Select } from "../../components/select";
-import {
-  PIPELINE_BINDING_FIELDS,
-  PIPELINE_FIELD_LABELS,
-  type BindingSelection,
-  type PipelineBindingField,
-  type PipelineKind,
-} from "../../../electron/shared/pipeline";
+import type { PipelineKind } from "../../../electron/shared/pipeline";
 import type { VizzyTemplateDraftInfo } from "../../../electron/shared/types";
-import {
-  templateDraftErrors,
-  type TemplateDraftState,
-} from "./vizzy-template-model";
+import { templateDraftErrors, type TemplateDraftState } from "./vizzy-template-model";
 
 export interface VizzyTemplateDialogProps {
   open: boolean;
@@ -29,12 +20,15 @@ export interface VizzyTemplateDialogProps {
 }
 
 /**
- * "Save as video template": capture the exact preview plus the bindings the
- * pipeline may rebind for each run.
+ * "Save as video template": one click saves the exact preview.
  *
- * It is a modal dialog rather than a rail because it is a one-shot decision.
- * The page hides the native editor view while it is open (a `WebContentsView`
- * always paints above shell DOM) and restores it on close.
+ * There is no per-node selection. The whole snapshot (layers, objects, effects,
+ * analyzers, automations, media, assets) is written by the host; at render time
+ * it only replaces the run audio and the nodes it can detect automatically
+ * (background, title, artist, album, palette).
+ *
+ * The page hides the native editor view while the modal is open because a
+ * `WebContentsView` always paints above shell DOM.
  */
 export function VizzyTemplateDialog({
   open,
@@ -48,29 +42,18 @@ export function VizzyTemplateDialog({
 }: VizzyTemplateDialogProps) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<PipelineKind>("long");
-  const [selection, setSelection] = useState<BindingSelection>({
-    background: "",
-    logo: "",
-    title: "",
-    artist: "",
-    album: "",
-    palette: "",
-  });
 
   useEffect(() => {
     if (!info) return;
     setName(info.name);
     setKind(info.kind);
-    setSelection({ ...info.detected });
   }, [info]);
 
-  const draft: TemplateDraftState = { name, kind, selection };
-  const errors = info ? templateDraftErrors(info, draft, name) : null;
-  const canSave = Boolean(info && errors && !errors.summary && !saving && !loading);
-
-  const updateBinding = (field: PipelineBindingField, value: string): void => {
-    setSelection((current) => ({ ...current, [field]: value }));
-  };
+  const draft: TemplateDraftState | null = info
+    ? { name, kind, selection: info.detected }
+    : null;
+  const errors = info && draft ? templateDraftErrors(info, draft, name) : null;
+  const canSave = Boolean(info && draft && errors && !errors.summary && !saving && !loading);
 
   return (
     <Dialog
@@ -82,8 +65,8 @@ export function VizzyTemplateDialog({
       {open ? (
         <DialogContent
           title="Save as video template"
-          description="The pipeline renders this exact project with the run audio. Choose which nodes it may rebind."
-          className="max-w-xl"
+          description="Saves everything in this composition. No node selection is needed."
+          className="max-w-lg"
         >
           <div className="space-y-3" data-testid="vizzy-template-dialog">
             {loading ? (
@@ -95,7 +78,7 @@ export function VizzyTemplateDialog({
               <p className="text-body-sm text-danger" role="alert" data-testid="vizzy-template-load-error">
                 {loadError}
               </p>
-            ) : info ? (
+            ) : info && draft ? (
               <>
                 <div className="grid grid-cols-[1fr_150px] gap-3">
                   <label className="block space-y-1">
@@ -127,51 +110,15 @@ export function VizzyTemplateDialog({
                 </p>
 
                 <div className="space-y-2 rounded-control border border-border bg-surface-2 p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-24 shrink-0 text-body-sm text-text-secondary">Audio</span>
-                    <span className="text-body-sm text-text-primary" data-testid="vizzy-template-audio">
-                      Run track replaces project audio
-                    </span>
-                    <span className="ml-auto text-caption text-text-muted">required</span>
-                  </div>
-
-                  {PIPELINE_BINDING_FIELDS.map((field) => {
-                    const options = info.options[field];
-                    const message = errors?.fields[field];
-                    return (
-                      <div key={field}>
-                        <div className="flex items-center gap-2">
-                          <span className="w-24 shrink-0 text-body-sm text-text-secondary">
-                            {PIPELINE_FIELD_LABELS[field]}
-                          </span>
-                          <Select
-                            value={selection[field]}
-                            invalid={Boolean(message)}
-                            options={[
-                              { value: "", label: "— none —" },
-                              ...options.map((option) => ({
-                                value: option.nodeId,
-                                label: `${option.label} · ${option.detail}`,
-                              })),
-                            ]}
-                            onValueChange={(value) => updateBinding(field, value)}
-                            aria-label={PIPELINE_FIELD_LABELS[field]}
-                            wrapperClassName="min-w-0 flex-1"
-                            data-testid={`vizzy-template-binding-${field}`}
-                          />
-                        </div>
-                        {message ? (
-                          <p
-                            className="pl-[104px] text-caption text-danger"
-                            role="alert"
-                            data-testid={`vizzy-template-error-${field}`}
-                          >
-                            {message}
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                  <p className="text-body-sm text-text-primary" data-testid="vizzy-template-audio">
+                    Everything is saved: layers, objects, effects, spectrum, particles, analyzers,
+                    automations, media and assets.
+                  </p>
+                  <p className="text-caption text-text-muted">
+                    Per song, the pipeline only replaces the run audio and fills the detected
+                    background, title, artist, album and palette nodes. Nodes that are not detected
+                    stay exactly as designed.
+                  </p>
                 </div>
 
                 {errors?.summary ? (

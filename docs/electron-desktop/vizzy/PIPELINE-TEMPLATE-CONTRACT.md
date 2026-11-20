@@ -28,7 +28,7 @@ migrated in 2.0.0.
 
 | Step | Mechanism |
 |---|---|
-| Save | Vizzy strip → **Save as video template** → `vizzy:template-options` (live `readSnapshot()` + `detectBindings()` + compatible node lists) → modal → `vizzy:save-template` (shell-only, zod) → host re-reads the live snapshot, captures `webContents.capturePage()` as `thumbnail.png`, validates the user's bindings and writes `template.json` + `pipeline.json` + `thumbnail.png` **atomically** through `saveVideoTemplate()`. |
+| Save | Vizzy strip → **Save as video template** → `vizzy:template-options` (live `readSnapshot()` + `detectBindings()`) → modal with name/kind only → `vizzy:save-template` (shell-only, zod) → host re-reads the live snapshot, captures `webContents.capturePage()` as `thumbnail.png`, auto-detects every binding (including all palette nodes) and writes `template.json` + `pipeline.json` + `thumbnail.png` **atomically** through `saveVideoTemplate()`. |
 | List / manage | **Templates** rail in Vizzy: thumbnail, name, kind, output size, created date. Preview loads the saved `template.json` into the editor with `vizzy:open-project-json` (no re-creation). Delete is confirmed and emits `video-templates:changed`, which refreshes the rail and the Settings query. |
 | Library | **Library** in the Templates rail runs the editor's own `editorOpenCreations()`; the staged 91-template pack is served from `CAMXORA_VIZZY_LIBRARY_DIR` → `resolveLibraryRoot()` by the `camxora-vizzy://` handler. |
 | Render | Templates rail **Render** → `window.camxora.files.pick` → `vizzy:render-template` → `buildPipelineRenderPlan()` applies the run bindings to the saved project, `openProjectJson()` loads it, `loadAudioTrack()` streams the run file over `camxora-media://` into the editor's own loader, then the existing `exportVideo()` path renders `renders/<template-slug>-<timestamp>.mp4` with progress. |
@@ -99,8 +99,8 @@ templates/<template-id>/
 
 ## 3. Auto-detection
 
-The save dialog pre-fills bindings from the project. Detection is conservative; the user
-confirms or overrides.
+The host detects bindings automatically when the template is saved. The dialog does not ask the
+user to select nodes; it only asks for a name and long/reel kind.
 
 | Input | Detection order |
 |---|---|
@@ -129,13 +129,10 @@ Rules:
 │ Save as video template                                       │
 │ Name: [ Night Drive — Long ]     Kind: [ Long ▼ ]            │
 │                                                              │
-│ Audio       [ audio-track        ▼ ]  required               │
-│ Background  [ media-background   ▼ ]  fit [ Cover ▼ ]        │
-│ Logo        [ media-logo         ▼ ]  [x] circle mask        │
-│ Title       [ text-title         ▼ ]  max [80] overflow ...  │
-│ Artist      [ — none —           ▼ ]                         │
-│ Album       [ text-album         ▼ ]                         │
-│ Palette     [ spectrum-main      ▼ ]  accent                 │
+│ Everything is saved: layers, objects, effects, spectrum,     │
+│ particles, analyzers, automations, media and assets.         │
+│                                                              │
+│ Per song, only the run audio and detected nodes are filled.  │
 │                                                              │
 │ Output: 1920 × 1080 · 30 fps · duration = audio              │
 │ [ Cancel ]                              [ Save template ]    │
@@ -145,11 +142,11 @@ Rules:
 - Defaults come from the project resolution; the kind determines long vs reel.
 - The save writes atomically (`template.json` + `pipeline.json` + thumbnail).
 - The dialog blocks a name/aspect mismatch (`Long` requires landscape, `Reel` portrait; square
-  projects may use either), a duplicate node and an incompatible node with a field-level error.
+  projects may use either).
 - The native editor view is hidden while the modal is open (a `WebContentsView` paints above
   shell DOM) and re-shown for the thumbnail capture and after close.
-- Detection is a pre-fill, not a policy: every optional binding can be cleared or overridden
-  before saving, and the host re-validates the selection against the live snapshot.
+- Every binding is auto-detected and saved, including every palette node. There is no per-node
+  selector; a node that is not detected stays exactly as designed.
 - "Save as new" is the default behaviour: each save gets a unique slug id, so an existing
   template is never overwritten.
 
@@ -262,7 +259,7 @@ open.
 ## 9. Implementation checklist
 
 - [x] `pipeline.json` schema + Zod validation
-- [x] Save dialog with auto-detection and overrides
+- [x] Save dialog saves the whole snapshot with automatic bindings (no node selection)
 - [x] Atomic write + thumbnail
 - [x] Template library entry with kind and bindings
 - [x] Profile Video/Reel pickers read saved templates (Publication)
