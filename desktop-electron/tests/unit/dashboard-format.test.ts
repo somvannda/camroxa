@@ -17,6 +17,7 @@ import {
   chartX,
   chartY,
   gridLineYs,
+  monotonePath,
   seriesPoints,
   CHART_PADDING,
 } from "../../src/features/dashboard/chart";
@@ -184,5 +185,24 @@ describe("chart geometry", () => {
     expect(lines).toHaveLength(4);
     expect(lines[0]).toBe(20);
     expect(lines[3]).toBe(200);
+  });
+
+  it("builds a monotone cubic path that starts at the first point", () => {
+    const path = monotonePath(
+      [
+        { x: 0, y: 100 },
+        { x: 50, y: 100 },
+        { x: 100, y: 20 },
+      ],
+      10,
+      110,
+    );
+    expect(path.startsWith("M 0 100")).toBe(true);
+    expect(path).toContain(" C ");
+    expect(path).toContain("100 20");
+    expect(path).not.toContain("NaN");
+    // A flat run into a spike must not dip above the first point.
+    expect(monotonePath([{ x: 0, y: 100 }])).toBe("M 0 100");
+    expect(monotonePath([])).toBe("");
   });
 });

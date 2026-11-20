@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/icon";
+import { Select } from "../../components/select";
 import { classNames } from "../../lib/format";
 import { bytesToDataUrl } from "./image-model";
 
@@ -95,18 +96,19 @@ export function ImagePreviewCard({
           <label className="text-caption text-text-muted" htmlFor={`${testId}-source`}>
             Source
           </label>
-          <select
+          <Select
             id={`${testId}-source`}
+            controlSize="sm"
             value={sourceValue}
             onChange={(event) => onSourceChange(event.target.value)}
-            className="h-7 min-w-0 flex-1 rounded-control border border-border bg-surface-1 px-2 text-caption text-text-primary focus:border-accent focus:outline-none"
+            wrapperClassName="flex-1"
           >
             {sourceOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       ) : null}
       <div className="relative flex h-[236px] items-center justify-center bg-surface-2">

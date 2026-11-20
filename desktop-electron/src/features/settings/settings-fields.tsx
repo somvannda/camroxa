@@ -7,9 +7,11 @@ import type {
 import { useId } from "react";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
+import { Checkbox } from "../../components/checkbox";
 import { Dialog, DialogContent } from "../../components/dialog";
 import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
+import { Select } from "../../components/select";
 import { classNames } from "../../lib/format";
 
 /** Shared Settings form primitives. Tokens only; no page-specific styling. */
@@ -158,15 +160,7 @@ export function SelectInput({
   const fieldId = id ?? autoId;
   return (
     <Field label={label} htmlFor={fieldId} hint={hint} error={error}>
-      <select
-        id={fieldId}
-        className={classNames(
-          "h-8 w-full rounded-control border border-border bg-surface-1 px-2.5 text-body text-text-primary focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-          error ? "border-danger" : undefined,
-        )}
-        aria-invalid={error ? true : undefined}
-        {...props}
-      >
+      <Select id={fieldId} invalid={Boolean(error)} {...props}>
         {placeholder ? (
           <option value="">{placeholder}</option>
         ) : null}
@@ -175,7 +169,7 @@ export function SelectInput({
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
     </Field>
   );
 }
@@ -227,16 +221,7 @@ export function CheckboxInput({
   const fieldId = id ?? autoId;
   return (
     <div>
-      <label className="flex cursor-pointer items-center gap-2 text-body text-text-primary" htmlFor={fieldId}>
-        <input
-          id={fieldId}
-          type="checkbox"
-          className="h-4 w-4 rounded border-border bg-surface-1 accent-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
-          {...props}
-        />
-        {label}
-      </label>
-      {hint ? <p className="mt-1 pl-6 text-caption text-text-muted">{hint}</p> : null}
+      <Checkbox id={fieldId} label={label} hint={hint} {...props} />
     </div>
   );
 }

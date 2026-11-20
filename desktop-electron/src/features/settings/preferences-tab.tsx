@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "../../components/button";
 import { Icon } from "../../components/icon";
+import { Range } from "../../components/range";
 import { Badge, StatusDot } from "../../components/status";
 import { toast } from "../../components/toast";
 import { openExternal } from "../auth/portal";
@@ -391,15 +392,14 @@ export function PreferencesTab({ workspace }: { workspace: SettingsWorkspace }) 
             Style strength
           </label>
           <div className="flex items-center gap-3">
-            <input
+            <Range
               id="settings-preferences-style"
-              type="range"
               min={0}
               max={100}
               step={1}
               value={draft.styleStrength}
               disabled={busy}
-              className="h-4 w-full accent-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full"
               onChange={(event) => ws.updatePreferences({ styleStrength: Number(event.target.value) })}
             />
             <span className="w-14 shrink-0 text-right font-mono text-meta text-text-primary text-tabular">

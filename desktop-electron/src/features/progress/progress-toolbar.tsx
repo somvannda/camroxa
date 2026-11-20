@@ -1,12 +1,10 @@
 import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
+import { Checkbox } from "../../components/checkbox";
+import { Field } from "../../components/field";
 import { Input } from "../../components/input";
-import { classNames } from "../../lib/format";
-import {
-  LIMIT_OPTIONS,
-  STAGE_FILTERS,
-  type StageFilter,
-} from "./progress-format";
+import { Select } from "../../components/select";
+import { LIMIT_OPTIONS, STAGE_FILTERS, type StageFilter } from "./progress-format";
 
 interface ProgressToolbarProps {
   from: string;
@@ -24,9 +22,6 @@ interface ProgressToolbarProps {
   onStageChange: (value: StageFilter) => void;
   onRefresh: () => void;
 }
-
-const selectClass =
-  "h-8 rounded-control border border-border bg-surface-1 px-2 text-body text-text-primary focus:border-accent focus:outline-none disabled:opacity-40";
 
 function lastUpdatedLabel(value: number | null): string | null {
   if (!value) return null;
@@ -57,42 +52,38 @@ export function ProgressToolbar({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-caption text-text-muted">From</span>
+        <Field label="From" className="w-[144px]">
           <Input
             type="date"
-            className="w-[144px]"
+            controlSize="md"
+            className="text-tabular"
             value={from}
             max={to || undefined}
             onChange={(event) => onFromChange(event.target.value)}
             data-testid="progress-from"
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-caption text-text-muted">To</span>
+        </Field>
+        <Field label="To" className="w-[144px]">
           <Input
             type="date"
-            className="w-[144px]"
+            controlSize="md"
+            className="text-tabular"
             value={to}
             min={from || undefined}
             onChange={(event) => onToChange(event.target.value)}
             data-testid="progress-to"
           />
-        </label>
-        <label className="flex h-8 shrink-0 items-center gap-2 text-body text-text-secondary">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded-[4px] border border-border-strong bg-surface-1 accent-accent"
+        </Field>
+        <div className="flex h-8 shrink-0 items-center">
+          <Checkbox
+            label="Active only"
             checked={activeOnly}
             onChange={(event) => onActiveOnlyChange(event.target.checked)}
             data-testid="progress-active"
           />
-          Active only
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-caption text-text-muted">Limit</span>
-          <select
-            className={classNames(selectClass, "w-[88px]")}
+        </div>
+        <Field label="Limit" className="w-[88px]">
+          <Select
             value={limit}
             onChange={(event) => onLimitChange(Number(event.target.value))}
             data-testid="progress-limit"
@@ -102,12 +93,10 @@ export function ProgressToolbar({
                 {option}
               </option>
             ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-caption text-text-muted">Stage</span>
-          <select
-            className={classNames(selectClass, "w-[132px]")}
+          </Select>
+        </Field>
+        <Field label="Stage" className="w-[132px]">
+          <Select
             value={stage}
             onChange={(event) => onStageChange(event.target.value as StageFilter)}
             data-testid="progress-stage"
@@ -117,8 +106,8 @@ export function ProgressToolbar({
                 {option.label}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
         <Button
           variant="secondary"
           onClick={onRefresh}

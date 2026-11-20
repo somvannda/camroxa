@@ -233,6 +233,11 @@ shell chunk is ~333 kB (103 kB gzip).
   unread count, history, mark-read and clear, plus an update button.
 - Vizzy clears stale load errors when the editor becomes ready and ignores aborted navigations,
   so the red "could not be loaded" banner no longer appears after a successful load.
+- Weekly Usage now draws monotone cubic curves (no square steps, no zero overshoot) with the same
+  labelled axis and point markers.
+- Shared control primitives (`Field`, `Input`, `Select`, `Checkbox`, `Range`) now back Music,
+  Settings, Progress, Image and the Vizzy export menu, so heights, focus rings and disabled
+  states match everywhere.
 
 - Local DB drift: `platform_db` had an `alembic_version` revision from a diverged checkout, so
   migrations 175-211 never ran and `/progress` 500ed on `batches.auto_upload_youtube`. The local

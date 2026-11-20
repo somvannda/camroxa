@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../../components/button";
 import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
+import { Select } from "../../components/select";
 import { classNames } from "../../lib/format";
 import type {
   VizzyExportProgress,
@@ -9,9 +10,6 @@ import type {
   VizzyExportSettingsInput,
 } from "../../../electron/shared/types";
 import { formatBytes, formatDuration } from "./vizzy-format";
-
-const selectClass =
-  "h-8 w-full rounded-control border border-border bg-surface-1 px-2 text-body-sm text-text-primary focus:border-accent focus:outline-none disabled:opacity-40";
 
 const PRESETS: Array<{ label: string; width: number; height: number }> = [
   { label: "1080p · 1920×1080", width: 1920, height: 1080 },
@@ -187,8 +185,7 @@ export function VizzyExportMenu({
 
             <label className="block space-y-1">
               <span className="text-caption text-text-muted">Resolution</span>
-              <select
-                className={selectClass}
+              <Select
                 value={presetValue(widthNumber, heightNumber)}
                 onChange={(event) => {
                   const preset = PRESETS.find(
@@ -211,7 +208,7 @@ export function VizzyExportMenu({
                     {Number.isFinite(heightNumber) ? heightNumber : "?"}
                   </option>
                 ) : null}
-              </select>
+              </Select>
             </label>
 
             <div className="grid grid-cols-2 gap-2">
@@ -244,8 +241,7 @@ export function VizzyExportMenu({
             <div className="grid grid-cols-2 gap-2">
               <label className="block space-y-1">
                 <span className="text-caption text-text-muted">Frame rate</span>
-                <select
-                  className={selectClass}
+                <Select
                   value={fps}
                   onChange={(event) => setFps(event.target.value)}
                   data-testid="vizzy-export-fps"
@@ -253,19 +249,18 @@ export function VizzyExportMenu({
                   <option value="24">24 fps</option>
                   <option value="30">30 fps</option>
                   <option value="60">60 fps</option>
-                </select>
+                </Select>
               </label>
               <label className="block space-y-1">
                 <span className="text-caption text-text-muted">Format</span>
-                <select
-                  className={selectClass}
+                <Select
                   value={format}
                   onChange={(event) => setFormat(event.target.value === "webm" ? "webm" : "mp4")}
                   data-testid="vizzy-export-format"
                 >
                   <option value="mp4">MP4 · H.264</option>
                   <option value="webm">WebM · VP9</option>
-                </select>
+                </Select>
               </label>
             </div>
 

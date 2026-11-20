@@ -65,3 +65,65 @@ export function gridLineYs(
   }
   return lines;
 }
+
+export interface ChartPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * Monotone cubic path (Fritsch–Carlson tangents).
+ *
+ * Unlike a Catmull-Rom curve it never overshoots the data, so a zero day stays
+ * on the baseline and a spike cannot dip below it. Control points are clamped
+ * to the plot so a steep edge cannot paint outside the card either.
+ */
+export function monotonePath(points: ChartPoint[], minY?: number, maxY?: number): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${round(points[0].x)} ${round(points[0].y)}`;
+
+  const n = points.length;
+  const dx: number[] = [];
+  const slopes: number[] = [];
+  for (let index = 0; index < n - 1; index += 1) {
+    const width = points[index + 1].x - points[index].x;
+    dx.push(width);
+    slopes.push(width === 0 ? 0 : (points[index + 1].y - points[index].y) / width);
+  }
+
+  const tangents: number[] = new Array(n).fill(0);
+  tangents[0] = slopes[0];
+  tangents[n - 1] = slopes[n - 2];
+  for (let index = 1; index < n - 1; index += 1) {
+    const previous = slopes[index - 1];
+    const next = slopes[index];
+    if (previous * next <= 0) {
+      tangents[index] = 0;
+      continue;
+    }
+    const widthBack = dx[index - 1];
+    const widthForward = dx[index];
+    const w1 = 2 * widthForward + widthBack;
+    const w2 = widthForward + 2 * widthBack;
+    tangents[index] = (w1 + w2) / (w1 / previous + w2 / next);
+  }
+
+  const clamp = (value: number): number => {
+    if (minY !== undefined && maxY !== undefined) {
+      return Math.max(minY, Math.min(maxY, value));
+    }
+    return value;
+  };
+
+  let path = `M ${round(points[0].x)} ${round(points[0].y)}`;
+  for (let index = 0; index < n - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const c1x = start.x + dx[index] / 3;
+    const c1y = clamp(start.y + (tangents[index] * dx[index]) / 3);
+    const c2x = end.x - dx[index] / 3;
+    const c2y = clamp(end.y - (tangents[index + 1] * dx[index]) / 3);
+    path += ` C ${round(c1x)} ${round(c1y)}, ${round(c2x)} ${round(c2y)}, ${round(end.x)} ${round(end.y)}`;
+  }
+  return path;
+}

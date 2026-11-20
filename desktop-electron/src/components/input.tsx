@@ -1,13 +1,28 @@
 import type { InputHTMLAttributes } from "react";
 import { classNames } from "../lib/format";
+import type { ControlSize } from "./select";
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+const SIZES: Record<ControlSize, string> = {
+  sm: "h-7 text-caption px-2",
+  md: "h-[34px] text-body-sm px-3",
+  lg: "h-9 text-body px-3",
+};
+
+export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  controlSize?: ControlSize;
+  invalid?: boolean;
+}
+
+export function Input({ className, controlSize = "md", invalid = false, ...props }: InputProps) {
   return (
     <input
       className={classNames(
-        "h-[34px] w-full rounded-control border border-border bg-[var(--field)] px-3 text-body-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none",
+        "w-full rounded-control border bg-[var(--field)] text-text-primary placeholder:text-text-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+        SIZES[controlSize],
+        invalid ? "border-danger focus:border-danger" : "border-border focus:border-accent",
         className,
       )}
+      aria-invalid={invalid || undefined}
       {...props}
     />
   );

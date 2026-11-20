@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { Card } from "../../components/card";
 import { classNames, formatCount } from "../../lib/format";
-import { chartY, gridLineYs } from "./chart";
+import { chartY, gridLineYs, monotonePath } from "./chart";
 import type { WeeklyDay } from "./dashboard-format";
 
 const WIDTH = 640;
@@ -148,16 +148,14 @@ export function WeeklyUsageCard({ series, loading, hasError }: WeeklyUsageCardPr
 
               {SERIES.map((entry) => {
                 const values = series.map((day) => day[entry.key]);
-                const points = values
-                  .map((value, index) => {
-                    const y = chartY(value, scaleMax, HEIGHT, PLOT_PADDING);
-                    return `${Math.round(plotX(index) * 100) / 100},${Math.round(y * 100) / 100}`;
-                  })
-                  .join(" ");
+                const points = values.map((value, index) => ({
+                  x: plotX(index),
+                  y: chartY(value, scaleMax, HEIGHT, PLOT_PADDING),
+                }));
                 return (
                   <g key={entry.key}>
-                    <polyline
-                      points={points}
+                    <path
+                      d={monotonePath(points, PLOT_PADDING, HEIGHT - PLOT_PADDING)}
                       fill="none"
                       stroke={entry.color}
                       strokeWidth={2.5}

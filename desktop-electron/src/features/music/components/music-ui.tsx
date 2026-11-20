@@ -1,27 +1,11 @@
-import type { ChangeEvent, ReactNode } from "react";
+import { Checkbox } from "../../../components/checkbox";
+import { Field, FieldLabel } from "../../../components/field";
+import { Input } from "../../../components/input";
+import { Range } from "../../../components/range";
+import { Select } from "../../../components/select";
 import { classNames } from "../../../lib/format";
 
-export const controlClass =
-  "h-8 w-full rounded-control border border-border bg-surface-1 px-2 text-body text-text-primary focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-40";
-
-export function FieldLabel({
-  children,
-  htmlFor,
-  className,
-}: {
-  children: ReactNode;
-  htmlFor?: string;
-  className?: string;
-}) {
-  return (
-    <label
-      htmlFor={htmlFor}
-      className={classNames("block text-meta text-text-muted", className)}
-    >
-      {children}
-    </label>
-  );
-}
+export { FieldLabel };
 
 export function SelectField({
   id,
@@ -43,23 +27,21 @@ export function SelectField({
   testId?: string;
 }) {
   return (
-    <div className={classNames("min-w-0", className)}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <select
+    <Field id={id} label={label} className={className}>
+      <Select
         id={id}
         data-testid={testId}
-        className={classNames(controlClass, "mt-1")}
         value={value}
         disabled={disabled}
-        onChange={(event: ChangeEvent<HTMLSelectElement>) => onChange(event.target.value)}
+        onChange={(event) => onChange(event.target.value)}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
-      </select>
-    </div>
+      </Select>
+    </Field>
   );
 }
 
@@ -85,13 +67,13 @@ export function NumberField({
   className?: string;
 }) {
   return (
-    <div className={classNames("min-w-0", className)}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <input
+    <Field id={id} label={label} className={className}>
+      <Input
         id={id}
         data-testid={testId}
         type="number"
-        className={classNames(controlClass, "mt-1 text-tabular")}
+        controlSize="md"
+        className="text-tabular"
         value={value}
         min={min}
         max={max}
@@ -101,7 +83,7 @@ export function NumberField({
           if (Number.isFinite(parsed)) onChange(parsed);
         }}
       />
-    </div>
+    </Field>
   );
 }
 
@@ -121,22 +103,18 @@ export function DateField({
   testId?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <input
+    <Field id={id} label={label}>
+      <Input
         id={id}
         data-testid={testId}
         type="date"
-        className={classNames(
-          controlClass,
-          "mt-1 text-tabular",
-          invalid && "border-danger focus:border-danger",
-        )}
+        controlSize="md"
+        className="text-tabular"
         value={value}
-        aria-invalid={invalid ? true : undefined}
+        invalid={invalid}
         onChange={(event) => onChange(event.target.value)}
       />
-    </div>
+    </Field>
   );
 }
 
@@ -167,11 +145,9 @@ export function RangeField({
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <span className="text-meta text-text-secondary text-tabular">{value}</span>
       </div>
-      <input
+      <Range
         id={id}
         data-testid={testId}
-        type="range"
-        className="mt-2 w-full accent-accent disabled:opacity-40"
         value={value}
         min={min}
         max={max}
@@ -200,27 +176,15 @@ export function CheckField({
   testId?: string;
 }) {
   return (
-    <label
-      htmlFor={id}
-      className={classNames(
-        "flex items-start gap-2 text-body",
-        disabled ? "text-text-disabled" : "cursor-pointer text-text-secondary",
-      )}
-    >
-      <input
-        id={id}
-        data-testid={testId}
-        type="checkbox"
-        className="mt-0.5 h-4 w-4 shrink-0 accent-accent disabled:opacity-40"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span className="min-w-0">
-        <span className={classNames("whitespace-nowrap", disabled ? "text-text-disabled" : "text-text-primary")}>{label}</span>
-        {hint ? <span className="mt-0.5 block text-caption text-text-muted">{hint}</span> : null}
-      </span>
-    </label>
+    <Checkbox
+      id={id}
+      data-testid={testId}
+      label={label}
+      hint={hint}
+      checked={checked}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.checked)}
+    />
   );
 }
 

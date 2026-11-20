@@ -3,6 +3,8 @@ import { formatCount } from "../../../lib/format";
 import { apiRequest, errorMessage } from "../../../lib/api";
 import { Button } from "../../../components/button";
 import { Card } from "../../../components/card";
+import { Field } from "../../../components/field";
+import { Input } from "../../../components/input";
 import {
   Dialog,
   DialogClose,
@@ -615,26 +617,26 @@ export function ImagePage() {
         ) : null}
 
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-caption text-text-muted">From</span>
-            <input
+          <Field label="From" className="w-[144px]">
+            <Input
               type="date"
+              controlSize="md"
+              className="text-tabular"
               value={fromDate}
               max={toDate || undefined}
               onChange={(event) => setFromDate(event.target.value)}
-              className="h-8 rounded-control border border-border bg-surface-1 px-2 text-body text-text-primary focus:border-accent focus:outline-none"
             />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-caption text-text-muted">To</span>
-            <input
+          </Field>
+          <Field label="To" className="w-[144px]">
+            <Input
               type="date"
+              controlSize="md"
+              className="text-tabular"
               value={toDate}
               min={fromDate || undefined}
               onChange={(event) => setToDate(event.target.value)}
-              className="h-8 rounded-control border border-border bg-surface-1 px-2 text-body text-text-primary focus:border-accent focus:outline-none"
             />
-          </label>
+          </Field>
           <Button variant="secondary" onClick={reload} disabled={query.isFetching}>
             {query.isFetching ? "Reloading…" : "Reload"}
           </Button>
