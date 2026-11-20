@@ -222,6 +222,8 @@ shell chunk is ~333 kB (103 kB gzip).
 - Progress is denser (accent stat cards) and shows the selected run's detail in a sticky right
   column from 1536 px; below that it sits under the table so all twelve columns still fit at 1440.
 - Window: 1440×900 by default, minimum 1280×800.
+- `npm run dev:sandbox` runs the dev app against the sandbox API
+  (`https://api.sandbox.camxora.com/api/v1`) and portal (`https://app.sandbox.camxora.com`).
 - Profile is identity + work, not repeated stats: member since, role, desktop access,
   top-up/manage shortcuts, credits & usage, channel profiles, and a live activity feed.
 - New **Plan** page (`/plan`) lists credit packs from `/api/v3/topups/packs`, buys through
@@ -242,9 +244,9 @@ shell chunk is ~333 kB (103 kB gzip).
   checkbox with a check icon, and `DatePicker` is a custom month calendar (no native browser
   picker). Empty dates are allowed for optional filters.
 - Onboarding is gone: any confirmed account reaches the app even with zero channel profiles.
-  Free/unpaid accounts also sign in, but land on an in-app **top-up gate** that shows the credit
-  packs and checkout. Generation remains blocked server-side until a pack is bought; the gate's
-  "I've paid — check access" refreshes the entitlement without signing out.
+  Free/unpaid accounts can authenticate, but the shell stays closed behind a **top-up modal**
+  (packs + hosted checkout). "I've paid — check access" refreshes the entitlement; generation
+  remains blocked server-side until credits exist.
 
 - Local DB drift: `platform_db` had an `alembic_version` revision from a diverged checkout, so
   migrations 175-211 never ran and `/progress` 500ed on `batches.auto_upload_youtube`. The local

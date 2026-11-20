@@ -181,18 +181,18 @@ async function launch(name, env = {}) {
       await window.getByRole("button", { name: /^Sign in$/ }).click();
     }
 
-    // Free account: signs in and lands on the in-app top-up gate with packs.
+    // Free account: a modal gate opens with packs; the shell stays closed.
     await signIn("free@example.com");
-    await window.getByTestId("plan-page").waitFor({ timeout: 10_000 });
-    if (!(await window.getByText("Top up to unlock Desktop Studio").count())) {
-      throw new Error("Credits gate copy missing");
+    await window.getByTestId("topup-pack-small").waitFor({ timeout: 10_000 });
+    if (!(await window.getByText("Top up credits to continue").count())) {
+      throw new Error("Top-up modal copy missing");
     }
-    if (!(await window.getByTestId("plan-pack-small").count())) {
-      throw new Error("Free users must see credit packs in the app");
+    if (await window.getByTestId("plan-page").count()) {
+      throw new Error("Free users must not reach the Plan page as a full screen");
     }
-    await window.screenshot({ path: path.join(artifacts, "topup-gate.png"), fullPage: true });
+    await window.screenshot({ path: path.join(artifacts, "topup-modal.png"), fullPage: true });
 
-    await window.getByRole("button", { name: "Sign out" }).click();
+    await window.getByRole("button", { name: "Use a different account" }).click();
     scenario = "unconfirmed";
     await signIn("e2e@example.com");
     await window.getByRole("heading", { name: "Confirm your email" }).waitFor({ timeout: 8_000 });

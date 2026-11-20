@@ -4,7 +4,7 @@ import { useSessionStore } from "../../store/session";
 import { BootSplash } from "./boot-splash";
 import { ConfirmEmailGate } from "./confirm-email-gate";
 import { LoginPage } from "./login-page";
-import { TopUpGate } from "./top-up-gate";
+import { TopUpModal } from "./top-up-modal";
 
 const DEV_SESSION: SessionSummary = {
   userId: "dev",
@@ -84,7 +84,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return <ConfirmEmailGate portalUrl={resolvedPortalUrl} />;
   }
   if (destination === "topup") {
-    return <TopUpGate />;
+    return (
+      <div className="relative h-full">
+        <LoginPage portalUrl={resolvedPortalUrl} />
+        <TopUpModal />
+      </div>
+    );
   }
   return <>{children}</>;
 }
