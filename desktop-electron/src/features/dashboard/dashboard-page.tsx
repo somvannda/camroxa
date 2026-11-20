@@ -4,15 +4,13 @@ import { Badge } from "../../components/status";
 import {
   activityRows,
   buildWeeklySeries,
+  creditPosition,
   kpiValues,
-  planBadge,
-  quotaRows,
-  quotaSummary,
 } from "./dashboard-format";
+import { CreditBalanceCard } from "./credit-balance-card";
 import { DashboardErrorBanner } from "./dashboard-error-banner";
 import { KpiCard } from "./kpi-card";
 import { RecentActivityCard } from "./recent-activity-card";
-import { RemainingMonthCard } from "./remaining-month-card";
 import { useAccountOverview } from "./use-account-overview";
 import { WeeklyUsageCard } from "./weekly-usage-card";
 
@@ -22,13 +20,14 @@ export function DashboardPage() {
   const loading = query.isLoading;
   const stale = query.isError && Boolean(data);
 
-  const kpis = useMemo(() => kpiValues(data?.stats), [data?.stats]);
-  const series = useMemo(() => buildWeeklySeries(data?.stats?.usage_by_day), [data?.stats?.usage_by_day]);
-  const plan = useMemo(() => planBadge(data?.me, data?.license), [data?.me, data?.license]);
-  const rows = useMemo(() => quotaRows(data?.stats, data?.license), [data?.stats, data?.license]);
-  const summary = useMemo(
-    () => quotaSummary(data?.me, data?.stats, data?.license),
-    [data?.me, data?.stats, data?.license],
+  const kpis = useMemo(() => kpiValues(data?.stats, data?.me), [data?.stats, data?.me]);
+  const series = useMemo(
+    () => buildWeeklySeries(data?.stats?.usage_by_day),
+    [data?.stats?.usage_by_day],
+  );
+  const position = useMemo(
+    () => creditPosition(data?.stats, data?.me),
+    [data?.stats, data?.me],
   );
   const activity = useMemo(() => activityRows(data?.stats), [data?.stats]);
 
@@ -37,31 +36,25 @@ export function DashboardPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Dashboard"
-        description="Usage, quota and recent activity at a glance."
+        description="Credits, generation output and account activity at a glance."
         actions={stale ? <Badge tone="warning">Stale</Badge> : undefined}
       />
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-5 p-6">
         {query.isError ? <DashboardErrorBanner /> : null}
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {kpis.map((item) => (
             <KpiCard key={item.key} item={item} />
           ))}
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[59fr_41fr]">
-          <WeeklyUsageCard
-            series={series}
-            plan={plan.plan}
-            expiry={plan.expiry}
-            loading={loading}
-            hasError={query.isError}
-          />
-          <RemainingMonthCard rows={rows} summary={summary} />
+        <div className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">
+          <WeeklyUsageCard series={series} loading={loading} hasError={query.isError} />
+          <CreditBalanceCard position={position} />
         </div>
 
-        <RecentActivityCard rows={activity} plan={plan} loading={loading} />
+        <RecentActivityCard rows={activity} loading={loading} />
       </div>
     </div>
   );

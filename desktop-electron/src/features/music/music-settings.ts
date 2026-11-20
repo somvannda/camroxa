@@ -9,6 +9,7 @@ export interface MusicSettings {
   strictLevel: number;
   historyWindow: number;
   songCount: number;
+  simpleMode: boolean;
   autoGenImage: boolean;
   autoGSuno: boolean;
   autoVideoAfterSuno: boolean;
@@ -40,6 +41,7 @@ export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
   strictLevel: 3,
   historyWindow: 100,
   songCount: 4,
+  simpleMode: false,
   autoGenImage: false,
   autoGSuno: false,
   autoVideoAfterSuno: false,
@@ -134,6 +136,7 @@ export function buildMusicSettings(settings: SettingsRecord | null | undefined):
       SONG_COUNT_MIN,
       SONG_COUNT_MAX,
     ),
+    simpleMode: readBoolean(raw, "simpleMode", DEFAULT_MUSIC_SETTINGS.simpleMode),
     autoGenImage: readBoolean(raw, "autoGenImage", DEFAULT_MUSIC_SETTINGS.autoGenImage),
     autoGSuno: readBoolean(raw, "autoGSuno", DEFAULT_MUSIC_SETTINGS.autoGSuno),
     autoVideoAfterSuno: readBoolean(
@@ -187,6 +190,7 @@ export function musicSettingsPatch(settings: MusicSettings): Record<string, unkn
     strictLevel: settings.strictLevel,
     uniquenessHistoryWindow: settings.historyWindow,
     defaultSongCount: settings.songCount,
+    simpleMode: settings.simpleMode,
     autoGenImage: settings.autoGenImage,
     autoGSuno: settings.autoGSuno,
     autoVideoAfterSuno: settings.autoVideoAfterSuno,

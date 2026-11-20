@@ -13,7 +13,6 @@ import { registerUpdatesIpc } from "./updates";
 import { registerTemplatesIpc } from "./templates";
 import { registerVideoTemplatesIpc } from "./video-templates";
 import { registerVizzyIpc } from "./vizzy";
-import { registerWebMusicIpc } from "./web-music";
 import { registerYoutubeIpc } from "./youtube";
 
 let registered = false;
@@ -34,7 +33,6 @@ export function registerIpc(vizzyHost: VizzyHost, options?: IpcWindowOptions): v
   registerPreferencesIpc();
   registerFfmpegIpc();
   registerUpdatesIpc();
-  registerWebMusicIpc();
   registerTemplatesIpc();
   registerVideoTemplatesIpc();
   registerVizzyIpc(vizzyHost);

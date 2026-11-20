@@ -51,6 +51,8 @@ interface AutomationCardProps {
   pipelineNotice: PipelineNotice | null;
   onRenderVideos: () => void;
   onOpenSettings: () => void;
+  /** Simple mode: Description + Songs per batch only. */
+  simple?: boolean;
 }
 
 export function AutomationCard({
@@ -80,6 +82,7 @@ export function AutomationCard({
   pipelineNotice,
   onRenderVideos,
   onOpenSettings,
+  simple = false,
 }: AutomationCardProps) {
   const pipelineSelected =
     toggles.autoVideoAfterSuno || toggles.autoMergeAfterVideo || toggles.autoReelAfterVideo;
@@ -95,16 +98,25 @@ export function AutomationCard({
   return (
     <Card className="flex min-h-0 min-w-0 flex-col p-4" data-testid="automation-card">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-title font-semibold text-text-primary">Automation</h2>
+        <h2 className="text-title font-semibold text-text-primary">
+          {simple ? "Simple generation" : "Automation"}
+        </h2>
         <span data-testid="save-status" className="shrink-0">
           <StatusDot tone={saveTone} label={saveStatusLabel(saveStatus)} />
         </span>
       </div>
 
+      {simple ? (
+        <p className="mt-1 text-meta text-text-secondary">
+          Only this Description and Songs per batch shape the run. Structure, mood, language,
+          creativity and automation use their defaults.
+        </p>
+      ) : null}
+
       <div className="mt-3 space-y-2.5">
         <SelectField
           id="music-description"
-          label="Description"
+          label={simple ? "Description prompt" : "Description"}
           value={descriptionId}
           options={
             descriptions.length === 0
@@ -115,79 +127,85 @@ export function AutomationCard({
           disabled={descriptions.length === 0}
           testId="automation-description"
         />
-        <SelectField
-          id="music-structure"
-          label="Structure"
-          value={structureId}
-          options={
-            structures.length === 0
-              ? [{ value: "", label: "No structures available" }]
-              : structures.map((option) => ({ value: option.id, label: option.name }))
-          }
-          onChange={onStructureChange}
-          disabled={structures.length === 0}
-          testId="automation-structure"
-        />
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border pt-3">
-        <CheckField
-          id="music-auto-image"
-          label="Auto-Image"
-          checked={toggles.autoGenImage}
-          onChange={(value) => onToggle("autoGenImage", value)}
-          testId="toggle-auto-image"
-        />
-        <CheckField
-          id="music-auto-gsuno"
-          label="Auto-GSuno"
-          checked={toggles.autoGSuno}
-          onChange={(value) => onToggle("autoGSuno", value)}
-          testId="toggle-auto-gsuno"
-        />
-        <CheckField
-          id="music-auto-video"
-          label="Auto-Video"
-          checked={toggles.autoVideoAfterSuno}
-          onChange={(value) => onToggle("autoVideoAfterSuno", value)}
-          testId="toggle-auto-video"
-        />
-        <CheckField
-          id="music-auto-merge"
-          label="Auto-Merge"
-          checked={toggles.autoMergeAfterVideo}
-          onChange={(value) => onToggle("autoMergeAfterVideo", value)}
-          testId="toggle-auto-merge"
-        />
-        <CheckField
-          id="music-auto-reel"
-          label="Auto-Reel"
-          checked={toggles.autoReelAfterVideo}
-          onChange={(value) => onToggle("autoReelAfterVideo", value)}
-          testId="toggle-auto-reel"
-        />
-        <div className="col-span-2">
-          <CheckField
-            id="music-auto-upload"
-            label="Auto-Upload"
-            checked={toggles.autoUploadYouTube}
-            onChange={(value) => onToggle("autoUploadYouTube", value)}
-            disabled
-            hint="Stays disabled in 2.0, exactly as 1.7.1. Upload remains a manual step."
-            testId="toggle-auto-upload"
+        {simple ? null : (
+          <SelectField
+            id="music-structure"
+            label="Structure"
+            value={structureId}
+            options={
+              structures.length === 0
+                ? [{ value: "", label: "No structures available" }]
+                : structures.map((option) => ({ value: option.id, label: option.name }))
+            }
+            onChange={onStructureChange}
+            disabled={structures.length === 0}
+            testId="automation-structure"
           />
-        </div>
+        )}
       </div>
 
-      {pipelineSelected ? (
-        <p
-          className="mt-2 rounded-control border border-warning/30 bg-warning-soft px-2.5 py-1.5 text-caption text-text-secondary"
-          data-testid="pipeline-note"
-        >
-          Auto-Upload stays disabled. “Render videos” below queues the profile’s saved template for
-          the ready songs and renders them without opening Vizzy.
-        </p>
-      ) : null}
+      {simple ? null : (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border pt-3">
+            <CheckField
+              id="music-auto-image"
+              label="Auto-Image"
+              checked={toggles.autoGenImage}
+              onChange={(value) => onToggle("autoGenImage", value)}
+              testId="toggle-auto-image"
+            />
+            <CheckField
+              id="music-auto-gsuno"
+              label="Auto-GSuno"
+              checked={toggles.autoGSuno}
+              onChange={(value) => onToggle("autoGSuno", value)}
+              testId="toggle-auto-gsuno"
+            />
+            <CheckField
+              id="music-auto-video"
+              label="Auto-Video"
+              checked={toggles.autoVideoAfterSuno}
+              onChange={(value) => onToggle("autoVideoAfterSuno", value)}
+              testId="toggle-auto-video"
+            />
+            <CheckField
+              id="music-auto-merge"
+              label="Auto-Merge"
+              checked={toggles.autoMergeAfterVideo}
+              onChange={(value) => onToggle("autoMergeAfterVideo", value)}
+              testId="toggle-auto-merge"
+            />
+            <CheckField
+              id="music-auto-reel"
+              label="Auto-Reel"
+              checked={toggles.autoReelAfterVideo}
+              onChange={(value) => onToggle("autoReelAfterVideo", value)}
+              testId="toggle-auto-reel"
+            />
+            <div className="col-span-2">
+              <CheckField
+                id="music-auto-upload"
+                label="Auto-Upload"
+                checked={toggles.autoUploadYouTube}
+                onChange={(value) => onToggle("autoUploadYouTube", value)}
+                disabled
+                hint="Stays disabled in 2.0, exactly as 1.7.1. Upload remains a manual step."
+                testId="toggle-auto-upload"
+              />
+            </div>
+          </div>
+
+          {pipelineSelected ? (
+            <p
+              className="mt-2 rounded-control border border-warning/30 bg-warning-soft px-2.5 py-1.5 text-caption text-text-secondary"
+              data-testid="pipeline-note"
+            >
+              Auto-Upload stays disabled. “Render videos” below queues the profile’s saved template
+              for the ready songs and renders them without opening Vizzy.
+            </p>
+          ) : null}
+        </>
+      )}
 
       <div className="mt-3 rounded-control border border-border bg-surface-2 p-2.5">
         <p className="text-meta text-text-secondary" data-testid="plan-line">
@@ -213,24 +231,28 @@ export function AutomationCard({
                 {formatCredits(breakdown.sunoTotal)}
               </dd>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-text-muted">Image</dt>
-              <dd className="text-text-secondary text-tabular" data-testid="cost-image">
-                {formatCredits(breakdown.imageTotal)}
-              </dd>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-text-muted">Video / merge</dt>
-              <dd className="text-text-secondary text-tabular" data-testid="cost-video">
-                {formatCredits(breakdown.videoMergeTotal)}
-              </dd>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-text-muted">Upload</dt>
-              <dd className="text-text-secondary text-tabular" data-testid="cost-upload">
-                {formatCredits(breakdown.uploadTotal)}
-              </dd>
-            </div>
+            {simple ? null : (
+              <>
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-text-muted">Image</dt>
+                  <dd className="text-text-secondary text-tabular" data-testid="cost-image">
+                    {formatCredits(breakdown.imageTotal)}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-text-muted">Video / merge</dt>
+                  <dd className="text-text-secondary text-tabular" data-testid="cost-video">
+                    {formatCredits(breakdown.videoMergeTotal)}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-text-muted">Upload</dt>
+                  <dd className="text-text-secondary text-tabular" data-testid="cost-upload">
+                    {formatCredits(breakdown.uploadTotal)}
+                  </dd>
+                </div>
+              </>
+            )}
           </dl>
         ) : null}
         <div className="mt-2 flex flex-wrap gap-x-2.5 gap-y-0.5 border-t border-border pt-2 text-[11px] leading-4 text-text-muted">
@@ -262,52 +284,56 @@ export function AutomationCard({
           {generating ? "Generating..." : generateLabel}
         </Button>
 
-        <Button
-          variant="secondary"
-          className="mt-2 h-9 w-full"
-          loading={pipelineBusy}
-          disabled={pipelineBusy || generating}
-          onClick={onRenderVideos}
-          data-testid="render-videos-button"
-        >
-          {pipelineJobCount > 0
-            ? `Render ${pipelineJobCount} video${pipelineJobCount === 1 ? "" : "s"}`
-            : "Render videos"}
-        </Button>
+        {simple ? null : (
+          <>
+            <Button
+              variant="secondary"
+              className="mt-2 h-9 w-full"
+              loading={pipelineBusy}
+              disabled={pipelineBusy || generating}
+              onClick={onRenderVideos}
+              data-testid="render-videos-button"
+            >
+              {pipelineJobCount > 0
+                ? `Render ${pipelineJobCount} video${pipelineJobCount === 1 ? "" : "s"}`
+                : "Render videos"}
+            </Button>
 
-        <p className="mt-1.5 text-caption text-text-muted" data-testid="pipeline-summary">
-          {pipelineSummary}
-        </p>
-        {pipelineNeedsSettings ? (
-          <button
-            type="button"
-            className="mt-0.5 block text-caption text-accent underline hover:no-underline"
-            onClick={onOpenSettings}
-            data-testid="pipeline-settings-hint"
-          >
-            Open Settings
-          </button>
-        ) : null}
-
-        {pipelineNotice ? (
-          <div
-            className={`mt-1 rounded-control border border-border bg-surface-2 px-2.5 py-1.5 text-caption ${noticeTone}`}
-            role="status"
-            data-testid="pipeline-message"
-          >
-            <span>{pipelineNotice.text}</span>
-            {pipelineNotice.settings ? (
+            <p className="mt-1.5 text-caption text-text-muted" data-testid="pipeline-summary">
+              {pipelineSummary}
+            </p>
+            {pipelineNeedsSettings ? (
               <button
                 type="button"
-                className="ml-1 underline hover:no-underline"
+                className="mt-0.5 block text-caption text-accent underline hover:no-underline"
                 onClick={onOpenSettings}
-                data-testid="pipeline-settings-link"
+                data-testid="pipeline-settings-hint"
               >
                 Open Settings
               </button>
             ) : null}
-          </div>
-        ) : null}
+
+            {pipelineNotice ? (
+              <div
+                className={`mt-1 rounded-control border border-border bg-surface-2 px-2.5 py-1.5 text-caption ${noticeTone}`}
+                role="status"
+                data-testid="pipeline-message"
+              >
+                <span>{pipelineNotice.text}</span>
+                {pipelineNotice.settings ? (
+                  <button
+                    type="button"
+                    className="ml-1 underline hover:no-underline"
+                    onClick={onOpenSettings}
+                    data-testid="pipeline-settings-link"
+                  >
+                    Open Settings
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
 
         {batchSummary || batchStatus ? (
           <div className="mt-2 space-y-0.5 text-caption">

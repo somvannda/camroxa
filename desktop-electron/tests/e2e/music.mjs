@@ -416,10 +416,43 @@ async function workspaceScenario() {
     assert(!body.includes("Loading music workspace..."), "Loading card must clear after bootstrap");
     assert(body.includes("Night Shift") && body.includes("Deep Focus"), "Profiles missing");
     assert(
-      (await page.locator('[data-testid^="profile-toggle-primary-"]').count()) === 2 &&
+      (await page.locator('[data-testid^="profile-toggle-primary-"]').count()) === 1 &&
         (await page.locator('[data-testid^="profile-toggle-secondary-"]').count()) === 1,
-      "Secondary must hide the channel already paired on the primary side",
+      "Each channel list must hide the channel already paired on the other side",
     );
+
+    // Simple mode keeps Description + Songs per batch and hides the rest.
+    assert(
+      await page.locator('[data-testid="music-language"]').isVisible(),
+      "Studio mode must show language",
+    );
+    await page.locator('[data-testid="music-simple-mode"]').click();
+    await page.waitForTimeout(300);
+    for (const testId of [
+      "music-language",
+      "music-creativity",
+      "music-unique-opening",
+      "music-strict",
+      "music-history-window",
+      "music-use-pools",
+      "song-editor",
+      "automation-structure",
+    ]) {
+      assert(
+        (await page.locator(`[data-testid="${testId}"]`).count()) === 0,
+        `${testId} must be hidden in simple mode`,
+      );
+    }
+    assert(
+      await page.locator('[data-testid="music-count"]').isVisible(),
+      "Simple mode must keep Songs per batch",
+    );
+    assert(
+      await page.locator('[data-testid="automation-description"]').isVisible(),
+      "Simple mode must keep the Description prompt",
+    );
+    await page.locator('[data-testid="music-simple-mode"]').click();
+    await page.waitForTimeout(300);
 
     // No save loop: applying API settings must not PATCH them back.
     await page.waitForTimeout(700);
@@ -688,6 +721,8 @@ async function generateScenario() {
   const { server, port } = await startApi(routes);
   const { app, page } = await openApp("generate", port);
   try {
+    await page.locator('[data-testid="music-simple-mode"]').click();
+    await page.waitForTimeout(300);
     await page.locator('[data-testid="music-from-date"]').fill("2026-11-17");
     await page.locator('[data-testid="music-to-date"]').fill("2026-11-19");
     await page.waitForTimeout(300);
@@ -715,6 +750,17 @@ async function generateScenario() {
       assert(body.pairing_mode === "match_key", "Pairing mode must be match_key");
       assert(body.ok_profile_id === "profile-1" && body.alt_profile_id === "profile-2", "Pair ids");
       assert(body.from_date === body.to_date, "Each batch must run on a single date");
+      assert(body.structure_mode === "suno", "Simple mode must let Suno pick the structure");
+      assert(body.structure_id === null, "Simple mode must not send a structure id");
+      assert(body.language === "en", "Simple mode must ignore the language override");
+      assert(body.creativity_level === 55, "Simple mode must use the default creativity");
+      assert(
+        body.auto_gen_image === false &&
+          body.auto_gsuno === false &&
+          body.auto_video_after_suno === false &&
+          body.auto_upload_youtube === false,
+        "Simple mode must not carry pipeline automation",
+      );
       assert(
         body.ok_run_dir === path.join(runRoot, "night-shift", body.from_date),
         `OK run dir for ${body.from_date}`,

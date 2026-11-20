@@ -593,6 +593,7 @@ async function successWithManualRecovery() {
 
     // PG-T1/PG-07: an invalid range blocks the request.
     const beforeInvalid = progressRequests;
+    await page.locator('[data-testid="progress-to"]').fill("2026-11-18");
     await page.locator('[data-testid="progress-from"]').fill("2026-11-20");
     await page.locator('[data-testid="progress-range-error"]').waitFor();
     await page.waitForTimeout(700);
@@ -601,7 +602,8 @@ async function successWithManualRecovery() {
       await page.locator('[data-testid="progress-refresh"]').isDisabled(),
       "Refresh must be disabled for an invalid range",
     );
-    await page.locator('[data-testid="progress-from"]').fill("2026-11-19");
+    await page.locator('[data-testid="progress-from"]').fill("2026-11-18");
+    await page.locator('[data-testid="progress-to"]').fill("2026-11-19");
     await page.waitForTimeout(400);
   } finally {
     await app.close();

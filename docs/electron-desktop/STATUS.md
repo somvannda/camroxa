@@ -181,10 +181,10 @@ download URL therefore never needs the session token.
 
 | Page | Status |
 |---|---|
-| Dashboard | Merged — KPIs, chart, quota, activity, fixture E2E |
+| Dashboard | Merged — credits-only KPIs, weekly chart, credit wallet, grouped activity, fixture E2E |
 | Profile | Merged, fixture E2E |
 | Progress | **Merged** — filters, stats, 12-column table, detail, manual recovery, polling, 200-row E2E; **Download queue** driven by the shell coordinator (real files, live bytes, retry/cancel/reveal/pause); **Video pipeline** table (durable queue, cancel/retry/reveal, merged output); **manual YouTube upload** (confirm → resumable → report → link, cancel/retry, Auto-Upload still off) |
-| Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; “Render videos” queues the profile's saved template for ready songs |
+| Music | **Merged** — composer, draft/polish, channels, automation/cost, generate fan-out, polling, 9-column history; **Simple mode** (Description + Songs per batch only); “Render videos” queues the profile’s saved template for ready songs |
 | Image | **Merged** — queue, previews, prompts, retry/clear, 4 s polling |
 | Marketplace | **Merged** — catalog, filters/search/paging, install/reinstall, archive safety, legacy policy |
 | Settings | **Merged** — all eight tabs: Profiles, Publication, Preferences, Descriptions, Structures, Moods, Pools, Suno; template pickers and deep link |
@@ -198,17 +198,21 @@ shell chunk is ~333 kB (103 kB gzip).
 
 - Settings uses horizontal tabs instead of the vertical rail; the immediate-action note moved
   below the tab strip.
-- Music gained a **Simple** mode that posts `{mode:"simple"}` to `/web-music/generate`, polls
-  `/web-music/generations/{id}` and saves MP3/WAV through the new `webmusic:save-clip` IPC
-  (main-process bearer fetch, written to the Suno output folder, played via `camxora-media://`).
-  Studio mode is unchanged.
-- Primary/secondary channel lists are exclusive: a channel selected on one side disappears from
-  the other and is removed if it was already paired.
+- Music's **Simple mode** is a checkbox inside Run settings (not a separate page). When it is on,
+  only Description and Songs per batch are visible/used; it posts the batch with
+  `structure_mode: "suno"`, no structure/mood, default language/creativity and every automation
+  flag off. Studio mode is unchanged.
+- Primary/secondary channel lists are exclusive in both directions: a channel selected on one
+  side disappears from the other and is removed if it was already paired.
 - Vizzy forces a first frame after `did-finish-load`/ready; the strip shows `Starting…` until the
   editor reports ready.
 - Image parity with the Python app: Clear Filters, Deselect, per-kind source selectors
   (Prompt only / Category × custom / admin library) and Manual Generation (regenerate the
   selected job, or create a today row through `/image-jobs/manual-generate`).
+- Dashboard is credits-only: six KPIs (balance, spent, songs, images, videos, uploads), a credit
+  wallet card (granted/spent/remaining, exports, uploads, last export), a weekly chart on one
+  shared scale, and a grouped recent-activity timeline. Plan, song quota and image quota are gone.
+
 - Local DB drift: `platform_db` had an `alembic_version` revision from a diverged checkout, so
   migrations 175-211 never ran and `/progress` 500ed on `batches.auto_upload_youtube`. The local
   database was repaired in place (schema + representative pricing seeds) and stamped to `211`.

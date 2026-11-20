@@ -11,6 +11,7 @@ interface ChannelPairCardProps {
   locked?: boolean;
   testId: string;
   note?: string;
+  emptyMessage?: string;
 }
 
 export function ChannelPairCard({
@@ -22,6 +23,7 @@ export function ChannelPairCard({
   locked = false,
   testId,
   note,
+  emptyMessage = "No profiles available yet.",
 }: ChannelPairCardProps) {
   const order = new Map(selectedIds.map((id, index) => [id, index + 1]));
 
@@ -40,7 +42,7 @@ export function ChannelPairCard({
       <ul className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1" aria-label={title}>
         {profiles.length === 0 ? (
           <li className="rounded-control border border-dashed border-border px-3 py-4 text-meta text-text-secondary">
-            No profiles available yet.
+            {emptyMessage}
           </li>
         ) : (
           profiles.map((profile) => {

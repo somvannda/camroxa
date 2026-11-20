@@ -2,19 +2,16 @@ import { describe, expect, it } from "vitest";
 import type {
   DashboardStats,
   DailyUsage,
-  LicenseInfo,
   UserMe,
 } from "../../src/features/dashboard/account-types";
 import {
   activityRows,
   activityTone,
   buildWeeklySeries,
+  creditPosition,
   formatPlanName,
   kpiValues,
   percentOf,
-  planBadge,
-  quotaRows,
-  quotaSummary,
 } from "../../src/features/dashboard/dashboard-format";
 import {
   chartX,
@@ -75,18 +72,19 @@ const me = {
 } satisfies UserMe;
 
 describe("dashboard format", () => {
-  it("maps the five KPI cards and keeps placeholders while loading", () => {
-    const values = kpiValues(stats);
+  it("maps the six credit-first KPI cards and keeps placeholders while loading", () => {
+    const values = kpiValues(stats, me);
     expect(values.map((item) => item.label)).toEqual([
-      "Suno credit spent",
+      "Credit balance",
+      "Credits spent",
       "Songs generated",
       "Images generated",
-      "Videos generated",
-      "YouTube uploaded",
+      "Videos rendered",
+      "YouTube uploads",
     ]);
-    expect(values.map((item) => item.value)).toEqual(["1,234", "12", "5", "3", "3"]);
+    expect(values.map((item) => item.value)).toEqual(["750", "1,234", "12", "5", "3", "1"]);
     expect(kpiValues(null).every((item) => item.value === "--")).toBe(true);
-    expect(kpiValues(null)).toHaveLength(5);
+    expect(kpiValues(null)).toHaveLength(6);
   });
 
   it("builds a seven day window ending at the newest usage day", () => {
@@ -105,51 +103,30 @@ describe("dashboard format", () => {
     expect(buildWeeklySeries(null)).toEqual([]);
   });
 
-  it("normalises plan labels and expiry copy", () => {
+  it("normalises plan labels for the profile page", () => {
     expect(formatPlanName("studio-monthly")).toBe("Studio (Monthly)");
     expect(formatPlanName("no plan")).toBe("No plan");
     expect(formatPlanName("")).toBe("No plan");
-    const license: LicenseInfo = { plan_type: "pro_yearly", expiration_date: "2026-12-31" };
-    expect(planBadge(me, license)).toEqual({
-      plan: "Pro (Yearly)",
-      expiry: "Expires Dec 31",
-      expiryLine: "Expires: Dec 31",
+  });
+
+  it("describes a credits-only balance with spend, exports and uploads", () => {
+    const position = creditPosition(stats, me);
+    expect(position).toMatchObject({
+      balance: 750,
+      spent: 1234,
+      total: 2000,
+      percentUsed: 62,
+      studioExports: 3,
+      manualExports: 2,
+      youtubeUploads: 1,
     });
-    expect(planBadge(me, null).expiry).toBe("Expiration not provided");
-    expect(planBadge(me, null).expiryLine).toBe("Expires: Not provided");
+    // Falls back to the wallet when the stats balance is zero.
+    const fallback = creditPosition({ ...stats, credits_remaining: 0 }, { ...me, credit_balance: 420 });
+    expect(fallback?.balance).toBe(420);
+    expect(creditPosition(null, me)).toBeNull();
   });
 
-  it("derives remaining-month rows from licence then stats", () => {
-    const licence: LicenseInfo = {
-      monthly_song_quota: 120,
-      songs_remaining: 76,
-      wallet_balance: 400,
-    };
-    const rows = quotaRows(stats, licence);
-    expect(rows[0]).toMatchObject({ key: "credits", value: "750 / 2,000", percent: 38 });
-    expect(rows[1]).toMatchObject({ key: "songs", value: "76 / 120", percent: 63 });
-    expect(rows[2]).toMatchObject({ key: "images", value: "0 / 1", percent: 0 });
-
-    const noQuota = quotaRows(stats, null);
-    expect(noQuota[1].value).toBe("76 / 120");
-    expect(quotaRows(null, null)[0].value).toBe("--");
-    expect(quotaRows(null, null)[1].value).toBe("--");
-  });
-
-  it("summarises the quota box with honest fallbacks", () => {
-    expect(quotaSummary(me, stats, null)).toEqual([
-      { label: "Credits balance", value: "500" },
-      { label: "Song quota", value: "120" },
-      { label: "Image quota", value: "0" },
-    ]);
-    expect(quotaSummary({ ...me, credit_balance: 0 }, { ...stats, songs_quota: null }, null)[1]).toEqual({
-      label: "Song quota",
-      value: "Not provided",
-    });
-    expect(quotaSummary(null, null, null).every((line) => line.value === "--")).toBe(true);
-  });
-
-  it("lists newest activity first with placeholder batch and channel", () => {
+  it("lists newest activity first with grouped days", () => {
     const rows = activityRows({
       ...stats,
       recent_activity: [
@@ -157,19 +134,19 @@ describe("dashboard format", () => {
         { timestamp: "2026-11-19T09:30:00Z", kind: "image", detail: "Cover", status: "failed" },
       ],
     });
-    expect(rows[0].type).toBe("image");
-    expect(rows[0].batch).toBe("--");
-    expect(rows[0].channel).toBe("--");
-    expect(rows[1].type).toBe("song");
-    expect(rows[0].time).toContain("2026");
+    expect(rows[0].kind).toBe("Image");
+    expect(rows[0].status).toBe("failed");
+    expect(rows[1].kind).toBe("Song");
+    expect(rows[0].time).toBeTruthy();
+    expect(rows[0].group).toBeTruthy();
     expect(activityRows(stats)).toEqual([]);
-    const many = Array.from({ length: 25 }, (_, index) => ({
+    const many = Array.from({ length: 30 }, (_, index) => ({
       timestamp: `2026-11-${String((index % 9) + 10).padStart(2, "0")}T10:00:00Z`,
       kind: "song",
       detail: "x",
       status: "completed",
     }));
-    expect(activityRows({ ...stats, recent_activity: many })).toHaveLength(20);
+    expect(activityRows({ ...stats, recent_activity: many })).toHaveLength(24);
   });
 
   it("maps statuses to badge tones and clamps percents", () => {

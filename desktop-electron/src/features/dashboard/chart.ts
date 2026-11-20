@@ -40,8 +40,9 @@ export function seriesPoints(
   width: number,
   height: number,
   padding = CHART_PADDING,
+  maxOverride?: number,
 ): string {
-  const max = Math.max(0, ...values);
+  const max = maxOverride ?? Math.max(0, ...values);
   return values
     .map((value, index) => {
       const x = chartX(index, values.length, width, padding);

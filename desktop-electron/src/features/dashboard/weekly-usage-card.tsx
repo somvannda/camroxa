@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { Card } from "../../components/card";
-import { classNames } from "../../lib/format";
+import { classNames, formatCount } from "../../lib/format";
 import { CHART_PADDING, chartX, chartY, gridLineYs, seriesPoints } from "./chart";
 import type { WeeklyDay } from "./dashboard-format";
 
@@ -14,22 +14,29 @@ const SERIES = [
 
 interface WeeklyUsageCardProps {
   series: WeeklyDay[];
-  plan: string;
-  expiry: string;
   loading: boolean;
   hasError: boolean;
 }
 
-export function WeeklyUsageCard({
-  series,
-  plan,
-  expiry,
-  loading,
-  hasError,
-}: WeeklyUsageCardProps) {
+export function WeeklyUsageCard({ series, loading, hasError }: WeeklyUsageCardProps) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
   const tableId = useId();
+
+  const totals = series.reduce(
+    (sum, day) => ({
+      songs: sum.songs + day.songs,
+      images: sum.images + day.images,
+      videos: sum.videos + day.videos,
+    }),
+    { songs: 0, images: 0, videos: 0 },
+  );
+  // One shared scale keeps the three lines comparable; per-series scaling made
+  // a single image look as tall as a four-song day.
+  const chartMax = Math.max(
+    0,
+    ...series.flatMap((day) => [day.songs, day.images, day.videos]),
+  );
 
   const active = hovered !== null ? series[hovered] : null;
   const readout = active
@@ -42,13 +49,28 @@ export function WeeklyUsageCard({
         <div className="min-w-0">
           <h2 className="text-title font-semibold text-text-primary">Weekly Usage</h2>
           <p className="mt-1 text-body text-text-secondary">
-            Songs, images, and videos generated over the recent 7-day window.
+            Songs, images and videos generated over the recent 7-day window.
           </p>
         </div>
-        <div className="shrink-0 rounded-control border border-border bg-surface-2 px-3 py-2 text-right">
-          <p className="text-caption text-text-muted">Current plan</p>
-          <p className="text-body font-medium text-text-primary">{plan}</p>
-          <p className="text-caption text-text-secondary">{expiry}</p>
+        <div className="flex shrink-0 items-center gap-4" data-testid="weekly-totals">
+          <div className="text-right">
+            <p className="text-caption text-text-muted">Songs</p>
+            <p className="text-body font-medium text-text-primary text-tabular">
+              {loading ? "--" : formatCount(totals.songs)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-caption text-text-muted">Images</p>
+            <p className="text-body font-medium text-text-primary text-tabular">
+              {loading ? "--" : formatCount(totals.images)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-caption text-text-muted">Videos</p>
+            <p className="text-body font-medium text-text-primary text-tabular">
+              {loading ? "--" : formatCount(totals.videos)}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -96,11 +118,10 @@ export function WeeklyUsageCard({
 
               {SERIES.map((entry) => {
                 const values = series.map((day) => day[entry.key]);
-                const max = Math.max(0, ...values);
                 return (
                   <g key={entry.key}>
                     <polyline
-                      points={seriesPoints(values, WIDTH, HEIGHT)}
+                      points={seriesPoints(values, WIDTH, HEIGHT, CHART_PADDING, chartMax)}
                       fill="none"
                       stroke={entry.color}
                       strokeWidth={3}
@@ -110,7 +131,7 @@ export function WeeklyUsageCard({
                     {hovered !== null ? (
                       <circle
                         cx={chartX(hovered, series.length, WIDTH)}
-                        cy={chartY(values[hovered], max, HEIGHT)}
+                        cy={chartY(values[hovered], chartMax, HEIGHT)}
                         r={3.5}
                         fill={entry.color}
                       />

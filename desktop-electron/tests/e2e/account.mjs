@@ -220,18 +220,20 @@ async function dashboardSuccess() {
 
   const { app, page } = await openApp("success", port);
   try {
-    assert((await page.locator('[data-testid^="kpi-"]').count()) === 5, "Dashboard must show five KPI cards");
-    const kpiText = await page.locator('[data-testid="kpi-credits"]').innerText();
+    assert((await page.locator('[data-testid^="kpi-"]').count()) === 6, "Dashboard must show six KPI cards");
+    const kpiText = await page.locator('[data-testid="kpi-spent"]').innerText();
     assert(kpiText.includes("1,234"), "Credits spent KPI must use grouping");
+    const balanceText = await page.locator('[data-testid="kpi-balance"]').innerText();
+    assert(balanceText.includes("750"), "Credit balance KPI must show the wallet");
     const weekly = await page.locator('[data-testid="weekly-usage"]').innerText();
     assert(weekly.includes("Songs") && weekly.includes("Images") && weekly.includes("Videos"), "Chart legend missing");
-    assert(weekly.includes("Studio (Monthly)"), "Plan badge missing");
-    assert(weekly.includes("Expires Dec 31"), "Plan expiry missing");
+    assert(!weekly.includes("Current plan"), "The dashboard must not show a plan");
     assert((await page.locator('[data-testid="weekly-usage"] svg').count()) === 1, "Weekly chart must render as SVG");
-    const remaining = await page.locator('[data-testid="remaining-month"]').innerText();
-    assert(remaining.includes("750 / 2,000"), "Credits remaining row missing");
-    assert(remaining.includes("76 / 120"), "Songs remaining row missing");
-    assert(remaining.includes("410"), "Credits balance summary missing");
+    const balance = await page.locator('[data-testid="credit-balance"]').innerText();
+    assert(balance.includes("Credits only"), "Credits-only badge missing");
+    assert(balance.includes("1,234 of 2,000 credits used"), "Credit usage line missing");
+    assert(balance.includes("Studio exports") && balance.includes("Manual exports"), "Export stats missing");
+    assert(!balance.includes("Song quota") && !balance.includes("Image quota"), "Quota rows must be gone");
     const activity = await page.locator('[data-testid="recent-activity"]').innerText();
     assert(activity.includes("Album draft completed"), "Recent activity row missing");
     assert(activity.includes("completed") && activity.includes("failed"), "Status pills missing");
@@ -326,7 +328,8 @@ async function optionalFailures() {
   try {
     const body = await page.locator("body").innerText();
     assert(!body.includes("Unable to load dashboard statistics right now"), "Optional failures must not fail the page");
-    assert(body.includes("76 / 120"), "Songs row must fall back to stats when licence is missing");
+    assert(body.includes("Credits only"), "Credits-only wallet must render without a licence");
+    assert(body.includes("1,234 of 2,000 credits used"), "Credit usage must fall back to stats");
     await page.getByRole("link", { name: "Profile" }).click();
     await page.getByRole("heading", { name: "Channel Profiles" }).waitFor({ timeout: 5000 });
     const profileText = await page.locator("body").innerText();

@@ -7,14 +7,12 @@ import { PageHeader } from "../../../components/page-header";
 import { Badge } from "../../../components/status";
 import { toast } from "../../../components/toast";
 import { apiRequest, errorMessage } from "../../../lib/api";
-import { classNames } from "../../../lib/format";
 import { AutomationCard, type PipelineNotice } from "../components/automation-card";
 import { ChannelPairCard } from "../components/channel-pair-card";
 import { MusicErrorBanner } from "../components/music-error-banner";
 import { MusicHistoryCard } from "../components/music-history-card";
 import { MusicSettingsStrip } from "../components/music-settings-strip";
 import { SongEditorCard } from "../components/song-editor-card";
-import { MusicSimplePanel } from "./music-simple-panel";
 import {
   costByType,
   formatButtonCredits,
@@ -128,7 +126,6 @@ export function MusicPage() {
   const data = query.data;
 
   const [settings, setSettings] = useState<MusicSettings>(DEFAULT_MUSIC_SETTINGS);
-  const [mode, setMode] = useState<"studio" | "simple">("studio");
   const [settingsReady, setSettingsReady] = useState(false);
   const [composer, setComposer] = useState<ComposerState>(blankComposer);
   const [descriptions, setDescriptions] = useState<PromptOption[]>([]);
@@ -194,13 +191,16 @@ export function MusicPage() {
     }
     setComposer((current) => {
       const primaryFallback = data.profiles.length > 0 ? [data.profiles[0].id] : [];
-      const secondaryFallback =
-        data.profiles.length > 0 ? [data.profiles[Math.min(1, data.profiles.length - 1)].id] : [];
-      return {
-        ...current,
-        primaryIds: sanitizeSelection(current.primaryIds, data.profiles, primaryFallback),
-        secondaryIds: sanitizeSelection(current.secondaryIds, data.profiles, secondaryFallback),
-      };
+      // Pairing needs two distinct channels; never default both sides to the
+      // same profile (the lists hide each other's selection).
+      const secondaryFallback = data.profiles.length > 1 ? [data.profiles[1].id] : [];
+      const primaryIds = sanitizeSelection(current.primaryIds, data.profiles, primaryFallback);
+      const secondaryIds = sanitizeSelection(
+        current.secondaryIds,
+        data.profiles,
+        secondaryFallback,
+      ).filter((id) => !primaryIds.includes(id));
+      return { ...current, primaryIds, secondaryIds };
     });
   }, [data, settingsReady]);
 
@@ -223,6 +223,12 @@ export function MusicPage() {
     [composer.primaryIds, composer.secondaryIds],
   );
   const costs = useMemo(() => costByType(data?.costs), [data?.costs]);
+  const simpleMode = settings.simpleMode;
+  const allProfiles = data?.profiles ?? [];
+  const emptyChannelMessage =
+    allProfiles.length === 0
+      ? "No profiles available yet."
+      : "Nothing left to pair. Add another channel profile in Settings.";
   const breakdown = useMemo(
     () =>
       planCostBreakdown({
@@ -237,16 +243,16 @@ export function MusicPage() {
         primary: primaryProfiles,
         secondary: secondaryProfiles,
         songCount: settings.songCount,
-        autoGenImage: settings.autoGenImage,
-        autoGSuno: settings.autoGSuno,
-        autoVideo: settings.autoVideoAfterSuno,
-        autoMerge: settings.autoMergeAfterVideo,
-        autoReel: settings.autoReelAfterVideo,
+        autoGenImage: !simpleMode && settings.autoGenImage,
+        autoGSuno: !simpleMode && settings.autoGSuno,
+        autoVideo: !simpleMode && settings.autoVideoAfterSuno,
+        autoMerge: !simpleMode && settings.autoMergeAfterVideo,
+        autoReel: !simpleMode && settings.autoReelAfterVideo,
         autoUpload: false,
         dayCount,
         imageSourceMode: imageSourceMode(data?.settings),
       }),
-    [costs, data?.settings, dayCount, primaryProfiles, secondaryProfiles, settings],
+    [costs, data?.settings, dayCount, primaryProfiles, secondaryProfiles, settings, simpleMode],
   );
 
   const descriptionName = descriptions.find((option) => option.id === descriptionId)?.name ?? "";
@@ -636,21 +642,25 @@ export function MusicPage() {
             ok_profile_id: okProfile.id,
             alt_profile_id: altProfile.id,
             description_id: descriptionId || null,
-            structure_id: structureId || null,
+            // Simple mode: Suno picks the section layout, and only the
+            // description + song count shape the request.
+            structure_id: simpleMode ? null : structureId || null,
             mood_id: null,
-            structure_mode: "template",
-            shuffle_structure: settings.shuffleStructure,
-            shuffle_mood: settings.shuffleMood,
-            auto_gen_image: settings.autoGenImage,
-            auto_gsuno: settings.autoGSuno,
-            auto_video_after_suno: settings.autoVideoAfterSuno,
-            auto_merge_after_video: settings.autoMergeAfterVideo,
-            auto_reel_after_video: settings.autoReelAfterVideo,
+            structure_mode: simpleMode ? "suno" : "template",
+            shuffle_structure: simpleMode ? false : settings.shuffleStructure,
+            shuffle_mood: simpleMode ? false : settings.shuffleMood,
+            auto_gen_image: simpleMode ? false : settings.autoGenImage,
+            auto_gsuno: simpleMode ? false : settings.autoGSuno,
+            auto_video_after_suno: simpleMode ? false : settings.autoVideoAfterSuno,
+            auto_merge_after_video: simpleMode ? false : settings.autoMergeAfterVideo,
+            auto_reel_after_video: simpleMode ? false : settings.autoReelAfterVideo,
             auto_upload_youtube: false,
             song_count: settings.songCount,
-            language: settings.language,
-            secondary_language: settings.secondaryLanguage || null,
-            creativity_level: settings.creativity,
+            language: simpleMode ? DEFAULT_MUSIC_SETTINGS.language : settings.language,
+            secondary_language: simpleMode ? null : settings.secondaryLanguage || null,
+            creativity_level: simpleMode
+              ? DEFAULT_MUSIC_SETTINGS.creativity
+              : settings.creativity,
             pairing_mode: "match_key",
             from_date: date,
             to_date: date,
@@ -790,16 +800,22 @@ export function MusicPage() {
   const draftLabel = formatButtonCredits("Draft", lyricUnit);
   const polishLabel = formatButtonCredits("Polish", lyricUnit);
   const generateLabel = formatButtonCredits("Generate", breakdown?.total ?? null);
-  const unitCostLabels = [
-    formatCreditLine("Draft", lyricUnit),
-    formatCreditLine("Polish", lyricUnit),
-    "Revisions: 0 credits",
-    formatCreditLine("Suno", operationUnitCost(costs.get("music"))),
-    formatCreditLine("Image", operationUnitCost(costs.get("background_image"))),
-    formatCreditLine("Video", operationUnitCost(costs.get("video"))),
-    formatCreditLine("Merge", operationUnitCost(costs.get("video_merge"))),
-    formatCreditLine("Upload", operationUnitCost(costs.get("publish"))),
-  ];
+  const unitCostLabels = simpleMode
+    ? [
+        formatCreditLine("Draft", lyricUnit),
+        "Revisions: 0 credits",
+        formatCreditLine("Suno", operationUnitCost(costs.get("music"))),
+      ]
+    : [
+        formatCreditLine("Draft", lyricUnit),
+        formatCreditLine("Polish", lyricUnit),
+        "Revisions: 0 credits",
+        formatCreditLine("Suno", operationUnitCost(costs.get("music"))),
+        formatCreditLine("Image", operationUnitCost(costs.get("background_image"))),
+        formatCreditLine("Video", operationUnitCost(costs.get("video"))),
+        formatCreditLine("Merge", operationUnitCost(costs.get("video_merge"))),
+        formatCreditLine("Upload", operationUnitCost(costs.get("publish"))),
+      ];
 
   const warnings: string[] = [];
   if (pairs.mismatch) warnings.push("Primary and Secondary channel counts must match.");
@@ -809,7 +825,7 @@ export function MusicPage() {
   } else if (!descriptionId) {
     warnings.push("Choose a song description before generating.");
   }
-  if (structures.length === 0) {
+  if (!simpleMode && structures.length === 0) {
     warnings.push("No song structures are available. Add one in Settings.");
   }
 
@@ -819,7 +835,7 @@ export function MusicPage() {
     pairs.canPair &&
     descriptions.length > 0 &&
     Boolean(descriptionId) &&
-    structures.length > 0;
+    (simpleMode || structures.length > 0);
 
   const stale = query.isError && Boolean(data);
 
@@ -829,7 +845,7 @@ export function MusicPage() {
         <PageHeader
           eyebrow="Workspace"
           title="Music"
-          description="Compose with the studio batch pipeline, or let Suno write a simple song from one prompt."
+          description="Compose songs, pair channels, generate batches and review history."
         />
         <div className="p-6">
           <Card className="p-5" data-testid="music-loading">
@@ -846,7 +862,7 @@ export function MusicPage() {
         <PageHeader
           eyebrow="Workspace"
           title="Music"
-          description="Compose with the studio batch pipeline, or let Suno write a simple song from one prompt."
+          description="Compose songs, pair channels, generate batches and review history."
         />
         <div className="space-y-4 p-6">
           <MusicErrorBanner message={MUSIC_LOAD_ERROR_COPY} />
@@ -866,47 +882,13 @@ export function MusicPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Music"
-        description="Compose with the studio batch pipeline, or let Suno write a simple song from one prompt."
+        description="Compose songs, pair channels, generate batches and review history."
         actions={stale ? <Badge tone="warning">Stale</Badge> : undefined}
       />
       <div className="space-y-4 p-6">
         {error ? <MusicErrorBanner message={error} onDismiss={() => setError("")} /> : null}
 
-        <div
-          className="inline-flex rounded-control border border-border bg-surface-1 p-0.5"
-          role="group"
-          aria-label="Music mode"
-        >
-          {(
-            [
-              { id: "studio", label: "Studio", hint: "Batch pipeline with profiles and prompts" },
-              { id: "simple", label: "Simple", hint: "One prompt, Suno writes title and lyrics" },
-            ] as const
-          ).map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={mode === option.id}
-              title={option.hint}
-              onClick={() => setMode(option.id)}
-              data-testid={`music-mode-${option.id}`}
-              className={classNames(
-                "h-8 rounded-[6px] px-3 text-body transition-colors",
-                mode === option.id
-                  ? "bg-surface-active text-text-primary"
-                  : "text-text-secondary hover:text-text-primary",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "simple" ? (
-          <MusicSimplePanel />
-        ) : (
-          <>
-            <MusicSettingsStrip
+        <MusicSettingsStrip
               settings={settings}
               fromDate={composer.fromDate}
               toDate={composer.toDate}
@@ -915,7 +897,14 @@ export function MusicPage() {
               onSettingsChange={updateSettings}
             />
 
-            <div className="grid items-start gap-4 xl:grid-cols-[1.5fr_0.75fr_0.75fr_0.95fr]">
+            <div
+              className={
+                simpleMode
+                  ? "grid items-start gap-4 xl:grid-cols-[0.7fr_0.7fr_1.2fr]"
+                  : "grid items-start gap-4 xl:grid-cols-[1.5fr_0.75fr_0.75fr_0.95fr]"
+              }
+            >
+          {simpleMode ? null : (
           <SongEditorCard
             composer={composer}
             settings={settings}
@@ -935,20 +924,25 @@ export function MusicPage() {
             onPolishStrength={(value) => updateSettings({ polishStrength: value })}
             onCopy={(kind) => void copyComposer(kind)}
           />
+          )}
 
           <ChannelPairCard
             side="primary"
             title="Primary channels"
-            profiles={data?.profiles ?? []}
+            profiles={allProfiles.filter(
+              (profile) => !composer.secondaryIds.includes(profile.id),
+            )}
             selectedIds={composer.primaryIds}
             onToggle={(id) => toggleProfile("primary", id)}
             locked={generating}
             testId="primary-channels"
+            note="Channels already paired on the Secondary side are hidden here."
+            emptyMessage={emptyChannelMessage}
           />
           <ChannelPairCard
             side="secondary"
             title="Secondary channels"
-            profiles={(data?.profiles ?? []).filter(
+            profiles={allProfiles.filter(
               (profile) => !composer.primaryIds.includes(profile.id),
             )}
             selectedIds={composer.secondaryIds}
@@ -956,6 +950,7 @@ export function MusicPage() {
             locked={generating}
             testId="secondary-channels"
             note="Channels already paired on the Primary side are hidden here."
+            emptyMessage={emptyChannelMessage}
           />
 
           <AutomationCard
@@ -992,6 +987,7 @@ export function MusicPage() {
             pipelineNotice={pipelineNotice}
             onRenderVideos={() => void renderVideos()}
             onOpenSettings={() => navigate("/settings")}
+            simple={simpleMode}
           />
         </div>
 
@@ -1006,8 +1002,6 @@ export function MusicPage() {
           onSelectRow={selectHistoryRow}
           onOpenFolder={(row, side) => void openFolder(row, side)}
         />
-          </>
-        )}
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
