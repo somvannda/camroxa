@@ -58,6 +58,25 @@ const THUMBNAIL_PAINT_TIMEOUT_MS = 2_000;
 /** `camxora-vizzy://vizzy` â€” the only origin the editor may navigate to. */
 const VIZZY_ORIGIN = new URL(VIZZY_INDEX_URL).origin;
 
+/**
+ * The editor's own chrome (topbar + status line) is hidden when embedded in
+ * Camxora: the shell strip already owns project actions and the app frame.
+ * `--topbar` is set to 0 so the grid loses the row instead of leaving a gap.
+ */
+const EMBEDDED_EDITOR_CSS = `
+  :root { --topbar: 0px !important; }
+  #topbar, #status { display: none !important; }
+  #app { grid-template-rows: var(--topbar) minmax(0, 1fr) var(--track-size, 30%) 0 !important; }
+  #app[data-layout="3"] {
+    grid-template-rows:
+      var(--topbar) minmax(150px, 1.1fr) minmax(140px, 1fr)
+      minmax(150px, 1fr) minmax(100px, 0.8fr) 0 !important;
+  }
+  #app[data-layout="4"] {
+    grid-template-rows: var(--topbar) minmax(0, 3fr) minmax(0, 1fr) 0 !important;
+  }
+`;
+
 export interface VizzyHostDeps {
   /** The shell window the view is attached to. */
   getWindow: () => BrowserWindow | null;
@@ -240,9 +259,29 @@ export class VizzyHost {
     this.update({ attached: false, ready: false });
   }
 
-  /** Reload the editor; used by the crash notice and the shell strip. */
-  reload(): void {
+  /**
+   * Start a fresh project in the live editor. The shell asks for confirmation
+   * first; `force` skips the editor's own `window.confirm`.
+   */
+  newProject(): boolean {
     const contents = this.view?.webContents;
+    if (!contents || contents.isDestroyed() || !this.state.ready) return false;
+    void contents
+      .executeJavaScript(
+        "typeof window.editorNewProject === 'function' ? (window.editorNewProject(true), true) : false",
+        true,
+      )
+      .then((ok: unknown) => {
+        if (ok !== true) logger.warn("vizzy new project is not available in this bundle");
+      })
+      .catch((error: unknown) => {
+        logger.warn("vizzy new project failed", { error: String(error) });
+      });
+    return true;
+  }
+
+  /** Reload the editor; used by the crash notice and the shell strip. */
+  reload(): void {    const contents = this.view?.webContents;
     if (!contents || contents.isDestroyed()) {
       const window = this.deps.getWindow();
       if (!window) return;
@@ -779,6 +818,13 @@ export class VizzyHost {
       if (code === -3) return; // aborted navigation, e.g. a reload
       logger.error("vizzy load failed", { code, description, url });
       this.update({ ready: false, error: `The Vizzy editor failed to load (${description}).` });
+    });
+
+    contents.on("dom-ready", () => {
+      // Embed the editor early: the shell strip replaces its topbar/status chrome.
+      void contents.insertCSS(EMBEDDED_EDITOR_CSS).catch((error: unknown) => {
+        logger.warn("vizzy embedded css failed", { error: String(error) });
+      });
     });
 
     contents.on("did-finish-load", () => {

@@ -9821,8 +9821,8 @@ async function openSavedProject(id: string): Promise<void> {
   }
 }
 
-function newProject(): void {
-  if (!window.confirm("Start a new project? Unsaved changes will be lost.")) return;
+function newProject(force = false): void {
+  if (!force && !window.confirm("Start a new project? Unsaved changes will be lost.")) return;
   for (const node of project.nodes) renderer.disposeNode(node);
   renderer.resetLayers();
   project.nodes = [];
@@ -11923,6 +11923,7 @@ Object.assign(globalThis, {
   editorImportProject: importProjectJson,
   editorOpenCreations: openCreationsBrowser,
   editorOpenExportDialog: openExportDialog,
+  editorNewProject: (force = false) => newProject(force),
   // Direct export for the E2E harness, without driving the modal.
   editorExportNow: (settings?: Partial<ExportSettings>, saveHandle?: SaveFileHandle | null) =>
     runExport({ ...defaultExportSettings(), ...settings }, saveHandle ?? null),

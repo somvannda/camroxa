@@ -783,15 +783,23 @@ async function settingsSuccess() {
     await page.getByRole("dialog").getByText("Disconnect YouTube?").waitFor();
     await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
     assert(state.connections.length === 1, "Cancelling must keep the connection");
+    const templateCardText = await page
+      .locator('[data-testid="settings-profile-templates"]')
+      .innerText();
     assert(
-      (await page.locator('[data-testid="settings-profile-templates"]').innerText()).includes(
-        "Save video and reel templates in Vizzy",
-      ),
-      "Template card must point at Vizzy and Publication",
+      templateCardText.includes("Night Drive Long") &&
+        templateCardText.includes("Night Drive Reel"),
+      "Saved templates must appear in the Profiles template card",
     );
     assert(
       (await page.locator('[data-testid="settings-profile-templates"] select').count()) === 0,
-      "Template card must not show a template picker",
+      "Template card must not duplicate the Publication picker",
+    );
+    assert(
+      await page
+        .getByTestId("settings-profile-choose-template")
+        .isVisible(),
+      "Template card must link to the Publication picker",
     );
 
     await capture(app, page, "settings-profiles");

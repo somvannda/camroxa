@@ -15,12 +15,15 @@
 
 | Capability | Evidence |
 |---|---|
-| The real Rea editor boots inside a `WebContentsView` in the Vizzy route | `tests/e2e/vizzy.mjs` — `#topbar`, `#rail`, `#inspector`, `#timeline`, menus `File/Edit/Project/View/Help` |
+| The real Rea editor boots inside a `WebContentsView` in the Vizzy route | `tests/e2e/vizzy.mjs` — `#topbar`/`#status` exist but are `display:none` in the embedded view; `#rail`, `#inspector`, `#timeline` render |
 | Stage renders through WebGL2 | stage canvas `534×300`, `getContext("webgl2")` non-null on the live canvas and on a fresh one |
 | Cross-origin isolation | `crossOriginIsolated === true`, `fftTier === "threads"` (SharedArrayBuffer path engaged) |
 | Assets, workers, WASM, fonts load over `camxora-vizzy://` | editor boot + threaded FFT + CanvasKit/three bundle load with no CSP violations in the first 10 s |
 | Dedicated preload, no shell bridge | `window.camxoraVizzy` present, `window.camxora` absent inside the view |
-| Shell strip | project name, saved/unsaved dot, item count, FFT tier, isolation badge, Save / Open / Close |
+| Shell strip | project name, saved/unsaved dot, item count, dimensions, New / Export / Save template / Renders / Templates / Save / Open / Close |
+| Embedded frame | editor topbar and status line hidden; the stage sits in a bordered, rounded frame with an 8 px gap inside the shell |
+| New project | shell **New** → confirmation → `vizzy:new-project` resets the live project (layers, nodes, effects, automations, analyzers, assets) without leaving the page |
+| Notifications | on `/vizzy` one compact toast stays inside the 48 px shell strip instead of being clipped by the native editor view |
 | Native Save (shell + editor `Ctrl+S`) | atomic write to `%APPDATA%/Camxora Desktop/projects/<slug>.camxora-vizzy.json`; `Ctrl+S` inside the editor bumps the same file's mtime |
 | Native Open | native dialog (defaults to `projects/`), snapshot applied to the live editor, strip updates |
 | Save → Open → Save round-trip | semantically identical JSON (only `savedAt` and three analyser counters differ — §6) |
@@ -31,7 +34,7 @@
 | Export settings | width/height/fps/format/start/end from the strip; defaults 1920×1080/30/H.264 when the project reports nothing |
 | Renders panel | lists `renders/` (name, size, date), inline `<video>` over `camxora-media://`, Reveal, Delete with confirmation; delete outside `renders/` refused |
 | Export validation | ffprobe reports codec/size/duration back to the shell; the E2E re-probes the file independently |
-| Save as video template | strip action → `vizzy:template-options` pre-fills Audio/Background/Logo/Title/Artist/Album/Palette from `detectBindings()` → `vizzy:save-template` writes `template.json` + `pipeline.json` + `thumbnail.png` atomically; duplicate/incompatible bindings and a kind/aspect mismatch block the save; `tests/e2e/vizzy-templates.mjs` |
+| Save as video template | strip action → `vizzy:template-options` reads the live preview → the host auto-detects every binding (including all palette nodes) → `vizzy:save-template` writes the whole snapshot + `pipeline.json` + `thumbnail.png` atomically; no per-node selection; a kind/aspect mismatch blocks the save; `tests/e2e/vizzy-templates.mjs` |
 | Templates panel | rail listing thumbnail, name, kind, output size and date; Preview loads the saved project via `vizzy:open-project-json`; Delete is confirmed and emits `video-templates:changed`; empty state points at Save preview |
 | Preview parity (project) | the editor's project after Preview is semantically identical to the saved `template.json` (runtime-only counters ignored) |
 | Render one saved template | Templates rail Render → native audio pick → `vizzy:render-template` → plan from `buildPipelineRenderPlan()` → saved project loaded → run audio streamed over `camxora-media://` into the editor's loader → existing exporter → `renders/<template-slug>-<timestamp>.mp4`; measured 1920×1080/30, 2 s WAV: 60 frames, h264+aac, 1.97 s, ~2.0 MB, 10.1–11.1 s wall clock |

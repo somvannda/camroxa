@@ -30,11 +30,12 @@ function boundsOf(element: HTMLElement) {
 
 export interface VizzyHostHandle {
   state: VizzyState;
-  busy: "save" | "open" | "attach" | null;
+  busy: "save" | "open" | "attach" | "new" | null;
   closed: boolean;
   containerRef: React.RefObject<HTMLDivElement | null>;
   save: () => Promise<void>;
   open: () => Promise<void>;
+  newProject: () => Promise<void>;
   reload: () => Promise<void>;
   closeEditor: () => void;
   openEditor: () => void;
@@ -50,7 +51,7 @@ export interface VizzyHostHandle {
 export function useVizzyHost(): VizzyHostHandle {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<VizzyState>(EMPTY_STATE);
-  const [busy, setBusy] = useState<"save" | "open" | "attach" | null>(null);
+  const [busy, setBusy] = useState<"save" | "open" | "attach" | "new" | null>(null);
   const [closed, setClosed] = useState(false);
 
   useEffect(() => {
@@ -129,6 +130,19 @@ export function useVizzyHost(): VizzyHostHandle {
     }
   }, [busy]);
 
+  const newProject = useCallback(async () => {
+    if (busy) return;
+    setBusy("new");
+    try {
+      const result = await window.camxora.vizzy.newProject();
+      if (!result.ok) {
+        setState((current) => ({ ...current, error: result.error.message }));
+      }
+    } finally {
+      setBusy(null);
+    }
+  }, [busy]);
+
   const reload = useCallback(async () => {
     await window.camxora.vizzy.reload();
     setState((current) => ({ ...current, error: null, crashed: false }));
@@ -144,6 +158,7 @@ export function useVizzyHost(): VizzyHostHandle {
     containerRef,
     save,
     open,
+    newProject,
     reload,
     closeEditor,
     openEditor,

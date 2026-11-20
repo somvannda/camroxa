@@ -178,6 +178,12 @@ try {
       url: location.href,
       title: document.title,
       hasTopbar: Boolean(document.querySelector("#topbar")),
+      topbarDisplay: document.querySelector("#topbar")
+        ? getComputedStyle(document.querySelector("#topbar")).display
+        : null,
+      statusDisplay: document.querySelector("#status")
+        ? getComputedStyle(document.querySelector("#status")).display
+        : null,
       hasRail: Boolean(document.querySelector("#rail")),
       hasInspector: Boolean(document.querySelector("#inspector")),
       hasTimeline: Boolean(document.querySelector("#timeline")),
@@ -188,6 +194,7 @@ try {
       isolated: window.crossOriginIsolated === true,
       hasVizzyBridge: typeof window.camxoraVizzy === "object",
       hasShellBridge: typeof window.camxora !== "undefined",
+      hasNewProject: typeof window.editorNewProject === "function",
       text: document.body.innerText.slice(0, 400),
     };
   })()`);
@@ -306,6 +313,21 @@ try {
   if (!dom.hasTopbar || !dom.hasRail || !dom.hasInspector || !dom.hasTimeline) {
     fail("The editor chrome did not render");
   }
+  if (dom.topbarDisplay !== "none" || dom.statusDisplay !== "none") {
+    fail(`The embedded editor header/status must be hidden: ${JSON.stringify(dom)}`);
+  }
+  if (!(await window.getByTestId("vizzy-new-project").isVisible())) {
+    fail("The shell strip must expose the New project action");
+  }
+  if (!dom.hasNewProject) fail("The editor bundle does not expose editorNewProject");
+  await window.screenshot({ path: path.join(artifacts, "vizzy-shell-ready.png") });
+
+  // New project: the shell owns the confirmation and hides the native view.
+  await window.getByTestId("vizzy-new-project").click();
+  const newDialog = window.getByRole("dialog", { name: "Start a new project?" });
+  await newDialog.waitFor({ timeout: 5_000 });
+  await newDialog.getByRole("button", { name: "Cancel" }).click();
+  await newDialog.waitFor({ state: "detached", timeout: 5_000 });
   if (!dom.stage || dom.stage.width < 64 || dom.stage.height < 64) {
     fail(`The stage canvas is not sized: ${JSON.stringify(dom.stage)}`);
   }

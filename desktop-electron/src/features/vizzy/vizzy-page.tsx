@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { StatusDot } from "../../components/status";
 import { Button } from "../../components/button";
+import { Dialog, DialogContent } from "../../components/dialog";
 import { Icon } from "../../components/icon";
 import { toast } from "../../components/toast";
 import type { VizzyTemplateDraftInfo } from "../../../electron/shared/types";
@@ -30,7 +31,7 @@ type Panel = "export" | "renders" | "templates" | null;
  * The only modal (Save as video template) hides the view while it is open.
  */
 export function VizzyPage() {
-  const { state, busy, closed, containerRef, save, open, reload, closeEditor, openEditor } =
+  const { state, busy, closed, containerRef, save, open, newProject, reload, closeEditor, openEditor } =
     useVizzyHost();
   const exporter = useVizzyExport();
   const [panel, setPanel] = useState<Panel>(null);
@@ -41,6 +42,7 @@ export function VizzyPage() {
   const { refresh: refreshTemplates, preview: previewTemplateOpen, openLibrary } = templates;
 
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [templateInfo, setTemplateInfo] = useState<VizzyTemplateDraftInfo | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
@@ -79,6 +81,24 @@ export function VizzyPage() {
   const togglePanel = (next: Panel): void => {
     setPanel((current) => (current === next ? null : next));
   };
+
+  const openNewProject = useCallback(() => {
+    if (!attached || exporter.running) return;
+    setNewProjectOpen(true);
+    void window.camxora?.vizzy?.setVisible(false);
+  }, [attached, exporter.running]);
+
+  const closeNewProject = useCallback(() => {
+    setNewProjectOpen(false);
+    void window.camxora?.vizzy?.setVisible(true);
+  }, []);
+
+  const confirmNewProject = useCallback(async () => {
+    await newProject();
+    setNewProjectOpen(false);
+    void window.camxora?.vizzy?.setVisible(true);
+    toast("New project started.", "info");
+  }, [newProject]);
 
   /* video templates -------------------------------------------------- */
 
@@ -231,6 +251,17 @@ export function VizzyPage() {
           <Button
             variant="secondary"
             className="shrink-0 px-3"
+            onClick={openNewProject}
+            disabled={!attached || exporter.running}
+            loading={busy === "new"}
+            data-testid="vizzy-new-project"
+          >
+            <Icon name="fa-file-circle-plus" size={12} />
+            New
+          </Button>
+          <Button
+            variant="secondary"
+            className="shrink-0 px-3"
             onClick={() => togglePanel("export")}
             disabled={!attached || exporter.running}
             loading={exporter.running}
@@ -321,9 +352,9 @@ export function VizzyPage() {
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-h-0 flex-1">
+        <div className="relative min-h-0 flex-1 p-2">
           {closed ? (
-            <div className="flex h-full items-center justify-center p-8">
+            <div className="flex h-full items-center justify-center rounded-card border border-border bg-surface-1 p-8">
               <div className="max-w-md text-center">
                 <Icon name="fa-film" size={20} className="mx-auto text-text-muted" />
                 <h2 className="mt-3 text-title font-semibold text-text-primary">Editor closed</h2>
@@ -341,7 +372,7 @@ export function VizzyPage() {
                   honest loading state behind it, visible only while it boots. */}
               <div
                 ref={containerRef}
-                className="absolute inset-0 flex items-center justify-center bg-bg"
+                className="absolute inset-2 flex items-center justify-center overflow-hidden rounded-card border border-border bg-bg"
                 data-testid="vizzy-view-slot"
               >
                 <div className="flex items-center gap-2 text-body-sm text-text-muted">
@@ -407,6 +438,34 @@ export function VizzyPage() {
           </aside>
         ) : null}
       </div>
+
+      <Dialog
+        open={newProjectOpen}
+        onOpenChange={(next) => {
+          if (!next) closeNewProject();
+        }}
+      >
+        {newProjectOpen ? (
+          <DialogContent
+            title="Start a new project?"
+            description="The current composition will be discarded. Save it first if you want to keep it."
+          >
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeNewProject} disabled={busy === "new"}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                loading={busy === "new"}
+                onClick={() => void confirmNewProject()}
+                data-testid="vizzy-new-project-confirm"
+              >
+                Start new project
+              </Button>
+            </div>
+          </DialogContent>
+        ) : null}
+      </Dialog>
 
       <VizzyTemplateDialog
         open={templateDialogOpen}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Icon } from "../../components/icon";
@@ -68,6 +69,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
   const ws = workspace;
+  const navigate = useNavigate();
   const [mediaBusy, setMediaBusy] = useState<"logo" | "cover" | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [channelChoice, setChannelChoice] = useState("");
@@ -491,14 +493,76 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
 
             <Section
               title="Video and reel templates"
-              description="Pipeline templates used by Vizzy renders."
+              description="Pipeline templates saved from Vizzy. The pipeline fills the run audio and background automatically."
               data-testid="settings-profile-templates"
+              action={
+                <Button variant="ghost" className="h-7 px-2.5" onClick={() => navigate("/vizzy")}>
+                  Open Vizzy
+                </Button>
+              }
             >
-              <Note>
-                Save video and reel templates in Vizzy (preview a composition, then “Save as
-                video template”), then pick them in Publication. The old Camxora template list is
-                not used by the Vizzy pipeline.
-              </Note>
+              {ws.videoTemplatesLoading ? (
+                <Skeleton rows={1} />
+              ) : ws.videoTemplates.length === 0 ? (
+                <Note>
+                  No saved video templates yet. Open Vizzy, preview a composition, then click
+                  “Save template”.
+                </Note>
+              ) : (
+                <div className="space-y-1.5">
+                  {ws.videoTemplates.slice(0, 4).map((template) => {
+                    const selected =
+                      template.id === profile?.video_template_id ||
+                      template.id === profile?.reel_template_id;
+                    return (
+                      <div
+                        key={template.id}
+                        className="flex items-center gap-3 rounded-control border border-border bg-surface-2 px-2.5 py-2"
+                      >
+                        {template.thumbnailUrl ? (
+                          <img
+                            src={template.thumbnailUrl}
+                            alt=""
+                            className="h-9 w-14 shrink-0 rounded-[4px] object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-9 w-14 shrink-0 items-center justify-center rounded-[4px] bg-surface-3 text-text-muted">
+                            <Icon name="fa-film" size={13} />
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-meta font-medium text-text-primary">
+                            {template.name}
+                          </p>
+                          <p className="text-caption text-text-muted">
+                            {template.kind === "reel" ? "Reel" : "Long"} · {template.width}×
+                            {template.height}
+                          </p>
+                        </div>
+                        {selected ? <Badge tone="success">Selected</Badge> : null}
+                      </div>
+                    );
+                  })}
+                  {ws.videoTemplates.length > 4 ? (
+                    <p className="text-caption text-text-muted">
+                      +{ws.videoTemplates.length - 4} more in Templates.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  className="h-8"
+                  onClick={() => ws.setActiveTab("publication")}
+                  data-testid="settings-profile-choose-template"
+                >
+                  Choose in Publication
+                </Button>
+                <p className="text-caption text-text-muted">
+                  Long and reel are selected separately per profile.
+                </p>
+              </div>
             </Section>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">

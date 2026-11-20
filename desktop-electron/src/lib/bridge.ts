@@ -154,6 +154,8 @@ export interface CamxoraBridge {
     reload(): Promise<IpcResult<boolean>>;
     save(): Promise<IpcResult<VizzySaveResult>>;
     open(): Promise<IpcResult<VizzyOpenResult | null>>;
+    /** Start a fresh project; the shell confirms first. */
+    newProject(): Promise<IpcResult<boolean>>;
     openPath(path: string): Promise<IpcResult<VizzyOpenResult>>;
     export(settings?: VizzyExportSettingsInput): Promise<IpcResult<VizzyExportOutcome>>;
     cancelExport(jobId: string): Promise<IpcResult<{ cancelled: boolean }>>;
