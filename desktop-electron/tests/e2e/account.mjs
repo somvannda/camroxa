@@ -258,7 +258,7 @@ async function dashboardSuccess() {
         transactions: [
           {
             id: "txn-2",
-            amount: 15,
+            amount: 150000,
             transaction_type: "consume",
             description: "Suno song",
             reference_id: null,
@@ -266,8 +266,8 @@ async function dashboardSuccess() {
           },
           {
             id: "txn-1",
-            amount: 1000,
-            transaction_type: "topup",
+            amount: 10000000,
+            transaction_type: "credit_pack_purchase",
             description: "Small Pack",
             reference_id: "pay-123",
             created_at: "2026-11-19T09:00:00Z",
@@ -320,7 +320,7 @@ async function dashboardSuccess() {
     await capture(app, page, "profile-success");
 
     await page.getByRole("link", { name: "Plan" }).click();
-    await page.getByRole("heading", { name: "Plan", exact: true }).waitFor({ timeout: 5000 });
+    await page.getByRole("heading", { name: "Buy credits." }).waitFor({ timeout: 5000 });
     await page.locator('[data-testid="plan-pack-small"]').waitFor({ timeout: 8000 });
     assert(
       (await page.locator('[data-testid^="plan-pack-"]').count()) === 3,
@@ -332,7 +332,10 @@ async function dashboardSuccess() {
     assert(planText.includes("No top-ups yet."), "Top-up history empty state missing");
     await page.getByText("Suno song").waitFor({ timeout: 5000 });
     const billing = await page.getByTestId("plan-billing").innerText();
-    assert(billing.includes("Small Pack") && billing.includes("+1,000"), "Top-up ledger row missing");
+    assert(
+      billing.includes("Small Pack") && billing.includes("+1,000"),
+      `Top-up ledger row missing: ${billing.replace(/\n/g, " | ")}`,
+    );
     assert(
       /suno song/i.test(billing) && billing.includes("15"),
       `Usage ledger row missing: ${billing.replace(/\n/g, " | ")}`,

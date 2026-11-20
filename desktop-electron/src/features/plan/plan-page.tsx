@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../../components/page-header";
 import { Card } from "../../components/card";
@@ -72,28 +72,37 @@ function formatMoney(cents: number): string {
   }).format(cents / 100);
 }
 
-function pricePer100(pack: CreditPack): string {
-  if (pack.total_credits <= 0) return "--";
-  return formatMoney(Math.round((pack.price_cents / pack.total_credits) * 100));
+function extraValue(pack: CreditPack, base: CreditPack | undefined): string {
+  if (!base || base.price_cents <= 0 || pack.price_cents <= 0) return "Base";
+  const baseRate = base.total_credits / base.price_cents;
+  const packRate = pack.total_credits / pack.price_cents;
+  const percent = Math.round((packRate / baseRate - 1) * 100);
+  return percent <= 0 ? "Base" : `+${percent}%`;
 }
 
-function savingsPercent(pack: CreditPack, packs: CreditPack[]): number {
-  if (packs.length === 0 || pack.total_credits <= 0) return 0;
-  const baseline = packs.reduce((worst, entry) =>
-    entry.price_cents / Math.max(1, entry.total_credits) >
-    worst.price_cents / Math.max(1, worst.total_credits)
-      ? entry
-      : worst,
-  );
-  const baselineRate = baseline.price_cents / Math.max(1, baseline.total_credits);
-  const rate = pack.price_cents / Math.max(1, pack.total_credits);
-  if (baselineRate <= 0) return 0;
-  return Math.max(0, Math.round((1 - rate / baselineRate) * 100));
+function creditUnitsToText(units: number): string {
+  const credits = Math.abs(units) / 10_000;
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(credits);
+}
+
+function humanizeLedgerType(type: string): string {
+  const key = type.trim().toLowerCase().replace(/^v3_/, "");
+  const labels: Record<string, string> = {
+    credit_pack_purchase: "Credit pack purchase",
+    period_grant_clawback: "Period grant clawback",
+    period_grant: "Period grant",
+    music: "Music",
+    consumed_web_music_generation: "Web music generation",
+    consumed_web_music_lyrics: "Web music lyrics",
+  };
+  if (labels[key]) return labels[key];
+  const text = key.replace(/[_-]+/g, " ").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "Credit activity";
 }
 
 function ledgerTone(type: string): "success" | "neutral" | "warning" {
   const key = type.toLowerCase();
-  if (key === "consume") return "warning";
+  if (key.includes("consume") || key.includes("music") || key.includes("export")) return "warning";
   if (key.includes("topup") || key.includes("purchase") || key.includes("grant")) return "success";
   return "neutral";
 }
@@ -156,19 +165,9 @@ export function PlanPage() {
   const [checkout, setCheckout] = useState<PurchaseTopup | null>(null);
 
   const packs = packsQuery.data ?? [];
+  const ledgerRows = (ledgerQuery.data ?? []).filter((entry) => entry.amount > 0);
   const balance = account.data?.me.credit_balance ?? 0;
   const loadingAccount = account.isLoading && !account.data;
-
-  const bestValue = useMemo(() => {
-    const list = packsQuery.data ?? [];
-    if (list.length === 0) return null;
-    return list.reduce((best, pack) =>
-      pack.total_credits / Math.max(1, pack.price_cents) >
-      best.total_credits / Math.max(1, best.price_cents)
-        ? pack
-        : best,
-    ).slug;
-  }, [packsQuery.data]);
 
   const refresh = useCallback(async () => {
     await Promise.allSettled([
@@ -218,9 +217,9 @@ export function PlanPage() {
   return (
     <div className="pb-6" data-testid="plan-page">
       <PageHeader
-        eyebrow="Account"
-        title="Plan"
-        description="Top up the credit balance used by music, images, video and uploads."
+        eyebrow="Credits"
+        title="Buy credits."
+        description="One-time purchase. No subscription. Start free, or add a pack whenever you need more."
       />
 
       <div className="space-y-4 p-5">
@@ -308,7 +307,7 @@ export function PlanPage() {
         <div>
           <h2 className="text-title font-semibold text-text-primary">Credit packs</h2>
           <p className="mt-0.5 text-meta text-text-secondary">
-            One purchase adds credits to this account immediately after payment.
+            Every paid pack is a one-time purchase. Credits are valid for 30 days from purchase.
           </p>
         </div>
 
@@ -334,67 +333,89 @@ export function PlanPage() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {packs.map((pack) => {
-              const saving = savingsPercent(pack, packs);
+            {packs.map((pack, index) => {
+              const popular =
+                pack.slug === "medium" ||
+                /medium/i.test(pack.name) ||
+                (packs.length > 1 && index === 0 && packs.length === 1);
+              const extra = extraValue(pack, packs[0]);
               return (
                 <Card
                   key={pack.id}
                   className={
-                    pack.slug === bestValue
-                      ? "flex flex-col border-accent-line p-4"
+                    popular
+                      ? "relative flex flex-col border-accent-line p-4"
                       : "flex flex-col p-4"
                   }
                   data-testid={`plan-pack-${pack.slug}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-body font-semibold text-text-primary">{pack.name}</h3>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      {pack.slug === bestValue ? <Badge tone="accent">Best value</Badge> : null}
-                      {saving > 0 ? <Badge tone="success">Save {saving}%</Badge> : null}
+                  {popular ? (
+                    <span className="absolute right-3 top-3">
+                      <Badge tone="accent">Most popular</Badge>
+                    </span>
+                  ) : null}
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-control bg-accent-soft text-accent">
+                      <Icon name={popular ? "fa-crown" : "fa-bolt"} size={12} />
+                    </span>
+                    <p className="text-body font-semibold text-text-primary">{pack.name}</p>
+                  </div>
+
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-[26px] font-semibold leading-8 text-text-primary text-tabular">
+                        {formatCount(pack.total_credits)}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wide text-text-muted">Credits</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[20px] font-semibold leading-7 text-text-primary text-tabular">
+                        {formatMoney(pack.price_cents)}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                        One-time
+                      </p>
                     </div>
                   </div>
-                  <p className="mt-2 text-[26px] font-semibold leading-8 text-text-primary text-tabular">
-                    {formatCount(pack.total_credits)}
-                    <span className="ml-1 text-meta font-normal text-text-muted">credits</span>
-                  </p>
-                  <p className="text-body font-medium text-text-primary">
-                    {formatMoney(pack.price_cents)}
-                    <span className="ml-1 text-caption font-normal text-text-muted">
-                      one-time
-                    </span>
-                  </p>
-                  <dl className="mt-3 space-y-1 border-t border-border pt-3 text-caption">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <dt className="text-text-muted">Songs equivalent</dt>
+
+                  <dl className="mt-3 divide-y divide-border border-t border-border text-caption">
+                    <div className="flex items-center justify-between gap-2 py-1.5">
+                      <dt className="text-text-muted">Total songs</dt>
                       <dd className="text-text-secondary text-tabular">
-                        ≈ {formatCount(pack.songs_equivalent)}
+                        {formatCount(pack.songs_equivalent)}
                       </dd>
                     </div>
-                    <div className="flex items-baseline justify-between gap-2">
-                      <dt className="text-text-muted">Per 100 credits</dt>
-                      <dd className="text-text-secondary text-tabular">{pricePer100(pack)}</dd>
+                    <div className="flex items-center justify-between gap-2 py-1.5">
+                      <dt className="text-text-muted">Extra value</dt>
+                      <dd
+                        className={
+                          extra === "Base"
+                            ? "text-text-secondary text-tabular"
+                            : "text-success text-tabular"
+                        }
+                      >
+                        {extra}
+                      </dd>
                     </div>
-                    <div className="flex items-baseline justify-between gap-2">
-                      <dt className="text-text-muted">Validity</dt>
-                      <dd className="text-text-secondary">Added after payment</dd>
+                    <div className="flex items-center justify-between gap-2 py-1.5">
+                      <dt className="text-text-muted">Valid</dt>
+                      <dd className="text-text-secondary">30 days</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 py-1.5">
+                      <dt className="text-text-muted">Delivery</dt>
+                      <dd className="text-success">Instant</dd>
                     </div>
                   </dl>
-                  {pack.description ? (
-                    <p className="mt-2 text-caption text-text-muted">{pack.description}</p>
-                  ) : null}
-                  <ul className="mt-2 space-y-1 text-caption text-text-secondary">
-                    <li>Music, image, video, merge and upload operations</li>
-                    <li>No subscription; buy again whenever you need more</li>
-                  </ul>
+
                   <Button
-                    variant="primary"
+                    variant={popular ? "primary" : "secondary"}
                     className="mt-4 w-full"
                     loading={buying === pack.slug}
                     disabled={Boolean(buying)}
                     onClick={() => void buy(pack)}
                     data-testid={`plan-buy-${pack.slug}`}
                   >
-                    Buy {formatMoney(pack.price_cents)}
+                    {buying === pack.slug ? "Opening checkout…" : `Buy ${pack.name}`}
                   </Button>
                 </Card>
               );
@@ -433,24 +454,23 @@ export function PlanPage() {
                 Retry
               </Button>
             </div>
-          ) : (ledgerQuery.data?.length ?? 0) === 0 ? (
+          ) : ledgerRows.length === 0 ? (
             <p className="px-4 py-6 text-center text-meta text-text-secondary">
               No credit activity yet. Purchases and generation costs appear here.
             </p>
           ) : (
             <ul className="divide-y divide-border">
-              {ledgerQuery.data?.map((entry) => {
+              {ledgerRows.map((entry) => {
                 const consumed = entry.transaction_type.toLowerCase() === "consume";
                 const label =
-                  entry.description ||
-                  (consumed ? "Generation" : entry.transaction_type.replace(/[_-]+/g, " "));
+                  entry.description.trim() || humanizeLedgerType(entry.transaction_type);
                 return (
                   <li
                     key={entry.id}
                     className="flex items-center justify-between gap-3 px-4 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-meta text-text-primary capitalize">{label}</p>
+                      <p className="truncate text-meta text-text-primary">{label}</p>
                       <p className="text-caption text-text-muted">
                         {formatDateTime(entry.created_at)}
                         {entry.reference_id ? ` · ${entry.reference_id.slice(0, 8)}` : ""}
@@ -463,12 +483,12 @@ export function PlanPage() {
                       <span
                         className={
                           consumed
-                            ? "text-meta text-warning text-tabular"
-                            : "text-meta text-success text-tabular"
+                            ? "w-24 text-right text-meta text-warning text-tabular"
+                            : "w-24 text-right text-meta text-success text-tabular"
                         }
                       >
                         {consumed ? "−" : "+"}
-                        {formatCount(entry.amount)}
+                        {creditUnitsToText(entry.amount)}
                       </span>
                     </div>
                   </li>
@@ -478,13 +498,30 @@ export function PlanPage() {
           )}
         </Card>
 
-        <Card className="p-4">
-          <h2 className="text-title font-semibold text-text-primary">How credits work</h2>
-          <ul className="mt-2 space-y-1 text-meta text-text-secondary">
-            <li>Music, drafts, images, video renders, merges and uploads are priced per operation.</li>
-            <li>The exact cost is shown on the Music page before you generate.</li>
-            <li>Unused credits stay on your account; there is no monthly allowance to lose.</li>
-          </ul>
+        <Card className="p-4" data-testid="plan-includes">
+          <div className="flex items-center gap-2 text-body font-medium text-text-primary">
+            <Icon name="fa-wand-magic-sparkles" size={13} className="text-accent" />
+            Every pack includes
+          </div>
+          <div className="mt-3 grid gap-2 text-meta text-text-secondary sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              "Credits added instantly after payment",
+              "Valid for 30 days from purchase",
+              "Buying again resets the 30-day clock",
+              "No subscription required",
+              "Buy another pack any time",
+              "Secure ChmabaPay checkout",
+            ].map((item) => (
+              <span key={item} className="flex items-start gap-2">
+                <Icon name="fa-check" size={11} className="mt-1 shrink-0 text-success" />
+                {item}
+              </span>
+            ))}
+          </div>
+          <p className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-caption text-text-muted">
+            <Icon name="fa-lock" size={11} />
+            Payments are processed securely by ChmabaPay.
+          </p>
         </Card>
       </div>
     </div>

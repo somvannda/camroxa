@@ -226,10 +226,11 @@ shell chunk is ~333 kB (103 kB gzip).
   (`https://api.sandbox.camxora.com/api/v1`) and portal (`https://app.sandbox.camxora.com`).
 - Profile is identity + work, not repeated stats: member since, role, desktop access,
   top-up/manage shortcuts, credits & usage, channel profiles, and a live activity feed.
-- New **Plan** page (`/plan`) lists credit packs from `/api/v3/topups/packs` with per-100-credit
-  price, savings vs the smallest pack, songs equivalent, one-time wording and pack features;
-  buys through `/topups/purchase`, opens the hosted checkout, and shows both recent top-ups and
-  the `credits/history` wallet ledger (purchases, grants and usage) as billing activity.
+- New **Plan** page (`/plan`, titled “Buy credits.”) matches the production pricing cards:
+  credits/price headline, total songs, extra value vs the base pack, 30-day validity, instant
+  delivery, “Most popular” on Medium, a “Every pack includes” strip, and one “Buy {pack}” action.
+  Billing activity reads `credits/history`, converts micro-units to display credits, hides zero
+  rows and humanizes ledger types.
 - Sidebar groups: **Overview** (Dashboard, Progress), **Create** (Music, Image, Vizzy),
   **Discover** (Marketplace), **Account** (Profile, Plan, Settings).
 - The header update icon only appears when an update offer exists, matching the Python desktop;
