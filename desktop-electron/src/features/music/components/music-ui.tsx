@@ -1,4 +1,5 @@
 import { Checkbox } from "../../../components/checkbox";
+import { DatePicker } from "../../../components/date-picker";
 import { Field, FieldLabel } from "../../../components/field";
 import { Input } from "../../../components/input";
 import { Range } from "../../../components/range";
@@ -33,14 +34,12 @@ export function SelectField({
         data-testid={testId}
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </Select>
+        options={options.map((option) => ({
+          value: option.value,
+          label: option.label,
+        }))}
+        onValueChange={onChange}
+      />
     </Field>
   );
 }
@@ -104,15 +103,12 @@ export function DateField({
 }) {
   return (
     <Field id={id} label={label}>
-      <Input
+      <DatePicker
         id={id}
         data-testid={testId}
-        type="date"
-        controlSize="md"
-        className="text-tabular"
         value={value}
         invalid={invalid}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={onChange}
       />
     </Field>
   );
@@ -183,7 +179,7 @@ export function CheckField({
       hint={hint}
       checked={checked}
       disabled={disabled}
-      onChange={(event) => onChange(event.target.checked)}
+      onCheckedChange={onChange}
     />
   );
 }

@@ -1,8 +1,8 @@
 import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { Checkbox } from "../../components/checkbox";
+import { DatePicker } from "../../components/date-picker";
 import { Field } from "../../components/field";
-import { Input } from "../../components/input";
 import { Select } from "../../components/select";
 import { LIMIT_OPTIONS, STAGE_FILTERS, type StageFilter } from "./progress-format";
 
@@ -53,24 +53,20 @@ export function ProgressToolbar({
     <div className="space-y-2">
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
         <Field label="From" className="w-[144px]">
-          <Input
-            type="date"
-            controlSize="md"
-            className="text-tabular"
+          <DatePicker
+            id="progress-from"
             value={from}
             max={to || undefined}
-            onChange={(event) => onFromChange(event.target.value)}
+            onChange={onFromChange}
             data-testid="progress-from"
           />
         </Field>
         <Field label="To" className="w-[144px]">
-          <Input
-            type="date"
-            controlSize="md"
-            className="text-tabular"
+          <DatePicker
+            id="progress-to"
             value={to}
             min={from || undefined}
-            onChange={(event) => onToChange(event.target.value)}
+            onChange={onToChange}
             data-testid="progress-to"
           />
         </Field>
@@ -78,35 +74,28 @@ export function ProgressToolbar({
           <Checkbox
             label="Active only"
             checked={activeOnly}
-            onChange={(event) => onActiveOnlyChange(event.target.checked)}
+            onCheckedChange={onActiveOnlyChange}
             data-testid="progress-active"
           />
         </div>
         <Field label="Limit" className="w-[88px]">
           <Select
             value={limit}
-            onChange={(event) => onLimitChange(Number(event.target.value))}
+            options={LIMIT_OPTIONS.map((option) => ({ value: option, label: String(option) }))}
+            onValueChange={(next) => onLimitChange(Number(next))}
             data-testid="progress-limit"
-          >
-            {LIMIT_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
+          />
         </Field>
         <Field label="Stage" className="w-[132px]">
           <Select
             value={stage}
-            onChange={(event) => onStageChange(event.target.value as StageFilter)}
+            options={STAGE_FILTERS.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+            onValueChange={(next) => onStageChange(next as StageFilter)}
             data-testid="progress-stage"
-          >
-            {STAGE_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
+          />
         </Field>
         <Button
           variant="secondary"

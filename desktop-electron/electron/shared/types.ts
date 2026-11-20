@@ -51,7 +51,7 @@ export interface SavedAccount {
   lastUsedAt: number;
 }
 
-export type BootstrapDestination = "login" | "confirm_email" | "onboarding" | "app";
+export type BootstrapDestination = "login" | "confirm_email" | "app";
 
 export interface BootstrapResult {
   destination: BootstrapDestination;

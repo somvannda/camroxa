@@ -1,6 +1,6 @@
 import type { InputHTMLAttributes } from "react";
 import { classNames } from "../lib/format";
-import type { ControlSize } from "./select";
+import type { ControlSize } from "./control-size";
 
 const SIZES: Record<ControlSize, string> = {
   sm: "h-7 text-caption px-2",

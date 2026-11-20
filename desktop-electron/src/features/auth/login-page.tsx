@@ -60,7 +60,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
 
   const noticePaid =
     notice?.code === "DESKTOP_PLAN_REQUIRED"
-      ? { message: notice.message ?? "Desktop studio requires a paid plan.", portalUrl: notice.portalUrl ?? portalUrl }
+      ? { message: notice.message ?? "Desktop Studio needs a positive credit balance. Top up, then sign in again.", portalUrl: notice.portalUrl ?? portalUrl }
       : null;
   const gate = paidGate ?? noticePaid;
 
@@ -175,7 +175,9 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
           <div className="space-y-4">
             <div>
               <p className="text-caption text-text-muted">DESKTOP STUDIO</p>
-              <h1 className="mt-1 text-title font-semibold text-text-primary">A paid plan is required</h1>
+              <h1 className="mt-1 text-title font-semibold text-text-primary">
+                Credits are required
+              </h1>
             </div>
 
             {error ? (
@@ -194,7 +196,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
               disabled={openingPortal}
               onClick={() => void openAccountPortal(gate.portalUrl)}
             >
-              Open account portal
+              Top up credits
             </Button>
 
             <Button type="button" variant="secondary" className="h-9 w-full" disabled={openingPortal} onClick={dismissGate}>

@@ -47,8 +47,11 @@ export type AccountRoute =
   | { destination: Exclude<BootstrapDestination, "login"> };
 
 /**
- * Post-auth routing order: paid gate -> email confirmation -> channel profiles.
- * Users who skip onboarding are routed to the shell by the renderer, not here.
+ * Post-auth routing order: paid gate -> email confirmation -> app.
+ *
+ * A missing channel profile is not an onboarding gate: the user reaches the
+ * shell and adds a profile from Settings. Only an unpaid/free account is
+ * stopped at login and directed to buy credits.
  */
 export function resolveBootstrapDestination(
   me: EntitlementUser & Pick<UserMe, "email_confirmed" | "channel_profile_count">,
@@ -58,9 +61,6 @@ export function resolveBootstrapDestination(
   }
   if (me.email_confirmed === false) {
     return { destination: "confirm_email" };
-  }
-  if ((me.channel_profile_count ?? 0) === 0) {
-    return { destination: "onboarding" };
   }
   return { destination: "app" };
 }

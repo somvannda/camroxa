@@ -1,4 +1,5 @@
 import type {
+  ChangeEvent,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -158,18 +159,28 @@ export function SelectInput({
 } & Omit<SelectHTMLAttributes<HTMLSelectElement>, "className" | "children">) {
   const autoId = useId();
   const fieldId = id ?? autoId;
+  const { value, onChange, disabled, name, required } = props;
   return (
     <Field label={label} htmlFor={fieldId} hint={hint} error={error}>
-      <Select id={fieldId} invalid={Boolean(error)} {...props}>
-        {placeholder ? (
-          <option value="">{placeholder}</option>
-        ) : null}
-        {options.map((option) => (
-          <option key={option.value} value={option.value} disabled={option.disabled}>
-            {option.label}
-          </option>
-        ))}
-      </Select>
+      <Select
+        id={fieldId}
+        invalid={Boolean(error)}
+        value={typeof value === "string" || typeof value === "number" ? value : undefined}
+        options={options.map((option) => ({
+          value: option.value,
+          label: option.label,
+          disabled: option.disabled,
+        }))}
+        placeholder={placeholder ?? "Select"}
+        disabled={disabled}
+        required={required}
+        name={name}
+        onValueChange={(next) =>
+          onChange?.({
+            target: { value: next },
+          } as ChangeEvent<HTMLSelectElement>)
+        }
+      />
     </Field>
   );
 }
@@ -219,9 +230,21 @@ export function CheckboxInput({
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "type">) {
   const autoId = useId();
   const fieldId = id ?? autoId;
+  const { onChange, checked, ...rest } = props;
   return (
     <div>
-      <Checkbox id={fieldId} label={label} hint={hint} {...props} />
+      <Checkbox
+        id={fieldId}
+        label={label}
+        hint={hint}
+        {...rest}
+        checked={checked === true}
+        onCheckedChange={(next) =>
+          onChange?.({
+            target: { checked: next },
+          } as ChangeEvent<HTMLInputElement>)
+        }
+      />
     </div>
   );
 }

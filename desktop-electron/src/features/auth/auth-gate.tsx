@@ -4,7 +4,6 @@ import { useSessionStore } from "../../store/session";
 import { BootSplash } from "./boot-splash";
 import { ConfirmEmailGate } from "./confirm-email-gate";
 import { LoginPage } from "./login-page";
-import { OnboardingGate } from "./onboarding-gate";
 
 const DEV_SESSION: SessionSummary = {
   userId: "dev",
@@ -16,7 +15,6 @@ const DEV_SESSION: SessionSummary = {
 export function AuthGate({ children }: { children: ReactNode }) {
   const status = useSessionStore((state) => state.status);
   const destination = useSessionStore((state) => state.destination);
-  const onboardingSkipped = useSessionStore((state) => state.onboardingSkipped);
   const noticePortalUrl = useSessionStore((state) => state.notice?.portalUrl);
   const [booted, setBooted] = useState(false);
   const [portalUrl, setPortalUrl] = useState("https://app.camxora.com");
@@ -83,9 +81,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   if (destination === "confirm_email") {
     return <ConfirmEmailGate portalUrl={resolvedPortalUrl} />;
-  }
-  if (destination === "onboarding" && !onboardingSkipped) {
-    return <OnboardingGate portalUrl={resolvedPortalUrl} />;
   }
   return <>{children}</>;
 }

@@ -100,15 +100,10 @@ export function ImagePreviewCard({
             id={`${testId}-source`}
             controlSize="sm"
             value={sourceValue}
-            onChange={(event) => onSourceChange(event.target.value)}
+            options={sourceOptions}
+            onValueChange={onSourceChange}
             wrapperClassName="flex-1"
-          >
-            {sourceOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
+          />
         </div>
       ) : null}
       <div className="relative flex h-[236px] items-center justify-center bg-surface-2">

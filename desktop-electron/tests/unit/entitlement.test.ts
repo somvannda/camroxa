@@ -101,14 +101,14 @@ describe("bootstrap routing", () => {
     ).toEqual({ destination: "confirm_email" });
   });
 
-  it("sends accounts without channel profiles to onboarding", () => {
+  it("opens the shell when the account has no channel profiles", () => {
     expect(
       resolveBootstrapDestination({
         ...paid,
         email_confirmed: true,
         channel_profile_count: 0,
       }),
-    ).toEqual({ destination: "onboarding" });
+    ).toEqual({ destination: "app" });
   });
 
   it("opens the shell for entitled, confirmed accounts with profiles", () => {

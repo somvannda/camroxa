@@ -18,12 +18,10 @@ interface SessionState {
   session: SessionSummary | null;
   destination: BootstrapDestination | null;
   notice: SessionNotice | null;
-  onboardingSkipped: boolean;
   applyBootstrap: (result: BootstrapResult) => void;
   setSession: (session: SessionSummary) => void;
   setNotice: (notice: SessionNotice | null) => void;
   clear: () => void;
-  continueToApp: () => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -31,7 +29,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   session: null,
   destination: null,
   notice: null,
-  onboardingSkipped: false,
 
   applyBootstrap: (result) => {
     const notice: SessionNotice = {
@@ -45,7 +42,6 @@ export const useSessionStore = create<SessionState>((set) => ({
         session: null,
         destination: "login",
         notice,
-        onboardingSkipped: false,
       });
       return;
     }
@@ -54,7 +50,6 @@ export const useSessionStore = create<SessionState>((set) => ({
       session: result.session,
       destination: result.destination,
       notice,
-      onboardingSkipped: false,
     });
   },
 
@@ -64,7 +59,6 @@ export const useSessionStore = create<SessionState>((set) => ({
       session,
       destination: "app",
       notice: null,
-      onboardingSkipped: false,
     }),
 
   setNotice: (notice) => set({ notice }),
@@ -75,8 +69,5 @@ export const useSessionStore = create<SessionState>((set) => ({
       session: null,
       destination: "login",
       notice: null,
-      onboardingSkipped: false,
     }),
-
-  continueToApp: () => set({ destination: "app" }),
 }));

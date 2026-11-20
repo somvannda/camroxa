@@ -3,7 +3,7 @@ import { Button } from "../../components/button";
 import { Dialog, DialogContent } from "../../components/dialog";
 import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
-import { classNames } from "../../lib/format";
+import { Select } from "../../components/select";
 import {
   PIPELINE_BINDING_FIELDS,
   PIPELINE_FIELD_LABELS,
@@ -16,9 +16,6 @@ import {
   templateDraftErrors,
   type TemplateDraftState,
 } from "./vizzy-template-model";
-
-const selectClass =
-  "h-8 w-full rounded-control border border-border bg-surface-1 px-2 text-body-sm text-text-primary focus:border-accent focus:outline-none disabled:opacity-40";
 
 export interface VizzyTemplateDialogProps {
   open: boolean;
@@ -113,17 +110,15 @@ export function VizzyTemplateDialog({
                   </label>
                   <label className="block space-y-1">
                     <span className="text-caption text-text-muted">Kind</span>
-                    <select
-                      className={selectClass}
+                    <Select
                       value={kind}
-                      onChange={(event) =>
-                        setKind(event.target.value === "reel" ? "reel" : "long")
-                      }
+                      options={[
+                        { value: "long", label: "Long" },
+                        { value: "reel", label: "Reel" },
+                      ]}
+                      onValueChange={(value) => setKind(value === "reel" ? "reel" : "long")}
                       data-testid="vizzy-template-kind"
-                    >
-                      <option value="long">Long</option>
-                      <option value="reel">Reel</option>
-                    </select>
+                    />
                   </label>
                 </div>
 
@@ -149,20 +144,21 @@ export function VizzyTemplateDialog({
                           <span className="w-24 shrink-0 text-body-sm text-text-secondary">
                             {PIPELINE_FIELD_LABELS[field]}
                           </span>
-                          <select
-                            className={classNames(selectClass, message ? "border-danger" : "")}
+                          <Select
                             value={selection[field]}
-                            onChange={(event) => updateBinding(field, event.target.value)}
+                            invalid={Boolean(message)}
+                            options={[
+                              { value: "", label: "— none —" },
+                              ...options.map((option) => ({
+                                value: option.nodeId,
+                                label: `${option.label} · ${option.detail}`,
+                              })),
+                            ]}
+                            onValueChange={(value) => updateBinding(field, value)}
                             aria-label={PIPELINE_FIELD_LABELS[field]}
+                            wrapperClassName="min-w-0 flex-1"
                             data-testid={`vizzy-template-binding-${field}`}
-                          >
-                            <option value="">— none —</option>
-                            {options.map((option) => (
-                              <option key={option.nodeId} value={option.nodeId}>
-                                {option.label} · {option.detail}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </div>
                         {message ? (
                           <p

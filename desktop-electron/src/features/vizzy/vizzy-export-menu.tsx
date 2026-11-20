@@ -187,28 +187,32 @@ export function VizzyExportMenu({
               <span className="text-caption text-text-muted">Resolution</span>
               <Select
                 value={presetValue(widthNumber, heightNumber)}
-                onChange={(event) => {
+                options={[
+                  ...PRESETS.map((preset) => ({
+                    value: `${preset.width}x${preset.height}`,
+                    label: preset.label,
+                  })),
+                  ...(presetValue(widthNumber, heightNumber) === "custom"
+                    ? [
+                        {
+                          value: "custom",
+                          label: `Custom · ${
+                            Number.isFinite(widthNumber) ? widthNumber : "?"
+                          }×${Number.isFinite(heightNumber) ? heightNumber : "?"}`,
+                        },
+                      ]
+                    : []),
+                ]}
+                onValueChange={(value) => {
                   const preset = PRESETS.find(
-                    (entry) => `${entry.width}x${entry.height}` === event.target.value,
+                    (entry) => `${entry.width}x${entry.height}` === value,
                   );
                   if (!preset) return;
                   setWidth(String(preset.width));
                   setHeight(String(preset.height));
                 }}
                 data-testid="vizzy-export-preset"
-              >
-                {PRESETS.map((preset) => (
-                  <option key={preset.label} value={`${preset.width}x${preset.height}`}>
-                    {preset.label}
-                  </option>
-                ))}
-                {presetValue(widthNumber, heightNumber) === "custom" ? (
-                  <option value="custom">
-                    Custom · {Number.isFinite(widthNumber) ? widthNumber : "?"}×
-                    {Number.isFinite(heightNumber) ? heightNumber : "?"}
-                  </option>
-                ) : null}
-              </Select>
+              />
             </label>
 
             <div className="grid grid-cols-2 gap-2">
@@ -243,24 +247,26 @@ export function VizzyExportMenu({
                 <span className="text-caption text-text-muted">Frame rate</span>
                 <Select
                   value={fps}
-                  onChange={(event) => setFps(event.target.value)}
+                  options={[
+                    { value: "24", label: "24 fps" },
+                    { value: "30", label: "30 fps" },
+                    { value: "60", label: "60 fps" },
+                  ]}
+                  onValueChange={setFps}
                   data-testid="vizzy-export-fps"
-                >
-                  <option value="24">24 fps</option>
-                  <option value="30">30 fps</option>
-                  <option value="60">60 fps</option>
-                </Select>
+                />
               </label>
               <label className="block space-y-1">
                 <span className="text-caption text-text-muted">Format</span>
                 <Select
                   value={format}
-                  onChange={(event) => setFormat(event.target.value === "webm" ? "webm" : "mp4")}
+                  options={[
+                    { value: "mp4", label: "MP4 · H.264" },
+                    { value: "webm", label: "WebM · VP9" },
+                  ]}
+                  onValueChange={(value) => setFormat(value === "webm" ? "webm" : "mp4")}
                   data-testid="vizzy-export-format"
-                >
-                  <option value="mp4">MP4 · H.264</option>
-                  <option value="webm">WebM · VP9</option>
-                </Select>
+                />
               </label>
             </div>
 

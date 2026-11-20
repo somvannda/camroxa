@@ -150,27 +150,27 @@ async function launch(name, env = {}) {
     }
 
     await signIn("free@example.com");
-    await window.getByRole("heading", { name: "A paid plan is required" }).waitFor({ timeout: 8_000 });
+    await window.getByRole("heading", { name: "Credits are required" }).waitFor({ timeout: 8_000 });
 
     await window.getByRole("button", { name: "Use a different account" }).click();
     scenario = "unconfirmed";
     await signIn("e2e@example.com");
     await window.getByRole("heading", { name: "Confirm your email" }).waitFor({ timeout: 8_000 });
 
+    // No channel profile is not a gate: confirming the email lands in the app.
     scenario = "onboarding";
     await window.getByRole("button", { name: /I confirmed my email/ }).click();
-    await window.getByRole("heading", { name: "Complete your setup" }).waitFor({ timeout: 8_000 });
-
-    await window.getByRole("button", { name: "Open studio anyway" }).click();
     await window.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 8_000 });
+    if (await window.getByRole("heading", { name: "Complete your setup" }).count()) {
+      throw new Error("Onboarding gate must be removed");
+    }
 
     await window.screenshot({ path: path.join(artifacts, "auth-gates.png"), fullPage: true });
     console.log(
       JSON.stringify({
         paidGate: true,
         confirmEmailGate: true,
-        onboardingGate: true,
-        onboardingSkip: true,
+        noProfileLandsInApp: true,
       }),
     );
   } finally {

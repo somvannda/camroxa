@@ -439,8 +439,7 @@ async function imageFlow() {
     assert((await page.getByTestId("image-preview-background").locator("img").count()) === 1, "Background preview did not load");
 
     // Date range widens to include yesterday; both rows render.
-    const dateInputs = page.locator('input[type="date"]');
-    await dateInputs.first().fill(YESTERDAY);
+    await page.getByTestId("image-from").fill(YESTERDAY);
     await page.waitForTimeout(300);
     assert((await page.getByTestId("image-stat-batches").innerText()) === "2", "Range must match both batches");
     await page.getByTestId("image-row-b-yesterday-profile-2-alt").click();

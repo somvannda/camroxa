@@ -579,6 +579,19 @@ async function capture(app, page, file) {
   await resize(app, page, 1440, 900);
 }
 
+async function chooseOption(scope, target, value) {
+  const trigger = typeof target === "string" ? scope.locator(target) : target;
+  await trigger.click();
+  await scope.locator(`[data-value="${value}"]`).click();
+}
+
+async function readSelectOptions(scope, selector) {
+  await scope.locator(selector).click();
+  const texts = await scope.locator("[data-value]").allInnerTexts();
+  await scope.keyboard.press("Escape");
+  return texts;
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -667,7 +680,7 @@ async function settingsSuccess() {
     assert((await page.locator("#settings-profile-name").inputValue()) === "Deep Focus", "Select must load the profile");
     assert((await page.locator("#settings-profile-folder").inputValue()) === "deep-focus", "Folder must load");
     assert(
-      (await page.locator("#settings-profile-resolution").inputValue()) === "1080x1920",
+      (await page.locator("#settings-profile-resolution").getAttribute("data-selected-value")) === "1080x1920",
       "Resolution must load",
     );
 
@@ -706,7 +719,7 @@ async function settingsSuccess() {
       "Folder must stay once edited",
     );
     await page.locator("#settings-profile-prefix").fill("BT");
-    await page.locator("#settings-profile-resolution").selectOption("1080x1920");
+    await chooseOption(page, "#settings-profile-resolution", "1080x1920");
     await page.getByRole("button", { name: "Create profile" }).click();
     await page.getByText("Created profile").waitFor({ timeout: 5000 });
     const createCall = state.calls.find((call) => call.method === "POST" && call.path === "/profiles");
@@ -789,49 +802,57 @@ async function settingsSuccess() {
     await page.locator('[data-testid="settings-publication-tab"]').waitFor();
     await pause(page);
     assert(
-      (await page.locator("#settings-publication-profile-select").inputValue()) === "profile-1",
+      (await page.locator("#settings-publication-profile-select").getAttribute("data-selected-value")) === "profile-1",
       "Publication must default to the initially selected profile",
     );
     await page.waitForFunction(() => {
       const element = document.querySelector("#settings-publication-playlist");
       return element && !element.disabled;
     }, { timeout: 5000 });
-    const firstPlaylistOptions = await page.locator("#settings-publication-playlist option").allTextContents();
+    const firstPlaylistOptions = await readSelectOptions(page, "#settings-publication-playlist");
     assert(
       firstPlaylistOptions.some((text) => text.includes("Night Mixes")),
       "Playlists must load for a connected profile",
     );
     await page.locator("#settings-publication-video-template").waitFor({ timeout: 5000 });
-    const videoTemplateOptions = await page
-      .locator("#settings-publication-video-template option")
-      .allTextContents();
+    const videoTemplateOptions = await readSelectOptions(
+      page,
+      "#settings-publication-video-template",
+    );
     assert(
       videoTemplateOptions.some((text) => text.includes("Night Drive Long")),
       "Saved long templates must appear in the picker",
     );
-    const reelTemplateOptions = await page
-      .locator("#settings-publication-reel-template option")
-      .allTextContents();
+    const reelTemplateOptions = await readSelectOptions(
+      page,
+      "#settings-publication-reel-template",
+    );
     assert(
       reelTemplateOptions.some((text) => text.includes("Night Drive Reel")),
       "Saved reel templates must appear in the picker",
     );
 
     // Profile switch loads that profile's publication defaults.
-    await page.locator("#settings-publication-profile-select").selectOption("profile-2");
+    await chooseOption(page, "#settings-publication-profile-select", "profile-2");
     await pause(page, 300);
     assert(
-      (await page.locator("#settings-publication-visibility").inputValue()) === "scheduled",
+      (await page.locator("#settings-publication-visibility").getAttribute("data-selected-value")) === "scheduled",
       "Visibility must load for the selected profile",
     );
-    assert((await page.locator("#settings-publication-hour").inputValue()) === "21", "Hour must load");
-    assert((await page.locator("#settings-publication-minute").inputValue()) === "35", "Minute must load");
+    assert(
+      (await page.locator("#settings-publication-hour").getAttribute("data-selected-value")) === "21",
+      "Hour must load",
+    );
+    assert(
+      (await page.locator("#settings-publication-minute").getAttribute("data-selected-value")) === "35",
+      "Minute must load",
+    );
     assert(
       (await page.locator("#settings-publication-description").inputValue()).includes("Deep focus"),
       "Description must load",
     );
 
-    await page.locator("#settings-publication-visibility").selectOption("public");
+    await chooseOption(page, "#settings-publication-visibility", "public");
     await pause(page);
     assert(
       await page.locator("#settings-publication-hour").isDisabled(),
@@ -848,15 +869,15 @@ async function settingsSuccess() {
     step("success: saved publication");
 
     // Playlist on a connected profile.
-    await page.locator("#settings-publication-profile-select").selectOption("profile-1");
+    await chooseOption(page, "#settings-publication-profile-select", "profile-1");
     await pause(page, 400);
     await page.waitForFunction(() => {
       const element = document.querySelector("#settings-publication-playlist");
       return element && !element.disabled;
     }, { timeout: 5000 });
-    const playlistOptions = await page.locator("#settings-publication-playlist option").allTextContents();
+    const playlistOptions = await readSelectOptions(page, "#settings-publication-playlist");
     assert(playlistOptions.some((text) => text.includes("Night Mixes")), "Playlists must load");
-    await page.locator("#settings-publication-playlist").selectOption("PL1");
+    await chooseOption(page, "#settings-publication-playlist", "PL1");
     await page.getByRole("button", { name: "Save publication" }).click();
     await page.getByText("Publication saved.").first().waitFor({ timeout: 5000 });
     const playlistCall = [...state.calls]
@@ -865,8 +886,8 @@ async function settingsSuccess() {
     assert(playlistCall.body.youtube_config.playlist === "PL1", "Playlist must save");
 
     // Template selection round-trips through the profile.
-    await page.locator("#settings-publication-video-template").selectOption("night-drive-long");
-    await page.locator("#settings-publication-reel-template").selectOption("night-drive-reel");
+    await chooseOption(page, "#settings-publication-video-template", "night-drive-long");
+    await chooseOption(page, "#settings-publication-reel-template", "night-drive-reel");
     await page.getByRole("button", { name: "Save publication" }).click();
     await page.getByText("Publication saved.").first().waitFor({ timeout: 5000 });
     const templateCall = [...state.calls]
@@ -881,7 +902,7 @@ async function settingsSuccess() {
       "The reel template id must be saved on the profile",
     );
     assert(
-      (await page.locator("#settings-publication-video-template").inputValue()) ===
+      (await page.locator("#settings-publication-video-template").getAttribute("data-selected-value")) ===
         "night-drive-long",
       "The picker must keep the saved template after the round-trip",
     );
@@ -894,7 +915,7 @@ async function settingsSuccess() {
     );
     assert(createPlaylistCall.body.title === "Fresh Mixes", "Create playlist must POST the title");
     assert(
-      (await page.locator("#settings-publication-playlist").inputValue()).startsWith("PL"),
+      (await page.locator("#settings-publication-playlist").getAttribute("data-selected-value")).startsWith("PL"),
       "Created playlist must be selected",
     );
 
@@ -961,13 +982,13 @@ async function settingsSuccess() {
       setter?.call(input, "60");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await page.locator("#settings-preferences-image-source").selectOption("manual");
+    await chooseOption(page, "#settings-preferences-image-source", "manual");
     await pause(page);
     assert(
       (await page.locator("#settings-preferences-background-source").count()) === 0,
       "User Provided must hide the reference controls",
     );
-    await page.locator("#settings-preferences-image-source").selectOption("ai");
+    await chooseOption(page, "#settings-preferences-image-source", "ai");
     await pause(page);
     await page.getByRole("button", { name: "Save preferences" }).click();
     await page.getByText("Preferences saved.").waitFor({ timeout: 5000 });
@@ -988,11 +1009,11 @@ async function settingsSuccess() {
     await page.locator('[data-testid="settings-descriptions-tab"]').waitFor({ timeout: 8000 });
     await pause(page, 300);
     assert(
-      (await page.locator("#settings-descriptions-default-select").inputValue()) === "desc-admin-1",
+      (await page.locator("#settings-descriptions-default-select").getAttribute("data-selected-value")) === "desc-admin-1",
       "The description default must load from account settings",
     );
     assert(
-      (await page.locator("#settings-descriptions-default-structure").inputValue()) === "struct-admin-1",
+      (await page.locator("#settings-descriptions-default-structure").getAttribute("data-selected-value")) === "struct-admin-1",
       "The paired structure default must load from account settings",
     );
     const descriptionsText = await page.locator('[data-testid="settings-descriptions-tab"]').innerText();
@@ -1041,7 +1062,7 @@ async function settingsSuccess() {
     await descriptionEditor.getByRole("button", { name: "Use as default" }).click();
     await pause(page);
     assert(
-      (await page.locator("#settings-descriptions-default-select").inputValue()).startsWith(
+      (await page.locator("#settings-descriptions-default-select").getAttribute("data-selected-value")).startsWith(
         "created-descriptions",
       ),
       "Use as default must select the saved prompt",
@@ -1066,13 +1087,13 @@ async function settingsSuccess() {
       "The deleted prompt must leave the catalog",
     );
     assert(
-      (await page.locator("#settings-descriptions-default-select").inputValue()) === "",
+      (await page.locator("#settings-descriptions-default-select").getAttribute("data-selected-value")) === "",
       "Deleting the selected default must clear the draft",
     );
     step("success: deleted description");
 
-    await page.locator("#settings-descriptions-default-select").selectOption("desc-admin-2");
-    await page.locator("#settings-descriptions-default-structure").selectOption("struct-user-1");
+    await chooseOption(page, "#settings-descriptions-default-select", "desc-admin-2");
+    await chooseOption(page, "#settings-descriptions-default-structure", "struct-user-1");
     await pause(page);
 
     // Structures: same component, its own default.
@@ -1080,7 +1101,7 @@ async function settingsSuccess() {
     await page.locator('[data-testid="settings-structures-tab"]').waitFor({ timeout: 8000 });
     await pause(page, 300);
     assert(
-      (await page.locator("#settings-structures-default-select").inputValue()) === "struct-user-1",
+      (await page.locator("#settings-structures-default-select").getAttribute("data-selected-value")) === "struct-user-1",
       "The shared structure default must be reflected on the Structures tab",
     );
     assert(
@@ -1095,10 +1116,10 @@ async function settingsSuccess() {
     await page.locator('[data-testid="settings-moods-tab"]').waitFor({ timeout: 8000 });
     await pause(page, 300);
     assert(
-      (await page.locator("#settings-moods-default-select").inputValue()) === "mood-admin-1",
+      (await page.locator("#settings-moods-default-select").getAttribute("data-selected-value")) === "mood-admin-1",
       "The mood default must load from account settings",
     );
-    await page.locator("#settings-moods-default-select").selectOption("mood-user-1");
+    await chooseOption(page, "#settings-moods-default-select", "mood-user-1");
     await pause(page);
     step("success: structures and moods");
 
@@ -1190,7 +1211,7 @@ async function settingsSuccess() {
     await page.locator('[data-testid="settings-suno-tab"]').waitFor({ timeout: 8000 });
     await pause(page, 300);
     assert(
-      (await page.locator("#settings-suno-version").inputValue()) === "v6",
+      (await page.locator("#settings-suno-version").getAttribute("data-selected-value")) === "v6",
       "The Suno version must load",
     );
     assert(
@@ -1224,7 +1245,7 @@ async function settingsSuccess() {
     await page.locator("#settings-suno-retry").fill("6");
     await page.locator("#settings-suno-merge").check();
     await page.locator("#settings-suno-merge-group").fill("3");
-    await page.locator("#settings-suno-version").selectOption("v5.5");
+    await chooseOption(page, "#settings-suno-version", "v5.5");
     await page.getByTestId("settings-suno-save").click();
     await page.getByText("Suno defaults saved.").waitFor({ timeout: 5000 });
     const sunoPatchCall = [...state.calls]
@@ -1252,7 +1273,7 @@ async function settingsSuccess() {
     await page.locator("#settings-profile-prefix").fill("NS2");
     await page.getByRole("tab", { name: /Publication/ }).click();
     await pause(page);
-    await page.locator("#settings-publication-category").selectOption("24");
+    await chooseOption(page, "#settings-publication-category", "24");
     await page.getByRole("tab", { name: /Preferences/ }).click();
     await pause(page);
     await page.locator("#settings-preferences-music-workers").fill("2");

@@ -41,8 +41,13 @@ function fail(message) {
   throw new Error(message);
 }
 
-function step(name) {
-  process.stdout.write(`[vizzy-templates] ${name}\n`);
+async function chooseOption(scope, target, value) {
+  const trigger = typeof target === "string" ? scope.locator(target) : target;
+  await trigger.click();
+  await scope.locator(`[data-value="${value}"]`).click();
+}
+
+function step(name) {  process.stdout.write(`[vizzy-templates] ${name}\n`);
 }
 
 const watchdog = setTimeout(() => {
@@ -229,7 +234,9 @@ try {
   await window.getByTestId("vizzy-template-open").click();
   const dialog = window.getByTestId("vizzy-template-dialog");
   await dialog.waitFor({ timeout: 20_000 });
-  const kindValue = await window.getByTestId("vizzy-template-kind").inputValue();
+  const kindValue = await window
+    .getByTestId("vizzy-template-kind")
+    .getAttribute("data-selected-value");
   if (kindValue !== "long") fail(`Expected kind "long", got ${kindValue}`);
   const outputText = await window.getByTestId("vizzy-template-output").innerText();
   if (!outputText.includes("1920") || !outputText.includes("1080") || !outputText.includes("30 fps")) {
@@ -240,21 +247,25 @@ try {
     fail(`Unexpected audio binding copy: ${audioText}`);
   }
   const backgroundSelect = window.getByTestId("vizzy-template-binding-background");
-  const backgroundOptions = await backgroundSelect.locator("option").count();
-  if (backgroundOptions < 2) fail("Background select has no detected node option");
-  const paletteValue = await window.getByTestId("vizzy-template-binding-palette").inputValue();
-  if (!paletteValue) fail("The palette binding was not detected");
+  await backgroundSelect.click();
+  const backgroundItems = window.locator("[data-value]");
+  if ((await backgroundItems.count()) < 2) {
+    fail("Background select has no detected node option");
+  }
+  const mediaNodeId = await backgroundItems.nth(1).getAttribute("data-value");
+  await backgroundItems.nth(1).click();
+  const paletteText = await window.getByTestId("vizzy-template-binding-palette").innerText();
+  if (!paletteText.trim() || /— none —/i.test(paletteText)) {
+    fail("The palette binding was not detected");
+  }
   await window.getByTestId("vizzy-template-name").fill(TEMPLATE_NAME);
   await window.screenshot({ path: path.join(artifacts, "save-dialog.png") });
 
   // Duplicate: the same media node cannot be background and logo.
-  const mediaNodeId = await backgroundSelect
-    .locator("option")
-    .nth(1)
-    .getAttribute("value");
   if (!mediaNodeId) fail("Could not read the media node id");
-  await backgroundSelect.selectOption(mediaNodeId);
-  await window.getByTestId("vizzy-template-binding-logo").selectOption(mediaNodeId);
+  await backgroundSelect.click();
+  await window.locator(`[data-value="${mediaNodeId}"]`).click();
+  await chooseOption(window, window.getByTestId("vizzy-template-binding-logo"), mediaNodeId);
   await window.getByTestId("vizzy-template-error-logo").waitFor({ timeout: 5_000 });
   const duplicateMessage = await window.getByTestId("vizzy-template-error-logo").innerText();
   if (!/already bound/i.test(duplicateMessage)) {
@@ -264,7 +275,7 @@ try {
   if (!saveDisabled) fail("Save must be blocked while a duplicate binding is selected");
 
   // Compatible selection: clear the logo, keep the background override.
-  await window.getByTestId("vizzy-template-binding-logo").selectOption("");
+  await chooseOption(window, window.getByTestId("vizzy-template-binding-logo"), "");
   await window.getByTestId("vizzy-template-error-logo").waitFor({ state: "detached", timeout: 5_000 });
   await window.getByTestId("vizzy-template-save").click();
   await dialog.waitFor({ state: "detached", timeout: 30_000 });

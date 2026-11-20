@@ -27,8 +27,13 @@ fs.mkdirSync(userData, { recursive: true });
 
 const fixture = path.join(root, "tests", "fixtures", "vizzy", "trap-motion.camxora-vizzy.json");
 
-function log(value) {
-  console.log(JSON.stringify(value));
+async function chooseOption(scope, target, value) {
+  const trigger = typeof target === "string" ? scope.locator(target) : target;
+  await trigger.click();
+  await scope.locator(`[data-value="${value}"]`).click();
+}
+
+function log(value) {  console.log(JSON.stringify(value));
 }
 
 function fail(message) {
@@ -116,8 +121,8 @@ try {
   await window.getByTestId("vizzy-export-menu").waitFor({ timeout: 10_000 });
   await window.getByTestId("vizzy-export-width").fill("480");
   await window.getByTestId("vizzy-export-height").fill("270");
-  await window.getByTestId("vizzy-export-fps").selectOption("30");
-  await window.getByTestId("vizzy-export-format").selectOption("mp4");
+  await chooseOption(window, window.getByTestId("vizzy-export-fps"), "30");
+  await chooseOption(window, window.getByTestId("vizzy-export-format"), "mp4");
   await window.getByTestId("vizzy-export-start").fill("0");
   await window.getByTestId("vizzy-export-end").fill("12");
   await window.screenshot({ path: path.join(artifacts, "export-settings.png") });

@@ -3,8 +3,8 @@ import { formatCount } from "../../../lib/format";
 import { apiRequest, errorMessage } from "../../../lib/api";
 import { Button } from "../../../components/button";
 import { Card } from "../../../components/card";
+import { DatePicker } from "../../../components/date-picker";
 import { Field } from "../../../components/field";
-import { Input } from "../../../components/input";
 import {
   Dialog,
   DialogClose,
@@ -617,24 +617,20 @@ export function ImagePage() {
         ) : null}
 
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="From" className="w-[144px]">
-            <Input
-              type="date"
-              controlSize="md"
-              className="text-tabular"
+          <Field label="From" className="w-[176px]">
+            <DatePicker
               value={fromDate}
               max={toDate || undefined}
-              onChange={(event) => setFromDate(event.target.value)}
+              onChange={setFromDate}
+              data-testid="image-from"
             />
           </Field>
-          <Field label="To" className="w-[144px]">
-            <Input
-              type="date"
-              controlSize="md"
-              className="text-tabular"
+          <Field label="To" className="w-[176px]">
+            <DatePicker
               value={toDate}
               min={fromDate || undefined}
-              onChange={(event) => setToDate(event.target.value)}
+              onChange={setToDate}
+              data-testid="image-to"
             />
           </Field>
           <Button variant="secondary" onClick={reload} disabled={query.isFetching}>

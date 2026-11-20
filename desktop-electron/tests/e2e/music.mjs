@@ -598,11 +598,11 @@ async function workspaceScenario() {
       "History row lyrics must load",
     );
     assert(
-      (await page.inputValue('[data-testid="automation-description"]')) === "desc-1",
+      (await page.getAttribute('[data-testid="automation-description"]', "data-selected-value")) === "desc-1",
       "History row description id must load",
     );
     assert(
-      (await page.inputValue('[data-testid="automation-structure"]')) === "struct-1",
+      (await page.getAttribute('[data-testid="automation-structure"]', "data-selected-value")) === "struct-1",
       "History row structure id must load",
     );
     assert(

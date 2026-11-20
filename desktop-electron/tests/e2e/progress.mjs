@@ -373,6 +373,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function chooseOption(page, target, value) {
+  const trigger = typeof target === "string" ? page.locator(target) : target;
+  await trigger.click();
+  await page.locator(`[data-value="${value}"]`).click();
+}
+
 async function stat(page, name) {
   return page.locator(`[data-testid="progress-stat-${name}"]`).innerText();
 }
@@ -575,18 +581,18 @@ async function successWithManualRecovery() {
     await page.locator('[aria-label="Close row detail"]').click();
 
     // PG-T1: stage filter, active only, and limit.
-    await page.locator('[data-testid="progress-stage"]').selectOption("error");
+    await chooseOption(page, '[data-testid="progress-stage"]', "error");
     await page.waitForTimeout(150);
     assert((await rowsLocator.count()) === 1, "Error stage filter must show one row");
-    await page.locator('[data-testid="progress-stage"]').selectOption("all");
+    await chooseOption(page, '[data-testid="progress-stage"]', "all");
     await page.locator('[data-testid="progress-active"]').check();
     await page.waitForTimeout(150);
     assert((await rowsLocator.count()) === 6, "Active only must hide the completed run but keep the failed run");
     await page.locator('[data-testid="progress-active"]').uncheck();
-    await page.locator('[data-testid="progress-limit"]').selectOption("25");
+    await chooseOption(page, '[data-testid="progress-limit"]', "25");
     await page.waitForTimeout(150);
     assert((await rowsLocator.count()) === 7, "Limit 25 must keep all seven rows");
-    await page.locator('[data-testid="progress-limit"]').selectOption("50");
+    await chooseOption(page, '[data-testid="progress-limit"]', "50");
 
     // PG-T1/PG-07: an invalid range blocks the request.
     const beforeInvalid = progressRequests;
@@ -696,7 +702,7 @@ async function twoHundredRows() {
   const { app, page } = await openApp("bulk", port);
   try {
     await page.locator('[data-testid="progress-row"]').first().waitFor({ timeout: 10000 });
-    await page.locator('[data-testid="progress-limit"]').selectOption("200");
+    await chooseOption(page, '[data-testid="progress-limit"]', "200");
     await page.waitForFunction(
       () => document.querySelectorAll('[data-testid="progress-row"]').length === 200,
       undefined,
