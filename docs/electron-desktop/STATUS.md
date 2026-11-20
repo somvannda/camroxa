@@ -230,8 +230,10 @@ shell chunk is ~333 kB (103 kB gzip).
   credits/price headline, total songs, extra value vs the base pack, 30-day validity, instant
   delivery, “Most popular” on Medium, a “Every pack includes” strip, and one “Buy {pack}” action.
   Billing activity reads `credits/history`, converts micro-units to display credits, hides zero
-  rows and humanizes ledger types. Buy opens the ChmabaPay checkout in an in-app modal window
-  (no system browser); the app polls `/topups/payments/{id}` and closes it when credits land.
+  rows and humanizes ledger types. Buy opens a compact **in-app ChmabaPay QR modal** (340 px):
+  the KHQR payload is rendered natively via Chmaba's SVG renderer inside our Dialog, with no
+  provider page and no scrolling; the app polls `/topups/payments/{id}` and closes it when credits
+  land. A webview is only a fallback if a provider returns no QR payload.
 - Sidebar groups: **Overview** (Dashboard, Progress), **Create** (Music, Image, Vizzy),
   **Discover** (Marketplace), **Account** (Profile, Plan, Settings).
 - The header update icon only appears when an update offer exists, matching the Python desktop;

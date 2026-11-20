@@ -30,6 +30,8 @@ interface PurchaseTopup {
   pack_name: string;
   credits: number;
   amount_cents: number;
+  qr_string?: string;
+  expires_at?: string;
 }
 
 function formatMoney(cents: number): string {
@@ -126,7 +128,14 @@ export function TopUpModal() {
           return;
         }
         setLastCheckout(purchase);
-        await payment.start(purchase.checkout_url, purchase.payment_id, pack.name);
+        payment.start({
+          paymentId: purchase.payment_id,
+          checkoutUrl: purchase.checkout_url,
+          packName: pack.name,
+          qrString: purchase.qr_string ?? "",
+          amountCents: purchase.amount_cents,
+          expiresAt: purchase.expires_at ?? "",
+        });
         setNotice({
           tone: "info",
           text: `Complete the payment in the Camxora checkout window for ${pack.name}. Access unlocks automatically.`,
@@ -192,11 +201,14 @@ export function TopUpModal() {
                     type="button"
                     className="text-caption text-accent hover:underline"
                     onClick={() =>
-                      void payment.start(
-                        lastCheckout.checkout_url,
-                        lastCheckout.payment_id,
-                        lastCheckout.pack_name,
-                      )
+                      payment.start({
+                        paymentId: lastCheckout.payment_id,
+                        checkoutUrl: lastCheckout.checkout_url,
+                        packName: lastCheckout.pack_name,
+                        qrString: lastCheckout.qr_string ?? "",
+                        amountCents: lastCheckout.amount_cents,
+                        expiresAt: lastCheckout.expires_at ?? "",
+                      })
                     }
                   >
                     Open checkout
@@ -271,9 +283,9 @@ export function TopUpModal() {
         </div>
       </Card>
       <CheckoutDialog
-        open={Boolean(payment.pending?.url)}
-        url={payment.pending?.url ?? null}
-        onClose={() => void payment.close()}
+        session={payment.pending}
+        credits={lastCheckout?.credits ?? 0}
+        onClose={() => payment.close()}
       />
     </div>
   );

@@ -1,37 +1,70 @@
 import { createElement } from "react";
 import { Dialog, DialogContent } from "../../components/dialog";
+import { formatCount } from "../../lib/format";
+import type { CheckoutSession } from "./use-in-app-checkout";
+
+const CHMABA_QR_RENDERER = "https://pay.chmaba.com/api/v1/khqr/render.svg";
+
+function formatMoney(cents: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+}
 
 interface CheckoutDialogProps {
-  open: boolean;
-  url: string | null;
+  session: CheckoutSession | null;
+  credits: number;
   onClose: () => void;
 }
 
 /**
- * In-app ChmabaPay checkout. The provider page runs in a sandboxed `<webview>`
- * inside our Dialog, so the user never leaves Camxora and no separate browser
- * window appears.
+ * Compact in-app ChmabaPay checkout.
+ *
+ * When the provider returns a KHQR payload we render the QR directly (provider
+ * SVG renderer) so it fits the dialog with no scrolling. A webview is only the
+ * fallback for providers that return no QR payload.
  */
-export function CheckoutDialog({ open, url, onClose }: CheckoutDialogProps) {
+export function CheckoutDialog({ session, credits, onClose }: CheckoutDialogProps) {
+  const qrUrl = session?.qrString
+    ? `${CHMABA_QR_RENDERER}?payload=${encodeURIComponent(session.qrString)}`
+    : null;
+
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+    <Dialog open={Boolean(session)} onOpenChange={(next) => (next ? undefined : onClose())}>
       <DialogContent
-        title="Complete payment"
-        description="Scan the KHQR code. This closes when credits arrive."
-        className="max-w-[380px] p-3"
+        title="Scan to pay"
+        description={
+          session ? `${session.packName} · ${formatMoney(session.amountCents)}` : undefined
+        }
+        className="!max-w-[340px] !p-4 text-center"
       >
-        <div className="h-[400px] overflow-hidden rounded-control border border-border bg-white">
-          {url
-            ? createElement("webview", {
-                src: url,
-                style: { width: "100%", height: "100%", border: "0" },
-                zoomfactor: "0.75",
-                webpreferences: "contextIsolation=yes,nodeIntegration=no,sandbox=yes",
-              })
-            : null}
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-text-muted">
-          <span>Payments by ChmabaPay.</span>
+        {qrUrl ? (
+          <div className="mx-auto w-fit rounded-card border border-border bg-white p-3">
+            <img
+              src={qrUrl}
+              alt="KHQR payment code"
+              width={232}
+              height={232}
+              className="block h-[232px] w-[232px]"
+            />
+          </div>
+        ) : session ? (
+          <div className="h-[360px] overflow-hidden rounded-control border border-border bg-white">
+            {createElement("webview", {
+              src: session.checkoutUrl,
+              style: { width: "100%", height: "100%", border: "0" },
+              zoomfactor: "0.75",
+              webpreferences: "contextIsolation=yes,nodeIntegration=no,sandbox=yes",
+            })}
+          </div>
+        ) : null}
+
+        <p className="mt-3 text-meta text-text-secondary">
+          Open any KHQR-enabled banking app and scan the code.
+        </p>
+        <p className="mt-1 text-caption text-text-muted">
+          {formatCount(credits)} credits · closes automatically when paid
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2 text-[10px] text-text-muted">
+          <span>Secured by ChmabaPay</span>
           <button
             type="button"
             className="text-caption text-text-secondary hover:text-text-primary"

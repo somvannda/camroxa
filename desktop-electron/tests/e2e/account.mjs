@@ -277,6 +277,23 @@ async function dashboardSuccess() {
         limit: 25,
         offset: 0,
       }),
+    "POST /topups/purchase": (_request, response) =>
+      json(response, 200, {
+        checkout_url: "https://pay.chmaba.com/pay/pay-test",
+        payment_id: "pay-test",
+        pack_name: "Small Pack",
+        credits: 1000,
+        amount_cents: 500,
+        expires_at: "2026-11-20T12:10:00Z",
+        qr_string: "00020101021229370016A0000006770101110113008551234567853038405802KH6304ABCD",
+      }),
+    "GET /topups/payments/pay-test": (_request, response) =>
+      json(response, 200, {
+        status: "pending",
+        fulfilled: false,
+        pack_name: "Small Pack",
+        credits: 1000,
+      }),
   });
 
   const { app, page } = await openApp("success", port);
@@ -340,6 +357,30 @@ async function dashboardSuccess() {
       /suno song/i.test(billing) && billing.includes("15"),
       `Usage ledger row missing: ${billing.replace(/\n/g, " | ")}`,
     );
+
+    // Buy opens the compact in-app KHQR modal, not the provider page.
+    await page.getByTestId("plan-buy-small").click();
+    const checkoutDialog = page.getByRole("dialog", { name: "Scan to pay" });
+    await checkoutDialog.waitFor({ timeout: 5000 });
+    await checkoutDialog.getByRole("img", { name: "KHQR payment code" }).waitFor();
+    await page.waitForFunction(
+      () => {
+        const img = document.querySelector('img[alt="KHQR payment code"]');
+        return Boolean(img && img.complete && img.naturalWidth > 0);
+      },
+      undefined,
+      { timeout: 8000 },
+    );
+    const checkoutBox = await checkoutDialog.boundingBox();
+    assert(Boolean(checkoutBox && checkoutBox.width <= 360), "Checkout modal must stay compact");
+    assert(
+      (await checkoutDialog.locator("webview").count()) === 0,
+      "A KHQR payload must render natively, not a provider webview",
+    );
+    await page.screenshot({ path: path.join(artifacts, "plan-checkout-1440.png") });
+    await checkoutDialog.getByRole("button", { name: "Close" }).last().click();
+    await checkoutDialog.waitFor({ state: "detached", timeout: 3000 });
+
     await capture(app, page, "plan-success");
   } finally {
     await app.close();

@@ -8,39 +8,41 @@ export interface PaymentStatus {
   credits: number;
 }
 
-interface PendingPayment {
-  id: string;
-  url: string;
+export interface CheckoutSession {
+  paymentId: string;
+  checkoutUrl: string;
   packName: string;
+  qrString: string;
+  amountCents: number;
+  expiresAt: string;
 }
 
 const POLL_INTERVAL_MS = 3_000;
 const MAX_ATTEMPTS = 100;
 
 /**
- * Opens the provider checkout in the app's modal window and polls the top-up
- * payment until it is fulfilled. The renderer never leaves the app.
+ * Tracks a top-up checkout inside the app.
+ *
+ * The QR is rendered natively from the provider payload; the webview is only a
+ * fallback for a provider that does not return a KHQR string.
  */
 export function useInAppCheckout(onFulfilled: (status: PaymentStatus) => void) {
-  const [pending, setPending] = useState<PendingPayment | null>(null);
+  const [pending, setPending] = useState<CheckoutSession | null>(null);
   const [state, setState] = useState<"idle" | "waiting" | "fulfilled" | "failed" | "timeout">(
     "idle",
   );
   const fulfilledRef = useRef(onFulfilled);
   fulfilledRef.current = onFulfilled;
 
-  const start = useCallback(
-    async (checkoutUrl: string, paymentId: string, packName: string) => {
-      if (!/^https:\/\//i.test(checkoutUrl)) {
-        throw new Error("The checkout link is not a secure web address.");
-      }
-      setPending({ id: paymentId, url: checkoutUrl, packName });
-      setState("waiting");
-    },
-    [],
-  );
+  const start = useCallback((session: CheckoutSession) => {
+    if (!/^https:\/\//i.test(session.checkoutUrl) && !session.qrString) {
+      throw new Error("The checkout link is not a secure web address.");
+    }
+    setPending(session);
+    setState("waiting");
+  }, []);
 
-  const close = useCallback(async () => {
+  const close = useCallback(() => {
     setPending(null);
     setState("idle");
   }, []);
@@ -55,7 +57,7 @@ export function useInAppCheckout(onFulfilled: (status: PaymentStatus) => void) {
       try {
         const status = await apiRequest<PaymentStatus>({
           method: "GET",
-          path: `/topups/payments/${encodeURIComponent(pending.id)}`,
+          path: `/topups/payments/${encodeURIComponent(pending.paymentId)}`,
           apiVersion: "v3",
         });
         if (cancelled) return;
