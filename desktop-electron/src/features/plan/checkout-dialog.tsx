@@ -17,20 +17,21 @@ export function CheckoutDialog({ open, url, onClose }: CheckoutDialogProps) {
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
       <DialogContent
         title="Complete payment"
-        description="Scan the KHQR code or pay in the provider page. This closes automatically when credits arrive."
-        className="max-w-[460px]"
+        description="Scan the KHQR code. This closes when credits arrive."
+        className="max-w-[380px] p-3"
       >
-        <div className="h-[520px] overflow-hidden rounded-control border border-border bg-white">
+        <div className="h-[400px] overflow-hidden rounded-control border border-border bg-white">
           {url
             ? createElement("webview", {
                 src: url,
                 style: { width: "100%", height: "100%", border: "0" },
+                zoomfactor: "0.75",
                 webpreferences: "contextIsolation=yes,nodeIntegration=no,sandbox=yes",
               })
             : null}
         </div>
-        <div className="mt-2 flex items-center justify-between gap-2 text-caption text-text-muted">
-          <span>Payments are processed by ChmabaPay.</span>
+        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-text-muted">
+          <span>Payments by ChmabaPay.</span>
           <button
             type="button"
             className="text-caption text-text-secondary hover:text-text-primary"
