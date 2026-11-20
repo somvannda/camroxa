@@ -234,7 +234,7 @@ shell chunk is ~333 kB (103 kB gzip).
   the KHQR payload is rendered natively via Chmaba's SVG renderer inside our Dialog, with no
   provider page and no scrolling; the app polls `/topups/payments/{id}` and closes it when credits
   land. A webview is only a fallback if a provider returns no QR payload.
-- Sidebar groups: **Overview** (Dashboard, Progress), **Create** (Music, Image, Vizzy),
+- Sidebar groups: **Overview** (Dashboard), **Create** (Progress, Music, Image, Vizzy),
   **Discover** (Marketplace), **Account** (Profile, Plan, Settings).
 - The header update icon only appears when an update offer exists, matching the Python desktop;
   no manual "check for updates" control.

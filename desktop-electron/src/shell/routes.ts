@@ -106,11 +106,11 @@ const ROUTES: Record<ShellRouteKey, ShellRoute> = {
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Overview",
-    routes: [ROUTES.home, ROUTES.progress],
+    routes: [ROUTES.home],
   },
   {
     label: "Create",
-    routes: [ROUTES.music, ROUTES.image, ROUTES.vizzy],
+    routes: [ROUTES.progress, ROUTES.music, ROUTES.image, ROUTES.vizzy],
   },
   {
     label: "Discover",
