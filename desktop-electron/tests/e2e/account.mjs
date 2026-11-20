@@ -365,7 +365,7 @@ async function dashboardSuccess() {
     await checkoutDialog.getByRole("img", { name: "KHQR payment code" }).waitFor();
     await page.waitForFunction(
       () => {
-        const img = document.querySelector('img[alt="KHQR payment code"]');
+        const img = globalThis.document.querySelector('img[alt="KHQR payment code"]');
         return Boolean(img && img.complete && img.naturalWidth > 0);
       },
       undefined,

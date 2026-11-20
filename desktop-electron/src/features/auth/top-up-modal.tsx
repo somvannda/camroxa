@@ -285,7 +285,10 @@ export function TopUpModal() {
       <CheckoutDialog
         session={payment.pending}
         credits={lastCheckout?.credits ?? 0}
-        onClose={() => payment.close()}
+        onClose={() => {
+          payment.close();
+          setNotice(null);
+        }}
       />
     </div>
   );

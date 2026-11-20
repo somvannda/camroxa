@@ -86,22 +86,46 @@ function extraValue(pack: CreditPack, base: CreditPack | undefined): string {
 
 function creditUnitsToText(units: number): string {
   const credits = Math.abs(units) / 10_000;
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(credits);
+  if (credits > 0 && credits < 0.01) return "<0.01";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(credits);
+}
+
+function isCodeLabel(value: string): boolean {
+  return /^[a-z0-9]+([_.-][a-z0-9]+)+$/i.test(value.trim());
 }
 
 function humanizeLedgerType(type: string): string {
-  const key = type.trim().toLowerCase().replace(/^v3_/, "");
+  const key = type.trim().toLowerCase().replace(/^v3_/, "").replace(/^consumed_/, "");
   const labels: Record<string, string> = {
     credit_pack_purchase: "Credit pack purchase",
-    period_grant_clawback: "Period grant clawback",
-    period_grant: "Period grant",
-    music: "Music",
-    consumed_web_music_generation: "Web music generation",
-    consumed_web_music_lyrics: "Web music lyrics",
+    period_grant_clawback: "Credit grant correction",
+    period_grant: "Monthly credit grant",
+    music: "Music generation",
+    web_music_generation: "Web music generation",
+    web_music_lyrics: "Web song lyrics",
+    manual_export_stopped: "Manual export stopped",
+    video_manual_via_local: "Manual video export",
+    "manual export stopped (unused tracks)": "Manual export stopped",
   };
   if (labels[key]) return labels[key];
   const text = key.replace(/[_-]+/g, " ").trim();
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : "Credit activity";
+}
+
+function ledgerLabel(description: string, type: string): string {
+  const raw = description.trim();
+  if (raw && !isCodeLabel(raw)) return raw;
+  return humanizeLedgerType(raw || type);
+}
+
+function ledgerIcon(type: string, label: string): string {
+  const key = `${type} ${label}`.toLowerCase();
+  if (key.includes("music") || key.includes("song") || key.includes("lyric")) return "fa-music";
+  if (key.includes("image") || key.includes("thumbnail")) return "fa-image";
+  if (key.includes("video") || key.includes("reel") || key.includes("export")) return "fa-video";
+  if (key.includes("grant") || key.includes("purchase") || key.includes("credit"))
+    return "fa-coins";
+  return "fa-bolt";
 }
 
 function ledgerTone(type: string): "success" | "neutral" | "warning" {
@@ -490,35 +514,38 @@ export function PlanPage() {
             <ul className="divide-y divide-border">
               {ledgerRows.map((entry) => {
                 const consumed = entry.transaction_type.toLowerCase() === "consume";
-                const label =
-                  entry.description.trim() || humanizeLedgerType(entry.transaction_type);
+                const label = ledgerLabel(entry.description, entry.transaction_type);
                 return (
                   <li
                     key={entry.id}
-                    className="flex items-center justify-between gap-3 px-4 py-2"
+                    className="flex items-center gap-3 px-4 py-2.5"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-meta text-text-primary">{label}</p>
+                    <span
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-secondary"
+                      aria-hidden="true"
+                    >
+                      <Icon name={ledgerIcon(entry.transaction_type, label)} size={12} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-meta font-medium text-text-primary">{label}</p>
                       <p className="text-caption text-text-muted">
                         {formatDateTime(entry.created_at)}
-                        {entry.reference_id ? ` · ${entry.reference_id.slice(0, 8)}` : ""}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <Badge tone={ledgerTone(entry.transaction_type)}>
-                        {consumed ? "Used" : "Added"}
-                      </Badge>
-                      <span
-                        className={
-                          consumed
-                            ? "w-24 text-right text-meta text-warning text-tabular"
-                            : "w-24 text-right text-meta text-success text-tabular"
-                        }
-                      >
-                        {consumed ? "−" : "+"}
-                        {creditUnitsToText(entry.amount)}
-                      </span>
-                    </div>
+                    <Badge tone={ledgerTone(entry.transaction_type)}>
+                      {consumed ? "Used" : "Added"}
+                    </Badge>
+                    <span
+                      className={
+                        consumed
+                          ? "w-28 text-right text-meta text-warning text-tabular"
+                          : "w-28 text-right text-meta text-success text-tabular"
+                      }
+                    >
+                      {consumed ? "−" : "+"}
+                      {creditUnitsToText(entry.amount)}
+                      <span className="ml-1 text-caption">credits</span>
+                    </span>
                   </li>
                 );
               })}
@@ -556,7 +583,10 @@ export function PlanPage() {
       <CheckoutDialog
         session={payment.pending}
         credits={lastCheckout?.credits ?? 0}
-        onClose={() => payment.close()}
+        onClose={() => {
+          payment.close();
+          setNotice(null);
+        }}
       />
     </div>
   );
