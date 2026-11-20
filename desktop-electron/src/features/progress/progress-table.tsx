@@ -13,8 +13,9 @@ import {
   progressPercent,
   rowKey,
   runDateLabel,
+  stageBadgeTone,
+  stageLabel,
   statusBadgeTone,
-  statusLabel,
   updatedCellText,
   youtubeCellText,
 } from "./progress-format";
@@ -145,8 +146,9 @@ export function ProgressTable({
               const updated = updatedCellText(row);
               const channel = channelCellText(row);
               const progress = progressPercent(row);
-              const stageText = statusLabel(row.status);
-              const stageTone = statusBadgeTone(row.status);
+              const stageText = stageLabel(row.stage);
+              const stageTone = stageBadgeTone(row.stage);
+              const progressTone = statusBadgeTone(row.status);
               const role =
                 channel.secondary === "OK"
                   ? "Primary"
@@ -203,7 +205,11 @@ export function ProgressTable({
                         <div
                           className={classNames(
                             "h-full rounded-full",
-                            progress.percent >= 100 ? "bg-success" : "bg-accent",
+                            progress.percent >= 100
+                              ? "bg-success"
+                              : progressTone === "danger"
+                                ? "bg-danger"
+                                : "bg-accent",
                           )}
                           style={{ width: `${progress.percent}%` }}
                         />
