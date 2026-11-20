@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "../components/icon";
-import { classNames } from "../lib/format";
 import { ToastHistoryList, useToastStore } from "../components/toast";
-import { toast } from "../components/toast-store";
 import type { UpdateCheckResult, UpdateOffer } from "../../electron/shared/types";
 
 async function checkForUpdate(): Promise<UpdateCheckResult> {
@@ -98,36 +96,20 @@ export function UpdateButton() {
   });
   const offer = check.data?.offer ?? null;
 
+  // Python-desktop parity: the control only exists when an update is waiting.
+  if (!offer) return null;
+
   return (
     <button
       type="button"
-      className={classNames(
-        "relative flex h-7 w-8 items-center justify-center rounded-[6px] hover:bg-surface-hover",
-        offer ? "text-accent" : "text-text-secondary hover:text-text-primary",
-      )}
-      aria-label={offer ? `Update ${offer.version} available` : "Check for updates"}
-      title={offer ? `Camxora ${offer.version} is available` : "Check for updates"}
+      className="relative flex h-7 w-8 items-center justify-center rounded-[6px] text-accent hover:bg-surface-hover"
+      aria-label={`Update ${offer.version} available`}
+      title={`Camxora ${offer.version} is available`}
       data-testid="update-button"
-      onClick={() => {
-        if (offer) {
-          void openOffer(offer);
-          return;
-        }
-        void check.refetch().then((result) => {
-          const next = result.data?.offer;
-          toast(
-            next
-              ? `Camxora ${next.version} is available.`
-              : "You are on the latest version.",
-            next ? "info" : "success",
-          );
-        });
-      }}
+      onClick={() => void openOffer(offer)}
     >
-      <Icon name={offer ? "fa-download" : "fa-arrows-rotate"} size={13} />
-      {offer ? (
-        <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
-      ) : null}
+      <Icon name="fa-download" size={13} />
+      <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
     </button>
   );
 }

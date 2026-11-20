@@ -3,7 +3,7 @@ import { Icon } from "../components/icon";
 import { classNames } from "../lib/format";
 import { useSessionStore } from "../store/session";
 import { useNavigationGuard } from "./navigation-guard";
-import { UTILITY_ROUTES, WORKSPACE_ROUTES, type ShellRoute } from "./routes";
+import { NAV_GROUPS, type ShellRoute } from "./routes";
 
 function NavItem({ route }: { route: ShellRoute }) {
   const navigate = useNavigate();
@@ -68,19 +68,16 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-3">
-        <p className="px-2 pb-2 text-caption text-text-muted">Workspace</p>
-        <div className="space-y-0.5">
-          {WORKSPACE_ROUTES.map((route) => (
-            <NavItem key={route.key} route={route} />
-          ))}
-        </div>
-
-        <p className="px-2 pb-2 pt-6 text-caption text-text-muted">System</p>
-        <div className="space-y-0.5">
-          {UTILITY_ROUTES.map((route) => (
-            <NavItem key={route.key} route={route} />
-          ))}
-        </div>
+        {NAV_GROUPS.map((group, index) => (
+          <div key={group.label} className={index === 0 ? undefined : "pt-5"}>
+            <p className="px-2 pb-2 text-caption text-text-muted">{group.label}</p>
+            <div className="space-y-0.5">
+              {group.routes.map((route) => (
+                <NavItem key={route.key} route={route} />
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-border p-2">

@@ -52,7 +52,7 @@ export function ProgressToolbar({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-        <Field label="From" className="w-[144px]">
+        <Field label="From" className="w-[190px]">
           <DatePicker
             id="progress-from"
             value={from}
@@ -61,7 +61,7 @@ export function ProgressToolbar({
             data-testid="progress-from"
           />
         </Field>
-        <Field label="To" className="w-[144px]">
+        <Field label="To" className="w-[190px]">
           <DatePicker
             id="progress-to"
             value={to}

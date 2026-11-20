@@ -49,11 +49,53 @@ interface TopupHistory {
   offset: number;
 }
 
+interface CreditTransaction {
+  id: string;
+  amount: number;
+  transaction_type: string;
+  description: string;
+  reference_id: string | null;
+  created_at: string;
+}
+
+interface CreditHistoryResponse {
+  transactions: CreditTransaction[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 function formatMoney(cents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
   }).format(cents / 100);
+}
+
+function pricePer100(pack: CreditPack): string {
+  if (pack.total_credits <= 0) return "--";
+  return formatMoney(Math.round((pack.price_cents / pack.total_credits) * 100));
+}
+
+function savingsPercent(pack: CreditPack, packs: CreditPack[]): number {
+  if (packs.length === 0 || pack.total_credits <= 0) return 0;
+  const baseline = packs.reduce((worst, entry) =>
+    entry.price_cents / Math.max(1, entry.total_credits) >
+    worst.price_cents / Math.max(1, worst.total_credits)
+      ? entry
+      : worst,
+  );
+  const baselineRate = baseline.price_cents / Math.max(1, baseline.total_credits);
+  const rate = pack.price_cents / Math.max(1, pack.total_credits);
+  if (baselineRate <= 0) return 0;
+  return Math.max(0, Math.round((1 - rate / baselineRate) * 100));
+}
+
+function ledgerTone(type: string): "success" | "neutral" | "warning" {
+  const key = type.toLowerCase();
+  if (key === "consume") return "warning";
+  if (key.includes("topup") || key.includes("purchase") || key.includes("grant")) return "success";
+  return "neutral";
 }
 
 async function fetchPacks(): Promise<CreditPack[]> {
@@ -76,6 +118,16 @@ async function fetchHistory(): Promise<TopupPurchase[]> {
   return Array.isArray(response?.purchases) ? response.purchases : [];
 }
 
+async function fetchLedger(): Promise<CreditTransaction[]> {
+  const response = await apiRequest<CreditHistoryResponse>({
+    method: "GET",
+    path: "/credits/history",
+    query: { limit: 25 },
+    apiVersion: "v3",
+  });
+  return Array.isArray(response?.transactions) ? response.transactions : [];
+}
+
 export function PlanPage() {
   const account = useAccountOverview();
   const packsQuery = useQuery<CreditPack[]>({
@@ -87,6 +139,12 @@ export function PlanPage() {
   const historyQuery = useQuery<TopupPurchase[]>({
     queryKey: ["topup-history"],
     queryFn: fetchHistory,
+    retry: 0,
+    staleTime: 0,
+  });
+  const ledgerQuery = useQuery<CreditTransaction[]>({
+    queryKey: ["credit-ledger"],
+    queryFn: fetchLedger,
     retry: 0,
     staleTime: 0,
   });
@@ -113,8 +171,13 @@ export function PlanPage() {
   }, [packsQuery.data]);
 
   const refresh = useCallback(async () => {
-    await Promise.allSettled([account.refetch(), historyQuery.refetch(), packsQuery.refetch()]);
-  }, [account, historyQuery, packsQuery]);
+    await Promise.allSettled([
+      account.refetch(),
+      historyQuery.refetch(),
+      ledgerQuery.refetch(),
+      packsQuery.refetch(),
+    ]);
+  }, [account, historyQuery, ledgerQuery, packsQuery]);
 
   const buy = useCallback(
     async (pack: CreditPack) => {
@@ -271,44 +334,149 @@ export function PlanPage() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {packs.map((pack) => (
-              <Card
-                key={pack.id}
-                className={
-                  pack.slug === bestValue
-                    ? "flex flex-col border-accent-line p-4"
-                    : "flex flex-col p-4"
-                }
-                data-testid={`plan-pack-${pack.slug}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-body font-semibold text-text-primary">{pack.name}</h3>
-                  {pack.slug === bestValue ? <Badge tone="accent">Best value</Badge> : null}
-                </div>
-                <p className="mt-2 text-[26px] font-semibold leading-8 text-text-primary text-tabular">
-                  {formatCount(pack.total_credits)}
-                  <span className="ml-1 text-meta font-normal text-text-muted">credits</span>
-                </p>
-                <p className="text-meta text-text-secondary">
-                  ≈ {formatCount(pack.songs_equivalent)} songs · {formatMoney(pack.price_cents)}
-                </p>
-                {pack.description ? (
-                  <p className="mt-2 text-caption text-text-muted">{pack.description}</p>
-                ) : null}
-                <Button
-                  variant="primary"
-                  className="mt-4 w-full"
-                  loading={buying === pack.slug}
-                  disabled={Boolean(buying)}
-                  onClick={() => void buy(pack)}
-                  data-testid={`plan-buy-${pack.slug}`}
+            {packs.map((pack) => {
+              const saving = savingsPercent(pack, packs);
+              return (
+                <Card
+                  key={pack.id}
+                  className={
+                    pack.slug === bestValue
+                      ? "flex flex-col border-accent-line p-4"
+                      : "flex flex-col p-4"
+                  }
+                  data-testid={`plan-pack-${pack.slug}`}
                 >
-                  Buy {formatMoney(pack.price_cents)}
-                </Button>
-              </Card>
-            ))}
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-body font-semibold text-text-primary">{pack.name}</h3>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      {pack.slug === bestValue ? <Badge tone="accent">Best value</Badge> : null}
+                      {saving > 0 ? <Badge tone="success">Save {saving}%</Badge> : null}
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[26px] font-semibold leading-8 text-text-primary text-tabular">
+                    {formatCount(pack.total_credits)}
+                    <span className="ml-1 text-meta font-normal text-text-muted">credits</span>
+                  </p>
+                  <p className="text-body font-medium text-text-primary">
+                    {formatMoney(pack.price_cents)}
+                    <span className="ml-1 text-caption font-normal text-text-muted">
+                      one-time
+                    </span>
+                  </p>
+                  <dl className="mt-3 space-y-1 border-t border-border pt-3 text-caption">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <dt className="text-text-muted">Songs equivalent</dt>
+                      <dd className="text-text-secondary text-tabular">
+                        ≈ {formatCount(pack.songs_equivalent)}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <dt className="text-text-muted">Per 100 credits</dt>
+                      <dd className="text-text-secondary text-tabular">{pricePer100(pack)}</dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <dt className="text-text-muted">Validity</dt>
+                      <dd className="text-text-secondary">Added after payment</dd>
+                    </div>
+                  </dl>
+                  {pack.description ? (
+                    <p className="mt-2 text-caption text-text-muted">{pack.description}</p>
+                  ) : null}
+                  <ul className="mt-2 space-y-1 text-caption text-text-secondary">
+                    <li>Music, image, video, merge and upload operations</li>
+                    <li>No subscription; buy again whenever you need more</li>
+                  </ul>
+                  <Button
+                    variant="primary"
+                    className="mt-4 w-full"
+                    loading={buying === pack.slug}
+                    disabled={Boolean(buying)}
+                    onClick={() => void buy(pack)}
+                    data-testid={`plan-buy-${pack.slug}`}
+                  >
+                    Buy {formatMoney(pack.price_cents)}
+                  </Button>
+                </Card>
+              );
+            })}
           </div>
         )}
+
+        <Card className="overflow-hidden" data-testid="plan-billing">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <div>
+              <h2 className="text-title font-semibold text-text-primary">Billing activity</h2>
+              <p className="mt-0.5 text-meta text-text-secondary">
+                Purchases, grants and credit usage from the wallet ledger.
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              className="h-7 px-2 text-caption"
+              onClick={() => void ledgerQuery.refetch()}
+              disabled={ledgerQuery.isFetching}
+            >
+              Refresh
+            </Button>
+          </div>
+
+          {ledgerQuery.isLoading ? (
+            <div className="space-y-2 p-4" aria-hidden="true">
+              {[0, 1, 2, 3].map((index) => (
+                <div key={index} className="h-9 rounded-control bg-surface-2" />
+              ))}
+            </div>
+          ) : ledgerQuery.isError ? (
+            <div className="px-4 py-6 text-center">
+              <p className="text-meta text-text-secondary">Billing activity is unavailable.</p>
+              <Button className="mt-2" variant="secondary" onClick={() => void ledgerQuery.refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : (ledgerQuery.data?.length ?? 0) === 0 ? (
+            <p className="px-4 py-6 text-center text-meta text-text-secondary">
+              No credit activity yet. Purchases and generation costs appear here.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {ledgerQuery.data?.map((entry) => {
+                const consumed = entry.transaction_type.toLowerCase() === "consume";
+                const label =
+                  entry.description ||
+                  (consumed ? "Generation" : entry.transaction_type.replace(/[_-]+/g, " "));
+                return (
+                  <li
+                    key={entry.id}
+                    className="flex items-center justify-between gap-3 px-4 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-meta text-text-primary capitalize">{label}</p>
+                      <p className="text-caption text-text-muted">
+                        {formatDateTime(entry.created_at)}
+                        {entry.reference_id ? ` · ${entry.reference_id.slice(0, 8)}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <Badge tone={ledgerTone(entry.transaction_type)}>
+                        {consumed ? "Used" : "Added"}
+                      </Badge>
+                      <span
+                        className={
+                          consumed
+                            ? "text-meta text-warning text-tabular"
+                            : "text-meta text-success text-tabular"
+                        }
+                      >
+                        {consumed ? "−" : "+"}
+                        {formatCount(entry.amount)}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
 
         <Card className="p-4">
           <h2 className="text-title font-semibold text-text-primary">How credits work</h2>

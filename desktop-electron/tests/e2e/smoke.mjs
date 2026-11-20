@@ -81,9 +81,8 @@ try {
     throw new Error("Profile page did not render");
   }
   const headerActions = await window.locator('[data-testid="notifications-button"]').count();
-  const updateAction = await window.locator('[data-testid="update-button"]').count();
-  if (headerActions !== 1 || updateAction !== 1) {
-    throw new Error("Header actions did not render");
+  if (headerActions !== 1) {
+    throw new Error("Header notifications action did not render");
   }
   await window.locator('[data-testid="notifications-button"]').click();
   await window.locator('[data-testid="notifications-panel"]').waitFor({ timeout: 3000 });

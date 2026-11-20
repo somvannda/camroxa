@@ -226,9 +226,14 @@ shell chunk is ~333 kB (103 kB gzip).
   (`https://api.sandbox.camxora.com/api/v1`) and portal (`https://app.sandbox.camxora.com`).
 - Profile is identity + work, not repeated stats: member since, role, desktop access,
   top-up/manage shortcuts, credits & usage, channel profiles, and a live activity feed.
-- New **Plan** page (`/plan`) lists credit packs from `/api/v3/topups/packs`, buys through
-  `/topups/purchase`, opens the hosted checkout, and shows top-up history. Added an
-  `apiVersion` option to the API bridge so v3-only routes work from the desktop.
+- New **Plan** page (`/plan`) lists credit packs from `/api/v3/topups/packs` with per-100-credit
+  price, savings vs the smallest pack, songs equivalent, one-time wording and pack features;
+  buys through `/topups/purchase`, opens the hosted checkout, and shows both recent top-ups and
+  the `credits/history` wallet ledger (purchases, grants and usage) as billing activity.
+- Sidebar groups: **Overview** (Dashboard, Progress), **Create** (Music, Image, Vizzy),
+  **Discover** (Marketplace), **Account** (Profile, Plan, Settings).
+- The header update icon only appears when an update offer exists, matching the Python desktop;
+  no manual "check for updates" control.
 - Progress table is nine columns (Batch with date/album, Channel, Music, Image, Render, Merge,
   YouTube, Stage, Updated); "Converter" is now "Render". Status/Notes live in the detail panel.
 - Notifications: toasts float top-right on an opaque card; the title bar has a bell with

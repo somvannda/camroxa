@@ -19,8 +19,13 @@ export interface ShellRoute {
   icon: string;
 }
 
-export const WORKSPACE_ROUTES: ShellRoute[] = [
-  {
+export interface NavGroup {
+  label: string;
+  routes: ShellRoute[];
+}
+
+const ROUTES: Record<ShellRouteKey, ShellRoute> = {
+  home: {
     key: "home",
     path: "/home",
     label: "Dashboard",
@@ -28,23 +33,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     description: "Credits, generation output and recent activity at a glance.",
     icon: "fa-house",
   },
-  {
-    key: "profile",
-    path: "/profile",
-    label: "Profile",
-    phase: "P2",
-    description: "Signed-in account, credits, usage and channel profiles.",
-    icon: "fa-user",
-  },
-  {
-    key: "plan",
-    path: "/plan",
-    label: "Plan",
-    phase: "P10",
-    description: "Buy credit packs and review top-up history.",
-    icon: "fa-credit-card",
-  },
-  {
+  progress: {
     key: "progress",
     path: "/progress",
     label: "Progress",
@@ -52,7 +41,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     description: "Live run stages, recovery actions and pending downloads.",
     icon: "fa-wave-square",
   },
-  {
+  music: {
     key: "music",
     path: "/music",
     label: "Music",
@@ -60,7 +49,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     description: "Batch composer, song editor, automation and history.",
     icon: "fa-music",
   },
-  {
+  image: {
     key: "image",
     path: "/image",
     label: "Image",
@@ -68,7 +57,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     description: "Image job queue, previews and prompt settings.",
     icon: "fa-image",
   },
-  {
+  vizzy: {
     key: "vizzy",
     path: "/vizzy",
     label: "Vizzy",
@@ -76,7 +65,7 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     description: "The hosted Vizzy editor and the automation pipeline.",
     icon: "fa-film",
   },
-  {
+  marketplace: {
     key: "marketplace",
     path: "/marketplace",
     label: "Marketplace",
@@ -84,10 +73,23 @@ export const WORKSPACE_ROUTES: ShellRoute[] = [
     description: "Browse, install and manage Vizzy templates.",
     icon: "fa-store",
   },
-];
-
-export const UTILITY_ROUTES: ShellRoute[] = [
-  {
+  profile: {
+    key: "profile",
+    path: "/profile",
+    label: "Profile",
+    phase: "P2",
+    description: "Signed-in account, credits, usage and channel profiles.",
+    icon: "fa-user",
+  },
+  plan: {
+    key: "plan",
+    path: "/plan",
+    label: "Plan",
+    phase: "P10",
+    description: "Buy credit packs and review billing activity.",
+    icon: "fa-credit-card",
+  },
+  settings: {
     key: "settings",
     path: "/settings",
     label: "Settings",
@@ -95,4 +97,37 @@ export const UTILITY_ROUTES: ShellRoute[] = [
     description: "Profiles, publication, preferences, prompts, pools and Suno.",
     icon: "fa-gear",
   },
+};
+
+/**
+ * Sidebar information architecture: work first, then creation, discovery and
+ * account controls. Paths stay stable; only grouping/labels change.
+ */
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Overview",
+    routes: [ROUTES.home, ROUTES.progress],
+  },
+  {
+    label: "Create",
+    routes: [ROUTES.music, ROUTES.image, ROUTES.vizzy],
+  },
+  {
+    label: "Discover",
+    routes: [ROUTES.marketplace],
+  },
+  {
+    label: "Account",
+    routes: [ROUTES.profile, ROUTES.plan, ROUTES.settings],
+  },
 ];
+
+const ALL_ROUTES = NAV_GROUPS.flatMap((group) => group.routes);
+
+export const WORKSPACE_ROUTES: ShellRoute[] = ALL_ROUTES.filter(
+  (route) => route.key !== "settings",
+);
+
+export const UTILITY_ROUTES: ShellRoute[] = ALL_ROUTES.filter(
+  (route) => route.key === "settings",
+);
