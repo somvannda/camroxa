@@ -6,15 +6,15 @@
  * happens in the offscreen Vizzy host; merging uses the existing FFmpeg concat
  * plan. Nothing here uploads.
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { z } from "zod";
 import { probe } from "../services/ffmpeg";
 import { logger } from "../services/logger";
 import { allowPickedFile, createMediaUrl } from "../services/media";
 import { getAppPaths } from "../services/paths";
+import { AutoVideoCoordinator } from "../services/auto-video-coordinator";
 import {
   PipelineCancelledError,
 } from "../services/pipeline-batch";
@@ -31,15 +31,16 @@ import {
   listQueue,
   reconcileInterruptedJobs,
   retryableJobs,
-  type PipelineQueueInput,
 } from "../services/pipeline-queue";
-import { findAudioForSong, uniqueOutputPath } from "../services/pipeline-sources";
+import { uniqueOutputPath } from "../services/pipeline-sources";
+import { enqueuePipelineRequest } from "../services/pipeline-enqueue";
 import type { Store } from "../services/database";
 import { getStore } from "../services/store";
 import { readVideoTemplate } from "../services/video-templates";
 import {
   fail,
   ok,
+  type PipelineAutoStatus,
   type PipelineBatchInfo,
   type PipelineEnqueueResult,
   type PipelineJobInfo,
@@ -113,7 +114,13 @@ function batchInfo(store: Store, batchId: string): PipelineBatchInfo | null {
   };
 }
 
-function snapshotOf(store: Store, root: string, running: boolean, error: string | null): PipelineSnapshot {
+function snapshotOf(
+  store: Store,
+  root: string,
+  running: boolean,
+  error: string | null,
+  auto?: PipelineAutoStatus,
+): PipelineSnapshot {
   const jobs: PipelineJobInfo[] = listQueue(store).map((job) => ({
     id: job.id,
     batchId: job.batchId,
@@ -126,6 +133,7 @@ function snapshotOf(store: Store, root: string, running: boolean, error: string 
     artist: job.artist,
     album: job.album,
     outputDir: job.outputDir,
+    backgroundPath: job.backgroundPath,
     status: job.status,
     stage: job.stage,
     progress: job.progress,
@@ -139,7 +147,7 @@ function snapshotOf(store: Store, root: string, running: boolean, error: string 
     .listBatches()
     .map((record) => batchInfo(store, record.batchId))
     .filter((batch): batch is PipelineBatchInfo => batch !== null);
-  return { running, jobs, batches, error };
+  return { running, jobs, batches, error, auto };
 }
 
 export interface PipelineIpcOptions {
@@ -271,10 +279,27 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
       });
   };
 
+  // Auto-video: watch Progress rows and enqueue the next ready branch. It is
+  // independent of the visible page, so a batch can finish while the user is
+  // elsewhere. Settings/Profiles/templates are cached for a minute.
+  const autoVideo = new AutoVideoCoordinator({
+    store,
+    templatesRoot: paths.templates,
+    isRunnerRunning: () => runner.isRunning(),
+    startRunner: startInBackground,
+    onChanged: notify,
+    log: (level, message, detail) => logger[level](message, detail),
+  });
+  const autoVideoDisabled =
+    process.env.CAMXORA_DISABLE_AUTO_VIDEO === "1" ||
+    (process.env.CAMXORA_E2E === "1" && process.env.CAMXORA_AUTO_VIDEO !== "1");
+  if (!autoVideoDisabled) autoVideo.start();
+  app.on("before-quit", () => autoVideo.stop());
+
   ipcMain.handle("pipeline:list", (event) => {
     if (!shellOnly(event.sender.id)) return fail("FORBIDDEN", "Wrong sender for this channel.");
     try {
-      return ok(snapshotOf(store, paths.templates, runner.isRunning(), lastError));
+      return ok(snapshotOf(store, paths.templates, runner.isRunning(), lastError, autoVideo.status()));
     } catch (error) {
       return toError(error);
     }
@@ -289,128 +314,24 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
       return fail("INVALID_REQUEST", "The render request is not valid.");
     }
 
-    const result: PipelineEnqueueResult = {
-      batchId: request.batchId ?? crypto.randomUUID(),
-      created: 0,
-      skipped: 0,
-      duplicates: 0,
-      skippedDetails: [],
-      started: false,
-      message: null,
-    };
-
-    let outputDir: string;
+    let result: PipelineEnqueueResult;
     try {
-      outputDir = path.resolve(request.outputDir);
-      fs.mkdirSync(outputDir, { recursive: true });
-    } catch (error) {
-      return fail("OUTPUT_DIR_INVALID", `The output folder is not usable: ${String(error)}`);
-    }
-
-    const now = Date.now();
-    const existing = store.getBatch(result.batchId);
-    store.upsertBatch({
-      batchId: result.batchId,
-      outputDir,
-      merge: request.merge === true || existing?.merge === true,
-      mergedOutput: existing?.mergedOutput ?? null,
-      status: "idle",
-      error: null,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    });
-
-    const inputs: PipelineQueueInput[] = [];
-    for (const job of request.jobs) {
-      let detail: ReturnType<typeof readVideoTemplate>;
-      try {
-        detail = readVideoTemplate(paths.templates, job.templateId);
-      } catch {
-        result.skippedDetails.push({
-          audioPath: job.audioPath ?? "",
-          title: job.title ?? "",
-          reason: `Template "${job.templateId}" is missing. Choose a saved template in Settings.`,
-        });
-        continue;
-      }
-      if (detail.pipeline.kind !== job.branch) {
-        result.skippedDetails.push({
-          audioPath: job.audioPath ?? "",
-          title: job.title ?? "",
-          reason: `"${detail.name}" is a ${detail.pipeline.kind} template, not ${job.branch}.`,
-        });
-        continue;
-      }
-
-      let audioPath = job.audioPath?.trim() ?? "";
-      if (!audioPath && job.audioDir) {
-        const found = findAudioForSong(job.audioDir, job.title ?? "", job.audioBranch ?? "ok", {
-          allowOnlyFile: true,
-        });
-        if (!found.ok) {
-          result.skippedDetails.push({
-            audioPath: job.audioDir,
-            title: job.title ?? "",
-            reason: found.reason,
-          });
-          continue;
-        }
-        audioPath = found.path;
-      }
-      if (!audioPath) {
-        result.skippedDetails.push({
-          audioPath: job.audioDir ?? "",
-          title: job.title ?? "",
-          reason: "The song has no audio file yet.",
-        });
-        continue;
-      }
-      try {
-        const stat = fs.statSync(path.resolve(audioPath));
-        if (!stat.isFile() || stat.size <= 0) throw new Error("not a file");
-      } catch {
-        result.skippedDetails.push({
-          audioPath,
-          title: job.title ?? "",
-          reason: "The audio file is missing or empty.",
-        });
-        continue;
-      }
-
-      inputs.push({
-        batchId: result.batchId,
-        branch: job.branch,
-        templateId: job.templateId,
-        audioPath: path.resolve(audioPath),
-        backgroundPath: job.backgroundPath,
-        logoPath: job.logoPath,
-        outputDir,
-        title: job.title ?? "",
-        artist: job.artist ?? "",
-        album: job.album ?? "",
-        merge: request.merge === true,
+      result = enqueuePipelineRequest({
+        store,
+        templatesRoot: paths.templates,
+        request,
       });
+    } catch (error) {
+      return fail(
+        "OUTPUT_DIR_INVALID",
+        error instanceof Error ? error.message : "The output folder is not usable.",
+      );
     }
 
-    const created = enqueuePipelineJobs(store, inputs);
-    result.created = created.length;
-    result.skipped = result.skippedDetails.length;
-    result.duplicates = inputs.length - created.length;
-    if (result.created === 0) {
-      result.message =
-        result.skippedDetails[0]?.reason ??
-        (result.duplicates > 0 ? "These renders are already queued or done." : "Nothing was ready to render.");
-      if (result.skipped === 0 && result.duplicates === 0) {
-        store.deleteBatch(result.batchId);
-      }
-    } else {
-      result.message = `${result.created} render${result.created === 1 ? "" : "s"} queued.`;
-      if (request.autostart) {
-        result.started = true;
-        startInBackground();
-      }
+    if (result.created > 0 && request.autostart) {
+      result.started = true;
+      startInBackground();
     }
-
     notify();
     return ok(result);
   });

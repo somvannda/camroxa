@@ -19,7 +19,8 @@
 | Runner | `electron/services/pipeline-batch.ts` | Sequential, failure isolation, cancel-aware (`PipelineCancelledError`), per-batch merge hook |
 | Merge | `electron/services/pipeline-merge.ts` | `-c copy` first, `-reencode` fallback, ffprobe-validated |
 | Audio resolution | `electron/services/pipeline-sources.ts` | Song title → audio file inside the run folder (`1. Title.mp3`, `1. Title_Alt.mp3`); refuses to guess between candidates |
-| Music trigger | `src/features/music/music-pipeline.ts` + `components/automation-card.tsx` | “Render videos” resolves the profile's `video_template_id`/`reel_template_id`, queues one job per ready song/branch, and starts the batch without leaving Music |
+| Music trigger | `src/features/music/views/music-page.tsx` + `music-settings.ts` | The Video (16:9) / Video (9:16) checkboxes persist `autoVideoAfterSuno` / `autoReelAfterVideo`; `Merge Video` persists `autoMergeAfterVideo`. No render starts unless a Video box is checked |
+| Auto-video coordinator | `electron/services/auto-video.ts` + `auto-video-coordinator.ts` | Polls `/progress` + `/music/history` every 12 s, picks the next ready branch, resolves the generated 16:9/9:16 background, and enqueues one job per song. Long and reel use separate pipeline batch ids so merges never mix |
 | Progress UI | `src/features/progress/video-pipeline-table.tsx` + `use-video-pipeline.ts` | Durable queue table: status, template, song, progress, error, Cancel/Retry/Reveal, merged file per batch, honest empty state |
 | IPC | `electron/ipc/pipeline.ts` | `pipeline:list/enqueue/start/cancel/retry/clear/reveal` + `pipeline:changed` |
 
@@ -106,18 +107,29 @@ Progress writes are throttled to ≤ 1 per 500 ms per job. `pipeline:changed` is
 - **Reel** is a separate render of the reel template (`branch: "reel"`), not a crop. If the
   profile has no reel template the Music card says so and does not queue the reel.
 
-### 2.5 Music trigger
+### 2.5 Automation
 
-1. The newest history batch with ready songs is used (`downloaded_ok` or a recorded run
-   folder). History stays history — older batches are not mass-rendered.
-2. For each channel side (`ok`/`alt`) the profile's `video_template_id` is resolved; a missing
-   template skips that job and reports “Choose one in Settings” with a Settings link.
-3. The main process resolves the audio file inside the run folder; a missing/ambiguous file
-   reports the song by name and leaves the queue empty.
-4. `autoMergeAfterVideo` → `merge: true`; `autoReelAfterVideo` → an extra reel job.
-5. `autostart` starts the runner immediately; the user stays on Music and follows the rows on
-   Progress.
-6. **Auto-Upload stays disabled.** No upload is attempted anywhere in this flow.
+The coordinator runs in the main process while the app is signed in, so a batch finishes
+without the user staying on Music or Progress. Every **12 s** it:
+
+1. reads `/settings`; both Video checkboxes off means no render is attempted;
+2. reads `/progress` and `/music/history` (profiles and local templates are cached for 15 s);
+3. picks the next ready row:
+   - run folder exists, expected MP3s downloaded, no pending download;
+   - the branch background exists on this machine (`background-16x9.*` / `background-9x16.*`,
+     or the API `background_*_path`);
+   - the profile has the branch template and the template exists locally;
+   - the branch is not already done, running, failed or merged;
+4. enqueues **one job per song** with `title`, `album`, channel name as `artist`, and the
+   generated `backgroundPath`;
+5. starts the queue runner. Long renders first when both branches are checked; reel can render
+   on its own when only 9:16 is checked. Merge applies per branch because each branch has its own
+   pipeline batch id (`<batch>:long` / `<batch>:reel`).
+
+A failed/cancelled branch is never restarted automatically — Retry in Progress is explicit.
+The hidden renderer applies the background and text bindings, loads the run MP3, and the
+template's own spectrum/analyzers/effects/automations run exactly as saved. **Auto-Upload stays
+disabled.**
 
 - **Restart.** The queue and batches are in SQLite. On startup any row caught in
   `rendering`/`encoding`/`merging` is marked `failed` with “The app closed before this render
@@ -130,7 +142,7 @@ A compact “Video pipeline” card on `/progress`:
 - status badge + stage, template name (kind), song + audio file, progress bar, row error;
 - Reveal for a validated output, Cancel for a running row, Retry for failed/cancelled rows;
 - per-batch footer: id, batch status, counts, merged file with Reveal, merge error;
-- empty state: “No video renders yet. Turn on Auto-Video in Music and use ‘Render videos’.”
+- empty state: “No video renders yet. Turn on Video (16:9) or Video (9:16) in Music and generate a batch.”
 - Cancel batch / Retry failed / Clear finished in the header. Every control calls real IPC.
 
 ---
@@ -149,10 +161,16 @@ A compact “Video pipeline” card on `/progress`:
 | BATCH-8 | Auto-Upload | PASS — toggle disabled, no upload code path |
 | BATCH-9 | Preview parity | N/A here — unchanged from the template milestone (`vizzy-templates`) |
 | BATCH-10 | Restart | PASS (unit) — the queue and batches live in SQLite; interrupted rows are reconciled to `failed` on startup and become retryable |
+| BATCH-11 | Background auto-video | PASS — `auto-video` E2E: no page click; the coordinator reads Progress/History/Settings, enqueues two long jobs with the generated `background-16x9.png`, renders and merges the branch |
 
 `tests/e2e/pipeline-batch.mjs` runs the whole flow with **no `/vizzy` route open**
 (`vizzy.state().attached === false` throughout) and writes
 `artifacts/vizzy/batch-progress.png` and `batch-complete.png`.
+
+`tests/e2e/auto-video.mjs` starts with `CAMXORA_AUTO_VIDEO=1`, seeds a ready Progress row and a
+real background file, and proves the main-process coordinator starts the render without any
+Music/Progress action. `artifacts/vizzy/auto-video-progress.png` shows the auto-video status and
+the finished long branch.
 
 ---
 

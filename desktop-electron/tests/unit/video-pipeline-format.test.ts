@@ -27,6 +27,7 @@ function job(overrides: Partial<PipelineJobInfo> = {}): PipelineJobInfo {
     artist: "",
     album: "",
     outputDir: "C:/runs",
+    backgroundPath: "",
     status: "queued",
     stage: "queued",
     progress: 0,

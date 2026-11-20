@@ -38,7 +38,7 @@
 | **P7 save + render templates** | “Save template” dialog with detected/overridable bindings and PNG thumbnail; saved-template rail with preview/render/delete; a saved template renders a real 1080p MP4 with the run audio; `candy-wave` also completed save → render at 640×360/60 |
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
-| **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; Music “Render videos” trigger; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
+| **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio+background→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; **auto-video coordinator** polls Progress every 12 s and starts long/reel branches independently with the generated 16:9/9:16 background; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
 | **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **P4 downloads** | Main-process coordinator (`download-coordinator.ts` + `download-targets.ts` + `download-io.ts`, `electron/ipc/downloads.ts`): 12 s/4 s polling, bounded concurrency, atomic temp→rename, 3-attempt backoff, dedupe, skip-if-present, cancel/pause/retry/reveal, completion sync; Progress shows live bytes and real actions; unit + `downloads` E2E |
 | **Manual YouTube upload** | Ported 1.7.1 flow behind an explicit Progress action: access token → `POST /publish/jobs` → resumable `videos.insert` (chunks, 308 resume, retry) → `/youtube/uploads/report` → `/publish/jobs/{uid}/complete`; playlist, cancel, retry and readable disable reasons. Auto-Upload stays disabled |
@@ -48,9 +48,9 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               364/364 PASS
+npm test               389/389 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
-npm run test:e2e       PASS (17 suites incl. downloads, pipeline-batch and youtube-upload)
+npm run test:e2e       PASS (18 suites incl. downloads, auto-video, pipeline-batch and youtube-upload)
 node tests/e2e/settings.mjs PASS (8 tabs, prompt CRUD, pools pager, Suno bounds, save-all order)
 node tests/e2e/youtube-upload.mjs PASS (job, 3 chunks resuming at 308, report, complete, link,
                                       cancel, quota failure + /retry, Auto-Upload disabled)

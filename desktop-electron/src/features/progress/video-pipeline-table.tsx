@@ -216,6 +216,21 @@ export function VideoPipelineSection() {
           <p className="mt-0.5 text-meta text-text-secondary">
             Queued Vizzy renders from Music. Rendering runs without opening the editor.
           </p>
+          {snapshot?.auto ? (
+            <p
+              className={classNames(
+                "mt-1 text-caption",
+                snapshot.auto.state === "error"
+                  ? "text-danger"
+                  : snapshot.auto.state === "queued" || snapshot.auto.state === "rendering"
+                    ? "text-accent"
+                    : "text-text-muted",
+              )}
+              data-testid="pipeline-auto-status"
+            >
+              Auto-video: {snapshot.auto.message}
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="font-mono text-caption text-text-muted" data-testid="pipeline-summary">

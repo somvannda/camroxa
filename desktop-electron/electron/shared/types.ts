@@ -337,6 +337,7 @@ export interface PipelineJobInfo {
   artist: string;
   album: string;
   outputDir: string;
+  backgroundPath: string;
   status: PipelineJobStatus;
   stage: string;
   progress: number;
@@ -371,6 +372,17 @@ export interface PipelineSnapshot {
   batches: PipelineBatchInfo[];
   /** Set when the render host could not be started (bundle missing, etc.). */
   error: string | null;
+  /** Background auto-video state; absent on older builds. */
+  auto?: PipelineAutoStatus;
+}
+
+export interface PipelineAutoStatus {
+  running: boolean;
+  state: "idle" | "waiting" | "queued" | "rendering" | "error" | "stopped";
+  message: string;
+  lastPollAt: number | null;
+  batchId?: string;
+  branch?: PipelineBranch;
 }
 
 /** One requested render; the main process resolves audio paths when `audioDir` is set. */
@@ -379,6 +391,8 @@ export interface PipelineEnqueueJob {
   templateId: string;
   audioPath?: string;
   audioDir?: string;
+  /** Which side of the run folder `audioDir` belongs to. */
+  audioBranch?: "ok" | "alt";
   title?: string;
   artist?: string;
   album?: string;

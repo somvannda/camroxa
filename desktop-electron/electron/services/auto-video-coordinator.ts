@@ -1,0 +1,381 @@
+/**
+ * Background auto-video coordinator.
+ *
+ * Polls the platform while the app is signed in and starts local Vizzy renders
+ * when a Progress row becomes ready:
+ *   audio downloads complete + branch background exists + profile template.
+ *
+ * Rendering itself stays in the offscreen host; this only decides *what* to
+ * enqueue. It is independent of the page the user is on, so a batch finishes
+ * even when the Music/Progress view is closed.
+ *
+ * Long and reel use separate pipeline batch ids, so a merge can never combine a
+ * 16:9 and a 9:16 render.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { logger } from "./logger";
+import { apiRequest } from "./api-client";
+import { sessionStore } from "./session";
+import { listQueue } from "./pipeline-queue";
+import { enqueuePipelineRequest } from "./pipeline-enqueue";
+import { listVideoTemplates } from "./video-templates";
+import {
+  selectAutoVideoCandidate,
+  type AutoVideoBranch,
+  type AutoVideoHistoryBatch,
+  type AutoVideoProfile,
+  type AutoVideoProgressRow,
+  type AutoVideoSwitches,
+} from "./auto-video";
+import type { Store } from "./database";
+import type {
+  PipelineAutoStatus,
+  PipelineBranch,
+} from "../shared/types";
+
+const DEFAULT_INTERVAL_MS = 12_000;
+const DEFAULT_CACHE_MS = 15_000;
+
+export interface AutoVideoCoordinatorDeps {
+  store: Store;
+  templatesRoot: string;
+  isRunnerRunning: () => boolean;
+  startRunner: () => void;
+  onChanged?: () => void;
+  /** Test hook; defaults to the real authenticated API client. */
+  request?: typeof apiRequest;
+  /** Test hook; the real coordinator only polls while signed in. */
+  hasSession?: () => boolean;
+  intervalMs?: number;
+  cacheMs?: number;
+  log?: (level: "info" | "warn" | "error", message: string, detail?: unknown) => void;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function asArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  const record = asRecord(value);
+  for (const key of ["profiles", "rows", "batches", "items", "results"]) {
+    if (Array.isArray(record[key])) return record[key] as T[];
+  }
+  return [];
+}
+
+function readBoolean(value: unknown): boolean {
+  if (value === true) return true;
+  if (value === false || value === null || value === undefined) return false;
+  if (typeof value === "number") return value !== 0;
+  const text = String(value).trim().toLowerCase();
+  return text === "true" || text === "1" || text === "on" || text === "yes";
+}
+
+function clean(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+interface Cache<T> {
+  at: number;
+  value: T;
+}
+
+export class AutoVideoCoordinator {
+  private timer: NodeJS.Timeout | null = null;
+  private running = false;
+  private polling = false;
+  private profilesCache: Cache<AutoVideoProfile[]> | null = null;
+  private templatesCache:
+    | Cache<Array<{ id: string; kind: AutoVideoBranch }>>
+    | null = null;
+  private lastError = "";
+  private lastSkip = "";
+  private current: PipelineAutoStatus = {
+    running: false,
+    state: "stopped",
+    message: "stopped.",
+    lastPollAt: null,
+  };
+
+  constructor(private readonly deps: AutoVideoCoordinatorDeps) {}
+
+  status(): PipelineAutoStatus {
+    return { ...this.current };
+  }
+
+  start(options: { immediate?: boolean } = {}): void {
+    if (this.running) return;
+    this.running = true;
+    this.setStatus("idle", "Watching for a run with MP3s, a background and a saved template.");
+    const interval = this.deps.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.timer = setInterval(() => void this.tick(), interval);
+    this.timer.unref?.();
+    if (options.immediate !== false) void this.tick();
+    this.log("info", "auto-video coordinator started", { interval });
+  }
+
+  stop(): void {
+    if (!this.running) return;
+    this.running = false;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.setStatus("stopped", "stopped.");
+    this.log("info", "auto-video coordinator stopped");
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  /** One poll. Public so a future manual kick/retry can reuse the same rules. */
+  async tick(): Promise<void> {
+    if (!this.running || this.polling) return;
+    this.touchPoll();
+    if (!this.hasSession()) {
+      this.setStatus("idle", "Sign in to auto-render videos.");
+      return;
+    }
+    if (this.deps.isRunnerRunning()) {
+      this.setStatus("rendering", "Rendering queued videos.");
+      return;
+    }
+
+    const queued = listQueue(this.deps.store).some(
+      (job) =>
+        job.status === "queued" ||
+        job.status === "rendering" ||
+        job.status === "encoding" ||
+        job.status === "merging",
+    );
+    if (queued) {
+      // Resume a durable queue left behind by a restart.
+      this.setStatus("rendering", "Resuming queued videos.");
+      this.deps.startRunner();
+      return;
+    }
+
+    this.polling = true;
+    try {
+      const settings = await this.settings();
+      if (!settings.long && !settings.reel) {
+        this.setStatus("idle", "Video (16:9) and Video (9:16) are both off.");
+        return;
+      }
+
+      const [progress, history, profiles, templates] = await Promise.all([
+        this.request({ method: "GET", path: "/progress", query: { limit: 100 } }),
+        this.request({ method: "GET", path: "/music/history", query: { limit: 100 } }),
+        this.profiles(),
+        this.templates(),
+      ]);
+
+      const rows = asArray<AutoVideoProgressRow>(progress.data).filter(
+        (row) => row && typeof row === "object" && row.meta && typeof row.meta === "object",
+      );
+      const batches = asArray<AutoVideoHistoryBatch>(history.data);
+      if (rows.length === 0 || batches.length === 0) {
+        this.setStatus("waiting", "Waiting for a batch with finished downloads.");
+        return;
+      }
+
+      const candidate = selectAutoVideoCandidate({
+        settings,
+        rows,
+        batches,
+        profiles,
+        templates,
+        localJobs: listQueue(this.deps.store),
+        resolveBackground: (row, branch) => this.resolveBackground(row, branch),
+      });
+      if (!candidate) {
+        this.lastSkip = "";
+        this.setStatus(
+          "waiting",
+          "Waiting for finished MP3s, a 16:9/9:16 background and the saved template.",
+        );
+        return;
+      }
+
+      const result = enqueuePipelineRequest({
+        store: this.deps.store,
+        templatesRoot: this.deps.templatesRoot,
+        request: {
+          batchId: candidate.pipelineBatchId,
+          outputDir: candidate.outputDir,
+          merge: candidate.merge,
+          mergeName: `${candidate.externalBatchId}-${candidate.branch}-merged`,
+          jobs: candidate.jobs.map((job) => ({
+            ...job,
+            audioDir: path.isAbsolute(job.audioDir)
+              ? job.audioDir
+              : path.resolve(candidate.outputDir, job.audioDir),
+          })),
+        },
+      });
+
+      if (result.created > 0) {
+        this.lastSkip = "";
+        this.log("info", "auto-video enqueued", {
+          batchId: candidate.pipelineBatchId,
+          branch: candidate.branch,
+          renders: result.created,
+          templateId: candidate.templateId,
+        });
+        this.setStatus(
+          "queued",
+          `Queued ${result.created} ${candidate.branch === "reel" ? "reel" : "16:9"} render${
+            result.created === 1 ? "" : "s"
+          }.`,
+          { batchId: candidate.pipelineBatchId, branch: candidate.branch },
+        );
+        this.deps.onChanged?.();
+        this.deps.startRunner();
+        return;
+      }
+
+      const reason = result.message ?? "Nothing was queued.";
+      this.setStatus("waiting", reason);
+      if (reason !== this.lastSkip) {
+        this.lastSkip = reason;
+        this.log("warn", "auto-video skipped a ready row", {
+          batchId: candidate.pipelineBatchId,
+          branch: candidate.branch,
+          reason,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus("error", message);
+      if (message !== this.lastError) {
+        this.lastError = message;
+        this.log("warn", "auto-video poll failed", { error: message });
+      }
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+
+  private async settings(): Promise<AutoVideoSwitches> {
+    // Read every tick: the user can check/uncheck Video at any moment.
+    const response = await this.request({ method: "GET", path: "/settings" });
+    const data = asRecord(response.data);
+    return {
+      long: readBoolean(data.autoVideoAfterSuno),
+      reel: readBoolean(data.autoReelAfterVideo),
+      merge: readBoolean(data.autoMergeAfterVideo),
+    };
+  }
+
+  private async profiles(): Promise<AutoVideoProfile[]> {
+    if (this.fresh(this.profilesCache)) return this.profilesCache.value;
+    const response = await this.request({ method: "GET", path: "/profiles" });
+    const value = asArray<AutoVideoProfile>(response.data).filter(
+      (profile) => profile && clean(profile.id),
+    );
+    this.profilesCache = { at: Date.now(), value };
+    return value;
+  }
+
+  private async templates(): Promise<Array<{ id: string; kind: AutoVideoBranch }>> {
+    if (this.fresh(this.templatesCache)) return this.templatesCache.value;
+    const value = listVideoTemplates(this.deps.templatesRoot).map((template) => ({
+      id: template.id,
+      kind: template.kind,
+    }));
+    this.templatesCache = { at: Date.now(), value };
+    return value;
+  }
+
+  private fresh<T>(cache: Cache<T> | null): cache is Cache<T> {
+    if (!cache) return false;
+    const ttl = this.deps.cacheMs ?? DEFAULT_CACHE_MS;
+    return Date.now() - cache.at < ttl;
+  }
+
+  private get request(): typeof apiRequest {
+    return this.deps.request ?? apiRequest;
+  }
+
+  private setStatus(
+    state: PipelineAutoStatus["state"],
+    message: string,
+    extra: { batchId?: string; branch?: PipelineBranch } = {},
+  ): void {
+    this.current = {
+      running: this.running,
+      state,
+      message,
+      lastPollAt: this.current.lastPollAt,
+      ...extra,
+    };
+  }
+
+  private touchPoll(): void {
+    this.current = { ...this.current, running: this.running, lastPollAt: Date.now() };
+  }
+
+  private hasSession(): boolean {
+    if (this.deps.hasSession) return this.deps.hasSession();
+    return Boolean(sessionStore.load()?.accessToken);
+  }
+
+  /** Prefer the API/run-folder path, then the known local filenames. */
+  private resolveBackground(
+    row: AutoVideoProgressRow,
+    branch: AutoVideoBranch,
+  ): string | null {
+    const meta = row.meta;
+    const runDir = clean(meta.run_dir);
+    const stored = clean(
+      branch === "long" ? meta.background_16x9_path : meta.background_9x16_path,
+    );
+    const absolute = (value: string): string | null => {
+      if (!value) return null;
+      const resolved = path.isAbsolute(value)
+        ? value
+        : path.resolve(runDir || ".", value);
+      try {
+        return fs.statSync(resolved).isFile() ? resolved : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const fromMeta = absolute(stored);
+    if (fromMeta) return fromMeta;
+    if (!runDir) return null;
+
+    const stem = branch === "long" ? "background-16x9" : "background-9x16";
+    const altStem = branch === "long" ? "background_16x9" : "background_9x16";
+    for (const name of [
+      `${stem}.png`,
+      `${stem}.jpg`,
+      `${stem}.jpeg`,
+      `${stem}.webp`,
+      `${altStem}.png`,
+      `${altStem}.jpg`,
+      `${altStem}.jpeg`,
+      `${altStem}.webp`,
+    ]) {
+      const found = absolute(path.join(runDir, name));
+      if (found) return found;
+    }
+    return null;
+  }
+
+  private log(
+    level: "info" | "warn" | "error",
+    message: string,
+    detail?: unknown,
+  ): void {
+    if (this.deps.log) {
+      this.deps.log(level, message, detail);
+      return;
+    }
+    logger[level](message, detail);
+  }
+}
