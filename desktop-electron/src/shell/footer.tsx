@@ -62,14 +62,16 @@ export function Footer({ variant = "app" }: { variant?: "app" | "auth" }) {
 
   const env = info.data?.env ?? "development";
   const apiBase = info.data?.apiBaseUrl ?? "";
-  const envLabel =
-    env === "production"
-      ? null
-      : env === "sandbox"
-        ? "Sandbox API"
-        : /localhost|127\.0\.0\.1/i.test(apiBase) || !apiBase
-          ? "Local API"
-          : "Dev API";
+  const sandboxApi = /sandbox/i.test(apiBase) || env === "sandbox";
+  const productionApi =
+    !sandboxApi && (env === "production" || /(^|\.)api\.camxora\.com/i.test(apiBase));
+  const envLabel = productionApi
+    ? null
+    : sandboxApi
+      ? "Sandbox API"
+      : /localhost|127\.0\.0\.1/i.test(apiBase) || !apiBase
+        ? "Local API"
+        : "Dev API";
 
   const credits =
     summary.data?.credits != null ? `${summary.data.credits.toLocaleString()} credits` : "-- credits";
