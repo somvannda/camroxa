@@ -1,6 +1,5 @@
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import type { ReactNode } from "react";
-import { Icon } from "./icon";
 import { classNames } from "../lib/format";
 
 export interface CheckboxProps {
@@ -44,8 +43,16 @@ export function Checkbox({
         name={name}
         className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-border-strong bg-surface-1 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <CheckboxPrimitive.Indicator className="text-white">
-          <Icon name="fa-check" size={9} />
+        <CheckboxPrimitive.Indicator className="flex items-center justify-center text-white">
+          <svg viewBox="0 0 10 8" width="10" height="8" fill="none" aria-hidden="true">
+            <path
+              d="M1 4.2 3.6 6.8 9 1.4"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </CheckboxPrimitive.Indicator>
       </CheckboxPrimitive.Root>
       {label ? (

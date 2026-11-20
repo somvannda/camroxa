@@ -9,6 +9,7 @@ import { toast } from "../../components/toast";
 import { apiRequest, errorMessage } from "../../lib/api";
 import { formatCount, formatDateTime } from "../../lib/format";
 import { useAccountOverview } from "../dashboard/use-account-overview";
+import { useInAppCheckout, type PaymentStatus } from "./use-in-app-checkout";
 
 interface CreditPack {
   id: string;
@@ -162,7 +163,7 @@ export function PlanPage() {
   const [notice, setNotice] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(
     null,
   );
-  const [checkout, setCheckout] = useState<PurchaseTopup | null>(null);
+  const [lastCheckout, setLastCheckout] = useState<PurchaseTopup | null>(null);
 
   const packs = packsQuery.data ?? [];
   const ledgerRows = (ledgerQuery.data ?? []).filter((entry) => entry.amount > 0);
@@ -177,6 +178,19 @@ export function PlanPage() {
       packsQuery.refetch(),
     ]);
   }, [account, historyQuery, ledgerQuery, packsQuery]);
+
+  const onPaid = useCallback(
+    async (status: PaymentStatus) => {
+      setNotice({
+        tone: "success",
+        text: `${formatCount(status.credits)} credits were added to your balance.`,
+      });
+      toast(`${formatCount(status.credits)} credits added.`, "success");
+      await refresh();
+    },
+    [refresh],
+  );
+  const payment = useInAppCheckout(onPaid);
 
   const buy = useCallback(
     async (pack: CreditPack) => {
@@ -194,24 +208,19 @@ export function PlanPage() {
           setNotice({ tone: "danger", text: "The checkout link is missing. Try again." });
           return;
         }
-        setCheckout(purchase);
-        const opened = await window.camxora.app.openExternal(purchase.checkout_url);
-        if (!opened.ok) {
-          setNotice({ tone: "danger", text: opened.error.message });
-          return;
-        }
+        setLastCheckout(purchase);
+        await payment.start(purchase.checkout_url, purchase.payment_id, pack.name);
         setNotice({
           tone: "info",
-          text: `Checkout opened in your browser for ${pack.name}. Finish the payment, then refresh the balance.`,
+          text: `Complete the payment in the Camxora checkout window for ${pack.name}. Credits appear here automatically.`,
         });
-        toast("Checkout opened in your browser.", "info", 6000);
       } catch (cause) {
         setNotice({ tone: "danger", text: errorMessage(cause) || "Unable to start checkout." });
       } finally {
         setBuying("");
       }
     },
-    [buying],
+    [buying, payment],
   );
 
   return (
@@ -291,13 +300,19 @@ export function PlanPage() {
           >
             <div className="flex items-center justify-between gap-3">
               <span>{notice.text}</span>
-              {checkout?.checkout_url ? (
+              {lastCheckout?.checkout_url ? (
                 <Button
                   variant="ghost"
                   className="h-7 shrink-0 px-2 text-caption"
-                  onClick={() => void window.camxora.app.openExternal(checkout.checkout_url)}
+                  onClick={() =>
+                    void payment.start(
+                      lastCheckout.checkout_url,
+                      lastCheckout.payment_id,
+                      lastCheckout.pack_name,
+                    )
+                  }
                 >
-                  Reopen checkout
+                  Open checkout
                 </Button>
               ) : null}
             </div>

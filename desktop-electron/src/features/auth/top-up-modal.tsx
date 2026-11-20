@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Icon } from "../../components/icon";
-import { toast } from "../../components/toast";
 import { apiRequest, errorMessage } from "../../lib/api";
 import { formatCount } from "../../lib/format";
 import { useSessionStore } from "../../store/session";
+import { useInAppCheckout, type PaymentStatus } from "../plan/use-in-app-checkout";
 
 interface CreditPack {
   id: string;
@@ -25,6 +25,7 @@ interface CreditPackList {
 
 interface PurchaseTopup {
   checkout_url: string;
+  payment_id: string;
   pack_name: string;
   credits: number;
   amount_cents: number;
@@ -61,48 +62,15 @@ export function TopUpModal() {
 
   const [buying, setBuying] = useState("");
   const [checking, setChecking] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "info" | "danger"; text: string } | null>(null);
-  const [checkoutUrl, setCheckoutUrl] = useState("");
+  const [notice, setNotice] = useState<{
+    tone: "info" | "danger" | "success";
+    text: string;
+  } | null>(null);
+  const [lastCheckout, setLastCheckout] = useState<PurchaseTopup | null>(null);
 
   const packs = packsQuery.data ?? [];
 
-  const buy = useCallback(
-    async (pack: CreditPack) => {
-      if (buying) return;
-      setBuying(pack.slug);
-      setNotice(null);
-      try {
-        const purchase = await apiRequest<PurchaseTopup>({
-          method: "POST",
-          path: "/topups/purchase",
-          body: { pack_slug: pack.slug },
-          apiVersion: "v3",
-        });
-        if (!purchase.checkout_url) {
-          setNotice({ tone: "danger", text: "The checkout link is missing. Try again." });
-          return;
-        }
-        setCheckoutUrl(purchase.checkout_url);
-        const opened = await window.camxora.app.openExternal(purchase.checkout_url);
-        if (!opened.ok) {
-          setNotice({ tone: "danger", text: opened.error.message });
-          return;
-        }
-        setNotice({
-          tone: "info",
-          text: `Checkout opened in your browser for ${pack.name}. Finish the payment, then check access.`,
-        });
-        toast("Checkout opened in your browser.", "info", 6000);
-      } catch (cause) {
-        setNotice({ tone: "danger", text: errorMessage(cause) || "Unable to start checkout." });
-      } finally {
-        setBuying("");
-      }
-    },
-    [buying],
-  );
-
-  async function checkAccess() {
+  const refreshAccess = useCallback(async () => {
     setChecking(true);
     setNotice(null);
     try {
@@ -126,7 +94,50 @@ export function TopUpModal() {
     } finally {
       setChecking(false);
     }
-  }
+  }, [applyBootstrap]);
+
+  const onPaid = useCallback(
+    async (status: PaymentStatus) => {
+      setNotice({
+        tone: "success",
+        text: `${status.credits.toLocaleString()} credits added. Unlocking Desktop Studio…`,
+      });
+      await refreshAccess();
+    },
+    [refreshAccess],
+  );
+  const payment = useInAppCheckout(onPaid);
+
+  const buy = useCallback(
+    async (pack: CreditPack) => {
+      if (buying) return;
+      setBuying(pack.slug);
+      setNotice(null);
+      try {
+        const purchase = await apiRequest<PurchaseTopup>({
+          method: "POST",
+          path: "/topups/purchase",
+          body: { pack_slug: pack.slug },
+          apiVersion: "v3",
+        });
+        if (!purchase.checkout_url) {
+          setNotice({ tone: "danger", text: "The checkout link is missing. Try again." });
+          return;
+        }
+        setLastCheckout(purchase);
+        await payment.start(purchase.checkout_url, purchase.payment_id, pack.name);
+        setNotice({
+          tone: "info",
+          text: `Complete the payment in the Camxora checkout window for ${pack.name}. Access unlocks automatically.`,
+        });
+      } catch (cause) {
+        setNotice({ tone: "danger", text: errorMessage(cause) || "Unable to start checkout." });
+      } finally {
+        setBuying("");
+      }
+    },
+    [buying, payment],
+  );
 
   async function signOut() {
     await window.camxora.auth.logout();
@@ -169,13 +180,19 @@ export function TopUpModal() {
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span>{notice.text}</span>
-                {checkoutUrl ? (
+                {lastCheckout ? (
                   <button
                     type="button"
                     className="text-caption text-accent hover:underline"
-                    onClick={() => void window.camxora.app.openExternal(checkoutUrl)}
+                    onClick={() =>
+                      void payment.start(
+                        lastCheckout.checkout_url,
+                        lastCheckout.payment_id,
+                        lastCheckout.pack_name,
+                      )
+                    }
                   >
-                    Reopen checkout
+                    Open checkout
                   </button>
                 ) : null}
               </div>
@@ -241,7 +258,7 @@ export function TopUpModal() {
           <Button variant="ghost" onClick={() => void signOut()}>
             Use a different account
           </Button>
-          <Button variant="secondary" loading={checking} onClick={() => void checkAccess()}>
+          <Button variant="secondary" loading={checking} onClick={() => void refreshAccess()}>
             I&apos;ve paid — check access
           </Button>
         </div>
