@@ -77,10 +77,6 @@ export interface CamxoraBridge {
   media: {
     url(request: { path: string }): Promise<IpcResult<{ url: string }>>;
   };
-  checkout: {
-    open(request: { url: string }): Promise<IpcResult<{ opened: boolean }>>;
-    close(): Promise<IpcResult<{ closed: boolean }>>;
-  };
   preferences: {
     getDevice(): Promise<IpcResult<DevicePreferences>>;
     setDevice(request: Partial<DevicePreferences>): Promise<IpcResult<DevicePreferences>>;

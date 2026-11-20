@@ -38,10 +38,6 @@ const bridge = {
   media: {
     url: (request: unknown) => invoke("media:url", request),
   },
-  checkout: {
-    open: (request: unknown) => invoke("checkout:open", request),
-    close: () => invoke("checkout:close"),
-  },
   preferences: {
     getDevice: () => invoke("preferences:device:get"),
     setDevice: (request: unknown) => invoke("preferences:device:set", request),

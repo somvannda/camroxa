@@ -69,6 +69,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      webviewTag: true,
       devTools: isDev || process.env.CAMXORA_DEVTOOLS === "1",
     },
   });

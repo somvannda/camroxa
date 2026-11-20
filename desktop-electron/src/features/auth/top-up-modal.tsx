@@ -6,6 +6,7 @@ import { Icon } from "../../components/icon";
 import { apiRequest, errorMessage } from "../../lib/api";
 import { formatCount } from "../../lib/format";
 import { useSessionStore } from "../../store/session";
+import { CheckoutDialog } from "../plan/checkout-dialog";
 import { useInAppCheckout, type PaymentStatus } from "../plan/use-in-app-checkout";
 
 interface CreditPack {
@@ -145,7 +146,13 @@ export function TopUpModal() {
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-6">
+    <div
+      className={
+        payment.pending
+          ? "fixed inset-0 z-[30] flex items-center justify-center bg-black/40 p-6"
+          : "fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-6"
+      }
+    >
       <Card className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden p-0">
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>
@@ -263,6 +270,11 @@ export function TopUpModal() {
           </Button>
         </div>
       </Card>
+      <CheckoutDialog
+        open={Boolean(payment.pending?.url)}
+        url={payment.pending?.url ?? null}
+        onClose={() => void payment.close()}
+      />
     </div>
   );
 }

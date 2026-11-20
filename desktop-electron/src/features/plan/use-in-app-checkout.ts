@@ -10,6 +10,7 @@ export interface PaymentStatus {
 
 interface PendingPayment {
   id: string;
+  url: string;
   packName: string;
 }
 
@@ -30,16 +31,16 @@ export function useInAppCheckout(onFulfilled: (status: PaymentStatus) => void) {
 
   const start = useCallback(
     async (checkoutUrl: string, paymentId: string, packName: string) => {
-      const opened = await window.camxora.checkout.open({ url: checkoutUrl });
-      if (!opened.ok) throw new Error(opened.error.message);
-      setPending({ id: paymentId, packName });
+      if (!/^https:\/\//i.test(checkoutUrl)) {
+        throw new Error("The checkout link is not a secure web address.");
+      }
+      setPending({ id: paymentId, url: checkoutUrl, packName });
       setState("waiting");
     },
     [],
   );
 
   const close = useCallback(async () => {
-    await window.camxora.checkout.close();
     setPending(null);
     setState("idle");
   }, []);
@@ -61,7 +62,6 @@ export function useInAppCheckout(onFulfilled: (status: PaymentStatus) => void) {
         if (status.fulfilled) {
           setState("fulfilled");
           setPending(null);
-          await window.camxora.checkout.close();
           fulfilledRef.current(status);
           return;
         }
@@ -69,7 +69,6 @@ export function useInAppCheckout(onFulfilled: (status: PaymentStatus) => void) {
         if (["failed", "expired", "cancelled"].includes(key)) {
           setState("failed");
           setPending(null);
-          await window.camxora.checkout.close();
           return;
         }
       } catch {

@@ -9,6 +9,7 @@ import { toast } from "../../components/toast";
 import { apiRequest, errorMessage } from "../../lib/api";
 import { formatCount, formatDateTime } from "../../lib/format";
 import { useAccountOverview } from "../dashboard/use-account-overview";
+import { CheckoutDialog } from "./checkout-dialog";
 import { useInAppCheckout, type PaymentStatus } from "./use-in-app-checkout";
 
 interface CreditPack {
@@ -539,6 +540,12 @@ export function PlanPage() {
           </p>
         </Card>
       </div>
+
+      <CheckoutDialog
+        open={Boolean(payment.pending?.url)}
+        url={payment.pending?.url ?? null}
+        onClose={() => void payment.close()}
+      />
     </div>
   );
 }
