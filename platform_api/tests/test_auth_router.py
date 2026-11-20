@@ -183,12 +183,13 @@ class TestLogin:
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "ACCOUNT_LOCKED"
 
-    async def test_desktop_login_blocks_free_user(
+    async def test_desktop_login_allows_free_user(
         self,
         client: AsyncClient,
         mock_auth_service: AsyncMock,
         mock_license_repo: AsyncMock,
     ) -> None:
+        """Free accounts sign in and top up in the app; generation stays gated."""
         user_id = uuid4()
         mock_auth_service._user_repo.get_by_email = AsyncMock(
             return_value=User(
@@ -206,9 +207,9 @@ class TestLogin:
             json={"email": "free@example.com", "password": "ValidPass1"},
             headers={"X-Camxora-Client": "desktop"},
         )
-        assert response.status_code == 403
-        assert response.json()["error"]["code"] == "DESKTOP_PLAN_REQUIRED"
-        mock_license_repo.has_paid_desktop_access.assert_awaited_once_with(str(user_id))
+        assert response.status_code == 200
+        assert "access_token" in response.json()
+        mock_license_repo.has_paid_desktop_access.assert_not_awaited()
 
     async def test_desktop_login_allows_paid_user(
         self,
@@ -234,7 +235,7 @@ class TestLogin:
             headers={"X-Camxora-Client": "desktop"},
         )
         assert response.status_code == 200
-        mock_license_repo.has_paid_desktop_access.assert_awaited_once_with(str(user_id))
+        mock_license_repo.has_paid_desktop_access.assert_not_awaited()
 
     async def test_web_login_allows_free_user(
         self,

@@ -452,6 +452,11 @@ export async function bootstrapSession(): Promise<BootstrapResult> {
     return { destination: "confirm_email", session, portalUrl };
   }
 
+  if (route.destination === "topup") {
+    logger.info("bootstrap routed", { destination: "topup" });
+    return { destination: "topup", session, portalUrl };
+  }
+
   logger.info("bootstrap routed", { destination: "app" });
   return { destination: "app", session, portalUrl };
 }

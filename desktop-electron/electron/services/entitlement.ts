@@ -10,9 +10,7 @@ import type { BootstrapDestination, UserMe } from "../shared/types";
 export const DESKTOP_PLAN_REQUIRED_CODE = "DESKTOP_PLAN_REQUIRED";
 
 export const DESKTOP_PLAN_REQUIRED_MESSAGE =
-  "Your account has no active Desktop Studio credits. " +
-  "Buy a credit pack on music.camxora.com, then sign in again. " +
-  "Pack credits are valid for 30 days.";
+  "Desktop Studio needs a positive credit balance. Top up credits, then try again.";
 
 const PAID_CATALOG_TIERS = ["starter", "creator", "studio"];
 
@@ -47,20 +45,20 @@ export type AccountRoute =
   | { destination: Exclude<BootstrapDestination, "login"> };
 
 /**
- * Post-auth routing order: paid gate -> email confirmation -> app.
+ * Post-auth routing order: email confirmation -> credits -> app.
  *
- * A missing channel profile is not an onboarding gate: the user reaches the
- * shell and adds a profile from Settings. Only an unpaid/free account is
- * stopped at login and directed to buy credits.
+ * Free accounts are allowed to authenticate so they can top up inside the app;
+ * they land on the credits gate instead of the login screen. Generation still
+ * requires paid access on the API side.
  */
 export function resolveBootstrapDestination(
   me: EntitlementUser & Pick<UserMe, "email_confirmed" | "channel_profile_count">,
 ): AccountRoute {
-  if (!userCanUseDesktopStudio(me)) {
-    return { destination: "login", code: DESKTOP_PLAN_REQUIRED_CODE };
-  }
   if (me.email_confirmed === false) {
     return { destination: "confirm_email" };
+  }
+  if (!userCanUseDesktopStudio(me)) {
+    return { destination: "topup" };
   }
   return { destination: "app" };
 }

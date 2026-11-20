@@ -11,7 +11,7 @@ from platform_api.exceptions import DesktopPlanRequiredError
 DESKTOP_CLIENT_HEADER = "x-camxora-client"
 DESKTOP_CLIENT_VALUE = "desktop"
 DESKTOP_PLAN_REQUIRED_MESSAGE = (
-    "Desktop studio requires a paid plan. Choose Starter, Creator, or Studio on the web."
+    "Desktop Studio needs a positive credit balance. Top up credits in the app, then try again."
 )
 
 

@@ -69,7 +69,7 @@ describe("desktop entitlement", () => {
 describe("bootstrap routing", () => {
   const paid = { role: "user", desktop_access: true };
 
-  it("sends unentitled accounts to the login gate", () => {
+  it("sends unentitled accounts to the in-app top-up gate", () => {
     expect(
       resolveBootstrapDestination({
         role: "user",
@@ -77,10 +77,10 @@ describe("bootstrap routing", () => {
         email_confirmed: true,
         channel_profile_count: 3,
       }),
-    ).toEqual({ destination: "login", code: "DESKTOP_PLAN_REQUIRED" });
+    ).toEqual({ destination: "topup" });
   });
 
-  it("checks entitlement before email confirmation", () => {
+  it("checks email confirmation before the credits gate", () => {
     expect(
       resolveBootstrapDestination({
         role: "user",
@@ -88,7 +88,7 @@ describe("bootstrap routing", () => {
         email_confirmed: false,
         channel_profile_count: 0,
       }),
-    ).toEqual({ destination: "login", code: "DESKTOP_PLAN_REQUIRED" });
+    ).toEqual({ destination: "confirm_email" });
   });
 
   it("checks email confirmation before channel profiles", () => {

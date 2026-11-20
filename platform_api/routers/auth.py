@@ -37,10 +37,6 @@ from platform_api.models.products import PRODUCT_MUSIC_WEB, normalize_signup_pro
 from platform_api.models.schemas import LoginRequest, TokenResponse
 from platform_api.repositories.license_repo import LicenseRepository
 from platform_api.services.auth_service import AuthService
-from platform_api.services.desktop_access import (
-    assert_paid_desktop_access,
-    is_desktop_client,
-)
 from platform_api.services.email_link_tokens import (
     build_email_verify_link,
     sign_oauth_state,
@@ -639,12 +635,6 @@ async def login(
         _log.info("Authentication successful, resetting failure counter...")
         await lockout.reset_failures(request.email)
 
-        if is_desktop_client(http_request):
-            user = await auth_service._user_repo.get_by_email(request.email)
-            if user is None:
-                raise DesktopPlanRequiredError()
-            await assert_paid_desktop_access(str(user.id), license_repo)
-
         token_response = TokenResponse(
             access_token=token_pair.access_token,
             refresh_token=token_pair.refresh_token,
@@ -933,10 +923,6 @@ async def refresh(
         raise AuthenticationError("Refresh token is required.")
 
     token_pair = await auth_service.refresh_token(refresh_token)
-
-    if is_desktop_client(http_request):
-        payload = await auth_service.validate_token(token_pair.access_token)
-        await assert_paid_desktop_access(payload.user_id, license_repo)
 
     token_response = TokenResponse(
         access_token=token_pair.access_token,
@@ -1479,10 +1465,6 @@ async def google_auth_callback(
             invited_ip=get_client_ip(http_request),
         )
     await auth_service._user_repo.add_product(user.id, PRODUCT_MUSIC_WEB)
-    if is_desktop_client(http_request):
-        # Same paid-entitlement gate as the password login path, so a free
-        # account cannot enter the studio through Google instead.
-        await assert_paid_desktop_access(str(user.id), license_repo)
     await _ensure_welcome_grant(str(user.id))
     return await _issue_session(auth_service, user, response, http_request)
 

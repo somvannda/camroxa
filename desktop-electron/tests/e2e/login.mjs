@@ -99,15 +99,6 @@ async function launch(name, env = {}) {
 
     if (url.pathname.endsWith("/auth/login") && request.method === "POST") {
       request.resume();
-      if (scenario === "free") {
-        return json(403, {
-          error: {
-            code: "DESKTOP_PLAN_REQUIRED",
-            message:
-              "Desktop studio requires a paid plan. Choose Starter, Creator, or Studio on the web.",
-          },
-        });
-      }
       return json(200, {
         access_token: `access-${scenario}`,
         refresh_token: `refresh-${scenario}`,
@@ -126,10 +117,51 @@ async function launch(name, env = {}) {
         email_confirmed: scenario !== "unconfirmed",
         display_name: "E2E User",
         role: "user",
-        desktop_access: true,
+        desktop_access: scenario !== "free",
         onboarding_paid: true,
+        credit_balance: scenario === "free" ? 0 : 500,
         channel_profile_count: scenario === "ready" ? 2 : 0,
       });
+    }
+
+    if (url.pathname.endsWith("/stats/dashboard") && request.method === "GET") {
+      return json(200, {
+        credits_spent: 0,
+        credits_remaining: scenario === "free" ? 0 : 500,
+        credits_total: 500,
+        songs_generated: 0,
+        images_generated: 0,
+        videos_generated: 0,
+        youtube_uploads: 0,
+        studio_exports: 0,
+        manual_exports: 0,
+        usage_by_day: [],
+        recent_activity: [],
+      });
+    }
+
+    if (url.pathname.endsWith("/profiles") && request.method === "GET") return json(200, []);
+    if (url.pathname.endsWith("/topups/packs") && request.method === "GET") {
+      return json(200, {
+        packs: [
+          {
+            id: "pack-1",
+            slug: "small",
+            name: "Small Pack",
+            description: "",
+            total_credits: 1000,
+            price_cents: 500,
+            display_order: 1,
+            songs_equivalent: 100,
+          },
+        ],
+      });
+    }
+    if (url.pathname.endsWith("/topups/history") && request.method === "GET") {
+      return json(200, { purchases: [], total: 0, limit: 12, offset: 0 });
+    }
+    if (url.pathname.endsWith("/licenses/validate") && request.method === "GET") {
+      return json(404, { error: { code: "NOT_FOUND", message: "No licence" } });
     }
 
     return json(404, { error: { code: "NOT_FOUND", message: "Not found" } });
@@ -149,10 +181,18 @@ async function launch(name, env = {}) {
       await window.getByRole("button", { name: /^Sign in$/ }).click();
     }
 
+    // Free account: signs in and lands on the in-app top-up gate with packs.
     await signIn("free@example.com");
-    await window.getByRole("heading", { name: "Credits are required" }).waitFor({ timeout: 8_000 });
+    await window.getByTestId("plan-page").waitFor({ timeout: 10_000 });
+    if (!(await window.getByText("Top up to unlock Desktop Studio").count())) {
+      throw new Error("Credits gate copy missing");
+    }
+    if (!(await window.getByTestId("plan-pack-small").count())) {
+      throw new Error("Free users must see credit packs in the app");
+    }
+    await window.screenshot({ path: path.join(artifacts, "topup-gate.png"), fullPage: true });
 
-    await window.getByRole("button", { name: "Use a different account" }).click();
+    await window.getByRole("button", { name: "Sign out" }).click();
     scenario = "unconfirmed";
     await signIn("e2e@example.com");
     await window.getByRole("heading", { name: "Confirm your email" }).waitFor({ timeout: 8_000 });
@@ -168,7 +208,7 @@ async function launch(name, env = {}) {
     await window.screenshot({ path: path.join(artifacts, "auth-gates.png"), fullPage: true });
     console.log(
       JSON.stringify({
-        paidGate: true,
+        topUpInApp: true,
         confirmEmailGate: true,
         noProfileLandsInApp: true,
       }),

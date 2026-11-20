@@ -4,6 +4,7 @@ import { useSessionStore } from "../../store/session";
 import { BootSplash } from "./boot-splash";
 import { ConfirmEmailGate } from "./confirm-email-gate";
 import { LoginPage } from "./login-page";
+import { TopUpGate } from "./top-up-gate";
 
 const DEV_SESSION: SessionSummary = {
   userId: "dev",
@@ -81,6 +82,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   if (destination === "confirm_email") {
     return <ConfirmEmailGate portalUrl={resolvedPortalUrl} />;
+  }
+  if (destination === "topup") {
+    return <TopUpGate />;
   }
   return <>{children}</>;
 }

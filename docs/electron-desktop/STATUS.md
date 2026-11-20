@@ -20,7 +20,7 @@
 | Logging/diagnostics | JSONL, redaction, renderer console/load logging, error boundary |
 | CI | Windows workflow: typecheck/lint/test/build/E2E |
 | Packaging | unpacked Windows build launched |
-| **P1 auth** | Email/password, remember-me, Google OAuth loopback, paid/credits gate, email-confirmation gate, sign-out, dev/E2E bypass. A missing channel profile is no longer a gate: the user logs in and adds one from Settings |
+| **P1 auth** | Email/password, remember-me, Google OAuth loopback, in-app credits/top-up gate, email-confirmation gate, sign-out, dev/E2E bypass. Free accounts can sign in and buy credits in the app; generation stays gated server-side. A missing channel profile is not a gate |
 | **P1 updates** | HTTPS release manifest, mandatory blocking gate, optional update card, download hand-off, unit + E2E coverage |
 | **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
 | **P2 settings** | Profiles (list/create/edit/delete, allowance, media, YouTube), Publication (visibility, schedule, playlists, metadata), Preferences (FFmpeg, output dir, workers, thumbnails, diagnostics) |
@@ -241,9 +241,10 @@ shell chunk is ~333 kB (103 kB gzip).
 - Controls are real library components: `Select` is a Radix listbox, `Checkbox` is a Radix
   checkbox with a check icon, and `DatePicker` is a custom month calendar (no native browser
   picker). Empty dates are allowed for optional filters.
-- Onboarding is gone: any entitled, confirmed account reaches the shell even with zero channel
-  profiles. Only an unpaid/free account is stopped at login, with a "Credits are required"
-  screen that opens the top-up portal.
+- Onboarding is gone: any confirmed account reaches the app even with zero channel profiles.
+  Free/unpaid accounts also sign in, but land on an in-app **top-up gate** that shows the credit
+  packs and checkout. Generation remains blocked server-side until a pack is bought; the gate's
+  "I've paid — check access" refreshes the entitlement without signing out.
 
 - Local DB drift: `platform_db` had an `alembic_version` revision from a diverged checkout, so
   migrations 175-211 never ran and `/progress` 500ed on `batches.auto_upload_youtube`. The local
