@@ -20,7 +20,7 @@
 | Cross-origin isolation | `crossOriginIsolated === true`, `fftTier === "threads"` (SharedArrayBuffer path engaged) |
 | Assets, workers, WASM, fonts load over `camxora-vizzy://` | editor boot + threaded FFT + CanvasKit/three bundle load with no CSP violations in the first 10 s |
 | Dedicated preload, no shell bridge | `window.camxoraVizzy` present, `window.camxora` absent inside the view |
-| Shell strip | project name, saved/unsaved dot, item count, dimensions, New / Export / Save template / Renders / Templates / Save / Open / Close |
+| Shell strip | project name, saved/unsaved dot, item count, dimensions; compact groups: New / Open / Save project, Export / Save as template, Templates / Renders, Close (tooltips state each purpose) |
 | Embedded frame | editor topbar and status line hidden; the stage sits in a bordered, rounded frame with an 8 px gap inside the shell |
 | New project | shell **New** → confirmation → `vizzy:new-project` resets the live project (layers, nodes, effects, automations, analyzers, assets) without leaving the page |
 | Notifications | on `/vizzy` one compact toast stays inside the 48 px shell strip instead of being clipped by the native editor view |

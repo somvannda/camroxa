@@ -98,7 +98,7 @@ try {
   const window = await app.firstWindow();
   await window.waitForLoadState("domcontentloaded");
   await window.getByRole("link", { name: "Vizzy" }).click();
-  await window.getByRole("button", { name: "Save", exact: true }).waitFor({ timeout: 15_000 });
+  await window.getByRole("button", { name: "Save project", exact: true }).waitFor({ timeout: 15_000 });
 
   const state = await poll(async () => {
     const result = await window.evaluate(async () => window.camxora.vizzy.state());

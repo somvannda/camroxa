@@ -239,25 +239,51 @@ export function VizzyPage() {
           </span>
         ) : null}
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <Button
             variant="secondary"
-            className="shrink-0 px-3"
+            className="h-7 w-7 shrink-0 px-0"
             onClick={openNewProject}
             disabled={!attached || exporter.running}
             loading={busy === "new"}
+            aria-label="New project"
+            title="Start a new project"
             data-testid="vizzy-new-project"
           >
-            <Icon name="fa-file-circle-plus" size={12} />
-            New
+            <Icon name="fa-plus" size={12} />
           </Button>
           <Button
             variant="secondary"
-            className="shrink-0 px-3"
+            className="h-7 w-7 shrink-0 px-0"
+            onClick={() => void open()}
+            loading={busy === "open"}
+            disabled={!attached}
+            aria-label="Open project"
+            title="Open a project file"
+          >
+            <Icon name="fa-folder-open" size={12} />
+          </Button>
+          <Button
+            variant="primary"
+            className="h-7 shrink-0 px-3 text-caption"
+            onClick={() => void save()}
+            loading={busy === "save"}
+            disabled={!attached}
+            title="Save the project file (Ctrl+S)"
+          >
+            Save project
+          </Button>
+
+          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+
+          <Button
+            variant="secondary"
+            className="h-7 shrink-0 px-2.5 text-caption"
             onClick={() => togglePanel("export")}
             disabled={!attached || exporter.running}
             loading={exporter.running}
             aria-expanded={panel === "export"}
+            title="Render this project to an MP4"
             data-testid="vizzy-export-open"
           >
             <Icon name="fa-clapperboard" size={12} />
@@ -265,59 +291,54 @@ export function VizzyPage() {
           </Button>
           <Button
             variant="secondary"
-            className="shrink-0 whitespace-nowrap px-3"
+            className="h-7 shrink-0 whitespace-nowrap px-2.5 text-caption"
             onClick={() => void openTemplateDialog()}
             disabled={!attached || exporter.running}
+            title="Save this composition as a reusable video template"
             data-testid="vizzy-template-open"
           >
             <Icon name="fa-floppy-disk" size={12} />
-            Save template
+            Save as template
           </Button>
+
+          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+
           <Button
             variant="ghost"
-            className="shrink-0 px-2.5"
-            onClick={() => togglePanel("renders")}
-            aria-expanded={panel === "renders"}
-            aria-label="Renders"
-            title="Renders"
-            data-testid="vizzy-renders-open"
-          >
-            <Icon name="fa-photo-film" size={12} />
-            Renders
-          </Button>
-          <Button
-            variant="ghost"
-            className="shrink-0 px-2.5"
+            className="h-7 shrink-0 px-2 text-caption"
             onClick={() => togglePanel("templates")}
             aria-expanded={panel === "templates"}
             aria-label="Templates"
-            title="Templates"
+            title="Saved video templates"
             data-testid="vizzy-templates-open"
           >
             <Icon name="fa-layer-group" size={12} />
             Templates
           </Button>
-          <span className="h-4 w-px bg-border" />
           <Button
-            variant="primary"
-            className="shrink-0 px-3"
-            onClick={() => void save()}
-            loading={busy === "save"}
-            disabled={!attached}
+            variant="ghost"
+            className="h-7 shrink-0 px-2 text-caption"
+            onClick={() => togglePanel("renders")}
+            aria-expanded={panel === "renders"}
+            aria-label="Renders"
+            title="Exported video files"
+            data-testid="vizzy-renders-open"
           >
-            Save
+            <Icon name="fa-photo-film" size={12} />
+            Renders
           </Button>
+
+          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+
           <Button
-            variant="secondary"
-            className="shrink-0 px-3"
-            onClick={() => void open()}
-            loading={busy === "open"}
+            variant="ghost"
+            className="h-7 w-7 shrink-0 px-0"
+            onClick={closeEditor}
             disabled={!attached}
+            aria-label="Close editor"
+            title="Close the editor"
           >
-            Open
-          </Button>
-          <Button variant="ghost" className="shrink-0 px-2.5" onClick={closeEditor} disabled={!attached}>
-            Close
+            <Icon name="fa-xmark" size={13} />
           </Button>
         </div>
       </div>

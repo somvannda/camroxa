@@ -139,7 +139,7 @@ try {
   const window = await app.firstWindow();
   await window.waitForLoadState("domcontentloaded");
   await window.getByRole("link", { name: "Vizzy" }).click();
-  await window.getByRole("button", { name: "Save", exact: true }).waitFor({ timeout: 15_000 });
+  await window.getByRole("button", { name: "Save project", exact: true }).waitFor({ timeout: 15_000 });
 
   // The view reports attached + ready once the adapter has booted the editor.
   const state = await poll(
