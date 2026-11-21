@@ -807,6 +807,13 @@ async function settingsSuccess() {
     // Template selection round-trips through the profile itself.
     await chooseOption(page, "#settings-profile-video-template", "night-drive-long");
     await chooseOption(page, "#settings-profile-reel-template", "night-drive-reel");
+
+    // Publication must still open while the profile draft is dirty.
+    await page.getByRole("tab", { name: /Publication/ }).click();
+    await page.locator('[data-testid="settings-publication-tab"]').waitFor({ timeout: 5000 });
+    await page.getByRole("tab", { name: /Profiles/ }).click();
+    await page.locator('[data-testid="settings-profile-templates"]').waitFor({ timeout: 5000 });
+
     await page.getByRole("button", { name: "Save profile" }).click();
     await page.getByText("Profiles saved.").first().waitFor({ timeout: 5000 });
     const templateCall = [...state.calls]
