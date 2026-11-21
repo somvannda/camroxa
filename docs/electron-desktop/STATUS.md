@@ -258,8 +258,10 @@ shell chunk is ~333 kB (103 kB gzip).
   a bordered frame, and the shell strip uses compact, grouped actions — New / Open / Save project
   (file), Export / Save as template (output), Templates / Renders (rails), Close (stop). Each
   action has a tooltip stating its purpose. The editor UI itself uses Camxora's navy surfaces,
-  Inter stack, purple accent, rounded controls and blue/purple timeline tints. Notifications on
-  `/vizzy` stay inside the 48 px strip so the native editor view cannot cut them off.
+  Inter stack, purple accent, rounded controls and blue/purple timeline tints; its left rail is
+  now a horizontal Composition/Analyzers/Effects/Automations/Media/Projects/Lyrics bar directly
+  under the Vizzy strip. Notifications on `/vizzy` stay inside the 48 px strip so the native
+  editor view cannot cut them off.
 - Vizzy Export mirrors the editor's own Export dialog field-for-field: encoder (WASM /
   WebCodecs), the full resolution list, 24/30/60 fps, H.264/VP9/VP8, bitrate, CRF, preset,
   profile, audio bitrate, start/end and the estimated size, with the same defaults (60 fps,

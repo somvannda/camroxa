@@ -3215,7 +3215,23 @@ button:disabled {
 /* same navy surfaces, Inter stack, purple accent and 6-8px radii.     */
 /* ------------------------------------------------------------------ */
 
-#rail,
+#rail {
+  grid-area: top;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 0 10px;
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+#rail::-webkit-scrollbar {
+  height: 0;
+}
+
 #compositor,
 #inspector,
 #timeline-wrap,
@@ -3232,15 +3248,29 @@ button:disabled {
 }
 
 .rail-item {
-  width: 58px;
-  margin: 0 5px;
-  padding: 5px 2px 4px;
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 6px 10px;
+  flex-direction: row;
+  gap: 6px;
   border-left: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   color: var(--muted);
   font-family: inherit;
-  font-size: 10px;
-  line-height: 1.2;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rail-item > span:last-child {
+  white-space: nowrap;
+}
+
+.rail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rail-item:hover {

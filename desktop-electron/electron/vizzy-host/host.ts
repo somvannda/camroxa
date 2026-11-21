@@ -64,7 +64,7 @@ const VIZZY_ORIGIN = new URL(VIZZY_INDEX_URL).origin;
  * `--topbar` is set to 0 so the grid loses the row instead of leaving a gap.
  */
 const EMBEDDED_EDITOR_CSS = `
-  :root { --topbar: 0px !important; }
+  :root { --topbar: 42px !important; --rail: 0px !important; }
   #topbar, #status { display: none !important; }
   #app { grid-template-rows: var(--topbar) minmax(0, 1fr) var(--track-size, 30%) 0 !important; }
   #app[data-layout="3"] {
