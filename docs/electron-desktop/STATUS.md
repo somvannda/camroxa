@@ -50,6 +50,7 @@ npm run typecheck      PASS
 npm run lint           PASS
 npm test               389/389 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
+npm run vizzy:parity   PASS (59 decompile files; only 4 intentional patches + 3 host shims)
 npm run test:e2e       PASS (18 suites incl. downloads, auto-video, pipeline-batch and youtube-upload)
 node tests/e2e/settings.mjs PASS (8 tabs, prompt CRUD, pools pager, Suno bounds, save-all order)
 node tests/e2e/youtube-upload.mjs PASS (job, 3 chunks resuming at 308, report, complete, link,

@@ -43,9 +43,15 @@
 | Queue → render → ffprobe | `electron/services/pipeline-orchestrator.ts` + `electron/ipc/pipeline.ts`: `pipeline:enqueue/start/cancel/retry/list/reveal`. Two 2 s songs rendered 320×180 in **4.7–4.9 s** total, ffprobe h264+aac/60 frames each |
 | Merge | Batch-level long-form merge (`-c copy`, re-encode fallback): 4.01 s / 120 frames MP4 in the run folder, ffprobe-validated |
 | Cancel / retry | Cancel marks the row `cancelled` and leaves `renders/` untouched (no partial file); retry re-enqueues only failed/cancelled rows and produced exactly one new file in the E2E |
-| Music trigger | “Render videos” in the Automation card resolves the profile's saved long/reel templates, queues one job per ready song/branch and starts the batch without leaving Music; missing templates/audio report a specific message + Settings link |
+| Music trigger | Auto-video coordinator polls Progress/history and queues the profile's long/reel templates per ready song/branch; Video checkboxes gate each branch, merge is per branch; missing templates/audio report a specific message |
 | Progress UI | Compact “Video pipeline” table from the durable SQLite queue: status, template, song, progress, error, Cancel/Retry/Reveal, merged file per batch, honest empty state |
 | No leaks | project file and editor DOM contain no session email and no token fields; the render window adds no storage shared with the visible editor |
+
+`npm run vizzy:parity` compares `vizzy/src` with the decompiled reference at
+`G:\Developments\Rea\editor\src` (override with `REA_EDITOR_SRC`). All 59 shared files match
+1:1 except four intentional shell patches (`main.ts`, `renderer/renderer.ts`,
+`ui/inspector.ts`, `ui/timeline.ts`) and three host shims under `host/`. Effects, particles,
+spectrum, analyzers, shaders, presets and the renderer are not modified by the port.
 
 Screenshots: `desktop-electron/artifacts/vizzy/shell.png` (shell strip),
 `desktop-electron/artifacts/vizzy/editor.png` (`capturePage` of the hosted editor),
