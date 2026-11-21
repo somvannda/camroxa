@@ -433,8 +433,8 @@ try {
     const result = await window.camxora.vizzy.state();
     return result.ok ? result.data : null;
   });
-  if (!afterLeave?.attached || !afterLeave.dirty) {
-    fail(`The live editor must survive route leave: ${JSON.stringify(afterLeave)}`);
+  if (!afterLeave?.attached || !afterLeave.dirty || afterLeave.visible) {
+    fail(`The live editor must be hidden (not on top) after route leave: ${JSON.stringify(afterLeave)}`);
   }
   const survivor = await app.evaluate(async ({ webContents }) =>
     webContents.getAllWebContents().some((contents) => contents.getURL().startsWith("camxora-vizzy://")),
@@ -447,11 +447,12 @@ try {
     window,
     async () => {
       const result = await window.camxora.vizzy.state();
-      return result?.ok && result.data.ready ? result.data : null;
+      return result?.ok && result.data.ready && result.data.visible ? result.data : null;
     },
     "the same project to return",
   );
   if (!restored.dirty) fail("The unsaved layer was lost on route return");
+  if (!restored.visible) fail("The editor must be visible again after returning to Vizzy");
   const layersAfter = await inView("window.editorProject?.layers?.length ?? 0");
   if (layersAfter !== layersBefore.after) {
     fail(`The unsaved layer was lost: ${layersBefore.after} -> ${layersAfter}`);

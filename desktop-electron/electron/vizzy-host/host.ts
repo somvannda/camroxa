@@ -125,6 +125,7 @@ export class VizzyHost {
   private renderer: OffscreenVizzyRenderer | null = null;
   private state: VizzyState = {
     attached: false,
+    visible: false,
     ready: false,
     crashed: false,
     projectName: "",
@@ -224,7 +225,7 @@ export class VizzyHost {
     this.viewVisible = true;
     this.view!.setVisible(true);
     window.focus();
-    this.update({ attached: true, error: null });
+    this.update({ attached: true, visible: true, error: null });
     return this.getState();
   }
 
@@ -238,6 +239,7 @@ export class VizzyHost {
    */
   setVisible(visible: boolean): void {
     this.viewVisible = visible;
+    this.update({ visible });
     const view = this.view;
     if (!view || view.webContents.isDestroyed()) return;
     view.setVisible(visible);
@@ -270,7 +272,7 @@ export class VizzyHost {
     this.clearPendingAcks("The Vizzy view was closed.");
     this.session.abort("The Vizzy editor was closed.");
     this.destroyView();
-    this.update({ attached: false, ready: false });
+    this.update({ attached: false, visible: false, ready: false });
   }
 
   /**

@@ -63,14 +63,6 @@ export function VizzyPage() {
     if (exporter.result && panel === "renders") void refreshRenders();
   }, [exporter.result, panel, refreshRenders]);
 
-  // A dialog can be left open by a route change; never leave the view hidden.
-  useEffect(
-    () => () => {
-      void window.camxora?.vizzy?.setVisible(true);
-    },
-    [],
-  );
-
   const reveal = useCallback(
     (name: string) => {
       void revealRender(name);

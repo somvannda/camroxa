@@ -3,6 +3,7 @@ import type { VizzyState } from "../../../electron/shared/types";
 
 const EMPTY_STATE: VizzyState = {
   attached: false,
+  visible: false,
   ready: false,
   crashed: false,
   projectName: "",
@@ -98,10 +99,8 @@ export function useVizzyHost(): VizzyHostHandle {
       cancelAnimationFrame(raf);
       observer.disconnect();
       window.removeEventListener("resize", schedule);
-      // Keep the editor process and the live project between route visits.
-      // Hiding the native view is enough; destroying it made an unsaved edit
-      // reload from defaults when the user came back to /vizzy.
-      void window.camxora?.vizzy?.setVisible(false);
+      // Visibility is owned by the shell route effect: hiding in this cleanup
+      // races the next /vizzy attach and can leave the view hidden.
     };
   }, [closed]);
 

@@ -167,6 +167,8 @@ export interface VizzyBounds {
 /** Everything the Vizzy shell strip renders. */
 export interface VizzyState {
   attached: boolean;
+  /** The native view is shown; false while another page owns the window. */
+  visible: boolean;
   ready: boolean;
   crashed: boolean;
   projectName: string;
