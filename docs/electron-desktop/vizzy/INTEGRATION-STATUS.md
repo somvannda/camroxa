@@ -27,7 +27,7 @@
 | Native Save (shell + editor `Ctrl+S`) | atomic write to `%APPDATA%/Camxora Desktop/projects/<slug>.camxora-vizzy.json`; `Ctrl+S` inside the editor bumps the same file's mtime |
 | Native Open | native dialog (defaults to `projects/`), snapshot applied to the live editor, strip updates |
 | Save → Open → Save round-trip | semantically identical JSON (only `savedAt` and three analyser counters differ — §6) |
-| Route leave | view detaches, no `camxora-vizzy://` webContents remains |
+| Route leave | view hides; the editor process and the live project stay alive, so unsaved changes/undo survive; Close or window close stops it |
 | Crash isolation | `forcefullyCrashRenderer()` → shell stays alive, strip shows the crash, editor auto-reloads in ~2 s |
 | Native export (MP4) | shell Export → the editor's own `runExport()` → real H.264/AAC MP4 in `<userData>/renders/`; `tests/e2e/vizzy-export.mjs` (480×270, 2 s, 60 frames, ~2.4–4.7 s, ~400–450 KB) |
 | Export progress + cancel | `vizzy:export:progress` events per frame; cancel aborts the exporter and deletes the partial file (asserted: `renders/` stays empty) |
@@ -139,7 +139,7 @@ moves. Patch anchors:
 
 ```
 src/features/vizzy/vizzy-page.tsx      shell strip + the rectangle the view sits in
-src/features/vizzy/use-vizzy-host.ts   attach / ResizeObserver bounds / detach / state
+src/features/vizzy/use-vizzy-host.ts   attach / ResizeObserver bounds / hide on route leave / state
 src/features/vizzy/use-vizzy-export.ts export job state + progress events
 src/features/vizzy/use-vizzy-renders.ts renders list / delete / reveal / media URL
 src/features/vizzy/vizzy-export-menu.tsx  settings rail + progress + result
@@ -273,8 +273,9 @@ shell Export button
 - **Progress + cancel.** `runExport` is patched to forward its own frame counter and to
   read a host cancel flag in `shouldCancel`. Cancel aborts between frames, the host waits
   up to 5 s for the view to settle, then closes the handle and deletes the partial file
-  itself. A 60-minute job ceiling does the same for a wedged encoder. Detaching the route,
+  itself. A 60-minute job ceiling does the same for a wedged encoder. Closing the editor,
   closing the window or a renderer crash cancels the job and removes its partial file.
+  A route change only hides the view, so an active export keeps running.
 - **Validation.** `services/ffmpeg.probe()` runs on the closed file (codec, size, duration).
   If ffprobe is unavailable the render is kept and the probe fields are null — the E2E
   probes independently with ffprobe.
@@ -387,7 +388,7 @@ npm run test:e2e                        # all 15 suites (library needs the env a
 | Settings template list can be up to 30 s stale | `useVideoTemplatesQuery` has a 30 s `staleTime`; it subscribes to `video-templates:changed` and invalidates, so a save/delete refreshes the Profiles list. | The list also refetches on mount; no action needed. |
 | Dirty flag is history-depth based | Rea has no dirty flag. The adapter marks dirty when `editHistory.labels().length` differs from the depth at the last save/open. Undo back to the saved state stays "dirty". | Honest but coarse; a project hash in the adapter would be exact and cheap enough on demand. |
 | Project file names are slug-based | Two projects with the same name share one file. | Add an id suffix (or a recent-project index) before the pipeline milestone needs many projects. |
-| `detach()` destroys the view | Returning to `/vizzy` reloads the editor (~1.5 s) and re-creates the default project. | Keep a suspended view per window if the reload becomes annoying; the crash path already proves recreate works. |
+| `detach()` destroys the view | Close or window close stops the editor; a route change only hides it so the live project survives. | The view is kept per window and throttled while hidden; the crash path still recreates it. |
 | Export runs inside the attached editor | The job needs the live renderer and analyser state. | Route leave / window close / crash cancels the job and deletes the partial file. Batch renders use the hidden window instead. |
 | One export at a time | Each surface keeps a single job; `pipeline:start` refuses a second batch while one runs. | Enough for the pipeline; concurrent renders would need one render window per worker. |
 | Batch render needs a compositor | The hidden window is a real window (`show:false`), not an OSR renderer, so WebGL needs a usable GPU/compositor. | Verified on Windows; a fully headless CI would need `--disable-gpu` acceptance or an OSR renderer. |

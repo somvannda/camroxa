@@ -626,7 +626,7 @@ function particleThumbFor(params: ParticleParams, size = 64): string {
  * matching the reference, except the preset gallery.
  */
 export class Inspector {
-  private open = new Set<string>();
+  private open = new Set<string>(["layers"]);
   /** Reference “group editing”: layer edits apply to every sibling layer. */
   private layerGroupEdit = false;
   /** Add-layer brighten/darken settings, mirrored from the project. */
@@ -1212,7 +1212,7 @@ export class Inspector {
     // group header and the rows expand by default.
     const section = document.createElement("section");
     section.className = "group";
-    if (!this.open.has("layers")) this.open.add("layers");
+    if (!this.open.has("layers")) section.classList.add("collapsed");
 
     const headRow = document.createElement("div");
     headRow.className = "group-head-row";
@@ -1300,6 +1300,14 @@ export class Inspector {
 
     actions.append(groupEdit, remove, add, shiftButton, popover);
     headRow.append(head, actions);
+
+    head.addEventListener("click", () => {
+      if (this.open.has("layers")) this.open.delete("layers");
+      else this.open.add("layers");
+      const open = this.open.has("layers");
+      section.classList.toggle("collapsed", !open);
+      twist.replaceChildren(icon(open ? "expand_more" : "chevron_right", 14));
+    });
 
     const body = document.createElement("div");
     body.className = "group-body";

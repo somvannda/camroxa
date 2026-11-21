@@ -258,6 +258,11 @@ shell chunk is ~333 kB (103 kB gzip).
   a bordered frame, and the shell strip adds **New** (confirmed fresh project) alongside
   Export/Save template/Renders/Templates/Save/Open/Close. Notifications on `/vizzy` stay inside
   the 48 px strip so the native editor view cannot cut them off.
+- A Vizzy route change only hides the live editor; unsaved layers, undo history and the loaded
+  audio survive when returning. **Close** or window close still stops it, and hidden views are
+  throttled and stop preview audio.
+- The Spectrum inspector's **Spectrum layers** group and every Layer 1/2/3 row collapse again
+  (the group had no click handler and `.layer-controls { display:flex }` overrode `[hidden]`).
 - Settings → Profiles owns the saved video templates: long/reel pickers plus the full template
   list with thumbnails, kind and selected state. Templates save with the profile; Publication no
   longer duplicates the pickers.

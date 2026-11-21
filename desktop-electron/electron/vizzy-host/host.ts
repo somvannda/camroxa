@@ -220,7 +220,9 @@ export class VizzyHost {
       window.contentView.addChildView(this.view!);
       this.attached = true;
     }
-    this.view!.setVisible(this.viewVisible);
+    // Returning to /vizzy reuses the live editor, so make it visible again.
+    this.viewVisible = true;
+    this.view!.setVisible(true);
     window.focus();
     this.update({ attached: true, error: null });
     return this.getState();
@@ -239,6 +241,18 @@ export class VizzyHost {
     const view = this.view;
     if (!view || view.webContents.isDestroyed()) return;
     view.setVisible(visible);
+    // A hidden editor should not keep rendering or playing preview audio behind
+    // another page; a visible one must keep the live preview smooth.
+    try {
+      view.webContents.setBackgroundThrottling(!visible);
+    } catch {
+      // Older Electron builds may not expose this; visibility still works.
+    }
+    if (!visible) {
+      void view.webContents
+        .executeJavaScript("window.editorAudio?.stop?.()", true)
+        .catch(() => {});
+    }
   }
 
   setBounds(bounds: VizzyBounds): void {

@@ -98,7 +98,10 @@ export function useVizzyHost(): VizzyHostHandle {
       cancelAnimationFrame(raf);
       observer.disconnect();
       window.removeEventListener("resize", schedule);
-      void window.camxora?.vizzy?.detach();
+      // Keep the editor process and the live project between route visits.
+      // Hiding the native view is enough; destroying it made an unsaved edit
+      // reload from defaults when the user came back to /vizzy.
+      void window.camxora?.vizzy?.setVisible(false);
     };
   }, [closed]);
 
@@ -148,7 +151,11 @@ export function useVizzyHost(): VizzyHostHandle {
     setState((current) => ({ ...current, error: null, crashed: false }));
   }, []);
 
-  const closeEditor = useCallback(() => setClosed(true), []);
+  const closeEditor = useCallback(() => {
+    // Close is explicit: stop the editor. Route changes only hide it.
+    void window.camxora?.vizzy?.detach();
+    setClosed(true);
+  }, []);
   const openEditor = useCallback(() => setClosed(false), []);
 
   return {

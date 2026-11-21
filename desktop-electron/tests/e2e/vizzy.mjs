@@ -320,6 +320,54 @@ try {
     fail("The shell strip must expose the New project action");
   }
   if (!dom.hasNewProject) fail("The editor bundle does not expose editorNewProject");
+
+  // Spectrum inspector: the group and each layer row must actually collapse.
+  const collapse = await inView(`(async () => {
+    const project = window.editorProject;
+    const spectrum = project?.nodes?.find(
+      (node) => node.kind === "effects" && /spectrum/i.test(node.name ?? ""),
+    );
+    if (!spectrum) return { error: "no spectrum node" };
+    window.editorSelect(spectrum.id);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const groups = Array.from(document.querySelectorAll(".group"));
+    const group = groups.find((entry) =>
+      entry.querySelector(".group-head")?.textContent?.includes("Spectrum layers"),
+    );
+    if (!group) return { error: "no spectrum group" };
+    const groupBody = group.querySelector(".group-body");
+    const groupHead = group.querySelector(".group-head");
+    groupHead?.click();
+    const collapsed =
+      group.classList.contains("collapsed") &&
+      Boolean(groupBody) &&
+      getComputedStyle(groupBody).display === "none";
+    groupHead?.click();
+    const expanded = !group.classList.contains("collapsed");
+    const layer = document.querySelector(".spectrum-layer");
+    if (!layer) return { error: "no spectrum layer" };
+    const head = layer.querySelector(".layer-head");
+    const controls = layer.querySelector(".layer-controls");
+    if (!head || !controls) return { error: "layer controls missing" };
+    const hiddenBefore = getComputedStyle(controls).display === "none";
+    head.click();
+    const shown = getComputedStyle(controls).display !== "none";
+    head.click();
+    const hiddenAfter = getComputedStyle(controls).display === "none";
+    return { collapsed, expanded, hiddenBefore, shown, hiddenAfter };
+  })()`);
+  if (
+    !collapse ||
+    collapse.error ||
+    !collapse.collapsed ||
+    !collapse.expanded ||
+    !collapse.hiddenBefore ||
+    !collapse.shown ||
+    !collapse.hiddenAfter
+  ) {
+    fail(`Spectrum inspector layers must collapse: ${JSON.stringify(collapse)}`);
+  }
+
   await window.screenshot({ path: path.join(artifacts, "vizzy-shell-ready.png") });
 
   // New project: the shell owns the confirmation and hides the native view.
@@ -359,32 +407,55 @@ try {
   }
   if (!editorShot) fail("Could not capture the hosted editor");
 
-  // --- Route leave detaches the view and stops the process ---------------
-  await window.getByRole("link", { name: "Dashboard" }).click();
+  // --- Route leave hides the view but keeps the live project ---------------
+  const layersBefore = await inView(`(() => {
+    const button = document.querySelector("#btn-add-layer");
+    if (!button) return null;
+    const before = window.editorProject?.layers?.length ?? 0;
+    button.click();
+    return { before, after: window.editorProject?.layers?.length ?? 0 };
+  })()`);
+  if (!layersBefore || layersBefore.after <= layersBefore.before) {
+    fail(`Could not add an unsaved layer: ${JSON.stringify(layersBefore)}`);
+  }
   await poll(
     window,
     async () => {
       const result = await window.camxora.vizzy.state();
-      return result?.ok && result.data.attached === false ? result.data : null;
+      return result?.ok && result.data.dirty ? result.data : null;
     },
-    "the view to detach on route leave",
-    15_000,
+    "the shell to see the unsaved layer",
+    10_000,
   );
+  await window.getByRole("link", { name: "Dashboard" }).click();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const afterLeave = await window.evaluate(async () => {
+    const result = await window.camxora.vizzy.state();
+    return result.ok ? result.data : null;
+  });
+  if (!afterLeave?.attached || !afterLeave.dirty) {
+    fail(`The live editor must survive route leave: ${JSON.stringify(afterLeave)}`);
+  }
   const survivor = await app.evaluate(async ({ webContents }) =>
     webContents.getAllWebContents().some((contents) => contents.getURL().startsWith("camxora-vizzy://")),
   );
-  if (survivor) fail("The Vizzy view survived the route change");
+  if (!survivor) fail("The Vizzy view must stay alive after the route change");
 
-  // --- Back to Vizzy, then crash isolation and auto-reload ---------------
+  // --- Back to Vizzy: the same unsaved project, not a fresh boot -----------
   await window.getByRole("link", { name: "Vizzy" }).click();
-  await poll(
+  const restored = await poll(
     window,
     async () => {
       const result = await window.camxora.vizzy.state();
       return result?.ok && result.data.ready ? result.data : null;
     },
-    "the editor to boot again",
+    "the same project to return",
   );
+  if (!restored.dirty) fail("The unsaved layer was lost on route return");
+  const layersAfter = await inView("window.editorProject?.layers?.length ?? 0");
+  if (layersAfter !== layersBefore.after) {
+    fail(`The unsaved layer was lost: ${layersBefore.after} -> ${layersAfter}`);
+  }
 
   const crashed = await app.evaluate(async ({ webContents }) => {
     const target = webContents
