@@ -269,6 +269,9 @@ shell chunk is ~333 kB (103 kB gzip).
   track exports its full length instead of the 12-second default. The export framebuffer is
   pinned while rendering, so opening a rail/status strip or resizing the window mid-export can no
   longer corrupt a long 1080p file. The validated output lands in Camxora's `renders/` folder.
+- Batch/offscreen renders go through the same Vizzy `runExport` with the same defaults (height
+  based bitrate, CRF 20, veryfast/high, 192 kbps) and the pinned framebuffer. FFmpeg is used only
+  for probing and the final merge — never as a second renderer.
 - A Vizzy route change only hides the live editor; unsaved layers, undo history and the loaded
   audio survive when returning. **Close** or window close still stops it, and hidden views are
   throttled and stop preview audio.

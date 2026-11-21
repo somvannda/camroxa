@@ -4,6 +4,7 @@ import {
   type PipelineRunInputs,
   type PipelineTemplate,
 } from "./pipeline-templates";
+import { defaultExportBitrate } from "../vizzy-host/renders";
 
 /**
  * Builds the exact render request for one pipeline run.
@@ -26,8 +27,11 @@ export interface PipelineRenderPlan {
     height: number;
     fps: number;
     codec: "h264";
+    engine: "wasm";
     bitrate: number;
     crf: number;
+    preset: string;
+    profile: string;
     audioBitrate: number;
     start: number;
     end: number;
@@ -79,9 +83,12 @@ export function buildPipelineRenderPlan(
       height,
       fps,
       codec: "h264",
-      /** Mbps, matching the editor exporter (`0` = CRF only). */
-      bitrate: 12,
-      crf: 18,
+      engine: "wasm",
+      /** Mirror the editor defaults: bitrate follows the chosen height. */
+      bitrate: defaultExportBitrate(height),
+      crf: 20,
+      preset: "veryfast",
+      profile: "high",
       audioBitrate: 192,
       start: 0,
       end: durationSec,
