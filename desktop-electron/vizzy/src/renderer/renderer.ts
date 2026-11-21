@@ -103,6 +103,8 @@ export class StageRenderer {
   private lastRenderedTime: number | null = null;
   private use3D = false;
   private fullResolution = false;
+  /** Explicit framebuffer while an export owns the renderer. */
+  private exportSize: { width: number; height: number } | null = null;
   private playing = false;
   private resizeObserver: ResizeObserver;
   private context: NodeContext;
@@ -465,6 +467,15 @@ export class StageRenderer {
   }
 
   resize(): void {
+    // During an export the renderer owns an explicit framebuffer size. A shell
+    // panel/status resize must not shrink it mid-render, or frames are read
+    // from the wrong stride and the video comes out corrupted.
+    if (this.exportSize) {
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(this.exportSize.width, this.exportSize.height, false);
+      return;
+    }
+
     const parent = this.canvas.parentElement;
     if (!parent) return;
 
@@ -1602,9 +1613,11 @@ export class StageRenderer {
    */
   setExportSize(width: number, height: number): () => void {
     const previousRatio = this.renderer.getPixelRatio();
+    this.exportSize = { width, height };
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(width, height, false);
     return () => {
+      this.exportSize = null;
       this.renderer.setPixelRatio(previousRatio);
       this.resize();
     };

@@ -41,7 +41,7 @@ function fail(message) {
 }
 
 /** 5 s mono 16-bit WAV used to prove the project follows the audio length. */
-function writeWav(filePath, seconds = 5, rate = 44_100, hz = 220) {
+function writeWav(filePath, seconds = 20, rate = 44_100, hz = 220) {
   const samples = Math.round(seconds * rate);
   const data = Buffer.alloc(samples * 2);
   for (let index = 0; index < samples; index += 1) {
@@ -141,7 +141,7 @@ try {
   // A real 5 s track: the live composition duration must follow it, and the
   // shell Export panel must read that live value rather than the 12 s default.
   const audioPath = path.join(root, "artifacts", "vizzy-export", "long-track.wav");
-  writeWav(audioPath, 5);
+  writeWav(audioPath, 20);
   const audioBase64 = fs.readFileSync(audioPath).toString("base64");
   const loadedDuration = await app.evaluate(async ({ webContents }, encoded) => {
     const target = webContents
@@ -161,14 +161,37 @@ try {
       true,
     );
   }, audioBase64);
-  if (!(loadedDuration > 4.8 && loadedDuration < 5.2)) {
-    fail(`The editor did not adopt the 5 s audio duration: ${loadedDuration}`);
+  if (!(loadedDuration > 19.8 && loadedDuration < 20.2)) {
+    fail(`The editor did not adopt the 20 s audio duration: ${loadedDuration}`);
+  }
+  const sourceLabel = await app.evaluate(async ({ webContents }) => {
+    const target = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL().startsWith("camxora-vizzy://"));
+    if (!target) return null;
+    return target.executeJavaScript("window.editorSpectrum?.sourceLabel ?? null", true);
+  });
+  if (sourceLabel !== "long-track.wav") {
+    fail(`The spectrum must analyse the loaded track, got ${JSON.stringify(sourceLabel)}`);
   }
   const liveInfo = await poll(async () => {
     const result = await window.evaluate(async () => window.camxora.vizzy.projectInfo());
-    return result?.ok && result.data && result.data.duration > 4.8 ? result.data : null;
+    return result?.ok && result.data && result.data.duration > 19.8 ? result.data : null;
   }, "the live project duration to reach 5 s");
-  if (liveInfo.duration > 5.2) fail(`Unexpected live duration: ${liveInfo.duration}`);
+  if (liveInfo.duration > 20.2) fail(`Unexpected live duration: ${liveInfo.duration}`);
+  const nodeDurations = await app.evaluate(async ({ webContents }) => {
+    const target = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL().startsWith("camxora-vizzy://"));
+    if (!target) return null;
+    return target.executeJavaScript(
+      "window.editorProject.nodes.map((node) => ({ name: node.name, duration: node.duration }))",
+      true,
+    );
+  });
+  if (!nodeDurations || nodeDurations.some((node) => node.duration < 19.8)) {
+    fail(`Composition nodes must follow the audio duration: ${JSON.stringify(nodeDurations)}`);
+  }
 
   await window.evaluate(() => {
     window.__vizzyExportEvents = [];
@@ -179,14 +202,14 @@ try {
   await window.getByTestId("vizzy-export-open").click();
   await window.getByTestId("vizzy-export-menu").waitFor({ timeout: 10_000 });
   const endValue = await window.getByTestId("vizzy-export-end").inputValue();
-  if (Number(endValue) < 4.8) {
+  if (Number(endValue) < 19.8) {
     fail(`Export end must default to the live 5 s audio, got ${endValue}`);
   }
-  await chooseOption(window, window.getByTestId("vizzy-export-preset"), "640x360");
+  await chooseOption(window, window.getByTestId("vizzy-export-preset"), "1920x1080");
   await chooseOption(window, window.getByTestId("vizzy-export-fps"), "30");
   await chooseOption(window, window.getByTestId("vizzy-export-format"), "h264");
   await window.getByTestId("vizzy-export-start").fill("0");
-  await window.getByTestId("vizzy-export-end").fill("12");
+  await window.getByTestId("vizzy-export-end").fill("20");
   await window.screenshot({ path: path.join(artifacts, "export-settings.png") });
 
   // --- Cancel a long export: nothing may survive ------------------------
@@ -209,11 +232,21 @@ try {
   await window.evaluate(() => {
     window.__vizzyExportEvents = [];
   });
-  await window.getByTestId("vizzy-export-start").fill("0");
-  await window.getByTestId("vizzy-export-end").fill("2");
+  await window.getByTestId("vizzy-export-start").fill("15");
+  await window.getByTestId("vizzy-export-end").fill("17");
   const exportStarted = Date.now();
   await window.getByTestId("vizzy-export-submit").click();
+  await window.waitForTimeout(350);
+  // Resize the shell mid-export: the export framebuffer must ignore it.
+  await app.evaluate(({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows()[0];
+    if (main && !main.isDestroyed()) main.setSize(1280, 800);
+  });
   await window.getByTestId("vizzy-export-result").waitFor({ timeout: 180_000 });
+  await app.evaluate(({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows()[0];
+    if (main && !main.isDestroyed()) main.setSize(1440, 900);
+  });
   const exportMs = Date.now() - exportStarted;
   const resultText = await window.getByTestId("vizzy-export-result").innerText();
 
@@ -238,9 +271,17 @@ try {
 
   const probed = ffprobe(filePath);
   if (probed.videoCodec !== "h264") fail(`Expected h264, got ${probed.videoCodec}`);
-  if (probed.width !== 640 || probed.height !== 360) {
-    fail(`Expected 640x360, got ${probed.width}x${probed.height}`);
+  if (probed.width !== 1920 || probed.height !== 1080) {
+    fail(`Expected 1920x1080, got ${probed.width}x${probed.height}`);
   }
+  const framePath = path.join(artifacts, "export-frame-16s.png");
+  fs.copyFileSync(filePath, path.join(artifacts, "export-preview.mp4"));
+  const frame = spawnSync(
+    "ffmpeg",
+    ["-y", "-ss", "16", "-i", filePath, "-frames:v", "1", framePath],
+    { encoding: "utf8" },
+  );
+  if (frame.status !== 0) fail(`Could not extract a 16 s frame: ${(frame.stderr ?? "").trim()}`);
   if (!(probed.duration > 1.6 && probed.duration < 2.4)) {
     fail(`Expected ~2 s, ffprobe says ${probed.duration}`);
   }

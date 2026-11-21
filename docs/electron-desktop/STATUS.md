@@ -266,8 +266,9 @@ shell chunk is ~333 kB (103 kB gzip).
   WebCodecs), the full resolution list, 24/30/60 fps, H.264/VP9/VP8, bitrate, CRF, preset,
   profile, audio bitrate, start/end and the estimated size, with the same defaults (60 fps,
   height-based bitrate). It reads the **live** composition duration when it opens, so a loaded
-  track exports its full length instead of the 12-second default. The validated file still lands
-  in Camxora's managed `renders/` folder.
+  track exports its full length instead of the 12-second default. The export framebuffer is
+  pinned while rendering, so opening a rail/status strip or resizing the window mid-export can no
+  longer corrupt a long 1080p file. The validated output lands in Camxora's `renders/` folder.
 - A Vizzy route change only hides the live editor; unsaved layers, undo history and the loaded
   audio survive when returning. **Close** or window close still stops it, and hidden views are
   throttled and stop preview audio.
