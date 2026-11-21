@@ -43,6 +43,12 @@ export function VizzyPage() {
 
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [exportProject, setExportProject] = useState<{
+    width: number;
+    height: number;
+    fps: number;
+    duration: number;
+  } | null>(null);
   const [templateInfo, setTemplateInfo] = useState<VizzyTemplateDraftInfo | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
@@ -73,6 +79,29 @@ export function VizzyPage() {
   const togglePanel = (next: Panel): void => {
     setPanel((current) => (current === next ? null : next));
   };
+
+  const openExportPanel = useCallback(async () => {
+    if (panel === "export") {
+      setPanel(null);
+      return;
+    }
+    // Read the live composition: the project duration becomes the audio length
+    // after the track is decoded, which can be much later than the shell state.
+    try {
+      const response = await window.camxora.vizzy.projectInfo();
+      if (response.ok && response.data) {
+        setExportProject({
+          width: response.data.width,
+          height: response.data.height,
+          fps: response.data.fps,
+          duration: response.data.duration,
+        });
+      }
+    } catch {
+      // Fall back to the last reported shell state.
+    }
+    setPanel("export");
+  }, [panel]);
 
   const openNewProject = useCallback(() => {
     if (!attached || exporter.running) return;
@@ -279,7 +308,7 @@ export function VizzyPage() {
           <Button
             variant="secondary"
             className="h-7 shrink-0 px-2.5 text-caption"
-            onClick={() => togglePanel("export")}
+            onClick={() => void openExportPanel()}
             disabled={!attached || exporter.running}
             loading={exporter.running}
             aria-expanded={panel === "export"}
@@ -404,10 +433,10 @@ export function VizzyPage() {
                 open
                 onClose={() => setPanel(null)}
                 project={{
-                  width: state.projectWidth,
-                  height: state.projectHeight,
-                  fps: state.projectFps,
-                  duration: state.projectDuration,
+                  width: exportProject?.width ?? state.projectWidth,
+                  height: exportProject?.height ?? state.projectHeight,
+                  fps: exportProject?.fps ?? state.projectFps,
+                  duration: exportProject?.duration ?? state.projectDuration,
                 }}
                 running={exporter.running}
                 progress={exporter.progress}

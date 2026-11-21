@@ -139,6 +139,7 @@ const bridge = {
     save: () => invoke("vizzy:save"),
     open: () => invoke("vizzy:open"),
     newProject: () => invoke("vizzy:new-project"),
+    projectInfo: () => invoke("vizzy:project-info"),
     openPath: (path: string) => invoke("vizzy:open-path", { path }),
     export: (options: unknown) => invoke("vizzy:export", options ?? {}),
     cancelExport: (jobId: string) => invoke("vizzy:export:cancel", { jobId }),

@@ -753,7 +753,7 @@ export class VizzyHost {
   }
 
   /** Project defaults for the export popover, read from the live editor. */
-  private async readProjectInfo(): Promise<VizzyProjectInfo | null> {
+  async readProjectInfo(): Promise<VizzyProjectInfo | null> {
     const contents = this.view?.webContents;
     if (!contents || contents.isDestroyed()) return null;
     const script = `(() => {

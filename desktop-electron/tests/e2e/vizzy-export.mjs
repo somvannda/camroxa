@@ -40,6 +40,33 @@ function fail(message) {
   throw new Error(message);
 }
 
+/** 5 s mono 16-bit WAV used to prove the project follows the audio length. */
+function writeWav(filePath, seconds = 5, rate = 44_100, hz = 220) {
+  const samples = Math.round(seconds * rate);
+  const data = Buffer.alloc(samples * 2);
+  for (let index = 0; index < samples; index += 1) {
+    const value = Math.round(
+      Math.sin((2 * Math.PI * hz * index) / rate) * 0.25 * 0x7fff,
+    );
+    data.writeInt16LE(value, index * 2);
+  }
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(data.length, 40);
+  fs.writeFileSync(filePath, Buffer.concat([header, data]));
+}
+
 function ffprobe(filePath) {
   const binary = process.env.CAMXORA_FFPROBE_PATH ?? "ffprobe";
   const result = spawnSync(
@@ -111,6 +138,38 @@ try {
   );
   if (!opened.ok) fail(`vizzy:open-path failed: ${opened.error.message}`);
 
+  // A real 5 s track: the live composition duration must follow it, and the
+  // shell Export panel must read that live value rather than the 12 s default.
+  const audioPath = path.join(root, "artifacts", "vizzy-export", "long-track.wav");
+  writeWav(audioPath, 5);
+  const audioBase64 = fs.readFileSync(audioPath).toString("base64");
+  const loadedDuration = await app.evaluate(async ({ webContents }, encoded) => {
+    const target = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL().startsWith("camxora-vizzy://"));
+    if (!target) return null;
+    return target.executeJavaScript(
+      `(async () => {
+        const binary = atob(${JSON.stringify(encoded)});
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+        await window.editorLoadAudio("long-track.wav", bytes);
+        return window.editorProject?.duration ?? null;
+      })()`,
+      true,
+    );
+  }, audioBase64);
+  if (!(loadedDuration > 4.8 && loadedDuration < 5.2)) {
+    fail(`The editor did not adopt the 5 s audio duration: ${loadedDuration}`);
+  }
+  const liveInfo = await poll(async () => {
+    const result = await window.evaluate(async () => window.camxora.vizzy.projectInfo());
+    return result?.ok && result.data && result.data.duration > 4.8 ? result.data : null;
+  }, "the live project duration to reach 5 s");
+  if (liveInfo.duration > 5.2) fail(`Unexpected live duration: ${liveInfo.duration}`);
+
   await window.evaluate(() => {
     window.__vizzyExportEvents = [];
     window.camxora.vizzy.onExportProgress((payload) => window.__vizzyExportEvents.push(payload));
@@ -119,6 +178,10 @@ try {
   // --- Export settings panel -------------------------------------------
   await window.getByTestId("vizzy-export-open").click();
   await window.getByTestId("vizzy-export-menu").waitFor({ timeout: 10_000 });
+  const endValue = await window.getByTestId("vizzy-export-end").inputValue();
+  if (Number(endValue) < 4.8) {
+    fail(`Export end must default to the live 5 s audio, got ${endValue}`);
+  }
   await chooseOption(window, window.getByTestId("vizzy-export-preset"), "640x360");
   await chooseOption(window, window.getByTestId("vizzy-export-fps"), "30");
   await chooseOption(window, window.getByTestId("vizzy-export-format"), "h264");

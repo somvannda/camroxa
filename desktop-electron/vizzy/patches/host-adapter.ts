@@ -292,6 +292,10 @@ function begin(): void {
       reportState();
     });
   });
+
+  // Duration/width/fps can change without a history entry (e.g. the audio
+  // decode updates the project duration). The keyed report only sends changes.
+  window.setInterval(reportState, 1_000);
 }
 
 begin();

@@ -156,6 +156,10 @@ export interface CamxoraBridge {
     open(): Promise<IpcResult<VizzyOpenResult | null>>;
     /** Start a fresh project; the shell confirms first. */
     newProject(): Promise<IpcResult<boolean>>;
+    /** Live composition info (especially duration after the audio loads). */
+    projectInfo(): Promise<
+      IpcResult<{ name: string; width: number; height: number; fps: number; duration: number } | null>
+    >;
     openPath(path: string): Promise<IpcResult<VizzyOpenResult>>;
     export(settings?: VizzyExportSettingsInput): Promise<IpcResult<VizzyExportOutcome>>;
     cancelExport(jobId: string): Promise<IpcResult<{ cancelled: boolean }>>;

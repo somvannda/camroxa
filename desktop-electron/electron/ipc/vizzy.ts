@@ -308,6 +308,20 @@ export function registerVizzyIpc(host: VizzyHost): void {
     }
   });
 
+  ipcMain.handle("vizzy:project-info", async (event) => {
+    if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    if (!host.hasView() || !host.getState().ready) {
+      return fail("VIZZY_NOT_READY", "Open the Vizzy editor and wait for it to finish loading.");
+    }
+    try {
+      const info = await host.readProjectInfo();
+      if (!info) return fail("VIZZY_NOT_READY", "The editor did not report its project.");
+      return ok(info);
+    } catch (error) {
+      return fail("VIZZY_NOT_READY", messageOf(error));
+    }
+  });
+
   ipcMain.handle("vizzy:new-project", (event) => {
     if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
     if (!host.hasView() || !host.getState().ready) {
