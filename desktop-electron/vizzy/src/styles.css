@@ -30,15 +30,22 @@
 }
 
 :root {
-  --bg: #0b0b0f;
-  --panel: #111116;
-  --panel-2: #16161c;
-  --line: #22222b;
-  --text: #e6e6ee;
-  --muted: #7f8090;
-  --dim: #5a5b6a;
-  --accent: #3d7bfd;
-  --accent-2: #f72585;
+  color-scheme: dark;
+  --bg: #070a13;
+  --panel: #0f1322;
+  --panel-2: #121728;
+  --line: rgba(255, 255, 255, 0.075);
+  --text: #f4f5fb;
+  --text-2: #c9cde0;
+  --muted: #8b90a6;
+  --dim: #6f748a;
+  --accent: #a855f7;
+  --accent-hover: #c084fc;
+  --accent-soft: rgba(168, 85, 247, 0.14);
+  --accent-2: #c084fc;
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --surface-3: #181f36;
+  --surface-hover: #222a45;
   --rail: 68px;
   /* Reference geometry at 1297px wide: left region 347, canvas 658, inspector 243. */
   --compositor: 279px;
@@ -58,7 +65,7 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 12px/1.45 "Inter Variable", "Inter", "Niradei", "Noto Sans Khmer", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -3200,4 +3207,246 @@ button:disabled {
 .modal-row .file-thumb {
   width: 42px;
   height: 42px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Camxora embedded theme                                             */
+/* The shell owns the outer frame; these rules make the editor use the */
+/* same navy surfaces, Inter stack, purple accent and 6-8px radii.     */
+/* ------------------------------------------------------------------ */
+
+#rail,
+#compositor,
+#inspector,
+#timeline-wrap,
+#code-editor {
+  background: var(--panel);
+}
+
+#stage-wrap {
+  background: #05070d;
+}
+
+.stage-bottom {
+  background: var(--panel);
+}
+
+.rail-item {
+  width: 58px;
+  margin: 0 5px;
+  padding: 5px 2px 4px;
+  border-left: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.rail-item:hover {
+  background: var(--panel-2);
+  color: var(--text-2);
+}
+
+.rail-item.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.rail-item.active .rail-icon {
+  color: var(--accent-hover);
+}
+
+.panel-head {
+  height: 38px;
+}
+
+.panel-title {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.icon {
+  border-radius: 6px;
+}
+
+.icon:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.icon.on {
+  color: var(--accent-hover);
+}
+
+.tree {
+  padding: 4px 4px;
+}
+
+.tree-row {
+  margin: 1px 4px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.tree-row:hover {
+  background: var(--panel-2);
+}
+
+.tree-row.selected {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.tree-row .check {
+  border-color: var(--border-strong);
+  border-radius: 4px;
+}
+
+.tree-row .check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.tree-row .kind {
+  color: var(--dim);
+}
+
+.group-head {
+  color: var(--text-2);
+  font: 600 12px/1 "Inter Variable", "Inter", "Niradei", system-ui, sans-serif;
+}
+
+.group-head:hover {
+  color: var(--text);
+}
+
+.res,
+.aspect-select,
+.stage-action,
+.mini,
+.pill,
+.field input,
+.field select,
+.modal-row input,
+.modal-row select,
+#code-editor-text {
+  background: var(--panel-2);
+  border-color: var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-family: inherit;
+}
+
+.res.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.res:hover,
+.aspect-select:hover,
+.stage-action:hover,
+.mini:hover,
+.pill:hover {
+  border-color: var(--accent-line, var(--accent));
+  color: var(--text);
+}
+
+.accent {
+  background: var(--accent);
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.accent:hover {
+  background: var(--accent-hover);
+  filter: none;
+}
+
+#zoom-slider {
+  accent-color: var(--accent);
+}
+
+.mono,
+.hud,
+.stage-label,
+.save-state {
+  color: var(--muted);
+}
+
+.divider {
+  background: var(--line);
+}
+
+#timeline-bar {
+  height: 34px;
+}
+
+#timeline-wrap {
+  border-top-color: var(--line);
+}
+
+#timeline-hscroll {
+  background: var(--panel);
+}
+
+#timeline-hthumb {
+  background: var(--surface-3);
+}
+
+#timeline-hthumb:hover,
+#timeline-hscroll.dragging #timeline-hthumb {
+  background: var(--surface-hover);
+}
+
+#timeline-scroll {
+  scrollbar-color: var(--surface-3) transparent;
+}
+
+#timeline-scroll::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+}
+
+#timeline-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-hover);
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.modal-head {
+  border-bottom-color: var(--line);
+}
+
+.modal-foot {
+  border-top-color: var(--line);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3, #181f36);
+  border: 2px solid var(--bg);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-hover, #222a45);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
 }
