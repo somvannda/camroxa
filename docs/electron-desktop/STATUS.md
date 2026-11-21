@@ -259,6 +259,10 @@ shell chunk is ~333 kB (103 kB gzip).
   (file), Export / Save as template (output), Templates / Renders (rails), Close (stop). Each
   action has a tooltip stating its purpose. Notifications on `/vizzy` stay inside the 48 px strip
   so the native editor view cannot cut them off.
+- Vizzy Export mirrors the editor's own Export dialog field-for-field: encoder (WASM /
+  WebCodecs), the full resolution list, 24/30/60 fps, H.264/VP9/VP8, bitrate, CRF, preset,
+  profile, audio bitrate, start/end and the estimated size, with the same defaults (60 fps,
+  height-based bitrate). The validated file still lands in Camxora's managed `renders/` folder.
 - A Vizzy route change only hides the live editor; unsaved layers, undo history and the loaded
   audio survive when returning. **Close** or window close still stops it, and hidden views are
   throttled and stop preview audio.

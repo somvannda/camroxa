@@ -61,8 +61,12 @@ const exportSchema = z
     fps: z.number().finite().min(1).max(120).optional(),
     format: z.enum(["mp4", "webm"]).optional(),
     codec: z.enum(["h264", "vp8", "vp9"]).optional(),
+    engine: z.enum(["wasm", "webcodecs"]).optional(),
     bitrate: z.number().finite().min(0).max(200).optional(),
     crf: z.number().finite().min(0).max(51).optional(),
+    preset: z.string().min(1).max(32).optional(),
+    profile: z.enum(["baseline", "main", "high"]).optional(),
+    audioBitrate: z.number().finite().min(64).max(320).optional(),
     start: z.number().finite().min(0).max(86_400).optional(),
     end: z.number().finite().min(0).max(86_400).optional(),
   })

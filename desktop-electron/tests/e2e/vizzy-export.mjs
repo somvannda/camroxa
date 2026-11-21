@@ -119,10 +119,9 @@ try {
   // --- Export settings panel -------------------------------------------
   await window.getByTestId("vizzy-export-open").click();
   await window.getByTestId("vizzy-export-menu").waitFor({ timeout: 10_000 });
-  await window.getByTestId("vizzy-export-width").fill("480");
-  await window.getByTestId("vizzy-export-height").fill("270");
+  await chooseOption(window, window.getByTestId("vizzy-export-preset"), "640x360");
   await chooseOption(window, window.getByTestId("vizzy-export-fps"), "30");
-  await chooseOption(window, window.getByTestId("vizzy-export-format"), "mp4");
+  await chooseOption(window, window.getByTestId("vizzy-export-format"), "h264");
   await window.getByTestId("vizzy-export-start").fill("0");
   await window.getByTestId("vizzy-export-end").fill("12");
   await window.screenshot({ path: path.join(artifacts, "export-settings.png") });
@@ -147,8 +146,6 @@ try {
   await window.evaluate(() => {
     window.__vizzyExportEvents = [];
   });
-  await window.getByTestId("vizzy-export-width").fill("480");
-  await window.getByTestId("vizzy-export-height").fill("270");
   await window.getByTestId("vizzy-export-start").fill("0");
   await window.getByTestId("vizzy-export-end").fill("2");
   const exportStarted = Date.now();
@@ -178,8 +175,8 @@ try {
 
   const probed = ffprobe(filePath);
   if (probed.videoCodec !== "h264") fail(`Expected h264, got ${probed.videoCodec}`);
-  if (probed.width !== 480 || probed.height !== 270) {
-    fail(`Expected 480x270, got ${probed.width}x${probed.height}`);
+  if (probed.width !== 640 || probed.height !== 360) {
+    fail(`Expected 640x360, got ${probed.width}x${probed.height}`);
   }
   if (!(probed.duration > 1.6 && probed.duration < 2.4)) {
     fail(`Expected ~2 s, ffprobe says ${probed.duration}`);

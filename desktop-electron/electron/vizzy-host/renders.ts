@@ -46,9 +46,13 @@ export interface VizzyExportSettingsInput {
   fps?: number;
   format?: RenderFormat;
   codec?: RenderCodec;
+  engine?: "wasm" | "webcodecs";
   /** Video bitrate in Mbps; 0 lets the encoder pick a CRF. */
   bitrate?: number;
   crf?: number;
+  preset?: string;
+  profile?: string;
+  audioBitrate?: number;
   start?: number;
   end?: number;
 }
@@ -59,8 +63,12 @@ export interface ResolvedVizzyExportSettings {
   fps: number;
   format: RenderFormat;
   codec: RenderCodec;
+  engine: "wasm" | "webcodecs";
   bitrate: number;
   crf: number;
+  preset: string;
+  profile: string;
+  audioBitrate: number;
   start: number;
   end: number;
   duration: number;
@@ -115,8 +123,21 @@ export function resolveExportSettings(
   );
   const format = normaliseFormat(request.format);
   const codec = codecForFormat(format, request.codec);
+  const engine = request.engine === "webcodecs" ? "webcodecs" : "wasm";
   const bitrate = Math.max(0, Math.min(200, finite(request.bitrate, defaultExportBitrate(height))));
   const crf = Math.min(51, Math.max(0, Math.round(finite(request.crf, DEFAULT_RENDER_CRF))));
+  const preset =
+    typeof request.preset === "string" && request.preset.trim()
+      ? request.preset.trim()
+      : "veryfast";
+  const profile =
+    request.profile === "baseline" || request.profile === "main" || request.profile === "high"
+      ? request.profile
+      : "high";
+  const audioBitrate = Math.min(
+    320,
+    Math.max(64, Math.round(finite(request.audioBitrate, 192))),
+  );
 
   const projectDuration = Math.max(
     0,
@@ -136,8 +157,12 @@ export function resolveExportSettings(
     fps,
     format,
     codec,
+    engine,
     bitrate,
     crf,
+    preset,
+    profile,
+    audioBitrate,
     start,
     end,
     duration: Number(Math.max(0.1, end - start).toFixed(3)),

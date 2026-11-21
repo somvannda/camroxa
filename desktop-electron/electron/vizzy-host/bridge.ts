@@ -135,8 +135,12 @@ export type VizzyHostMessage =
         fps: number;
         format: "mp4" | "webm";
         codec: "h264" | "vp8" | "vp9";
+        engine: "wasm" | "webcodecs";
         bitrate: number;
         crf: number;
+        preset: string;
+        profile: string;
+        audioBitrate: number;
         start: number;
         end: number;
       };

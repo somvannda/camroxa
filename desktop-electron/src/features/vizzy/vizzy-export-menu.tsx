@@ -11,17 +11,65 @@ import type {
 } from "../../../electron/shared/types";
 import { formatBytes, formatDuration } from "./vizzy-format";
 
-const PRESETS: Array<{ label: string; width: number; height: number }> = [
-  { label: "1080p · 1920×1080", width: 1920, height: 1080 },
-  { label: "720p · 1280×720", width: 1280, height: 720 },
-  { label: "480p · 854×480", width: 854, height: 480 },
-  { label: "360p · 640×360", width: 640, height: 360 },
-  { label: "Portrait · 1080×1920", width: 1080, height: 1920 },
+/** Same list the editor's own Export dialog exposes. */
+const RESOLUTIONS: Array<{ value: string; label: string }> = [
+  { value: "640x360", label: "640×360 (360p)" },
+  { value: "854x480", label: "854×480 (480p)" },
+  { value: "1280x720", label: "1280×720 (720p)" },
+  { value: "1920x1080", label: "1920×1080 (1080p)" },
+  { value: "2560x1440", label: "2560×1440 (1440p)" },
+  { value: "3840x2160", label: "3840×2160 (4K)" },
+  { value: "360x640", label: "360×640 (Portrait 360p)" },
+  { value: "480x854", label: "480×854 (Portrait 480p)" },
+  { value: "720x1280", label: "720×1280 (Portrait 720p)" },
+  { value: "1080x1920", label: "1080×1920 (Portrait 1080p)" },
+  { value: "1440x2560", label: "1440×2560 (Portrait 1440p)" },
+  { value: "2160x3840", label: "2160×3840 (Portrait 4K)" },
+  { value: "360x360", label: "360×360 (Square 360p)" },
+  { value: "480x480", label: "480×480 (Square 480p)" },
+  { value: "720x720", label: "720×720 (Square 720p)" },
+  { value: "1080x1080", label: "1080×1080 (Square 1080p)" },
+  { value: "1440x1440", label: "1440×1440 (Square 1440p)" },
+  { value: "2160x2160", label: "2160×2160 (Square 4K)" },
+  { value: "1080x1350", label: "1080×1350 (Portrait)" },
 ];
 
-function presetValue(width: number, height: number): string {
-  const found = PRESETS.find((preset) => preset.width === width && preset.height === height);
-  return found ? `${found.width}x${found.height}` : "custom";
+const FRAME_RATES = [24, 30, 60] as const;
+
+const FORMATS: Array<{ value: "h264" | "vp8" | "vp9"; label: string }> = [
+  { value: "h264", label: "H.264 · MP4" },
+  { value: "vp9", label: "VP9 · WebM" },
+  { value: "vp8", label: "VP8 · WebM" },
+];
+
+const PRESETS = [
+  "ultrafast",
+  "superfast",
+  "veryfast",
+  "faster",
+  "fast",
+  "medium",
+  "slow",
+  "slower",
+  "veryslow",
+] as const;
+
+const PROFILES = ["baseline", "main", "high"] as const;
+
+/** Reference default: bitrate tracks the chosen height. */
+function defaultExportBitrate(height: number): number {
+  if (height <= 360) return 5;
+  if (height <= 480) return 5;
+  if (height <= 720) return 15;
+  if (height <= 1080) return 25;
+  if (height <= 1440) return 50;
+  if (height <= 2160) return 75;
+  return 16;
+}
+
+function resolutionValue(width: number, height: number): string {
+  const value = `${width}x${height}`;
+  return RESOLUTIONS.some((option) => option.value === value) ? value : "custom";
 }
 
 export interface VizzyExportMenuProps {
@@ -39,9 +87,12 @@ export interface VizzyExportMenuProps {
 }
 
 /**
- * Compact export popover on the Vizzy strip. It never renders the video: the
- * hosted editor does, the host writes `renders/<slug>-<timestamp>.<ext>` and
- * the strip shows progress and the result.
+ * Export rail for the hosted editor.
+ *
+ * This is a one-to-one mirror of the editor's own Export dialog: same encoder,
+ * resolution list, frame rates, formats, bitrate/CRF/preset/profile/audio
+ * fields, start/end range and estimated size. Only the destination differs —
+ * the host writes the validated file into Camxora's managed `renders/` folder.
  */
 export function VizzyExportMenu({
   open,
@@ -58,21 +109,35 @@ export function VizzyExportMenu({
 }: VizzyExportMenuProps) {
   const [width, setWidth] = useState("1920");
   const [height, setHeight] = useState("1080");
-  const [fps, setFps] = useState("30");
-  const [format, setFormat] = useState<"mp4" | "webm">("mp4");
+  const [fps, setFps] = useState("60");
+  const [codec, setCodec] = useState<"h264" | "vp8" | "vp9">("h264");
+  const [engine, setEngine] = useState<"wasm" | "webcodecs">("wasm");
+  const [bitrate, setBitrate] = useState("25");
+  const [crf, setCrf] = useState("20");
+  const [preset, setPreset] = useState<string>("veryfast");
+  const [profile, setProfile] = useState<string>("high");
+  const [audioBitrate, setAudioBitrate] = useState("192");
   const [start, setStart] = useState("0");
   const [end, setEnd] = useState("");
 
-  // Seed from the open project every time the popover is opened.
+  // Seed exactly like the editor's Export dialog when it opens.
   useEffect(() => {
     if (!open) return;
-    setWidth(String(project.width || 1920));
-    setHeight(String(project.height || 1080));
-    setFps(String(project.fps || 30));
-    setFormat("mp4");
+    const nextWidth = project.width || 1920;
+    const nextHeight = project.height || 1080;
+    setWidth(String(nextWidth));
+    setHeight(String(nextHeight));
+    setFps("60");
+    setCodec("h264");
+    setEngine("wasm");
+    setBitrate(String(defaultExportBitrate(nextHeight)));
+    setCrf("20");
+    setPreset("veryfast");
+    setProfile("high");
+    setAudioBitrate("192");
     setStart("0");
     setEnd(project.duration > 0 ? String(Number(project.duration.toFixed(2))) : "");
-  }, [open, project.width, project.height, project.fps, project.duration]);
+  }, [open, project.width, project.height, project.duration]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,16 +164,43 @@ export function VizzyExportMenu({
     Number.isFinite(startNumber) &&
     (endNumber === undefined || (Number.isFinite(endNumber) && endNumber > startNumber));
 
+  const software = engine === "wasm";
+  const h264 = codec === "h264";
+  const codecLocked = !h264 || !software;
+
+  const format = h264 ? "mp4" : "webm";
+  const from = Math.max(0, Number(start) || 0);
+  const to = Math.max(from, Number(end) || from);
+  const videoMbps = Math.max(0, Number(bitrate) || 0) || (h264 ? 6 : 4);
+  const audioMbps = (Number(audioBitrate) || 192) / 1000;
+  const frames = Math.max(1, Math.round((to - from) * (Number(fps) || 60)));
+  const estimate = `≈ ${((to - from) * (videoMbps + audioMbps) / 8).toFixed(1)} MB · ${frames} frames`;
+
   const submit = (): void => {
     if (!valid || running) return;
     onStart({
-      width: widthNumber,
-      height: heightNumber,
-      fps: Number(fps),
+      width: Math.round(widthNumber),
+      height: Math.round(heightNumber),
+      fps: Number(fps) || 60,
       format,
+      codec,
+      engine,
+      bitrate: Math.max(0, Number(bitrate) || 0),
+      crf: Number(crf) || 20,
+      preset,
+      profile,
+      audioBitrate: Number(audioBitrate) || 192,
       start: startNumber,
       end: endNumber,
     });
+  };
+
+  const changeResolution = (value: string): void => {
+    const [nextWidth, nextHeight] = value.split("x").map(Number);
+    if (!Number.isFinite(nextWidth) || !Number.isFinite(nextHeight)) return;
+    setWidth(String(nextWidth));
+    setHeight(String(nextHeight));
+    setBitrate(String(defaultExportBitrate(nextHeight)));
   };
 
   return (
@@ -132,192 +224,221 @@ export function VizzyExportMenu({
         </button>
       </div>
       {running ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-body-sm font-medium text-text-primary">
-              <Icon name="fa-film" size={13} className="text-accent" />
-              Exporting
-              <span className="ml-auto font-mono text-meta text-text-muted">
-                {progress ? `${progress.percent}%` : "…"}
-              </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
-              <div
-                className="h-full rounded-full bg-accent transition-[width] duration-300"
-                style={{ width: `${progress?.percent ?? 0}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-meta text-text-muted">
-                {progress ? `${progress.stage} · ${progress.done}/${progress.total}` : "Preparing"}
-              </span>
-              <Button variant="secondary" onClick={onCancel} data-testid="vizzy-export-cancel">
-                Cancel
-              </Button>
-            </div>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-body-sm font-medium text-text-primary">
+            <Icon name="fa-film" size={13} className="text-accent" />
+            Exporting
+            <span className="ml-auto font-mono text-meta text-text-muted">
+              {progress ? `${progress.percent}%` : "…"}
+            </span>
           </div>
-        ) : result ? (
-          <div className="space-y-3" data-testid="vizzy-export-result">
-            <div className="flex items-center gap-2 text-body-sm font-medium text-text-primary">
-              <Icon name="fa-circle-check" size={13} className="text-success" />
-              Render saved
-            </div>
-            <p className="break-all text-meta text-text-secondary">{result.name}</p>
-            <p className="text-meta text-text-muted">
-              {formatBytes(result.bytes)} · {formatDuration(result.durationSec)} ·{" "}
-              {result.width}×{result.height}
-              {result.videoCodec ? ` · ${result.videoCodec}` : ""}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="primary" onClick={() => onReveal(result.name)}>
-                Show file
-              </Button>
-              <Button variant="secondary" onClick={onOpenRenders}>
-                Renders
-              </Button>
-            </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-300"
+              style={{ width: `${progress?.percent ?? 0}%` }}
+            />
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-body-sm font-medium text-text-primary">
-              <Icon name="fa-clapperboard" size={13} className="text-text-muted" />
-              Export video
-            </div>
-
-            <label className="block space-y-1">
-              <span className="text-caption text-text-muted">Resolution</span>
-              <Select
-                value={presetValue(widthNumber, heightNumber)}
-                options={[
-                  ...PRESETS.map((preset) => ({
-                    value: `${preset.width}x${preset.height}`,
-                    label: preset.label,
-                  })),
-                  ...(presetValue(widthNumber, heightNumber) === "custom"
-                    ? [
-                        {
-                          value: "custom",
-                          label: `Custom · ${
-                            Number.isFinite(widthNumber) ? widthNumber : "?"
-                          }×${Number.isFinite(heightNumber) ? heightNumber : "?"}`,
-                        },
-                      ]
-                    : []),
-                ]}
-                onValueChange={(value) => {
-                  const preset = PRESETS.find(
-                    (entry) => `${entry.width}x${entry.height}` === value,
-                  );
-                  if (!preset) return;
-                  setWidth(String(preset.width));
-                  setHeight(String(preset.height));
-                }}
-                data-testid="vizzy-export-preset"
-              />
-            </label>
-
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block space-y-1">
-                <span className="text-caption text-text-muted">Width</span>
-                <Input
-                  type="number"
-                  min={16}
-                  max={7680}
-                  step={2}
-                  value={width}
-                  onChange={(event) => setWidth(event.target.value)}
-                  data-testid="vizzy-export-width"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-caption text-text-muted">Height</span>
-                <Input
-                  type="number"
-                  min={16}
-                  max={7680}
-                  step={2}
-                  value={height}
-                  onChange={(event) => setHeight(event.target.value)}
-                  data-testid="vizzy-export-height"
-                />
-              </label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block space-y-1">
-                <span className="text-caption text-text-muted">Frame rate</span>
-                <Select
-                  value={fps}
-                  options={[
-                    { value: "24", label: "24 fps" },
-                    { value: "30", label: "30 fps" },
-                    { value: "60", label: "60 fps" },
-                  ]}
-                  onValueChange={setFps}
-                  data-testid="vizzy-export-fps"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-caption text-text-muted">Format</span>
-                <Select
-                  value={format}
-                  options={[
-                    { value: "mp4", label: "MP4 · H.264" },
-                    { value: "webm", label: "WebM · VP9" },
-                  ]}
-                  onValueChange={(value) => setFormat(value === "webm" ? "webm" : "mp4")}
-                  data-testid="vizzy-export-format"
-                />
-              </label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block space-y-1">
-                <span className="text-caption text-text-muted">Start (s)</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={start}
-                  onChange={(event) => setStart(event.target.value)}
-                  data-testid="vizzy-export-start"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-caption text-text-muted">End (s)</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  placeholder={project.duration > 0 ? `${project.duration}` : "Full project"}
-                  value={end}
-                  onChange={(event) => setEnd(event.target.value)}
-                  data-testid="vizzy-export-end"
-                />
-              </label>
-            </div>
-
-            <p className="text-caption text-text-muted">
-              Saves to the Camxora renders folder. The editor keeps its own export dialog as a
-              fallback.
-            </p>
-
-            {error ? (
-              <p className="text-meta text-danger" role="alert" data-testid="vizzy-export-error">
-                {error}
-              </p>
-            ) : null}
-
-            <Button
-              variant="primary"
-              className={classNames("w-full", !valid ? "opacity-40" : "")}
-              onClick={submit}
-              disabled={!valid}
-              data-testid="vizzy-export-submit"
-            >
-              Export video
+          <div className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-meta text-text-muted">
+              {progress ? `${progress.stage} · ${progress.done}/${progress.total}` : "Preparing"}
+            </span>
+            <Button variant="secondary" onClick={onCancel} data-testid="vizzy-export-cancel">
+              Cancel
             </Button>
           </div>
-        )}
+        </div>
+      ) : result ? (
+        <div className="space-y-3" data-testid="vizzy-export-result">
+          <div className="flex items-center gap-2 text-body-sm font-medium text-text-primary">
+            <Icon name="fa-circle-check" size={13} className="text-success" />
+            Render saved
+          </div>
+          <p className="break-all text-meta text-text-secondary">{result.name}</p>
+          <p className="text-meta text-text-muted">
+            {formatBytes(result.bytes)} · {formatDuration(result.durationSec)} ·{" "}
+            {result.width}×{result.height}
+            {result.videoCodec ? ` · ${result.videoCodec}` : ""}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="primary" onClick={() => onReveal(result.name)}>
+              Show file
+            </Button>
+            <Button variant="secondary" onClick={onOpenRenders}>
+              Renders
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          <label className="block space-y-1">
+            <span className="text-caption text-text-muted">Encoder</span>
+            <Select
+              value={engine}
+              options={[
+                { value: "wasm", label: "WebAssembly (x264)" },
+                { value: "webcodecs", label: "WebCodecs (Experimental)" },
+              ]}
+              onValueChange={(value) => setEngine(value === "webcodecs" ? "webcodecs" : "wasm")}
+              data-testid="vizzy-export-engine"
+            />
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-caption text-text-muted">Resolution</span>
+            <Select
+              value={resolutionValue(widthNumber, heightNumber)}
+              options={[
+                ...RESOLUTIONS,
+                ...(resolutionValue(widthNumber, heightNumber) === "custom"
+                  ? [{ value: "custom", label: `Custom · ${width}×${height}` }]
+                  : []),
+              ]}
+              onValueChange={changeResolution}
+              data-testid="vizzy-export-preset"
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">Frame rate</span>
+              <Select
+                value={fps}
+                options={FRAME_RATES.map((value) => ({
+                  value: String(value),
+                  label: `${value} fps`,
+                }))}
+                onValueChange={setFps}
+                data-testid="vizzy-export-fps"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">Format</span>
+              <Select
+                value={codec}
+                options={FORMATS}
+                onValueChange={(value) =>
+                  setCodec(value === "vp8" || value === "vp9" ? value : "h264")
+                }
+                data-testid="vizzy-export-format"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">Bitrate (Mbps)</span>
+              <Input
+                type="number"
+                min={0}
+                max={200}
+                step={1}
+                value={bitrate}
+                onChange={(event) => setBitrate(event.target.value)}
+                data-testid="vizzy-export-bitrate"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">Audio (kbps)</span>
+              <Input
+                type="number"
+                min={64}
+                max={320}
+                step={16}
+                value={audioBitrate}
+                onChange={(event) => setAudioBitrate(event.target.value)}
+                data-testid="vizzy-export-audio-bitrate"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">CRF</span>
+              <Input
+                type="number"
+                min={0}
+                max={51}
+                step={1}
+                value={crf}
+                disabled={codecLocked}
+                onChange={(event) => setCrf(event.target.value)}
+                data-testid="vizzy-export-crf"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">Preset</span>
+              <Select
+                value={preset}
+                options={PRESETS.map((value) => ({ value, label: value }))}
+                onValueChange={setPreset}
+                disabled={codecLocked}
+                data-testid="vizzy-export-preset-name"
+              />
+            </label>
+          </div>
+
+          <label className="block space-y-1">
+            <span className="text-caption text-text-muted">Profile</span>
+            <Select
+              value={profile}
+              options={PROFILES.map((value) => ({ value, label: value }))}
+              onValueChange={setProfile}
+              disabled={codecLocked}
+              data-testid="vizzy-export-profile"
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">Start (s)</span>
+              <Input
+                type="number"
+                min={0}
+                step={0.1}
+                value={start}
+                onChange={(event) => setStart(event.target.value)}
+                data-testid="vizzy-export-start"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-caption text-text-muted">End (s)</span>
+              <Input
+                type="number"
+                min={0}
+                step={0.1}
+                placeholder={project.duration > 0 ? `${project.duration}` : "Full project"}
+                value={end}
+                onChange={(event) => setEnd(event.target.value)}
+                data-testid="vizzy-export-end"
+              />
+            </label>
+          </div>
+
+          <p className="text-caption text-text-muted" data-testid="vizzy-export-estimate">
+            {estimate}
+          </p>
+          <p className="text-caption text-text-muted">
+            Same encoder settings as the Vizzy Export dialog. The validated file is saved to
+            Camxora’s renders folder.
+          </p>
+
+          {error ? (
+            <p className="text-meta text-danger" role="alert" data-testid="vizzy-export-error">
+              {error}
+            </p>
+          ) : null}
+
+          <Button
+            variant="primary"
+            className={classNames("w-full", !valid ? "opacity-40" : "")}
+            onClick={submit}
+            disabled={!valid}
+            data-testid="vizzy-export-submit"
+          >
+            Export video
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

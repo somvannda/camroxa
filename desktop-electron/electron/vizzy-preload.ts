@@ -43,8 +43,12 @@ interface VizzyExportSettings {
   fps: number;
   format: "mp4" | "webm";
   codec: "h264" | "vp8" | "vp9";
+  engine: "wasm" | "webcodecs";
   bitrate: number;
   crf: number;
+  preset: string;
+  profile: string;
+  audioBitrate: number;
   start: number;
   end: number;
 }
@@ -131,8 +135,12 @@ function toCommand(message: HostMessage): VizzyHostCommand | null {
         format: settings.format === "webm" ? "webm" : "mp4",
         codec:
           settings.codec === "vp8" || settings.codec === "vp9" ? settings.codec : "h264",
+        engine: settings.engine === "webcodecs" ? "webcodecs" : "wasm",
         bitrate: number(settings.bitrate, 0),
         crf: number(settings.crf, 20),
+        preset: typeof settings.preset === "string" ? settings.preset : "veryfast",
+        profile: typeof settings.profile === "string" ? settings.profile : "high",
+        audioBitrate: number(settings.audioBitrate, 192),
         start: number(settings.start, 0),
         end: number(settings.end, 0),
       },

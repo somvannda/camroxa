@@ -269,9 +269,17 @@ export interface VizzyExportSettingsInput {
   fps?: number;
   format?: "mp4" | "webm";
   codec?: "h264" | "vp8" | "vp9";
+  /** ffmpeg.wasm (x264/VPx) or the browser's WebCodecs encoder. */
+  engine?: "wasm" | "webcodecs";
   /** Video bitrate in Mbps; 0 lets the encoder choose a CRF. */
   bitrate?: number;
   crf?: number;
+  /** x264 speed preset. */
+  preset?: string;
+  /** H.264 profile. */
+  profile?: string;
+  /** Audio bitrate in kbps. */
+  audioBitrate?: number;
   start?: number;
   end?: number;
 }

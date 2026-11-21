@@ -398,7 +398,7 @@ export function VizzyPage() {
         </div>
 
         {panel ? (
-          <aside className="flex w-[336px] shrink-0 flex-col gap-2 border-l border-border bg-bg p-3">
+          <aside className="flex w-[336px] shrink-0 flex-col gap-2 overflow-y-auto border-l border-border bg-bg p-3">
             {panel === "export" ? (
               <VizzyExportMenu
                 open
