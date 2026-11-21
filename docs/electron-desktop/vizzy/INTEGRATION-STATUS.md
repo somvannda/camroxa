@@ -230,7 +230,7 @@ the running job.
 - `vizzy:render-template` calls `buildPipelineRenderPlan()`, opens the bound project, streams
   the run audio (`vizzy:load-audio` → `fetch(camxora-media://…)` → `editorLoadAudio`) and runs
   the normal export path. Output: `renders/<template-slug>-<timestamp>.mp4`.
-- Delete/save emits `video-templates:changed`; the Templates rail and the Publication pickers
+- Delete/save emits `video-templates:changed`; the Templates rail and the Profiles template card
   re-read `video-templates:list`.
 
 ### 3.3 Native export mechanism
@@ -337,7 +337,7 @@ Music "Render videos"                         Progress "Video pipeline"
 
 | Area | Status | Notes |
 |---|---|---|
-| Pipeline templates (`template.json`/`pipeline.json`) | **working (single template)** | Save from the preview, manage in the Templates rail, preview and render one saved template with a real run track. Batch selection per profile is stored and read by Publication. |
+| Pipeline templates (`template.json`/`pipeline.json`) | **working (single template)** | Save from the preview, manage in the Templates rail, preview and render one saved template with a real run track. Batch selection per profile is stored and read from Profiles. |
 | Native video export (MP4 + WebM) | **working** | Shell-owned job, editor-owned encoder, chunked to `renders/`, ffprobe-validated. MP4/H.264 is the reference path; WebM uses WebCodecs when the build has it. |
 | Renders panel | **working** | List, inline playback, Reveal, Delete with confirmation. No thumbnails yet. |
 | Batch render, merge/reel/upload | **partial** | Batch render, cancel/retry and long-form merge are **working** offscreen (no `/vizzy` needed). Reel is a separate render; a missing reel template is reported. **Upload is not built** — Auto-Upload stays disabled. |
@@ -384,7 +384,7 @@ npm run test:e2e                        # all 15 suites (library needs the env a
 |---|---|---|
 | Rea's snapshot stores live analyser counters | `nodes[*].props.currentData`, `cumulativeData`, `cumMult` change every time the playhead moves, and a loaded particle node gains a null `particleTexture` cache slot, so two saves of the "same" project are not byte-identical. | The round-trip and template-preview assertions ignore exactly those runtime keys (`tests/e2e/vizzy.mjs`, `tests/e2e/vizzy-templates.mjs`). No authored state is ignored. Revisit if the snapshot format is ever owned by Camxora. |
 | A saved template keeps the project's own name | `template.json` is the exact snapshot, so `project.name` stays whatever the previewed composition was called; the template name lives in `pipeline.json`. | The Templates rail uses `pipeline.name`; the editor strip shows `project.name`. Do not "fix" one from the other — it would break preview parity. |
-| Settings template pickers can be up to 10 s stale | `useVideoTemplatesQuery` has a 10 s `staleTime`; the Vizzy rail subscribes to `video-templates:changed`, Settings does not. | Navigate to Publication after saving; a refetch on mount returns the new list. Wire the event into the query if it becomes visible in practice. |
+| Settings template list can be up to 30 s stale | `useVideoTemplatesQuery` has a 30 s `staleTime`; it subscribes to `video-templates:changed` and invalidates, so a save/delete refreshes the Profiles list. | The list also refetches on mount; no action needed. |
 | Dirty flag is history-depth based | Rea has no dirty flag. The adapter marks dirty when `editHistory.labels().length` differs from the depth at the last save/open. Undo back to the saved state stays "dirty". | Honest but coarse; a project hash in the adapter would be exact and cheap enough on demand. |
 | Project file names are slug-based | Two projects with the same name share one file. | Add an id suffix (or a recent-project index) before the pipeline milestone needs many projects. |
 | `detach()` destroys the view | Returning to `/vizzy` reloads the editor (~1.5 s) and re-creates the default project. | Keep a suspended view per window if the reload becomes annoying; the crash path already proves recreate works. |
@@ -451,7 +451,7 @@ npm run test:e2e                        # all 15 suites (library needs the env a
 | `electron/main.ts` | library root from `resolveLibraryRoot()` (honours `CAMXORA_VIZZY_LIBRARY_DIR`) |
 | `electron/preload.ts`, `src/lib/bridge.ts`, `electron/shared/types.ts` | template IPC typings + change event |
 | `src/features/vizzy/*` | Save dialog, Templates rail, template model, templates hook, page integration |
-| `src/features/settings/profiles-tab.tsx` | template card copy points at Vizzy + Publication |
+| `src/features/settings/profiles-tab.tsx` | per-profile long/reel selectors + the full saved-template list |
 | `package.json` | e2e includes `vizzy-templates.mjs`, `vizzy-library.mjs` and `pipeline-batch.mjs` |
 | `electron/vizzy-host/export-session.ts` | new — shared export job (settings, file, progress, cancel, ffprobe) |
 | `electron/vizzy-host/render-window.ts` | new — offscreen render host + dedicated partition |

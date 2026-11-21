@@ -198,18 +198,19 @@ describe("settings publication helpers", () => {
     expect(unscheduled.publish_at).toBeNull();
   });
 
-  it("carries the saved template ids without forcing them into youtube_config", () => {
-    const draft = buildPublicationDraft({
+  it("carries the saved template ids on the profile, not youtube_config", () => {
+    const draft = buildProfileDraft({
       ...profile,
       video_template_id: "night-drive-long",
       reel_template_id: "night-drive-reel",
     });
     expect(draft.videoTemplateId).toBe("night-drive-long");
     expect(draft.reelTemplateId).toBe("night-drive-reel");
-    const payload = buildPublicationPayload(draft, null);
-    expect(payload).not.toHaveProperty("video_template_id");
-    expect(payload).not.toHaveProperty("reel_template_id");
-    const empty = buildPublicationDraft(profile);
+    const payload = buildProfilePayload(draft);
+    expect(payload.video_template_id).toBe("night-drive-long");
+    expect(payload.reel_template_id).toBe("night-drive-reel");
+    expect(payload).not.toHaveProperty("youtube_config");
+    const empty = buildProfileDraft(profile);
     expect(empty.videoTemplateId).toBe("");
     expect(empty.reelTemplateId).toBe("");
   });

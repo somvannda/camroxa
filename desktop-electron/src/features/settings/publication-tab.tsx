@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/button";
 import { Badge, StatusDot } from "../../components/status";
 import {
@@ -37,25 +36,10 @@ const SAMPLE_VALUES = {
 
 export function PublicationTab({ workspace }: { workspace: SettingsWorkspace }) {
   const ws = workspace;
-  const navigate = useNavigate();
   const [newPlaylist, setNewPlaylist] = useState("");
   const draft = ws.publicationDraft;
   const savingPublication = ws.saving?.current === "publication";
   const busy = Boolean(ws.saving);
-
-  const templateOptions = (kind: "long" | "reel", current: string) => {
-    const list = ws.videoTemplates
-      .filter((template) => template.kind === kind)
-      .map((template) => ({
-        value: template.id,
-        label: `${template.name} · ${template.width}×${template.height}`,
-      }));
-    if (current && !list.some((option) => option.value === current)) {
-      list.unshift({ value: current, label: "Unavailable template" });
-    }
-    if (!current) list.unshift({ value: "", label: "Choose a template" });
-    return list;
-  };
 
   const scheduled = draft.visibility === "scheduled";
   const summary = scheduleSummary(draft);
@@ -366,54 +350,6 @@ export function PublicationTab({ workspace }: { workspace: SettingsWorkspace }) 
             onChange={(event) => ws.updatePublicationDraft({ tags: event.target.value })}
           />
         </div>
-      </Section>
-
-      <Section
-        title="Video templates"
-        description="The Vizzy pipeline renders the saved template for this profile."
-        action={
-          <Button variant="ghost" className="h-7 px-2.5" onClick={() => navigate("/vizzy")}>
-            Open Vizzy
-          </Button>
-        }
-      >
-        {ws.videoTemplatesLoading ? (
-          <Skeleton rows={2} />
-        ) : ws.videoTemplates.length === 0 &&
-          !draft.videoTemplateId &&
-          !draft.reelTemplateId ? (
-          <Note>
-            No saved video templates yet. Open Vizzy, preview a template, then choose “Save as
-            video template”.
-          </Note>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SelectInput
-              id="settings-publication-video-template"
-              label="Long video"
-              value={draft.videoTemplateId}
-              options={templateOptions("long", draft.videoTemplateId)}
-              disabled={busy}
-              onChange={(event) =>
-                ws.updatePublicationDraft({ videoTemplateId: event.target.value })
-              }
-            />
-            <SelectInput
-              id="settings-publication-reel-template"
-              label="Reel"
-              value={draft.reelTemplateId}
-              options={templateOptions("reel", draft.reelTemplateId)}
-              disabled={busy}
-              onChange={(event) =>
-                ws.updatePublicationDraft({ reelTemplateId: event.target.value })
-              }
-            />
-          </div>
-        )}
-        <Note>
-          A saved template is required before the pipeline can render this profile. Replacing a
-          template is supported; clearing one server-side is not yet.
-        </Note>
       </Section>
 
       <Section

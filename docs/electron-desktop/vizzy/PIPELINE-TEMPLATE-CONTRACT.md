@@ -156,9 +156,9 @@ Saved templates are identified by their template id (the directory name under `t
 The existing profile publication fields `video_template_id` and `reel_template_id` store that
 id:
 
-- Settings → Publication gets **Video template** and **Reel template** pickers backed by
-  `video-templates:list`; they show name, kind and output size, and an empty state that opens
-  Vizzy.
+- Settings → Profiles gets **Long video template** and **Reel template** pickers plus the full
+  saved-template list, backed by `video-templates:list`; they show name, kind and output size,
+  and an empty state that opens Vizzy.
 - Saving a profile keeps the current ids; choosing a template writes the id in the same PUT.
 - The pipeline resolves the profile's id to a saved template. A missing id, a deleted template,
   or a kind mismatch is an explicit error (see §6), never a silent fallback.
@@ -262,7 +262,7 @@ open.
 - [x] Save dialog saves the whole snapshot with automatic bindings (no node selection)
 - [x] Atomic write + thumbnail
 - [x] Template library entry with kind and bindings
-- [x] Profile Video/Reel pickers read saved templates (Publication)
+- [x] Profile Video/Reel pickers and full template list (Profiles tab)
 - [x] Single-template loader resolves bindings and missing-node errors
 - [ ] Preview-parity test (semantic project verified; frame-level tolerance open)
 - [ ] 91-template save matrix (catalogue + one load verified)

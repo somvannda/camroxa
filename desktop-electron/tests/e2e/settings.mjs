@@ -791,16 +791,49 @@ async function settingsSuccess() {
         templateCardText.includes("Night Drive Reel"),
       "Saved templates must appear in the Profiles template card",
     );
+    const templateSelect = page.locator("#settings-profile-video-template");
+    await templateSelect.waitFor({ timeout: 5000 });
+    const videoTemplateOptions = await readSelectOptions(page, "#settings-profile-video-template");
     assert(
-      (await page.locator('[data-testid="settings-profile-templates"] select').count()) === 0,
-      "Template card must not duplicate the Publication picker",
+      videoTemplateOptions.some((text) => text.includes("Night Drive Long")),
+      "Saved long templates must appear in the Profiles picker",
+    );
+    const reelTemplateOptions = await readSelectOptions(page, "#settings-profile-reel-template");
+    assert(
+      reelTemplateOptions.some((text) => text.includes("Night Drive Reel")),
+      "Saved reel templates must appear in the Profiles picker",
+    );
+
+    // Template selection round-trips through the profile itself.
+    await chooseOption(page, "#settings-profile-video-template", "night-drive-long");
+    await chooseOption(page, "#settings-profile-reel-template", "night-drive-reel");
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await page.getByText("Profiles saved.").first().waitFor({ timeout: 5000 });
+    const templateCall = [...state.calls]
+      .reverse()
+      .find((call) => call.method === "PUT" && call.path === "/profiles/profile-1");
+    assert(
+      templateCall.body.video_template_id === "night-drive-long",
+      "The long template id must be saved on the profile",
     );
     assert(
-      await page
-        .getByTestId("settings-profile-choose-template")
-        .isVisible(),
-      "Template card must link to the Publication picker",
+      templateCall.body.reel_template_id === "night-drive-reel",
+      "The reel template id must be saved on the profile",
     );
+    assert(
+      (await page.locator("#settings-profile-video-template").getAttribute("data-selected-value")) ===
+        "night-drive-long",
+      "The long picker must keep the saved template after the round-trip",
+    );
+    assert(
+      (await page.locator("#settings-profile-reel-template").getAttribute("data-selected-value")) ===
+        "night-drive-reel",
+      "The reel picker must keep the saved template after the round-trip",
+    );
+
+    await page.locator('[data-testid="settings-profile-templates"]').scrollIntoViewIfNeeded();
+    await pause(page, 200);
+    await page.screenshot({ path: path.join(artifacts, "settings-profile-templates-1440.png") });
 
     await capture(app, page, "settings-profiles");
     step("success: captured profiles");
@@ -821,23 +854,6 @@ async function settingsSuccess() {
     assert(
       firstPlaylistOptions.some((text) => text.includes("Night Mixes")),
       "Playlists must load for a connected profile",
-    );
-    await page.locator("#settings-publication-video-template").waitFor({ timeout: 5000 });
-    const videoTemplateOptions = await readSelectOptions(
-      page,
-      "#settings-publication-video-template",
-    );
-    assert(
-      videoTemplateOptions.some((text) => text.includes("Night Drive Long")),
-      "Saved long templates must appear in the picker",
-    );
-    const reelTemplateOptions = await readSelectOptions(
-      page,
-      "#settings-publication-reel-template",
-    );
-    assert(
-      reelTemplateOptions.some((text) => text.includes("Night Drive Reel")),
-      "Saved reel templates must appear in the picker",
     );
 
     // Profile switch loads that profile's publication defaults.
@@ -892,28 +908,6 @@ async function settingsSuccess() {
       .reverse()
       .find((call) => call.method === "PUT" && call.path === "/profiles/profile-1");
     assert(playlistCall.body.youtube_config.playlist === "PL1", "Playlist must save");
-
-    // Template selection round-trips through the profile.
-    await chooseOption(page, "#settings-publication-video-template", "night-drive-long");
-    await chooseOption(page, "#settings-publication-reel-template", "night-drive-reel");
-    await page.getByRole("button", { name: "Save publication" }).click();
-    await page.getByText("Publication saved.").first().waitFor({ timeout: 5000 });
-    const templateCall = [...state.calls]
-      .reverse()
-      .find((call) => call.method === "PUT" && call.path === "/profiles/profile-1");
-    assert(
-      templateCall.body.video_template_id === "night-drive-long",
-      "The long template id must be saved on the profile",
-    );
-    assert(
-      templateCall.body.reel_template_id === "night-drive-reel",
-      "The reel template id must be saved on the profile",
-    );
-    assert(
-      (await page.locator("#settings-publication-video-template").getAttribute("data-selected-value")) ===
-        "night-drive-long",
-      "The picker must keep the saved template after the round-trip",
-    );
 
     await page.locator("#settings-publication-new-playlist").fill("Fresh Mixes");
     await page.getByRole("button", { name: "Create playlist" }).click();

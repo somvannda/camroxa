@@ -734,12 +734,6 @@ export function useSettingsWorkspace() {
     try {
       const saved = await updateProfileApi(publicationProfile.id, {
         youtube_config: payload,
-        ...(publicationDraft.videoTemplateId.trim()
-          ? { video_template_id: publicationDraft.videoTemplateId.trim() }
-          : {}),
-        ...(publicationDraft.reelTemplateId.trim()
-          ? { reel_template_id: publicationDraft.reelTemplateId.trim() }
-          : {}),
       });
       queryClient.setQueryData<ChannelProfile[]>(keys.profiles, (current) =>
         upsertProfile(current, saved),

@@ -205,6 +205,8 @@ export interface ProfileDraft {
   coverPath: string;
   coverBase64: string | null;
   coverPreview: string | null;
+  videoTemplateId: string;
+  reelTemplateId: string;
 }
 
 export function normalizeImageMode(value: unknown): ImageMode {
@@ -263,6 +265,8 @@ export function emptyProfileDraft(): ProfileDraft {
     coverPath: "",
     coverBase64: null,
     coverPreview: null,
+    videoTemplateId: "",
+    reelTemplateId: "",
   };
 }
 
@@ -283,6 +287,8 @@ export function buildProfileDraft(profile: ChannelProfile | null | undefined): P
     coverPath,
     coverBase64: null,
     coverPreview: null,
+    videoTemplateId: typeof profile.video_template_id === "string" ? profile.video_template_id : "",
+    reelTemplateId: typeof profile.reel_template_id === "string" ? profile.reel_template_id : "",
   };
 }
 
@@ -302,6 +308,14 @@ export function buildProfilePayload(draft: ProfileDraft): Record<string, unknown
   };
   if (draft.logoBase64) payload.logo_base64 = draft.logoBase64;
   if (draft.coverBase64) payload.cover_images = [draft.coverBase64];
+  // Empty means "leave the current template alone": the profile API treats a
+  // missing field as no change and cannot clear a template yet.
+  if (draft.videoTemplateId.trim()) {
+    payload.video_template_id = draft.videoTemplateId.trim();
+  }
+  if (draft.reelTemplateId.trim()) {
+    payload.reel_template_id = draft.reelTemplateId.trim();
+  }
   return payload;
 }
 
@@ -385,8 +399,6 @@ export interface PublicationDraft {
   tags: string;
   titleTemplate: string;
   descriptionTemplate: string;
-  videoTemplateId: string;
-  reelTemplateId: string;
 }
 
 export function normalizeVisibility(value: unknown): Visibility {
@@ -421,8 +433,6 @@ export function emptyPublicationDraft(): PublicationDraft {
     tags: "",
     titleTemplate: "",
     descriptionTemplate: "",
-    videoTemplateId: "",
-    reelTemplateId: "",
   };
 }
 
@@ -444,9 +454,6 @@ export function buildPublicationDraft(profile: ChannelProfile | null | undefined
     titleTemplate: typeof config.title_template === "string" ? config.title_template : "",
     descriptionTemplate:
       typeof config.description_template === "string" ? config.description_template : "",
-    videoTemplateId:
-      typeof profile?.video_template_id === "string" ? profile.video_template_id : "",
-    reelTemplateId: typeof profile?.reel_template_id === "string" ? profile.reel_template_id : "",
   };
 }
 

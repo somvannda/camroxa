@@ -127,6 +127,20 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
   const hasCoverOnFile = Boolean(profile?.image_config && profile.image_config.cover_paths);
   const editing = ws.isNewProfile || Boolean(profileId);
 
+  const templateOptions = (kind: "long" | "reel", current: string) => {
+    const list = ws.videoTemplates
+      .filter((template) => template.kind === kind)
+      .map((template) => ({
+        value: template.id,
+        label: `${template.name} · ${template.width}×${template.height}`,
+      }));
+    if (current && !list.some((option) => option.value === current)) {
+      list.unshift({ value: current, label: "Unavailable template" });
+    }
+    if (!current) list.unshift({ value: "", label: "Choose a template" });
+    return list;
+  };
+
   if (ws.profilesError && ws.profiles.length === 0 && !ws.profilesLoading) {
     return (
       <div className="space-y-4" data-testid="settings-profiles-tab">
@@ -493,7 +507,7 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
 
             <Section
               title="Video and reel templates"
-              description="Pipeline templates saved from Vizzy. The pipeline fills the run audio and background automatically."
+              description="Choose this profile's long and reel template. Every saved template is listed below."
               data-testid="settings-profile-templates"
               action={
                 <Button variant="ghost" className="h-7 px-2.5" onClick={() => navigate("/vizzy")}>
@@ -503,66 +517,113 @@ export function ProfilesTab({ workspace }: { workspace: SettingsWorkspace }) {
             >
               {ws.videoTemplatesLoading ? (
                 <Skeleton rows={1} />
-              ) : ws.videoTemplates.length === 0 ? (
-                <Note>
-                  No saved video templates yet. Open Vizzy, preview a composition, then click
-                  “Save template”.
-                </Note>
               ) : (
-                <div className="space-y-1.5">
-                  {ws.videoTemplates.slice(0, 4).map((template) => {
-                    const selected =
-                      template.id === profile?.video_template_id ||
-                      template.id === profile?.reel_template_id;
-                    return (
-                      <div
-                        key={template.id}
-                        className="flex items-center gap-3 rounded-control border border-border bg-surface-2 px-2.5 py-2"
-                      >
-                        {template.thumbnailUrl ? (
-                          <img
-                            src={template.thumbnailUrl}
-                            alt=""
-                            className="h-9 w-14 shrink-0 rounded-[4px] object-cover"
-                          />
-                        ) : (
-                          <span className="flex h-9 w-14 shrink-0 items-center justify-center rounded-[4px] bg-surface-3 text-text-muted">
-                            <Icon name="fa-film" size={13} />
-                          </span>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-meta font-medium text-text-primary">
-                            {template.name}
-                          </p>
-                          <p className="text-caption text-text-muted">
-                            {template.kind === "reel" ? "Reel" : "Long"} · {template.width}×
-                            {template.height}
-                          </p>
-                        </div>
-                        {selected ? <Badge tone="success">Selected</Badge> : null}
-                      </div>
-                    );
-                  })}
-                  {ws.videoTemplates.length > 4 ? (
-                    <p className="text-caption text-text-muted">
-                      +{ws.videoTemplates.length - 4} more in Templates.
-                    </p>
-                  ) : null}
-                </div>
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <SelectInput
+                      id="settings-profile-video-template"
+                      label="Long video template"
+                      value={ws.profileDraft.videoTemplateId}
+                      options={templateOptions("long", ws.profileDraft.videoTemplateId)}
+                      disabled={busy}
+                      onChange={(event) =>
+                        ws.updateProfileDraft({ videoTemplateId: event.target.value })
+                      }
+                    />
+                    <SelectInput
+                      id="settings-profile-reel-template"
+                      label="Reel template"
+                      value={ws.profileDraft.reelTemplateId}
+                      options={templateOptions("reel", ws.profileDraft.reelTemplateId)}
+                      disabled={busy}
+                      onChange={(event) =>
+                        ws.updateProfileDraft({ reelTemplateId: event.target.value })
+                      }
+                    />
+                  </div>
+
+                  {ws.videoTemplates.length === 0 ? (
+                    <Note>
+                      No saved video templates yet. Open Vizzy, preview a composition, then click
+                      “Save template”.
+                    </Note>
+                  ) : (
+                    <div
+                      className="mt-3 max-h-[280px] space-y-1.5 overflow-auto pr-1"
+                      data-testid="settings-profile-template-list"
+                    >
+                      {ws.videoTemplates.map((template) => {
+                        const isLong = template.id === ws.profileDraft.videoTemplateId;
+                        const isReel = template.id === ws.profileDraft.reelTemplateId;
+                        return (
+                          <div
+                            key={template.id}
+                            className={classNames(
+                              "flex items-center gap-3 rounded-control border px-2.5 py-2",
+                              isLong || isReel
+                                ? "border-accent/40 bg-accent-soft/40"
+                                : "border-border bg-surface-2",
+                            )}
+                          >
+                            {template.thumbnailUrl ? (
+                              <img
+                                src={template.thumbnailUrl}
+                                alt=""
+                                className="h-9 w-14 shrink-0 rounded-[4px] object-cover"
+                              />
+                            ) : (
+                              <span className="flex h-9 w-14 shrink-0 items-center justify-center rounded-[4px] bg-surface-3 text-text-muted">
+                                <Icon name="fa-film" size={13} />
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-meta font-medium text-text-primary">
+                                {template.name}
+                              </p>
+                              <p className="text-caption text-text-muted">
+                                {template.kind === "reel" ? "Reel" : "Long"} · {template.width}×
+                                {template.height}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              {isLong ? <Badge tone="success">Long</Badge> : null}
+                              {isReel ? <Badge tone="accent">Reel</Badge> : null}
+                              {template.kind === "long" && !isLong ? (
+                                <Button
+                                  variant="ghost"
+                                  className="h-7 px-2 text-caption"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    ws.updateProfileDraft({ videoTemplateId: template.id })
+                                  }
+                                >
+                                  Use for long
+                                </Button>
+                              ) : null}
+                              {template.kind === "reel" && !isReel ? (
+                                <Button
+                                  variant="ghost"
+                                  className="h-7 px-2 text-caption"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    ws.updateProfileDraft({ reelTemplateId: template.id })
+                                  }
+                                >
+                                  Use for reel
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="mt-2 text-caption text-text-muted">
+                    Long and reel are saved separately with the profile. A template must be saved in
+                    Vizzy before it appears here.
+                  </p>
+                </>
               )}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button
-                  variant="secondary"
-                  className="h-8"
-                  onClick={() => ws.setActiveTab("publication")}
-                  data-testid="settings-profile-choose-template"
-                >
-                  Choose in Publication
-                </Button>
-                <p className="text-caption text-text-muted">
-                  Long and reel are selected separately per profile.
-                </p>
-              </div>
             </Section>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
