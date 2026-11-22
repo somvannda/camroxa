@@ -465,6 +465,55 @@ try {
   }
   step("force regenerate produced a fresh track");
 
+  // --- Force regenerate a whole batch and repair a deleted output ---------
+  const forceBatch = await window.evaluate(async () =>
+    window.camxora.pipeline.force({ mode: "force", batchId: "batch-main" }),
+  );
+  if (!forceBatch.ok || forceBatch.data.enqueued < 2) {
+    fail(`pipeline:force batch failed: ${JSON.stringify(forceBatch)}`);
+  }
+  const batchForced = await poll(
+    async () => {
+      const response = await snapshot(window);
+      if (!response.ok) return null;
+      const jobs = response.data.jobs.filter((job) => job.batchId === "batch-main");
+      const batch = response.data.batches.find((item) => item.batchId === "batch-main");
+      return !response.data.running &&
+        jobs.length === 2 &&
+        jobs.every((job) => job.status === "done") &&
+        Boolean(batch?.mergedOutput)
+        ? { jobs, batch }
+        : null;
+    },
+    "the forced batch to finish",
+    600_000,
+    400,
+  );
+  const repairTarget = batchForced.jobs[0].output;
+  if (!repairTarget || !fs.existsSync(repairTarget)) fail("Forced batch output missing");
+  fs.rmSync(repairTarget, { force: true });
+  const repaired = await window.evaluate(async () =>
+    window.camxora.pipeline.force({ mode: "repair", batchId: "batch-main" }),
+  );
+  if (!repaired.ok || repaired.data.enqueued !== 1) {
+    fail(`pipeline:force repair failed: ${JSON.stringify(repaired)}`);
+  }
+  const repairDone = await poll(
+    async () => {
+      const response = await snapshot(window);
+      if (!response.ok) return null;
+      const job = response.data.jobs.find((item) => item.output === repairTarget);
+      return !response.data.running && job?.status === "done" && fs.existsSync(repairTarget)
+        ? job
+        : null;
+    },
+    "the repaired output",
+    600_000,
+    400,
+  );
+  if (!repairDone.output) fail("Repair did not restore the missing output");
+  step("force batch and repair verified");
+
   for (const name of ["batch-progress.png", "batch-complete.png"]) {
     if (!fs.existsSync(path.join(artifacts, name))) fail(`Missing screenshot ${name}`);
   }
