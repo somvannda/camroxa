@@ -450,12 +450,13 @@ export function ProgressTable({
               <Icon name="fa-folder-open" size={11} className="mr-2" />
               Open run folder
             </ContextItem>
-            {missingMp3s > 0 ? (
-              <ContextItem onClick={() => run(() => onDownloadMissing?.(menu.row))}>
-                <Icon name="fa-download" size={11} className="mr-2" />
-                Download missing MP3s ({missingMp3s})
-              </ContextItem>
-            ) : null}
+            <ContextItem
+              disabled={!runDir}
+              onClick={() => run(() => onDownloadMissing?.(menu.row))}
+            >
+              <Icon name="fa-download" size={11} className="mr-2" />
+              Download missing MP3s{missingMp3s > 0 ? ` (${missingMp3s})` : ""}
+            </ContextItem>
             <ContextItem
               disabled={!runDir}
               onClick={() => run(() => onChangeRunFolder?.(menu.row))}
