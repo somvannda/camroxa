@@ -1067,13 +1067,17 @@ class BatchService:
             shuffle_structure=effective_shuffle_structure,
             structure_mode=normalized_mode,
         )
-        mood_ids = await self._resolve_song_mood_ids(
-            user_id=UUID(user_id),
-            batch_id=batch.id,
-            song_count=song_count,
-            mood_id=mood_id,
-            shuffle_mood=shuffle_mood
-            or _read_bool_setting(settings, "shuffleMood"),
+        mood_ids = (
+            [None] * song_count
+            if normalized_mode == STRUCTURE_MODE_SUNO
+            else await self._resolve_song_mood_ids(
+                user_id=UUID(user_id),
+                batch_id=batch.id,
+                song_count=song_count,
+                mood_id=mood_id,
+                shuffle_mood=shuffle_mood
+                or _read_bool_setting(settings, "shuffleMood"),
+            )
         )
         songs = [
             Song(

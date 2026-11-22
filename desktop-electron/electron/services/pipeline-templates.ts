@@ -391,10 +391,16 @@ export function applyPipelineBindings(
   setText(bindings.album, "album", inputs.album);
 
   if (bindings.background && inputs.backgroundUrl) {
-    propsFor(bindings.background.nodeId, "background").imageUrl = inputs.backgroundUrl;
+    const props = propsFor(bindings.background.nodeId, "background");
+    // The saved project still points at its bundled texture. Clear that asset so
+    // the media node loads the run background instead of preferring the old one.
+    props.imageUrl = inputs.backgroundUrl;
+    props.assetId = null;
   }
   if (bindings.logo && inputs.logoUrl) {
-    propsFor(bindings.logo.nodeId, "logo").imageUrl = inputs.logoUrl;
+    const props = propsFor(bindings.logo.nodeId, "logo");
+    props.imageUrl = inputs.logoUrl;
+    props.assetId = null;
   }
 
   if (bindings.palette && inputs.palette?.length) {

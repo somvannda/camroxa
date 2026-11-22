@@ -217,7 +217,9 @@ describe("pipeline bindings applied to a run", () => {
     expect(props["text-artist"].textValue).toBe("Run artist");
     expect(props["text-album"].textValue).toBe("Run album");
     expect(props["media-bg"].imageUrl).toBe("camxora-media://local/bg");
+    expect(props["media-bg"].assetId).toBeNull();
     expect(props["logo-1"].imageUrl).toBe("camxora-media://local/logo");
+    expect(props["logo-1"].assetId).toBeNull();
     expect(props["spec-1"].color).toBe("#ff0000");
     expect(parsed.project.name).toBe("Night Drive");
   });
