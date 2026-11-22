@@ -100,17 +100,20 @@ function ContextItem({
   children,
   disabled = false,
   onClick,
+  title,
 }: {
   children: ReactNode;
   disabled?: boolean;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
       disabled={disabled}
-      className="flex h-7 w-full items-center rounded-[5px] px-2 text-left text-body text-text-secondary hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+      title={title}
+      className="flex h-7 w-full items-center whitespace-nowrap rounded-[5px] px-2 text-left text-body text-text-secondary hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
       onClick={onClick}
     >
       {children}
@@ -170,8 +173,11 @@ export function ProgressTable({
     event.stopPropagation();
     onSelect(row);
     setMenu({
-      x: Math.min(event.clientX, window.innerWidth - 248),
-      y: Math.min(event.clientY, window.innerHeight - 260),
+      x: Math.min(event.clientX, Math.max(8, window.innerWidth - 316)),
+      y: Math.max(
+        8,
+        Math.min(event.clientY, window.innerHeight - Math.min(560, window.innerHeight - 16)),
+      ),
       row,
     });
   };
@@ -438,7 +444,7 @@ export function ProgressTable({
           <div
             role="menu"
             aria-label="Progress row actions"
-            className="fixed z-[100] w-60 rounded-card border border-border bg-surface-1 p-1 shadow-[0_18px_48px_rgba(0,0,0,.55)]"
+            className="fixed z-[100] max-h-[calc(100vh-16px)] w-[300px] overflow-y-auto rounded-card border border-border bg-surface-1 p-1 shadow-[0_18px_48px_rgba(0,0,0,.55)]"
             style={{ left: menu.x, top: menu.y }}
             onClick={(event) => event.stopPropagation()}
             data-testid="progress-row-menu"
@@ -566,10 +572,13 @@ export function ProgressTable({
             {menuLocal?.jobs.slice(0, 8).map((job) => (
               <ContextItem
                 key={job.id}
+                title={job.title}
                 onClick={() => run(() => onPipelineForce?.({ mode: "single", jobIds: [job.id] }))}
               >
                 <Icon name="fa-film" size={11} className="mr-2" />
-                <span className="truncate">Regenerate {job.title || "track"}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  Regenerate {job.title || "track"}
+                </span>
               </ContextItem>
             ))}
             <ContextItem
