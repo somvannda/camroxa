@@ -143,7 +143,7 @@ export function TopUpModal() {
 
   return (
     <div className="flex h-full items-center justify-center bg-bg p-6">
-      <Card className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden p-0">
+      <Card className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden p-0">
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>
             <p className="text-caption text-text-muted">DESKTOP STUDIO</p>
