@@ -87,6 +87,8 @@ export interface YoutubeUploadDeps {
   env?: NodeJS.ProcessEnv;
   managedRoots?: () => string[];
   batches?: () => PipelineBatchRecord[];
+  /** Resolve a portable server run key against the device Suno folder. */
+  resolvePath?: (value: string) => string;
   videoTemplateExists?: (id: string) => boolean;
   now?: () => number;
   historyLimit?: number;
@@ -457,7 +459,9 @@ export class YoutubeUploadService {
     if (batch?.mergedOutput) {
       candidates.push({ filePath: batch.mergedOutput, runDir: batch.outputDir });
     }
-    const runDirText = String(row.runDir ?? "").trim() || batch?.outputDir || "";
+    const runDirText = (this.deps.resolvePath ?? ((value: string) => value))(
+      String(row.runDir ?? "").trim() || batch?.outputDir || "",
+    );
     // A drive/filesystem root is not a run folder: refusing it keeps the
     // containment root meaningful instead of accepting "everything under C:\".
     const runDir =

@@ -9,6 +9,7 @@ import type { BrowserWindow } from "electron";
 import { ipcMain } from "electron";
 import { z } from "zod";
 import { logger } from "../services/logger";
+import { resolveUserPath } from "../services/user-paths";
 import { YoutubeUploadService, errorText } from "../services/youtube-upload";
 import { fail, ok, type YoutubeUploadChangedEvent } from "../shared/types";
 
@@ -54,6 +55,7 @@ export function registerYoutubeIpc(options: YoutubeIpcOptions): void {
   };
 
   const service = new YoutubeUploadService({
+    resolvePath: resolveUserPath,
     emit: (upload) => {
       const window = getWindow();
       if (!window || window.webContents.isDestroyed()) return;

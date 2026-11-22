@@ -260,6 +260,38 @@ async function launch(name, env = {}) {
     await checkout.getByRole("button", { name: "Close" }).last().click();
     await checkout.waitFor({ state: "detached", timeout: 5_000 });
 
+    // Portable backend run keys resolve under the device Suno folder, so
+    // folder-open and image preview work instead of creating a folder below cwd.
+    const sunoRoot = path.join(artifacts, "login-suno");
+    await window.evaluate(
+      async (dir) => window.camxora.preferences.setDevice({ sunoOutputDir: dir }),
+      sunoRoot,
+    );
+    const ensured = await window.evaluate(async () =>
+      window.camxora.files.ensureDir("bass-drive\\2026-11-22_Test"),
+    );
+    const expectedDir = path.join(sunoRoot, "bass-drive", "2026-11-22_Test");
+    if (!ensured.ok || path.normalize(ensured.data) !== path.normalize(expectedDir)) {
+      throw new Error(`Relative run folder did not resolve under Suno: ${JSON.stringify(ensured)}`);
+    }
+    const imagePath = path.join(expectedDir, "background-16x9.png");
+    fs.writeFileSync(
+      imagePath,
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    );
+    const preview = await window.evaluate(async (relative) => {
+      const result = await window.camxora.files.readImage(relative);
+      return result.ok
+        ? { ok: true, name: result.data.name, size: result.data.bytes.byteLength }
+        : { ok: false, error: result.error.message };
+    }, "bass-drive\\2026-11-22_Test\\background-16x9.png");
+    if (!preview.ok || preview.size <= 0) {
+      throw new Error(`Relative image preview failed: ${JSON.stringify(preview)}`);
+    }
+
     await window.getByRole("button", { name: "Use a different account" }).click();
     scenario = "unconfirmed";
     await signIn("e2e@example.com");

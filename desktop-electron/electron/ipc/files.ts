@@ -4,7 +4,7 @@ import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
 import { allowPickedFile, createMediaUrl } from "../services/media";
 import { mimeFor } from "../services/media-utils";
-import { fail, ok } from "../shared/types";
+import { resolveUserPath } from "../services/user-paths";import { fail, ok } from "../shared/types";
 import { toError } from "./errors";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]);
@@ -54,7 +54,7 @@ export function registerFilesIpc(): void {
   ipcMain.handle("media:url", async (_event, payload: unknown) => {
     try {
       const input = mediaUrlSchema.parse(payload);
-      return ok({ url: createMediaUrl(input.path) });
+      return ok({ url: createMediaUrl(resolveUserPath(input.path)) });
     } catch (error) {
       return toError(error);
     }
@@ -63,7 +63,7 @@ export function registerFilesIpc(): void {
   ipcMain.handle("files:open", async (_event, payload: unknown) => {
     try {
       const input = pathSchema.parse(payload);
-      const result = await shell.openPath(input.path);
+      const result = await shell.openPath(resolveUserPath(input.path));
       return result ? fail("OPEN_FAILED", result) : ok(true);
     } catch (error) {
       return toError(error);
@@ -73,7 +73,7 @@ export function registerFilesIpc(): void {
   ipcMain.handle("files:reveal", (_event, payload: unknown) => {
     try {
       const input = pathSchema.parse(payload);
-      shell.showItemInFolder(input.path);
+      shell.showItemInFolder(resolveUserPath(input.path));
       return ok(true);
     } catch (error) {
       return toError(error);
@@ -83,8 +83,9 @@ export function registerFilesIpc(): void {
   ipcMain.handle("files:ensure-dir", (_event, payload: unknown) => {
     try {
       const input = pathSchema.parse(payload);
-      fs.mkdirSync(input.path, { recursive: true });
-      return ok(input.path);
+      const resolved = resolveUserPath(input.path);
+      fs.mkdirSync(resolved, { recursive: true });
+      return ok(resolved);
     } catch (error) {
       return toError(error);
     }
@@ -93,19 +94,20 @@ export function registerFilesIpc(): void {
   ipcMain.handle("files:read-image", async (_event, payload: unknown) => {
     try {
       const input = pathSchema.parse(payload);
-      const extension = path.extname(input.path).toLowerCase();
+      const resolved = resolveUserPath(input.path);
+      const extension = path.extname(resolved).toLowerCase();
       if (!IMAGE_EXTENSIONS.has(extension)) {
         return fail("UNSUPPORTED_IMAGE", "Only image files can be previewed.");
       }
-      const stat = fs.statSync(input.path);
+      const stat = fs.statSync(resolved);
       if (!stat.isFile()) return fail("NOT_A_FILE", "That path is not a file.");
       if (stat.size > MAX_IMAGE_BYTES) {
         return fail("IMAGE_TOO_LARGE", "That image is too large to preview.");
       }
-      const bytes = fs.readFileSync(input.path);
+      const bytes = fs.readFileSync(resolved);
       return ok({
-        name: path.basename(input.path),
-        mime: mimeFor(input.path),
+        name: path.basename(resolved),
+        mime: mimeFor(resolved),
         bytes: new Uint8Array(bytes),
       });
     } catch (error) {

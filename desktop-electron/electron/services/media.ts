@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { protocol } from "electron";
 import { getAppPaths } from "./paths";
+import { getDevicePreferences } from "./device-settings";
 import { isPathInside, mimeFor, parseRange } from "./media-utils";
 import { resolveLibraryRoot } from "./vizzy-library";
 
@@ -40,6 +41,8 @@ export { mediaSchemePrivileges };
 function managedRoots(): string[] {
   const paths = getAppPaths();
   const roots = [paths.downloads, paths.renders, paths.images, paths.templates, paths.projects, paths.cache];
+  const suno = getDevicePreferences().sunoOutputDir.trim();
+  if (suno) roots.push(suno);
   const library = resolveLibraryRoot();
   if (fs.existsSync(path.join(library, "manifest.json"))) roots.push(library);
   return roots;
