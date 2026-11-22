@@ -73,6 +73,10 @@ export interface CamxoraBridge {
     readImage(path: string): Promise<
       IpcResult<{ name: string; mime: string; bytes: Uint8Array }>
     >;
+    readImageJob(request: {
+      jobId: string;
+      path?: string;
+    }): Promise<IpcResult<{ name: string; mime: string; bytes: Uint8Array }>>;
   };
   media: {
     url(request: { path: string }): Promise<IpcResult<{ url: string }>>;

@@ -334,16 +334,24 @@ export function emptyQueueMessage(
   return "No image jobs match the current filters.";
 }
 
+export interface PreviewCandidate {
+  jobId: string;
+  path: string;
+}
+
 /**
  * The preview target for a row: the preferred job's output path, with the
  * other job of the same kind as a fallback when the preferred file is gone.
  */
-export function previewCandidates(row: QueueRow | null, kind: "background" | "thumbnail"): string[] {
+export function previewCandidates(
+  row: QueueRow | null,
+  kind: "background" | "thumbnail",
+): PreviewCandidate[] {
   if (!row) return [];
   const jobs = kind === "background" ? row.bgJobs : row.thJobs;
   return jobs
-    .map((job) => job.output_image_path)
-    .filter((path): path is string => Boolean(path));
+    .map((job) => ({ jobId: job.id, path: job.output_image_path ?? "" }))
+    .filter((candidate) => candidate.path.length > 0);
 }
 
 export function bytesToDataUrl(bytes: Uint8Array, mime: string): string {

@@ -221,8 +221,7 @@ async function send(request: ApiRequest, token: string | null): Promise<Response
   });
 }
 
-export async function apiRequest(request: ApiRequest): Promise<ApiResponse> {
-  const requiresAuth = request.auth !== false;
+export async function apiRequest(request: ApiRequest): Promise<ApiResponse> {  const requiresAuth = request.auth !== false;
   let tokens = requiresAuth ? sessionStore.load() : null;
 
   if (requiresAuth && !tokens?.accessToken) {
@@ -275,6 +274,65 @@ export async function apiRequest(request: ApiRequest): Promise<ApiResponse> {
   });
 
   return { status: response.status, data, headers };
+}
+
+/** Fetch a binary response (an image output) with the same auth/refresh path. */
+export async function apiRequestBytes(request: ApiRequest): Promise<{
+  status: number;
+  bytes: Uint8Array;
+  contentType: string | null;
+}> {
+  const requiresAuth = request.auth !== false;
+  let tokens = requiresAuth ? sessionStore.load() : null;
+  if (requiresAuth && !tokens?.accessToken) {
+    throw new ApiClientError(401, "UNAUTHORIZED", "Sign in to continue.", undefined, undefined, false);
+  }
+
+  let response: Response;
+  try {
+    response = await send(request, tokens?.accessToken ?? null);
+    if (response.status === 401 && requiresAuth && request.method === "GET") {
+      const refreshed = await refreshSession();
+      if (refreshed === "plan_required") {
+        throw new ApiClientError(
+          403,
+          DESKTOP_PLAN_REQUIRED_CODE,
+          DESKTOP_PLAN_REQUIRED_MESSAGE,
+          undefined,
+          undefined,
+          false,
+        );
+      }
+      if (refreshed === "ok") {
+        tokens = sessionStore.load();
+        response = await send(request, tokens?.accessToken ?? null);
+      }
+    }
+  } catch (error) {
+    if (error instanceof ApiClientError) throw error;
+    throw new ApiClientError(
+      0,
+      "NETWORK_ERROR",
+      NETWORK_ERROR_MESSAGE,
+      String(error),
+      undefined,
+      true,
+    );
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw errorFromResponse(
+      response,
+      parseBody(text, response.headers.get("content-type")),
+      `Request failed (${response.status}).`,
+    );
+  }
+  return {
+    status: response.status,
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    contentType: response.headers.get("content-type"),
+  };
 }
 
 async function requestTokenPair(

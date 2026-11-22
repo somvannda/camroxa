@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
+import { apiRequestBytes } from "../services/api-client";
 import { allowPickedFile, createMediaUrl } from "../services/media";
-import { mimeFor } from "../services/media-utils";
-import { resolveUserPath } from "../services/user-paths";import { fail, ok } from "../shared/types";
+import { isPathInside, mimeFor } from "../services/media-utils";
+import { resolveUserPath, userDataRoot } from "../services/user-paths";import { fail, ok } from "../shared/types";
 import { toError } from "./errors";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]);
@@ -25,6 +26,11 @@ const pickFileSchema = z.object({
 
 const mediaUrlSchema = z.object({
   path: z.string().min(1),
+});
+
+const imageJobSchema = z.object({
+  jobId: z.string().min(1).max(100),
+  path: z.string().max(4096).optional(),
 });
 
 export function registerFilesIpc(): void {
@@ -109,6 +115,49 @@ export function registerFilesIpc(): void {
         name: path.basename(resolved),
         mime: mimeFor(resolved),
         bytes: new Uint8Array(bytes),
+      });
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
+  ipcMain.handle("files:read-image-job", async (_event, payload: unknown) => {
+    try {
+      const input = imageJobSchema.parse(payload);
+      const target = input.path ? resolveUserPath(input.path) : "";
+      if (target) {
+        try {
+          const stat = fs.statSync(target);
+          if (stat.isFile() && stat.size > 0) {
+            return ok({
+              name: path.basename(target),
+              mime: mimeFor(target),
+              bytes: new Uint8Array(fs.readFileSync(target)),
+            });
+          }
+        } catch {
+          // Not cached locally yet; fetch the durable server copy below.
+        }
+      }
+
+      const response = await apiRequestBytes({
+        method: "GET",
+        path: `/image-jobs/${encodeURIComponent(input.jobId)}/output`,
+      });
+      if (response.bytes.byteLength > 0 && target && isPathInside(userDataRoot(), target)) {
+        // Cache the generated image beside the run audio so the auto-video
+        // coordinator can use it as a background later.
+        try {
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.writeFileSync(target, response.bytes);
+        } catch {
+          // Preview still works when the cache write fails.
+        }
+      }
+      return ok({
+        name: target ? path.basename(target) : `${input.jobId}.png`,
+        mime: response.contentType?.split(";")[0]?.trim() || "image/png",
+        bytes: response.bytes,
       });
     } catch (error) {
       return toError(error);

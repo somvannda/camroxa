@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/icon";
 import { Select } from "../../components/select";
 import { classNames } from "../../lib/format";
-import { bytesToDataUrl } from "./image-model";
+import { bytesToDataUrl, type PreviewCandidate } from "./image-model";
 
 export interface PreviewState {
   status: "empty" | "loading" | "ready" | "error";
@@ -12,27 +12,50 @@ export interface PreviewState {
 
 const EMPTY: PreviewState = { status: "empty", dataUrl: null, detail: null };
 
-async function readFirst(candidates: string[]): Promise<PreviewState> {
+async function readFirst(candidates: PreviewCandidate[]): Promise<PreviewState> {
   let lastError = "The output file is missing.";
   for (const candidate of candidates) {
-    const result = await window.camxora.files.readImage(candidate);
-    if (result.ok) {
+    const local = await window.camxora.files.readImage(candidate.path);
+    if (local.ok) {
       return {
         status: "ready",
-        dataUrl: bytesToDataUrl(result.data.bytes, result.data.mime),
+        dataUrl: bytesToDataUrl(local.data.bytes, local.data.mime),
         detail: null,
       };
     }
-    lastError = result.error.message || lastError;
+    lastError = local.error.message || lastError;
+    // AI images live on the server/B2, not in the run folder until something
+    // caches them. Fetch the durable copy and write it beside the run audio.
+    const remote = await window.camxora.files.readImageJob({
+      jobId: candidate.jobId,
+      path: candidate.path,
+    });
+    if (remote.ok) {
+      return {
+        status: "ready",
+        dataUrl: bytesToDataUrl(remote.data.bytes, remote.data.mime),
+        detail: null,
+      };
+    }
+    lastError = remote.error.message || lastError;
   }
   return { status: "error", dataUrl: null, detail: lastError };
 }
 
 /** Loads the BG/TH output for the selected row off the UI thread. */
-export function useImagePreview(candidates: string[], signature: string): PreviewState {
+export function useImagePreview(candidates: PreviewCandidate[], signature: string): PreviewState {
   const [state, setState] = useState<PreviewState>(EMPTY);
-  const key = candidates.join("\u0000");
-  const list = useMemo(() => (key ? key.split("\u0000") : []), [key]);
+  const key = candidates.map((candidate) => `${candidate.jobId}:${candidate.path}`).join("\u0000");
+  const list = useMemo(
+    () =>
+      key
+        ? key.split("\u0000").map((entry) => {
+            const at = entry.indexOf(":");
+            return { jobId: entry.slice(0, at), path: entry.slice(at + 1) };
+          })
+        : [],
+    [key],
+  );
 
   useEffect(() => {
     let cancelled = false;

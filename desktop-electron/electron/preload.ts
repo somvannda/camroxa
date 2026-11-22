@@ -34,6 +34,8 @@ const bridge = {
     reveal: (path: string) => invoke("files:reveal", { path }),
     ensureDir: (path: string) => invoke("files:ensure-dir", { path }),
     readImage: (path: string) => invoke("files:read-image", { path }),
+    readImageJob: (request: { jobId: string; path?: string }) =>
+      invoke("files:read-image-job", request),
   },
   media: {
     url: (request: unknown) => invoke("media:url", request),

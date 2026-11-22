@@ -168,7 +168,10 @@ describe("image queue model", () => {
       [batch],
       [profile],
     );
-    expect(previewCandidates(rows[0], "background")).toEqual(["/a.png", "/b.png"]);
+    expect(previewCandidates(rows[0], "background")).toEqual([
+      { jobId: "bg-a", path: "/a.png" },
+      { jobId: "bg-b", path: "/b.png" },
+    ]);
     expect(previewCandidates(null, "background")).toEqual([]);
     expect(bytesToDataUrl(new Uint8Array([1, 2]), "image/png")).toBe("data:image/png;base64,AQI=");
   });
