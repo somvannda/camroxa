@@ -10,6 +10,7 @@ import { ProgressErrorBanner } from "../progress-error-banner";
 import { ProgressStatCards } from "../progress-stat-cards";
 import { ProgressTable } from "../progress-table";
 import { ProgressToolbar } from "../progress-toolbar";
+import { copyText } from "../progress-clipboard";
 import {
   DEFAULT_LIMIT,
   countStats,
@@ -349,6 +350,27 @@ export function ProgressPage() {
               uploadingKey={uploads.active?.key ?? null}
               onUpload={(row) => {
                 void uploads.openConfirm(row);
+              }}
+              onOpenFolder={(path) => {
+                void runFolder(path);
+              }}
+              onReveal={(path) => {
+                void revealPath(path);
+              }}
+              onCopy={(text) => {
+                void copyText(text).then((copied) => {
+                  if (!copied) {
+                    setNotice({ tone: "danger", text: "Unable to copy to the clipboard." });
+                  }
+                });
+              }}
+              onRetryImage={(row) => {
+                void retryImageStage(row).catch((cause: unknown) => {
+                  setNotice({
+                    tone: "danger",
+                    text: cause instanceof Error ? cause.message : "Unable to retry images.",
+                  });
+                });
               }}
             />
           </div>

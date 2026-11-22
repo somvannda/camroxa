@@ -1,3 +1,5 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../../components/icon";
 import { Button } from "../../components/button";
 import { Card } from "../../components/card";
@@ -49,6 +51,10 @@ interface ProgressTableProps {
   /** Starts the confirmation dialog for that row's manual upload. */
   onUpload?: (row: ProgressRow) => void;
   uploadingKey?: string | null;
+  onOpenFolder?: (path: string) => void;
+  onReveal?: (path: string) => void;
+  onCopy?: (text: string) => void;
+  onRetryImage?: (row: ProgressRow) => void;
 }
 
 function SubLine({ children }: { children: string }) {
@@ -71,6 +77,34 @@ function SkeletonRows() {
   );
 }
 
+interface RowMenuState {
+  x: number;
+  y: number;
+  row: ProgressRow;
+}
+
+function ContextItem({
+  children,
+  disabled = false,
+  onClick,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      className="flex h-7 w-full items-center rounded-[5px] px-2 text-left text-body text-text-secondary hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ProgressTable({
   rows,
   loading,
@@ -82,15 +116,65 @@ export function ProgressTable({
   uploadState,
   onUpload,
   uploadingKey,
+  onOpenFolder,
+  onReveal,
+  onCopy,
+  onRetryImage,
 }: ProgressTableProps) {
+  const [menu, setMenu] = useState<RowMenuState | null>(null);
   const hasUnreportedVideo = rows.some((row) => localVideoState(row).source === "none");
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  const openMenu = (event: React.MouseEvent, row: ProgressRow) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelect(row);
+    setMenu({
+      x: Math.min(event.clientX, window.innerWidth - 248),
+      y: Math.min(event.clientY, window.innerHeight - 260),
+      row,
+    });
+  };
+
+  const run = (action: () => void) => {
+    setMenu(null);
+    action();
+  };
+
+  const upload = menu ? uploadState?.(rowKey(menu.row)) : undefined;
+  const runDir = menu?.row.meta.run_dir?.trim() ?? "";
+  const youtubeUrl = menu?.row.meta.youtube_url?.trim() ?? "";
+  const rowAlbum = menu?.row.album?.trim() ?? "";
+  const canRetryImages = Boolean(menu && onRetryImage);
+
   return (
+    <>
     <Card className="overflow-hidden" data-testid="progress-table-card">
       <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
         <div>
           <h2 className="text-title font-semibold text-text-primary">Operational rows</h2>
           <p className="mt-0.5 text-meta text-text-secondary">
-            Select a row for its stage timeline, paths and recovery actions.
+            Select a row for its stage timeline, paths and recovery actions. Right-click a row for
+            run-folder, copy and upload actions.
           </p>
         </div>
         <span className="font-mono text-caption text-text-muted">
@@ -167,10 +251,16 @@ export function ProgressTable({
                     selected && "bg-accent-soft hover:bg-accent-soft",
                   )}
                   onClick={() => onSelect(row)}
+                  onContextMenu={(event) => openMenu(event, row)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       onSelect(row);
+                    }
+                    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                      event.preventDefault();
+                      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                      setMenu({ x: rect.left + 24, y: rect.top + 24, row });
                     }
                   }}
                 >
@@ -306,5 +396,65 @@ export function ProgressTable({
         <p className="border-t border-border px-4 py-2 text-caption text-text-muted">{PIPELINE_MISSING}.</p>
       ) : null}
     </Card>
+
+    {menu
+      ? createPortal(
+          <div
+            role="menu"
+            aria-label="Progress row actions"
+            className="fixed z-[100] w-60 rounded-card border border-border bg-surface-1 p-1 shadow-[0_18px_48px_rgba(0,0,0,.55)]"
+            style={{ left: menu.x, top: menu.y }}
+            onClick={(event) => event.stopPropagation()}
+            data-testid="progress-row-menu"
+          >
+            <ContextItem
+              disabled={!runDir}
+              onClick={() => run(() => onOpenFolder?.(runDir))}
+            >
+              <Icon name="fa-folder-open" size={11} className="mr-2" />
+              Open run folder
+            </ContextItem>
+            <ContextItem
+              disabled={!upload?.mergedPath}
+              onClick={() => run(() => onReveal?.(upload?.mergedPath ?? ""))}
+            >
+              <Icon name="fa-film" size={11} className="mr-2" />
+              Reveal merged video
+            </ContextItem>
+            <ContextItem
+              disabled={!menu.row.meta.batch_id}
+              onClick={() => run(() => onCopy?.(menu.row.meta.batch_id))}
+            >
+              <Icon name="fa-copy" size={11} className="mr-2" />
+              Copy batch ID
+            </ContextItem>
+            <ContextItem disabled={!rowAlbum} onClick={() => run(() => onCopy?.(rowAlbum))}>
+              <Icon name="fa-copy" size={11} className="mr-2" />
+              Copy album
+            </ContextItem>
+            <div className="my-1 h-px bg-border" />
+            <ContextItem
+              disabled={!canRetryImages}
+              onClick={() => run(() => onRetryImage?.(menu.row))}
+            >
+              <Icon name="fa-rotate-right" size={11} className="mr-2" />
+              Retry images
+            </ContextItem>
+            <ContextItem disabled={!onUpload} onClick={() => run(() => onUpload?.(menu.row))}>
+              <Icon name="fa-arrow-up-from-bracket" size={11} className="mr-2" />
+              Upload to YouTube…
+            </ContextItem>
+            <ContextItem
+              disabled={!youtubeUrl}
+              onClick={() => run(() => onOpenExternal(youtubeUrl))}
+            >
+              <Icon name="fa-arrow-up-right-from-square" size={11} className="mr-2" />
+              Open YouTube URL
+            </ContextItem>
+          </div>,
+          document.body,
+        )
+      : null}
+    </>
   );
 }

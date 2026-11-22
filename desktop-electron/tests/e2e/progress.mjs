@@ -452,6 +452,24 @@ async function successWithManualRecovery() {
     assert((await stat(page, "failed")).includes("1"), "Failed stat must be 1");
 
     const rowsLocator = page.locator('[data-testid="progress-row"]');
+
+    // Right-click menu keeps the operational actions reachable from a row.
+    await rowsLocator.first().click({ button: "right" });
+    const rowMenu = page.getByTestId("progress-row-menu");
+    await rowMenu.waitFor({ timeout: 5_000 });
+    const menuText = await rowMenu.innerText();
+    for (const label of [
+      "Open run folder",
+      "Reveal merged video",
+      "Copy batch ID",
+      "Copy album",
+      "Retry images",
+      "Upload to YouTube",
+    ]) {
+      assert(menuText.includes(label), `Row menu missing "${label}"`);
+    }
+    await rowMenu.getByRole("menuitem", { name: "Copy batch ID" }).click();
+    await rowMenu.waitFor({ state: "detached", timeout: 5_000 });
     assert((await rowsLocator.count()) === 7, "Expected seven operational rows");
 
     // The main-process coordinator polls independently, so wait for its first
