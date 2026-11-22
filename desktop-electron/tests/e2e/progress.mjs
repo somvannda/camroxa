@@ -460,11 +460,12 @@ async function successWithManualRecovery() {
     const menuText = await rowMenu.innerText();
     for (const label of [
       "Open run folder",
-      "Reveal merged video",
+      "Reveal rendered video",
       "Copy batch ID",
       "Copy album",
       "Retry images",
-      "Upload to YouTube",
+      "Cancel video render",
+      "Retry failed render",
     ]) {
       assert(menuText.includes(label), `Row menu missing "${label}"`);
     }

@@ -365,7 +365,11 @@ try {
   await window.waitForTimeout(1_200);
   const autoLine = await window.locator('[data-testid="pipeline-auto-status"]').innerText();
   if (!autoLine.startsWith("Auto-video:")) fail(`Unexpected Progress auto line: ${autoLine}`);
-  await window.locator('[data-testid="video-pipeline"]').scrollIntoViewIfNeeded();
+  const videoCells = await window.getByTestId("progress-video").allInnerTexts();
+  if (!videoCells.some((text) => /Merged|rendered/i.test(text))) {
+    fail(`Operational rows did not show the local render state: ${JSON.stringify(videoCells)}`);
+  }
+  await window.locator('[data-testid="video-pipeline-status"]').scrollIntoViewIfNeeded();
   await window.waitForTimeout(250);
   await window.screenshot({ path: path.join(artifacts, "auto-video-progress.png") });
 

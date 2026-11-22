@@ -45,7 +45,7 @@
 | Cancel / retry | Cancel marks the row `cancelled` and leaves no partial file in the run folder; retry re-enqueues only failed/cancelled rows and produced exactly one new file in the E2E |
 | Output location | Offscreen pipeline renders stream straight into the run folder beside the downloaded audio (`<song>.mp4`, `<song>-reel.mp4`), under the configured Suno output directory; editor/manual exports keep using `<userData>/renders/` |
 | Music trigger | Auto-video coordinator polls Progress/history and queues the profile's long/reel templates per ready song/branch; Video checkboxes gate each branch, merge is per branch; missing templates/audio report a specific message |
-| Progress UI | Compact "Video pipeline" table from the durable SQLite queue: status, template, song, progress, error, Cancel/Retry/Reveal, merged file per batch, honest empty state. Operational rows have a right-click menu: Open run folder, Reveal merged video, Copy batch ID/album, Retry images, Upload to YouTube, Open YouTube URL |
+| Progress UI | Compact "Video pipeline" table from the durable SQLite queue only for renders that have no Operational row. Operational rows carry the local render/merge progress in their Video (Render) and Merge cells, use "Render" instead of "Converter", and have a right-click menu: Open run folder, Reveal rendered video, Copy batch ID/album, Retry images, Cancel/Retry video render, Open YouTube URL. The per-row Upload button was removed; manual upload stays in the row detail panel |
 | No leaks | project file and editor DOM contain no session email and no token fields; the render window adds no storage shared with the visible editor |
 
 `npm run vizzy:parity` compares `vizzy/src` with the decompiled reference at

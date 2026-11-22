@@ -14,7 +14,7 @@ export const STAGE_FILTERS = [
   { value: "all", label: "All stages" },
   { value: "music", label: "Music" },
   { value: "image", label: "Image" },
-  { value: "converter", label: "Converter" },
+  { value: "converter", label: "Render" },
   { value: "merger", label: "Merge" },
   { value: "youtube", label: "YouTube" },
   { value: "done", label: "Done" },
@@ -111,7 +111,7 @@ export function stageLabel(stage: string): string {
     case "":
       return "Not reported";
     case "converter":
-      return "Converter";
+      return "Render";
     case "merger":
       return "Merge";
     case "music":

@@ -22,7 +22,8 @@ import {
   youtubeCellText,
 } from "./progress-format";
 import type { ProgressRow } from "./progress-types";
-import type { YoutubeUploadRowState } from "../../../electron/shared/types";
+import type { PipelineSnapshot } from "../../../electron/shared/types";
+import { localVideoForRow } from "./progress-local-video";
 
 const COLUMNS = [
   "Run Date",
@@ -46,15 +47,14 @@ interface ProgressTableProps {
   onSelect: (row: ProgressRow) => void;
   onOpenExternal: (url: string) => void;
   onClearFilters: () => void;
-  /** Main-process upload verdict per row key. */
-  uploadState?: (key: string) => YoutubeUploadRowState | undefined;
-  /** Starts the confirmation dialog for that row's manual upload. */
-  onUpload?: (row: ProgressRow) => void;
-  uploadingKey?: string | null;
+  /** Local durable render queue, folded into the Video/Merge cells. */
+  pipeline?: PipelineSnapshot | null;
   onOpenFolder?: (path: string) => void;
   onReveal?: (path: string) => void;
   onCopy?: (text: string) => void;
   onRetryImage?: (row: ProgressRow) => void;
+  onPipelineCancel?: () => void;
+  onPipelineRetry?: (batchId: string) => void;
 }
 
 function SubLine({ children }: { children: string }) {
@@ -113,13 +113,13 @@ export function ProgressTable({
   onSelect,
   onOpenExternal,
   onClearFilters,
-  uploadState,
-  onUpload,
-  uploadingKey,
+  pipeline,
   onOpenFolder,
   onReveal,
   onCopy,
   onRetryImage,
+  onPipelineCancel,
+  onPipelineRetry,
 }: ProgressTableProps) {
   const [menu, setMenu] = useState<RowMenuState | null>(null);
   const hasUnreportedVideo = rows.some((row) => localVideoState(row).source === "none");
@@ -160,11 +160,11 @@ export function ProgressTable({
     action();
   };
 
-  const upload = menu ? uploadState?.(rowKey(menu.row)) : undefined;
   const runDir = menu?.row.meta.run_dir?.trim() ?? "";
   const youtubeUrl = menu?.row.meta.youtube_url?.trim() ?? "";
   const rowAlbum = menu?.row.album?.trim() ?? "";
   const canRetryImages = Boolean(menu && onRetryImage);
+  const menuLocal = menu ? localVideoForRow(menu.row, pipeline) : null;
 
   return (
     <>
@@ -226,12 +226,39 @@ export function ProgressTable({
               const music = musicCellText(row);
               const image = imageCellText(row, manualMode);
               const video = localVideoState(row);
-              const youtube = youtubeCellText(row);
-              const updated = updatedCellText(row);
-              const channel = channelCellText(row);
               const progress = progressPercent(row);
               const stageText = stageLabel(row.stage);
               const stageTone = stageBadgeTone(row.stage);
+              const local = localVideoForRow(row, pipeline);
+              const displayStage = local.failed
+                ? "Error"
+                : local.mergedPath
+                  ? "Done"
+                  : local.total > 0 && local.done === local.total
+                    ? "Merge"
+                    : local.running
+                      ? "Render"
+                      : stageText;
+              const displayStageTone = local.failed
+                ? "danger"
+                : local.mergedPath
+                  ? "success"
+                  : local.running
+                    ? "accent"
+                    : stageTone;
+              const displayProgress =
+                local.total > 0
+                  ? {
+                      text: local.percent >= 100 ? "100%" : `${local.percent}%`,
+                      percent: local.percent,
+                    }
+                  : progress;
+              const videoPrimary = local.videoPrimary ?? video.converter;
+              const videoSecondary = local.videoSecondary;
+              const mergePrimary = local.mergePrimary ?? video.merge;
+              const youtube = youtubeCellText(row);
+              const updated = updatedCellText(row);
+              const channel = channelCellText(row);
               const progressTone = statusBadgeTone(row.status);
               const role =
                 channel.secondary === "OK"
@@ -280,7 +307,7 @@ export function ProgressTable({
                     </span>
                   </TD>
                   <TD className="py-2">
-                    <Badge tone={stageTone}>{stageText}</Badge>
+                    <Badge tone={displayStageTone}>{displayStage}</Badge>
                   </TD>
                   <TD className="py-2">
                     <div className="flex items-center gap-1.5">
@@ -290,22 +317,22 @@ export function ProgressTable({
                         aria-label="Stage progress"
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-valuenow={progress.percent}
+                        aria-valuenow={displayProgress.percent}
                       >
                         <div
                           className={classNames(
                             "h-full rounded-full",
-                            progress.percent >= 100
+                            displayProgress.percent >= 100
                               ? "bg-success"
                               : progressTone === "danger"
                                 ? "bg-danger"
                                 : "bg-accent",
                           )}
-                          style={{ width: `${progress.percent}%` }}
+                          style={{ width: `${displayProgress.percent}%` }}
                         />
                       </div>
                       <span className="text-caption text-text-secondary text-tabular">
-                        {progress.text}
+                        {displayProgress.text}
                       </span>
                     </div>
                   </TD>
@@ -317,18 +344,21 @@ export function ProgressTable({
                     <span className="block truncate text-meta text-text-primary">{image.primary}</span>
                     {image.secondary ? <SubLine>{image.secondary}</SubLine> : null}
                   </TD>
-                  <TD className="py-2 text-meta">
-                    {video.converter ? (
-                      <span className="block truncate">{video.converter}</span>
+                  <TD className="py-2 text-meta" data-testid="progress-video">
+                    {videoPrimary ? (
+                      <>
+                        <span className="block truncate">{videoPrimary}</span>
+                        {videoSecondary ? <SubLine>{videoSecondary}</SubLine> : null}
+                      </>
                     ) : (
                       <span className="block text-text-muted" title={PIPELINE_MISSING}>
                         —
                       </span>
                     )}
                   </TD>
-                  <TD className="py-2 text-meta">
-                    {video.merge ? (
-                      <span className="block truncate">{video.merge}</span>
+                  <TD className="py-2 text-meta" data-testid="progress-merge">
+                    {mergePrimary ? (
+                      <span className="block truncate">{mergePrimary}</span>
                     ) : (
                       <span className="block text-text-muted" title={PIPELINE_MISSING}>
                         —
@@ -352,35 +382,6 @@ export function ProgressTable({
                     ) : (
                       <Badge tone={youtube.tone}>{youtube.primary}</Badge>
                     )}
-                    {(() => {
-                      const upload = uploadState?.(key);
-                      if (!upload) return null;
-                      if (uploadingKey === key || upload.block === "uploading") {
-                        return (
-                          <span className="mt-1 flex items-center gap-1 text-caption text-accent">
-                            <Icon name="fa-arrow-up-from-bracket" size={11} />
-                            Uploading
-                          </span>
-                        );
-                      }
-                      if (upload.block !== "none" || !onUpload) return null;
-                      return (
-                        <button
-                          type="button"
-                          className="mt-1 flex items-center gap-1 text-caption text-accent hover:text-accent-hover hover:underline"
-                          title="Upload this merged video to YouTube"
-                          data-testid="progress-row-upload"
-                          data-row-key={key}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onUpload(row);
-                          }}
-                        >
-                          <Icon name="fa-arrow-up-from-bracket" size={11} />
-                          Upload
-                        </button>
-                      );
-                    })()}
                   </TD>
                   <TD className="py-2 font-mono text-caption text-text-secondary">
                     <span title={updated.title ?? undefined}>{updated.primary}</span>
@@ -415,11 +416,13 @@ export function ProgressTable({
               Open run folder
             </ContextItem>
             <ContextItem
-              disabled={!upload?.mergedPath}
-              onClick={() => run(() => onReveal?.(upload?.mergedPath ?? ""))}
+              disabled={!menuLocal?.mergedPath && !menuLocal?.outputPath}
+              onClick={() =>
+                run(() => onReveal?.(menuLocal?.mergedPath ?? menuLocal?.outputPath ?? ""))
+              }
             >
               <Icon name="fa-film" size={11} className="mr-2" />
-              Reveal merged video
+              Reveal rendered video
             </ContextItem>
             <ContextItem
               disabled={!menu.row.meta.batch_id}
@@ -440,9 +443,19 @@ export function ProgressTable({
               <Icon name="fa-rotate-right" size={11} className="mr-2" />
               Retry images
             </ContextItem>
-            <ContextItem disabled={!onUpload} onClick={() => run(() => onUpload?.(menu.row))}>
-              <Icon name="fa-arrow-up-from-bracket" size={11} className="mr-2" />
-              Upload to YouTube…
+            <ContextItem
+              disabled={!menuLocal?.running || !onPipelineCancel}
+              onClick={() => run(() => onPipelineCancel?.())}
+            >
+              <Icon name="fa-stop" size={11} className="mr-2" />
+              Cancel video render
+            </ContextItem>
+            <ContextItem
+              disabled={!menuLocal?.retryBatchId || !onPipelineRetry}
+              onClick={() => run(() => onPipelineRetry?.(menuLocal?.retryBatchId ?? ""))}
+            >
+              <Icon name="fa-rotate-right" size={11} className="mr-2" />
+              Retry failed render
             </ContextItem>
             <ContextItem
               disabled={!youtubeUrl}

@@ -200,13 +200,47 @@ function JobRow({
  * It reads the durable queue, so it survives a route change and an app restart.
  * Cancel and Retry call the real IPC handlers; there are no decorative actions.
  */
-export function VideoPipelineSection() {
+export function VideoPipelineSection({
+  knownBatchIds = [],
+}: {
+  /** Batches already shown in Operational rows; their queue rows are hidden. */
+  knownBatchIds?: string[];
+}) {
   const pipeline = useVideoPipeline();
   const snapshot = pipeline.snapshot;
-  const jobs = snapshot?.jobs ?? [];
-  const batches = snapshot?.batches ?? [];
-  const running = snapshot?.running === true;
+  const known = new Set(knownBatchIds.filter(Boolean));
+  const allJobs = snapshot?.jobs ?? [];
+  const jobs = allJobs.filter((job) => !known.has(job.batchId.split(":")[0]));
+  const batches = (snapshot?.batches ?? []).filter(
+    (batch) => !known.has(batch.batchId.split(":")[0]),
+  );
+  const running = jobs.some(
+    (job) => job.status === "rendering" || job.status === "encoding",
+  );
   const hasRetryable = jobs.some((job) => job.status === "failed" || job.status === "cancelled");
+
+  // Every local render already has an Operational row (with cancel/retry in its
+  // right-click menu): do not show a second progress table.
+  if (allJobs.length > 0 && jobs.length === 0) {
+    if (!snapshot?.auto?.message) return null;
+    return (
+      <Card className="px-4 py-2" data-testid="video-pipeline-status">
+        <p
+          className={classNames(
+            "text-caption",
+            snapshot.auto.state === "error"
+              ? "text-danger"
+              : snapshot.auto.state === "queued" || snapshot.auto.state === "rendering"
+                ? "text-accent"
+                : "text-text-muted",
+          )}
+          data-testid="pipeline-auto-status"
+        >
+          Auto-video: {snapshot.auto.message}
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden" data-testid="video-pipeline">

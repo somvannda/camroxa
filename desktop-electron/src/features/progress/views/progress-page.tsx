@@ -4,13 +4,13 @@ import { PageHeader } from "../../../components/page-header";
 import { Card } from "../../../components/card";
 import { apiRequest, errorMessage } from "../../../lib/api";
 import { DownloadQueue } from "../download-queue";
-import { VideoPipelineSection } from "../video-pipeline-table";
 import { ProgressDetail } from "../progress-detail";
 import { ProgressErrorBanner } from "../progress-error-banner";
 import { ProgressStatCards } from "../progress-stat-cards";
 import { ProgressTable } from "../progress-table";
 import { ProgressToolbar } from "../progress-toolbar";
 import { copyText } from "../progress-clipboard";
+import { VideoPipelineSection } from "../video-pipeline-table";
 import {
   DEFAULT_LIMIT,
   countStats,
@@ -24,6 +24,7 @@ import type { ImageJobsRetryResponse, ImageJobsSyncManualResponse, ProgressRow }
 import { useDownloadQueue } from "../use-download-queue";
 import { useManualInspections } from "../use-manual-inspections";
 import { useProgressFeed } from "../use-progress-feed";
+import { useVideoPipeline } from "../use-video-pipeline";
 import { useYoutubeUpload } from "../use-youtube-upload";
 import { YoutubeUploadDialog } from "../youtube-upload-dialog";
 import { YoutubeUploadPanel } from "../youtube-upload-panel";
@@ -54,6 +55,7 @@ export function ProgressPage() {
   const [syncingBatch, setSyncingBatch] = useState<string | null>(null);
 
   const feed = useProgressFeed({ from, to, activeOnly, limit });
+  const pipeline = useVideoPipeline();
   const downloadsFeed = useDownloadQueue();
   const sourceMode = feed.settings?.imageSourceMode ?? feed.settings?.image_source_mode;
   const manualMode = String(sourceMode ?? "").toLowerCase() === "manual";
@@ -346,11 +348,7 @@ export function ProgressPage() {
                 void openExternal(url);
               }}
               onClearFilters={clearFilters}
-              uploadState={(key) => uploads.rowState(key)}
-              uploadingKey={uploads.active?.key ?? null}
-              onUpload={(row) => {
-                void uploads.openConfirm(row);
-              }}
+              pipeline={pipeline.snapshot}
               onOpenFolder={(path) => {
                 void runFolder(path);
               }}
@@ -371,6 +369,12 @@ export function ProgressPage() {
                     text: cause instanceof Error ? cause.message : "Unable to retry images.",
                   });
                 });
+              }}
+              onPipelineCancel={() => {
+                void pipeline.cancel();
+              }}
+              onPipelineRetry={(batchId) => {
+                void pipeline.retry(batchId);
               }}
             />
           </div>
@@ -451,7 +455,9 @@ export function ProgressPage() {
           }}
         />
 
-        <VideoPipelineSection />
+        <VideoPipelineSection
+          knownBatchIds={visibleRows.map((row) => row.meta.batch_id || row.batch)}
+        />
       </div>
     </div>
   );
