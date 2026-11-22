@@ -10,6 +10,7 @@ import { AuthFrame } from "./auth-frame";
 import { GoogleGlyph } from "./google-glyph";
 import { openExternal } from "./portal";
 import { useAuthActions } from "./use-auth-actions";
+import { TopUpModal } from "./top-up-modal";
 
 function friendlyAuthError(error: ApiError): string {
   switch (error.code) {
@@ -42,6 +43,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
   const applyBootstrap = useSessionStore((state) => state.applyBootstrap);
   const notice = useSessionStore((state) => state.notice);
   const setNotice = useSessionStore((state) => state.setNotice);
+  const session = useSessionStore((state) => state.session);
   const { signOut } = useAuthActions();
 
   const [email, setEmail] = useState("");
@@ -56,7 +58,6 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
     message: string | null;
   } | null>(null);
   const [paidGate, setPaidGate] = useState<{ message: string; portalUrl: string } | null>(null);
-  const [openingPortal, setOpeningPortal] = useState(false);
 
   const noticePaid =
     notice?.code === "DESKTOP_PLAN_REQUIRED"
@@ -79,16 +80,12 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
     };
   }, []);
 
-  async function openAccountPortal(url: string) {
-    setError("");
-    setOpeningPortal(true);
-    const failure = await openExternal(url);
+  async function openForgotPassword() {
+    const failure = await openExternal(portalUrl);
     if (failure) setError(failure);
-    setOpeningPortal(false);
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit(event: FormEvent<HTMLFormElement>) {    event.preventDefault();
     if (busy || googleWaiting) return;
     setError("");
     setNotice(null);
@@ -169,6 +166,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
   }
 
   if (gate) {
+    if (session) return <TopUpModal />;
     return (
       <AuthFrame variant="solo">
         <Card className="p-5">
@@ -187,23 +185,21 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
             ) : null}
 
             <p className="text-body text-text-secondary">{gate.message}</p>
+            <p className="text-meta text-text-muted">
+              Sign in with this account to open the in-app top-up page and scan the KHQR code — no
+              browser window needed.
+            </p>
 
             <Button
               type="button"
               variant="primary"
               className="h-9 w-full"
-              loading={openingPortal}
-              disabled={openingPortal}
-              onClick={() => void openAccountPortal(gate.portalUrl)}
+              onClick={dismissGate}
             >
-              Top up credits
+              Sign in to top up
             </Button>
 
-            <Button type="button" variant="secondary" className="h-9 w-full" disabled={openingPortal} onClick={dismissGate}>
-              Use a different account
-            </Button>
-
-            <Button type="button" variant="ghost" className="h-8 w-full" disabled={openingPortal} onClick={() => void signOut()}>
+            <Button type="button" variant="secondary" className="h-9 w-full" onClick={() => void signOut()}>
               Sign out
             </Button>
           </div>
@@ -336,7 +332,7 @@ export function LoginPage({ portalUrl }: { portalUrl: string }) {
             type="button"
             className="text-accent underline-offset-2 hover:text-accent-hover hover:underline"
             disabled={busy || googleWaiting}
-            onClick={() => void openAccountPortal(portalUrl)}
+            onClick={() => void openForgotPassword()}
           >
             Forgot password?
           </button>

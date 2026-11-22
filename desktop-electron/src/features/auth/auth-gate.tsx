@@ -84,12 +84,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return <ConfirmEmailGate portalUrl={resolvedPortalUrl} />;
   }
   if (destination === "topup") {
-    return (
-      <div className="relative h-full">
-        <LoginPage portalUrl={resolvedPortalUrl} />
-        <TopUpModal />
-      </div>
-    );
+    return <TopUpModal />;
   }
   return <>{children}</>;
 }

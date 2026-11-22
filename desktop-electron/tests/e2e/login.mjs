@@ -157,6 +157,25 @@ async function launch(name, env = {}) {
         ],
       });
     }
+    if (url.pathname.endsWith("/topups/purchase") && request.method === "POST") {
+      return json(200, {
+        checkout_url: "https://pay.chmaba.com/pay/pay-test",
+        payment_id: "pay-test",
+        pack_name: "Small Pack",
+        credits: 1000,
+        amount_cents: 500,
+        expires_at: "2026-11-20T12:10:00Z",
+        qr_string: "00020101021229370016A0000006770101110113008551234567853038405802KH6304ABCD",
+      });
+    }
+    if (url.pathname.endsWith("/topups/payments/pay-test") && request.method === "GET") {
+      return json(200, {
+        status: "pending",
+        fulfilled: false,
+        pack_name: "Small Pack",
+        credits: 1000,
+      });
+    }
     if (url.pathname.endsWith("/topups/history") && request.method === "GET") {
       return json(200, { purchases: [], total: 0, limit: 12, offset: 0 });
     }
@@ -191,6 +210,17 @@ async function launch(name, env = {}) {
       throw new Error("Free users must not reach the Plan page as a full screen");
     }
     await window.screenshot({ path: path.join(artifacts, "topup-modal.png"), fullPage: true });
+
+    // A pack click opens the native KHQR dialog directly — no provider page.
+    await window.getByTestId("topup-buy-small").click();
+    const checkout = window.getByRole("dialog", { name: "Scan to pay" });
+    await checkout.waitFor({ timeout: 10_000 });
+    await checkout.getByRole("img", { name: "KHQR payment code" }).waitFor();
+    if ((await checkout.locator("webview").count()) > 0) {
+      throw new Error("Top-up must render the QR natively, not in a webview");
+    }
+    await checkout.getByRole("button", { name: "Close" }).last().click();
+    await checkout.waitFor({ state: "detached", timeout: 5_000 });
 
     await window.getByRole("button", { name: "Use a different account" }).click();
     scenario = "unconfirmed";
