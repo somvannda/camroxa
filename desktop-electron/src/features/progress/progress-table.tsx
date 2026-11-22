@@ -13,6 +13,7 @@ import {
   localVideoState,
   musicCellText,
   progressPercent,
+  relativeTime,
   rowKey,
   runDateLabel,
   stageBadgeTone,
@@ -257,7 +258,15 @@ export function ProgressTable({
               const videoSecondary = local.videoSecondary;
               const mergePrimary = local.mergePrimary ?? video.merge;
               const youtube = youtubeCellText(row);
-              const updated = updatedCellText(row);
+              const backendUpdated = updatedCellText(row);
+              const updated =
+                local.updatedAt !== null
+                  ? {
+                      primary: relativeTime(new Date(local.updatedAt).toISOString()),
+                      secondary: null,
+                      title: new Date(local.updatedAt).toLocaleString(),
+                    }
+                  : backendUpdated;
               const channel = channelCellText(row);
               const progressTone = statusBadgeTone(row.status);
               const role =
