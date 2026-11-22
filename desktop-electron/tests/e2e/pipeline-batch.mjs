@@ -436,6 +436,35 @@ try {
   }
   step("retry rendered only the cancelled row");
 
+  // --- Force regenerate one track -----------------------------------------
+  const regeneratedJob = retriedDone.jobs.find(
+    (job) => job.batchId === "batch-cancel" && job.status === "done",
+  );
+  if (!regeneratedJob) fail("The retried track is missing");
+  const forced = await window.evaluate(
+    async (jobId) =>
+      window.camxora.pipeline.force({ mode: "single", jobIds: [jobId] }),
+    regeneratedJob.id,
+  );
+  if (!forced.ok || forced.data.enqueued !== 1) {
+    fail(`pipeline:force failed: ${JSON.stringify(forced)}`);
+  }
+  const forcedDone = await poll(
+    async () => {
+      const response = await snapshot(window);
+      if (!response.ok) return null;
+      const job = response.data.jobs.find((item) => item.id === regeneratedJob.id);
+      return !response.data.running && job?.status === "done" ? job : null;
+    },
+    "the force-regenerated track",
+    600_000,
+    400,
+  );
+  if (!forcedDone.output || !fs.existsSync(forcedDone.output)) {
+    fail("Force regenerate did not produce a file");
+  }
+  step("force regenerate produced a fresh track");
+
   for (const name of ["batch-progress.png", "batch-complete.png"]) {
     if (!fs.existsSync(path.join(artifacts, name))) fail(`Missing screenshot ${name}`);
   }

@@ -150,7 +150,14 @@ function successRows() {
       stage: "music",
       status: "running",
       music: "6/12",
-      meta: { saved: 6, download_pending: 5, download_ready: 1 },
+      meta: {
+        run_dir: RUN_MISSING,
+        saved: 6,
+        download_pending: 5,
+        download_ready: 1,
+        draft_failed_song_ids: ["song-draft-1"],
+        suno_failed_song_ids: ["song-suno-1"],
+      },
     }),
     progressRow(2, {
       stage: "converter",
@@ -386,6 +393,7 @@ async function stat(page, name) {
 async function successWithManualRecovery() {
   let progressRequests = 0;
   const syncBodies = [];
+  const menuCalls = [];
   const rows = successRows();
   let pendingDownloads = { items: [] };
   const { server, port } = await startApi({
@@ -416,6 +424,26 @@ async function successWithManualRecovery() {
         syncBodies.push(JSON.parse(body || "{}"));
         json(response, 200, { updated: 1 });
       });
+    },
+    "POST /image-jobs/retry": (request, response) => {
+      menuCalls.push("image-retry");
+      json(response, 200, { updated: 1 });
+    },
+    "POST /music/downloads/batch-redownload-plan": (_request, response) => {
+      menuCalls.push("redownload-plan");
+      json(response, 200, { items: [] });
+    },
+    "POST /batches/NS-2601/songs/song-draft-1/retry-draft": (_request, response) => {
+      menuCalls.push("retry-draft");
+      json(response, 202, { batch_id: "NS-2601", song_id: "song-draft-1", status: "retrying" });
+    },
+    "POST /batches/NS-2601/songs/song-suno-1/retry-suno": (_request, response) => {
+      menuCalls.push("retry-suno");
+      json(response, 202, { batch_id: "NS-2601", song_id: "song-suno-1", status: "retrying" });
+    },
+    "POST /progress/sync-local": (_request, response) => {
+      menuCalls.push("sync-local");
+      json(response, 200, { updated: 1 });
     },
   });
   const downloadsRoot = path.join(artifacts, "e2e-progress-success", "downloads");
@@ -452,9 +480,11 @@ async function successWithManualRecovery() {
     assert((await stat(page, "failed")).includes("1"), "Failed stat must be 1");
 
     const rowsLocator = page.locator('[data-testid="progress-row"]');
+    const targetRow = rowsLocator.filter({ hasText: "NS-2601" }).first();
+    await targetRow.waitFor({ timeout: 10_000 });
 
     // Right-click menu keeps the operational actions reachable from a row.
-    await rowsLocator.first().click({ button: "right" });
+    await targetRow.click({ button: "right" });
     const rowMenu = page.getByTestId("progress-row-menu");
     await rowMenu.waitFor({ timeout: 5_000 });
     const menuText = await rowMenu.innerText();
@@ -476,6 +506,44 @@ async function successWithManualRecovery() {
     }
     await rowMenu.getByRole("menuitem", { name: "Copy batch ID" }).click();
     await rowMenu.waitFor({ state: "detached", timeout: 5_000 });
+
+    const openRowMenu = async () => {
+      await targetRow.click({ button: "right" });
+      await rowMenu.waitFor({ timeout: 5_000 });
+      return rowMenu;
+    };
+
+    await (
+      await openRowMenu()
+    )
+      .getByRole("menuitem", { name: /Retry failed drafts/ })
+      .click();
+    await page.waitForTimeout(500);
+    assert(menuCalls.includes("retry-draft"), "Retry failed drafts did not call the batch endpoint");
+
+    await (
+      await openRowMenu()
+    )
+      .getByRole("menuitem", { name: /Retry failed Suno/ })
+      .click();
+    await page.waitForTimeout(500);
+    assert(menuCalls.includes("retry-suno"), "Retry failed Suno did not call the batch endpoint");
+
+    await (await openRowMenu()).getByRole("menuitem", { name: "Retry images" }).click();
+    await page.waitForTimeout(500);
+    assert(menuCalls.includes("image-retry"), "Retry images did not call the image endpoint");
+
+    await (
+      await openRowMenu()
+    )
+      .getByRole("menuitem", { name: /Download missing MP3s/ })
+      .click();
+    await page.waitForTimeout(800);
+    assert(
+      menuCalls.includes("redownload-plan") && menuCalls.includes("sync-local"),
+      "Download missing MP3s did not plan and persist the recovery",
+    );
+
     assert((await rowsLocator.count()) === 7, "Expected seven operational rows");
 
     // The main-process coordinator polls independently, so wait for its first
