@@ -84,7 +84,7 @@ const ROUTES: Record<ShellRouteKey, ShellRoute> = {
   plan: {
     key: "plan",
     path: "/plan",
-    label: "Plan",
+    label: "Credit",
     phase: "P10",
     description: "Buy credit packs and review billing activity.",
     icon: "fa-credit-card",

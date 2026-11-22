@@ -236,7 +236,7 @@ export function PlanPage() {
   return (
     <div className="pb-6" data-testid="plan-page">
       <PageHeader
-        eyebrow="Credits"
+        eyebrow="Credit"
         title="Buy credits."
         description="One-time purchase. No subscription. Start free, or add a pack whenever you need more."
       />

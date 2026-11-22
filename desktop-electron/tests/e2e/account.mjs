@@ -336,7 +336,7 @@ async function dashboardSuccess() {
     assert(profileActivity.includes("1,234"), "Activity counters missing");
     await capture(app, page, "profile-success");
 
-    await page.getByRole("link", { name: "Plan" }).click();
+    await page.getByRole("link", { name: "Credit", exact: true }).click();
     await page.getByRole("heading", { name: "Buy credits." }).waitFor({ timeout: 5000 });
     await page.locator('[data-testid="plan-pack-small"]').waitFor({ timeout: 8000 });
     assert(
