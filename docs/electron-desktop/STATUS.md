@@ -49,7 +49,7 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               392/392 PASS
+npm test               394/394 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
 npm run vizzy:parity   PASS (59 decompile files; only 4 intentional patches + 3 host shims)
 npm run test:e2e       PASS (18 suites incl. downloads, auto-video, pipeline-batch and youtube-upload)
@@ -58,7 +58,9 @@ node tests/e2e/youtube-upload.mjs PASS (job, 3 chunks resuming at 308, report, c
                                       cancel, quota failure + /retry, Auto-Upload disabled)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
-npm run package:win    PASS (`release/Camxora-2.0.0-setup.exe`)
+npm run package:win    PASS (`release/Camxora-2.0.0-setup.exe`, 515 MB)
+node tests/e2e/packaged-smoke.mjs PASS (packaged app boots with no env overrides:
+                                      production API + portal, release build, login page)
 ```
 
 P8 was merged after the settings suite passed; the branch’s only extra requirement was the

@@ -16,8 +16,20 @@ npm run test:e2e     # launches Electron via Playwright
 
 The E2E smoke writes `artifacts/foundation.png`.
 
-The API base defaults to `http://127.0.0.1:8000/api/v1`. Override it with
-`CAMXORA_API_BASE_URL`.
+The API base defaults to `http://127.0.0.1:8000/api/v1` for an unpackaged dev run
+and to `https://api.camxora.com/api/v1` for a packaged build. Override either with
+`CAMXORA_API_BASE_URL` (and the portal with `CAMXORA_PORTAL_BASE_URL`).
+
+## Production installer
+
+```bash
+npm run vizzy:install     # once: install the editor's dependencies
+npm run package:win       # build + NSIS installer
+```
+
+The installer lands at `release/Camxora-2.0.0-setup.exe`; the unpacked app is
+`release/win-unpacked/Camxora.exe`. A packaged app talks to production by
+default, so no environment variables are needed to test it.
 
 ## Phase 0 scope
 

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { resolveApiBaseUrl, resolvePortalBaseUrl } from "../services/endpoints";
+import { classifyApiEnvironment } from "../shared/api-environment";
 import { logger } from "../services/logger";
 import { devAuthBypass } from "../shared/flags";
 import { ok, type AppInfo } from "../shared/types";
@@ -10,13 +11,7 @@ export function registerSystemIpc(): void {
     const apiBaseUrl = resolveApiBaseUrl();
     const env =
       process.env.CAMXORA_BUILD_ENV ??
-      (/sandbox/i.test(apiBaseUrl)
-        ? "sandbox"
-        : /localhost|127\.0\.0\.1/i.test(apiBaseUrl)
-          ? "local"
-          : /(^|\.)api\.camxora\.com/i.test(apiBaseUrl)
-            ? "production"
-            : "development");
+      classifyApiEnvironment(apiBaseUrl);
     return {
       name: APP_NAME,
       version: APP_VERSION,
