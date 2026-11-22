@@ -924,6 +924,84 @@ async function failureScenario() {
   }
 }
 
+async function pairingScenario() {
+  const third = {
+    ...PROFILES[1],
+    id: "profile-3",
+    name: "Night Drive",
+    folder_name: "night-drive",
+    run_prefix: "ND",
+  };
+  const profiles = [...PROFILES, third];
+  let saved = {
+    ...settings(),
+    primaryProfileIds: ["profile-1"],
+    secondaryProfileIds: ["profile-2"],
+  };
+  const routes = {
+    ...baseRoutes,
+    "GET /settings": (_request, response) => json(response, 200, saved),
+    "PATCH /settings": (_request, response, _url, body) => {
+      saved = { ...saved, ...body };
+      return json(response, 200, saved);
+    },
+    "GET /profiles": (_request, response) => json(response, 200, profiles),
+  };
+  const { server, port, calls } = await startApi(routes);
+  const { app, page } = await openApp("pairing", port);
+  try {
+    const secondary3 = page.getByTestId("profile-toggle-secondary-profile-3");
+    await secondary3.waitFor({ timeout: 10_000 });
+    assert(
+      (await page.getByTestId("profile-toggle-primary-profile-1").getAttribute("aria-pressed")) ===
+        "true",
+      "Saved Primary channel was not restored",
+    );
+    assert(
+      (await page.getByTestId("profile-toggle-secondary-profile-2").getAttribute("aria-pressed")) ===
+        "true",
+      "Saved Secondary channel was not restored",
+    );
+
+    await secondary3.click();
+    await page.waitForTimeout(900);
+    assert(
+      (await secondary3.getAttribute("aria-pressed")) === "true",
+      "Clicking a channel must keep it selected",
+    );
+    const patch = calls.find(
+      (call) =>
+        call.route === "PATCH /settings" &&
+        Array.isArray(call.body?.secondaryProfileIds) &&
+        call.body.secondaryProfileIds.includes("profile-3"),
+    );
+    if (patch === undefined) throw new Error("The new channel pair was not saved to /settings");
+
+    // A reload replays GET /settings; the chosen pair must survive.
+    await page.reload();
+    await page.waitForTimeout(1200);
+    if (
+      !(await page
+        .getByRole("heading", { name: "Music", exact: true })
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await page.getByRole("link", { name: "Music" }).click();
+    }
+    await page.getByRole("heading", { name: "Music", exact: true }).waitFor({ timeout: 15_000 });
+    await page.waitForTimeout(700);
+    assert(
+      (await page.getByTestId("profile-toggle-secondary-profile-3").getAttribute("aria-pressed")) ===
+        "true",
+      "The saved Secondary channel did not survive a reload",
+    );
+    await capture(app, page, "music-pairing");
+  } finally {
+    await app.close();
+    server.close();
+  }
+}
+
 fs.rmSync(runRoot, { recursive: true, force: true });
 
 await workspaceScenario();
@@ -931,4 +1009,5 @@ await generateScenario();
 await emptyScenario();
 await errorScenario();
 await failureScenario();
+await pairingScenario();
 console.log(JSON.stringify({ music: "ok", artifacts, runRoot }));

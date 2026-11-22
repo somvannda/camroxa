@@ -217,21 +217,6 @@ export function MusicPage() {
 
   // Keep the saved pairing in /settings in step with the visible selection, so
   // the next app launch opens the same Primary/Secondary channels.
-  useEffect(() => {
-    if (!settingsReady) return;
-    setSettings((current) => {
-      const samePrimary =
-        current.primaryProfileIds.join("\u0000") === composer.primaryIds.join("\u0000");
-      const sameSecondary =
-        current.secondaryProfileIds.join("\u0000") === composer.secondaryIds.join("\u0000");
-      if (samePrimary && sameSecondary) return current;
-      return {
-        ...current,
-        primaryProfileIds: composer.primaryIds,
-        secondaryProfileIds: composer.secondaryIds,
-      };
-    });
-  }, [composer.primaryIds, composer.secondaryIds, settingsReady]);
 
   const primaryProfiles = useMemo(
     () => (data?.profiles ?? []).filter((profile) => composer.primaryIds.includes(profile.id)),
