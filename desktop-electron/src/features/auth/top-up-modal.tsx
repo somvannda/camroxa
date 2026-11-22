@@ -143,7 +143,7 @@ export function TopUpModal() {
 
   return (
     <div className="flex h-full items-center justify-center bg-bg p-6">
-      <Card className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden p-0">
+      <Card className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden p-0">
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>
             <p className="text-caption text-text-muted">DESKTOP STUDIO</p>
@@ -200,7 +200,7 @@ export function TopUpModal() {
           ) : null}
 
           {packsQuery.isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-3">
               {[0, 1, 2].map((index) => (
                 <div key={index} className="h-44 animate-pulse rounded-card bg-surface-2" />
               ))}
@@ -220,7 +220,7 @@ export function TopUpModal() {
               No credit packs are published for this account yet.
             </p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-3">
               {packs.map((pack) => (
                 <CreditPackCard
                   key={pack.id}
