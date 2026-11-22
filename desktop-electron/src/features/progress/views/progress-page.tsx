@@ -167,6 +167,35 @@ export function ProgressPage() {
     [feed],
   );
 
+  const retrySongs = useCallback(
+    async (row: ProgressRow, kind: "draft" | "suno") => {
+      const batchId = row.meta.batch_id || row.batch;
+      const ids =
+        kind === "draft"
+          ? (row.meta.draft_failed_song_ids ?? [])
+          : (row.meta.suno_failed_song_ids ?? []);
+      if (!batchId || ids.length === 0) return;
+      try {
+        for (const songId of ids) {
+          await apiRequest({
+            method: "POST",
+            path: `/batches/${batchId}/songs/${songId}/retry-${kind}`,
+          });
+        }
+        setNotice({
+          tone: "success",
+          text: `Queued ${ids.length} ${kind === "draft" ? "draft" : "Suno"} retr${
+            ids.length === 1 ? "y" : "ies"
+          }.`,
+        });
+        await feed.refresh();
+      } catch (error) {
+        setNotice({ tone: "danger", text: errorMessage(error) });
+      }
+    },
+    [feed],
+  );
+
   const retryDownload = useCallback(
     async (key: string) => {
       const failure = await downloadsFeed.retry(key);
@@ -373,8 +402,21 @@ export function ProgressPage() {
               onPipelineCancel={() => {
                 void pipeline.cancel();
               }}
+              onPipelineStart={() => {
+                void pipeline.start();
+              }}
               onPipelineRetry={(batchId) => {
                 void pipeline.retry(batchId);
+              }}
+              onRetryDrafts={(row) => {
+                void retrySongs(row, "draft");
+              }}
+              onRetrySuno={(row) => {
+                void retrySongs(row, "suno");
+              }}
+              manualFolderFor={(row) => {
+                const inspection = manual.inspections[rowKey(row)];
+                return inspection?.runDir ?? null;
               }}
             />
           </div>

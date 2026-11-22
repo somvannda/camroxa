@@ -54,8 +54,12 @@ interface ProgressTableProps {
   onReveal?: (path: string) => void;
   onCopy?: (text: string) => void;
   onRetryImage?: (row: ProgressRow) => void;
+  onRetryDrafts?: (row: ProgressRow) => void;
+  onRetrySuno?: (row: ProgressRow) => void;
   onPipelineCancel?: () => void;
   onPipelineRetry?: (batchId: string) => void;
+  onPipelineStart?: () => void;
+  manualFolderFor?: (row: ProgressRow) => string | null;
 }
 
 function SubLine({ children }: { children: string }) {
@@ -121,6 +125,10 @@ export function ProgressTable({
   onRetryImage,
   onPipelineCancel,
   onPipelineRetry,
+  onPipelineStart,
+  onRetryDrafts,
+  onRetrySuno,
+  manualFolderFor,
 }: ProgressTableProps) {
   const [menu, setMenu] = useState<RowMenuState | null>(null);
   const hasUnreportedVideo = rows.some((row) => localVideoState(row).source === "none");
@@ -166,6 +174,9 @@ export function ProgressTable({
   const rowAlbum = menu?.row.album?.trim() ?? "";
   const canRetryImages = Boolean(menu && onRetryImage);
   const menuLocal = menu ? localVideoForRow(menu.row, pipeline) : null;
+  const draftFailures = menu?.row.meta.draft_failed_song_ids ?? [];
+  const sunoFailures = menu?.row.meta.suno_failed_song_ids ?? [];
+  const manualFolder = menu && manualFolderFor ? manualFolderFor(menu.row) : null;
 
   return (
     <>
@@ -444,6 +455,24 @@ export function ProgressTable({
               <Icon name="fa-copy" size={11} className="mr-2" />
               Copy album
             </ContextItem>
+            {draftFailures.length > 0 ? (
+              <ContextItem onClick={() => run(() => onRetryDrafts?.(menu.row))}>
+                <Icon name="fa-rotate-right" size={11} className="mr-2" />
+                Retry failed drafts ({draftFailures.length})
+              </ContextItem>
+            ) : null}
+            {sunoFailures.length > 0 ? (
+              <ContextItem onClick={() => run(() => onRetrySuno?.(menu.row))}>
+                <Icon name="fa-rotate-right" size={11} className="mr-2" />
+                Retry failed Suno ({sunoFailures.length})
+              </ContextItem>
+            ) : null}
+            {manualFolder ? (
+              <ContextItem onClick={() => run(() => onOpenFolder?.(manualFolder))}>
+                <Icon name="fa-folder-open" size={11} className="mr-2" />
+                Open manual folder
+              </ContextItem>
+            ) : null}
             <div className="my-1 h-px bg-border" />
             <ContextItem
               disabled={!canRetryImages}
@@ -458,6 +487,13 @@ export function ProgressTable({
             >
               <Icon name="fa-stop" size={11} className="mr-2" />
               Cancel video render
+            </ContextItem>
+            <ContextItem
+              disabled={!onPipelineStart}
+              onClick={() => run(() => onPipelineStart?.())}
+            >
+              <Icon name="fa-play" size={11} className="mr-2" />
+              Continue video render
             </ContextItem>
             <ContextItem
               disabled={!menuLocal?.retryBatchId || !onPipelineRetry}
