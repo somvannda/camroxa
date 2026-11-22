@@ -246,8 +246,9 @@ export function MusicPage() {
         autoUpload: false,
         dayCount,
         imageSourceMode: imageSourceMode(data?.settings),
+        simpleMode,
       }),
-    [costs, data?.settings, dayCount, primaryProfiles, secondaryProfiles, settings],
+    [costs, data?.settings, dayCount, primaryProfiles, secondaryProfiles, settings, simpleMode],
   );
 
   const descriptionName = descriptions.find((option) => option.id === descriptionId)?.name ?? "";

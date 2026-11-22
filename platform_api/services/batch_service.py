@@ -442,8 +442,10 @@ class BatchService:
 
         batch_count = len(run_dates) * len(profile_pairs)
         total_songs = batch_count * song_count
-        # Lyric + title per song + one album ≈ 2N+1 draft ops per batch.
-        draft_ops_per_batch = song_count * 2 + 1
+        simple_mode = _read_bool_setting(settings, "simpleMode")
+        # Lyric + title per song + one album ≈ 2N+1 draft ops per batch. Simple
+        # mode has no draft at all; only the album is named.
+        draft_ops_per_batch = 0 if simple_mode else song_count * 2 + 1
         total_draft_ops = batch_count * draft_ops_per_batch
         # Song packages are only burned when Auto-GSuno is enabled.
         billable_song_count = total_songs if auto_gsuno else 0
@@ -458,6 +460,7 @@ class BatchService:
                     alt_profile_id=alt_profile_id,
                     auto_gen_image=billable_auto_gen_image,
                     auto_gsuno=auto_gsuno,
+                    structure_mode="suno" if simple_mode else "template",
                 )
                 total_wallet_cost += batch_cost
                 if billable_auto_gen_image:
@@ -888,6 +891,7 @@ class BatchService:
 
         from platform_api.services.generation_service import (
             FREE_STRUCTURE_MODES,
+            STRUCTURE_MODE_SUNO,
             STRUCTURE_MODE_TEMPLATE,
             is_free_structure_mode,
         )
@@ -965,6 +969,7 @@ class BatchService:
             alt_profile_id=UUID(alt_profile_id),
             auto_gen_image=billable_auto_gen_image,
             auto_gsuno=auto_gsuno,
+            structure_mode=normalized_mode,
         )
 
         # Local video export + merge for this batch (charged per stage later).
@@ -996,7 +1001,7 @@ class BatchService:
                 song_count=song_count if auto_gsuno else 0,
                 total_wallet_cost=total_cost,
                 image_jobs=image_jobs,
-                draft_ops=song_count * 2 + 1,
+                draft_ops=song_count * 2 + 1 if normalized_mode != STRUCTURE_MODE_SUNO else 0,
                 video_ops=video_ops,
                 merge_ops=merge_ops,
                 ok_profile_id=UUID(ok_profile_id),
@@ -1110,6 +1115,11 @@ class BatchService:
             return None
 
         try:
+            from platform_api.services.generation_service import STRUCTURE_MODE_SUNO
+
+            if str(getattr(batch, "structure_mode", "") or "") == STRUCTURE_MODE_SUNO:
+                return await self._execute_description_batch(batch, user_id)
+
             draft_requests = self._build_draft_requests(batch)
             use_content_pools, unique_opening = await self._load_music_pool_settings(user_id)
             songs = await self._batch_repo.get_songs_by_batch(batch.id)
@@ -1215,6 +1225,219 @@ class BatchService:
                 user_id,
             )
             return batch
+
+    async def _execute_description_batch(
+        self, batch: Batch, user_id: str
+    ) -> Batch:
+        """Run a Simple (structure_mode='suno') batch.
+
+        Simple means no local draft pipeline at all: no content pools, moods,
+        structures, title or lyric generation. Camxora only names the album (the
+        run folders need one); the selected description prompt is handed to Suno
+        in Description mode, and Suno writes the title and lyrics.
+        """
+        await self._batch_repo.update_batch_status(batch.id, BATCH_STATUS_PROCESSING)
+        songs = await self._batch_repo.get_songs_by_batch(batch.id)
+        if not songs:
+            await self.refresh_batch_status(batch.id)
+            return batch
+        if not batch.auto_gsuno:
+            await self.refresh_batch_status(batch.id)
+            return batch
+
+        draft_request = self._build_draft_requests(batch)[0]
+        prompts: list[str] = []
+        for song in songs:
+            prepared = await self._resolve_song_prompt_content(song, draft_request)
+            prompts.append(str(getattr(prepared, "description", "") or "").strip())
+        first_prompt = next((value for value in prompts if value), "")
+
+        ok_album = str(batch.ok_album or "").strip() or await self._generate_simple_album(
+            user_id=user_id,
+            profile_id=batch.ok_profile_id,
+            prompt=first_prompt,
+            avoid=[],
+            language=batch.language,
+            secondary_language=batch.secondary_language,
+        )
+        alt_album = str(batch.alt_album or "").strip()
+        if batch.alt_profile_id and (
+            not alt_album or self._album_names_equal(alt_album, ok_album)
+        ):
+            alt_album = await self._generate_simple_album(
+                user_id=user_id,
+                profile_id=batch.alt_profile_id,
+                prompt=first_prompt,
+                avoid=[ok_album],
+                language=batch.language,
+                secondary_language=batch.secondary_language,
+            )
+        if alt_album and self._album_names_equal(alt_album, ok_album):
+            alt_album = self._fallback_distinct_album(ok_album)
+
+        await self._batch_repo.claim_batch_channel_albums(
+            batch.id,
+            ok_album=ok_album,
+            alt_album=alt_album or None,
+        )
+        batch.ok_album = ok_album
+        batch.alt_album = alt_album or None
+        batch = await self._assign_batch_run_directories_if_needed(
+            batch,
+            ok_album=ok_album,
+            alt_album=alt_album or None,
+        )
+        if ok_album:
+            await self._batch_repo.update_batch_songs_album(batch.id, ok_album)
+
+        suno_model = await self._resolve_suno_model(batch.user_id)
+        submitted_count = 0
+        failed_count = 0
+        for index, song in enumerate(songs):
+            description = prompts[index] or first_prompt
+            title = "Untitled"
+            try:
+                draft_log.log_suno_submit_started(
+                    batch_id=str(batch.id),
+                    song_number=song.batch_index + 1,
+                    title=title,
+                    model=suno_model,
+                )
+                task_id = await self._submit_song_to_suno(
+                    song=song,
+                    batch=batch,
+                    user_id=user_id,
+                    model=suno_model,
+                    description=description,
+                )
+                draft_log.log_suno_submitted(
+                    batch_id=str(batch.id),
+                    song_number=song.batch_index + 1,
+                    title=title,
+                    task_id=task_id,
+                )
+                submitted_count += 1
+            except Exception as exc:
+                await self.update_song_to_suno_failed(song.id)
+                reason = str(exc) or exc.__class__.__name__
+                draft_log.log_suno_submit_failed(
+                    batch_id=str(batch.id),
+                    song_number=song.batch_index + 1,
+                    title=title,
+                    reason=reason,
+                    song_id=str(song.id),
+                )
+                self._log_suno_failure_metric(
+                    batch_id=batch.id,
+                    song_id=song.id,
+                    error_message=reason,
+                    is_retry=False,
+                )
+                logger.warning(
+                    "Simple Suno submission failed for song %s in batch %s: %s",
+                    song.id,
+                    batch.id,
+                    reason,
+                )
+                failed_count += 1
+
+        draft_log.log_suno_batch_submit_summary(
+            batch_id=str(batch.id),
+            submitted=submitted_count,
+            failed=failed_count,
+            total=len(songs),
+        )
+        await self.refresh_batch_status(batch.id)
+        return batch
+
+    async def _generate_simple_album(
+        self,
+        *,
+        user_id: str,
+        profile_id: UUID | None,
+        prompt: str,
+        avoid: list[str],
+        language: str,
+        secondary_language: str | None,
+    ) -> str:
+        """Name the album for a Simple batch; never generate lyrics or a title."""
+        fallback = self._fallback_simple_album(prompt, 1 if avoid else 0)
+        if self._ai_routing_service is None or self._generation_service is None:
+            return fallback
+        try:
+            from platform_api.ai.parsing.response_parser import parse_string_field
+            from platform_api.ai.purposes.metadata_text import (
+                is_valid_metadata_name,
+                sanitize_metadata_name,
+            )
+            from platform_api.services.generation_service import (
+                MAX_ALBUM_ATTEMPTS,
+                build_album_slot_prompts,
+            )
+
+            routing = await self._resolve_draft_routing()
+            provider = str(getattr(routing.album, "provider", "") or "").strip() or "deepseek"
+            sub_model = str(getattr(routing.album, "sub_model", "") or "").strip() or None
+            chain = await self._text_slot_provider_chain(
+                "album", provider=provider, model=sub_model
+            )
+            if self._enforcement_service is not None and profile_id is not None:
+                try:
+                    await self._enforcement_service.check_and_deduct(
+                        UUID(user_id),
+                        profile_id,
+                        "album",
+                        provider,
+                        sub_model=sub_model,
+                    )
+                except Exception:
+                    # Naming must not block a paid Suno batch; use the fallback.
+                    return fallback
+
+            system, user = build_album_slot_prompts(
+                user_context=prompt or "Instrumental electronic music.",
+                avoid_albums=avoid,
+                language=language,
+                secondary_language=secondary_language,
+            )
+            if avoid:
+                user = (
+                    f"{user}\n\nAvoid these album names: {', '.join(avoid)}. "
+                    "Create a distinct name with different wording."
+                )
+            for attempt in range(1, MAX_ALBUM_ATTEMPTS + 1):
+                try:
+                    raw = await self._generation_service.generate_text(
+                        system_prompt=system,
+                        user_prompt=user,
+                        provider=provider,
+                        model=sub_model or "",
+                        temperature=0.85,
+                        max_tokens=256,
+                        prefer_json=True,
+                        provider_chain=chain,
+                    )
+                except Exception:
+                    continue
+                candidate = sanitize_metadata_name(
+                    parse_string_field(raw, "album"), field="album"
+                )
+                if not candidate or not is_valid_metadata_name(candidate, field="album"):
+                    continue
+                if any(self._album_names_equal(candidate, name) for name in avoid):
+                    continue
+                return candidate.strip()
+        except Exception:
+            logger.debug("Simple album generation failed; using fallback", exc_info=True)
+        return fallback
+
+    @staticmethod
+    def _fallback_simple_album(prompt: str, variant: int = 0) -> str:
+        words = re.findall(r"[A-Za-z0-9']+", str(prompt or ""))[:3]
+        base = " ".join(word.capitalize() for word in words).strip() or "Untitled Album"
+        if variant:
+            base = f"{base} Vol. {variant + 1}"
+        return base[:80]
 
     # ------------------------------------------------------------------
     # Get Batch Status (Requirement 13.5)
@@ -2653,28 +2876,38 @@ class BatchService:
             )
         await self._assert_song_allows_suno_retry(song)
 
+        from platform_api.services.generation_service import STRUCTURE_MODE_SUNO
+
+        is_simple = str(getattr(batch, "structure_mode", "") or "") == STRUCTURE_MODE_SUNO
+        description = ""
+        if is_simple:
+            prepared = await self._resolve_song_prompt_content(
+                song, self._build_draft_requests(batch)[0]
+            )
+            description = str(getattr(prepared, "description", "") or "").strip()
+
         resolved_title = str(title if title is not None else song.title or "").strip()
         resolved_album = str(album if album is not None else song.album or "").strip()
         resolved_lyrics = str(lyrics if lyrics is not None else song.lyrics or "").strip()
         if title is not None or album is not None or lyrics is not None:
             await self._batch_repo.update_song_draft(
                 song_id,
-                resolved_title or "Untitled",
+                resolved_title or ("Untitled" if not description else ""),
                 resolved_album,
                 resolved_lyrics,
             )
-            song.title = resolved_title or "Untitled"
+            song.title = resolved_title or ("Untitled" if not description else "")
             song.album = resolved_album
             song.lyrics = resolved_lyrics
 
-        if not resolved_title or not resolved_lyrics:
+        if not description and (not resolved_title or not resolved_lyrics):
             raise ValidationError(
                 "Song draft is incomplete. Retry draft generation first.",
                 details={"song_id": str(song_id)},
             )
 
         suno_model = await self._resolve_suno_model(batch.user_id)
-        title_for_log = resolved_title or "Untitled"
+        title_for_log = resolved_title or "Suno description"
         try:
             draft_log.log_suno_submit_started(
                 batch_id=str(batch.id),
@@ -2688,6 +2921,7 @@ class BatchService:
                 user_id=user_id,
                 model=suno_model,
                 is_retry=True,
+                description=description,
             )
             draft_log.log_suno_submitted(
                 batch_id=str(batch.id),
@@ -4752,6 +4986,31 @@ class BatchService:
             logger.warning("Song %s not found in batch %s.", song_id, batch_id)
             return []
 
+        # Simple/Description mode: Suno wrote the title and lyrics. Copy them onto
+        # the song before image prompts and folder metadata consume the row.
+        if not str(song.title or "").strip() or not str(getattr(song, "lyrics", None) or "").strip():
+            latest_task = await self._batch_repo.get_latest_suno_task_for_song(song.id)
+            if latest_task is not None:
+                suno_title = str(latest_task.title or "").strip()
+                suno_lyrics = str(latest_task.lyrics or "").strip()
+                if suno_title or suno_lyrics:
+                    resolved_title = str(song.title or "").strip() or suno_title or "Untitled"
+                    resolved_lyrics = str(getattr(song, "lyrics", None) or "").strip() or suno_lyrics
+                    resolved_album = str(
+                        getattr(song, "album", None)
+                        or getattr(batch, "ok_album", None)
+                        or ""
+                    ).strip()
+                    await self._batch_repo.update_song_draft(
+                        song.id,
+                        resolved_title,
+                        resolved_album,
+                        resolved_lyrics,
+                    )
+                    song.title = resolved_title
+                    song.lyrics = resolved_lyrics
+                    song.album = resolved_album
+
         draft_log.log_suno_callback_succeeded(
             batch_id=str(batch_id),
             song_number=song.batch_index + 1,
@@ -4939,6 +5198,7 @@ class BatchService:
         alt_profile_id: UUID,
         auto_gen_image: bool,
         auto_gsuno: bool,
+        structure_mode: str = "template",
     ) -> int:
         """Calculate total batch cost for the configured automation path.
 
@@ -4964,24 +5224,30 @@ class BatchService:
 
         from platform_api.ai.purposes.draft_routing import build_draft_routing
         from platform_api.services.draft_billing import calculate_batch_draft_cost
+        from platform_api.services.generation_service import STRUCTURE_MODE_SUNO
 
-        routing_lyric = await self._ai_routing_service.resolve("lyric")
-        routing_title = await self._ai_routing_service.resolve("title")
-        routing_album = await self._ai_routing_service.resolve("album")
-        draft_routing = build_draft_routing(routing_lyric, routing_title, routing_album)
+        if structure_mode == STRUCTURE_MODE_SUNO:
+            # Simple mode has no title/lyric draft; albums are charged when the
+            # batch actually names them, so the precheck only covers Suno/image.
+            total_cost = 0
+        else:
+            routing_lyric = await self._ai_routing_service.resolve("lyric")
+            routing_title = await self._ai_routing_service.resolve("title")
+            routing_album = await self._ai_routing_service.resolve("album")
+            draft_routing = build_draft_routing(routing_lyric, routing_title, routing_album)
 
-        try:
-            total_cost = await calculate_batch_draft_cost(
-                self._pricing_service, draft_routing, song_count
-            )
-        except ValidationError:
-            raise
-        except Exception as exc:
-            raise ValidationError(
-                "LLM draft generation pricing is not configured. Cannot estimate batch cost. "
-                "Add approved pricing rows for title, album, and lyric in Admin → Credits → Pricing.",
-                details={"error": str(exc)},
-            ) from exc
+            try:
+                total_cost = await calculate_batch_draft_cost(
+                    self._pricing_service, draft_routing, song_count
+                )
+            except ValidationError:
+                raise
+            except Exception as exc:
+                raise ValidationError(
+                    "LLM draft generation pricing is not configured. Cannot estimate batch cost. "
+                    "Add approved pricing rows for title, album, and lyric in Admin → Credits → Pricing.",
+                    details={"error": str(exc)},
+                ) from exc
 
         if auto_gsuno:
             routing_music = await self._ai_routing_service.resolve("music")
@@ -5761,11 +6027,15 @@ class BatchService:
         model: str,
         *,
         is_retry: bool = False,
+        description: str = "",
     ) -> str:
         """Submit one successful draft to Suno and link the created task back to the batch.
 
         One Suno API job produces Primary + Secondary channel audio; billing is per
         submission, not per downloaded track.
+
+        With `description`, this is Suno Description mode (Simple): no local
+        title/lyrics are sent, and Suno writes both from the prompt.
 
         Song quota / wallet is deducted before the Suno API call. On submit failure
         (or later callback failure via ``_refund_suno_billing``), the song unit and
@@ -5785,10 +6055,21 @@ class BatchService:
             )
             return str(existing.id)
 
-        payload = await self._sanitize_suno_payload(
-            song,
-            batch,
-            is_retry=is_retry,
+        payload = (
+            SunoSanitizedPayload(
+                title="",
+                lyrics="",
+                style="",
+                replacements=(),
+                blocked_terms=(),
+                is_retry=is_retry,
+            )
+            if description.strip()
+            else await self._sanitize_suno_payload(
+                song,
+                batch,
+                is_retry=is_retry,
+            )
         )
         await self._assert_suno_payload_has_no_block_terms(payload, batch=batch)
 
@@ -5835,6 +6116,7 @@ class BatchService:
                     lyrics=payload.lyrics,
                     style=payload.style,
                     instrumental=False,
+                    description=description.strip(),
                 ),
                 skip_pricing=self._enforcement_service is not None,
             )

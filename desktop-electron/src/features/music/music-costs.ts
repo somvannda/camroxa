@@ -27,6 +27,8 @@ export interface PlanCostInput {
   autoUpload: boolean;
   dayCount: number | null;
   imageSourceMode: "ai" | "manual";
+  /** Simple mode: only album naming, no title/lyric draft. */
+  simpleMode?: boolean;
 }
 
 export interface PlanCostBreakdown {
@@ -121,7 +123,9 @@ export function planCostBreakdown(input: PlanCostInput): PlanCostBreakdown | nul
   const albumUnit = operationUnitCost(input.albumCost);
 
   let draftTotal: number | null = null;
-  if (lyricUnit !== null) {
+  if (input.simpleMode) {
+    draftTotal = albumUnit === null ? null : albumUnit * batchCount;
+  } else if (lyricUnit !== null) {
     if (titleUnit !== null && albumUnit !== null) {
       draftTotal = lyricUnit * songJobs + titleUnit * songJobs + albumUnit * batchCount;
     } else {

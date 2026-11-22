@@ -694,7 +694,11 @@ async def suno_callback(
                         ELSE lyrics
                     END,
                     updated_at = NOW()
-                WHERE id = $1 AND source = 'web_music'
+                WHERE id = $1
+                  AND (
+                    source = 'web_music'
+                    OR COALESCE(BTRIM(title), '') IN ('', 'Untitled')
+                  )
                 """,
                 task_id,
                 parsed_urls.title_ok,

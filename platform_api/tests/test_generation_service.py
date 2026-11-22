@@ -900,6 +900,15 @@ class TestSunoRequestHash:
         assert len(h) == 64
         assert all(c in "0123456789abcdef" for c in h)
 
+    def test_description_mode_hashes_the_idea(self):
+        first = compute_suno_request_hash(
+            "V5", "", "", "", False, description="A neon night drive"
+        )
+        second = compute_suno_request_hash(
+            "V5", "", "", "", False, description="A rainy morning"
+        )
+        assert first != second
+
 
 class TestNormalizeText:
     """Tests for _normalize_text."""

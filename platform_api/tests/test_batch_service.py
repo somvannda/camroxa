@@ -2169,6 +2169,124 @@ async def test_execute_batch_submits_suno_for_successful_drafts_when_enabled(
     assert any(call.args == (song_id, "suno_pending") for call in batch_repo.update_song_status.await_args_list)
 
 
+@pytest.mark.asyncio
+async def test_execute_batch_simple_mode_sends_description_without_drafts(
+    monkeypatch: pytest.MonkeyPatch,
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    from platform_api.services.suno_blocklist_service import SunoBlocklistService
+    from platform_api.tests.test_suno_blocklist_service import FakeSunoBlocklistRepo
+
+    monkeypatch.setattr(
+        "platform_api.dependencies.get_suno_blocklist_service",
+        lambda: SunoBlocklistService(FakeSunoBlocklistRepo()),
+    )
+    batch_id = uuid4()
+    song_id = uuid4()
+    task_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    batch = SimpleNamespace(
+        id=batch_id,
+        user_id=user_id,
+        ok_profile_id=UUID("00000000-0000-0000-0000-000000000002"),
+        alt_profile_id=UUID("00000000-0000-0000-0000-000000000003"),
+        song_count=1,
+        language="en",
+        creativity_level=55,
+        auto_gsuno=True,
+        auto_gen_image=False,
+        structure_mode="suno",
+        ok_run_dir=r"D:\Music\bass-drive\2026-07-12_02",
+        alt_run_dir=r"D:\Music\beattok-remixes\2026-07-12_02",
+        ok_album="Generated Album",
+        alt_album="Generated Alt Album",
+    )
+    song = SimpleNamespace(
+        id=song_id,
+        batch_id=batch_id,
+        batch_index=0,
+        user_id=user_id,
+        title="",
+        album=None,
+        lyrics="",
+        description_id=UUID("00000000-0000-0000-0000-000000000004"),
+        structure_id=None,
+        mood_id=None,
+        status="pending",
+    )
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.get_batch_by_id = AsyncMock(return_value=batch)
+    batch_repo.get_songs_by_batch = AsyncMock(return_value=[song])
+    batch_repo.update_batch_status = AsyncMock()
+    batch_repo.claim_batch_channel_albums = AsyncMock(
+        return_value=("Generated Album", "Generated Alt Album")
+    )
+    batch_repo.update_batch_songs_album = AsyncMock()
+    batch_repo.update_song_status = AsyncMock()
+    batch_repo.link_suno_task = AsyncMock()
+    batch_repo.update_suno_download_state = AsyncMock()
+    batch_repo.get_batch_status_counters = AsyncMock(
+        return_value={
+            "total_songs": 1,
+            "drafts_completed": 0,
+            "drafts_failed": 0,
+            "suno_submitted": 1,
+            "suno_completed": 0,
+            "suno_failed": 0,
+            "audio_downloaded": 0,
+            "images_completed": 0,
+        }
+    )
+    generation_service.submit_suno = AsyncMock(return_value=str(task_id))
+    prompt_service.get_description_for_access = AsyncMock(
+        return_value=SimpleNamespace(content="Neon night drive", vocal_profile=None, genres=None)
+    )
+    enforcement_service = AsyncMock()
+    enforcement_service.deduct_for_operation = AsyncMock(return_value=14)
+    ai_routing_service.resolve = AsyncMock(
+        side_effect=lambda operation: SimpleNamespace(
+            provider="suno" if operation == "music" else "deepseek",
+            sub_model="V6" if operation == "music" else "chat",
+        )
+    )
+    settings_service.get_merged_settings = AsyncMock(return_value={"sunoDefaultVersion": "v5"})
+
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+        enforcement_service=enforcement_service,
+    )
+
+    await service.execute_batch(batch_id=batch_id, user_id=str(user_id))
+
+    generation_service.submit_draft.assert_not_awaited()
+    generation_service.submit_suno.assert_awaited_once()
+    _, suno_request = generation_service.submit_suno.await_args.args[:2]
+    assert suno_request.title == ""
+    assert suno_request.lyrics == ""
+    assert suno_request.description == "Neon night drive"
+    draft_operations = [
+        call.args[2]
+        for call in enforcement_service.deduct_for_operation.await_args_list
+        if call.args[2] != "music"
+    ]
+    assert draft_operations == []
+    batch_repo.update_batch_songs_album.assert_awaited_once_with(batch_id, "Generated Album")
+
+
 def test_build_suno_download_target_path_uses_ok_alt_suffixes() -> None:
     ok_path = BatchService._build_suno_download_target_path(
         output_dir=r"D:\Music\bass-drive\2026-07-12_02",

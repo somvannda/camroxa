@@ -1693,7 +1693,7 @@ def build_suno_lyrics_prompt(
 
 
 def compute_suno_request_hash(
-    model: str, title: str, lyrics: str, style: str, instrumental: bool
+    model: str, title: str, lyrics: str, style: str, instrumental: bool, description: str = ""
 ) -> str:
     """Compute SHA-256 hash of a Suno request for deduplication (Requirement 11.5).
 
@@ -1705,6 +1705,7 @@ def compute_suno_request_hash(
         "lyrics": lyrics.strip(),
         "style": style.strip(),
         "instrumental": bool(instrumental),
+        "description": description.strip(),
     }
     payload = json.dumps(normalized, sort_keys=True, ensure_ascii=False).encode()
     return hashlib.sha256(payload).hexdigest()
@@ -2798,6 +2799,7 @@ class GenerationService:
 
         runtime_config = await get_suno_blocklist_service().get_runtime_config()
         is_web_music = str(source or "studio").strip().lower() == "web_music"
+        description = str(request.description or "").strip()
         if is_web_music:
             from platform_api.services.web_music_suno_guard import (
                 is_valid_web_music_title,
@@ -2837,24 +2839,34 @@ class GenerationService:
                 negative_tags=safe_negative,
             )
         else:
-            safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
-            if not safe_title or not is_valid_metadata_name(
-                safe_title, field="title", max_length=255
-            ):
-                raise ValidationError(
-                    "Suno requires a valid song title.",
-                    details={"field": "title", "title": str(request.title or "")[:160]},
+            if description:
+                # Description mode (Simple): Suno writes the title, lyrics and
+                # style from the idea; the studio sends no local draft at all.
+                safe_title = ""
+                safe_lyrics = ""
+                safe_style = sanitize_text_for_suno(
+                    str(request.style or ""), runtime_config=runtime_config
                 )
+                safe_negative = str(request.negative_tags or "").strip()
+            else:
+                safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
+                if not safe_title or not is_valid_metadata_name(
+                    safe_title, field="title", max_length=255
+                ):
+                    raise ValidationError(
+                        "Suno requires a valid song title.",
+                        details={"field": "title", "title": str(request.title or "")[:160]},
+                    )
 
-            safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
-            if not is_valid_metadata_name(safe_title, field="title", max_length=255):
-                raise ValidationError(
-                    "Suno requires a valid song title after blocklist sanitize.",
-                    details={"field": "title"},
-                )
-            safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
-            safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
-            safe_negative = str(request.negative_tags or "").strip()
+                safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
+                if not is_valid_metadata_name(safe_title, field="title", max_length=255):
+                    raise ValidationError(
+                        "Suno requires a valid song title after blocklist sanitize.",
+                        details={"field": "title"},
+                    )
+                safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
+                safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
+                safe_negative = str(request.negative_tags or "").strip()
 
         # Compute request hash for dedup (Req 11.5)
         request_hash = compute_suno_request_hash(
@@ -2863,6 +2875,7 @@ class GenerationService:
             lyrics=safe_lyrics,
             style=safe_style,
             instrumental=request.instrumental,
+            description=description,
         )
 
         # Check for existing task with same hash (studio only — web Create is a
@@ -2936,6 +2949,7 @@ class GenerationService:
                 style_weight=request.style_weight,
                 weirdness_constraint=request.weirdness_constraint,
                 audio_weight=request.audio_weight,
+                description=description,
             )
         except ExternalServiceError as exc:
             # Delivery failure — refund credits (Req 7.6)
