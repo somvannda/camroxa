@@ -152,7 +152,37 @@ async function launch(name, env = {}) {
             total_credits: 1000,
             price_cents: 500,
             display_order: 1,
-            songs_equivalent: 100,
+            songs_equivalent: 200,
+          },
+          {
+            id: "pack-2",
+            slug: "medium",
+            name: "Medium Pack",
+            description: "",
+            total_credits: 2300,
+            price_cents: 1000,
+            display_order: 2,
+            songs_equivalent: 460,
+          },
+          {
+            id: "pack-3",
+            slug: "pro",
+            name: "Pro Pack",
+            description: "",
+            total_credits: 5500,
+            price_cents: 2000,
+            display_order: 3,
+            songs_equivalent: 1100,
+          },
+          {
+            id: "pack-4",
+            slug: "large",
+            name: "Large Pack",
+            description: "",
+            total_credits: 8800,
+            price_cents: 3000,
+            display_order: 4,
+            songs_equivalent: 1760,
           },
         ],
       });
@@ -203,6 +233,14 @@ async function launch(name, env = {}) {
     // Free account: a modal gate opens with packs; the shell stays closed.
     await signIn("free@example.com");
     await window.getByTestId("topup-pack-small").waitFor({ timeout: 10_000 });
+    const packCards = window.locator('[data-testid^="topup-pack-"]');
+    if ((await packCards.count()) !== 4) throw new Error("All four packs must render");
+    const rows = await packCards.evaluateAll((cards) =>
+      cards.map((card) => Math.round(card.getBoundingClientRect().top)),
+    );
+    if (new Set(rows).size !== 1) {
+      throw new Error(`Packs must stay on one row: ${JSON.stringify(rows)}`);
+    }
     if (!(await window.getByText("Top up credits to continue").count())) {
       throw new Error("Top-up modal copy missing");
     }
