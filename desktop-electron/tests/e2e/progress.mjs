@@ -394,6 +394,9 @@ async function successWithManualRecovery() {
   let progressRequests = 0;
   const syncBodies = [];
   const menuCalls = [];
+  const recoveryDir = path.join(artifacts, "e2e-progress-success", "recovered");
+  fs.rmSync(recoveryDir, { recursive: true, force: true });
+  let recoveryUrl = "";
   const rows = successRows();
   let pendingDownloads = { items: [] };
   const { server, port } = await startApi({
@@ -431,7 +434,17 @@ async function successWithManualRecovery() {
     },
     "POST /music/downloads/batch-redownload-plan": (_request, response) => {
       menuCalls.push("redownload-plan");
-      json(response, 200, { items: [] });
+      json(response, 200, {
+        items: [
+          {
+            task_id: "recover-1",
+            title: "Recovered",
+            download_url: recoveryUrl,
+            fallback_download_url: null,
+            target_path: path.join(recoveryDir, "1. Recovered.mp3"),
+          },
+        ],
+      });
     },
     "POST /batches/NS-2601/songs/song-draft-1/retry-draft": (_request, response) => {
       menuCalls.push("retry-draft");
@@ -448,6 +461,7 @@ async function successWithManualRecovery() {
   });
   const downloadsRoot = path.join(artifacts, "e2e-progress-success", "downloads");
   pendingDownloads = downloadsFor(downloadsRoot, `http://127.0.0.1:${port}`);
+  recoveryUrl = `http://127.0.0.1:${port}/downloads/1.mp3`;
 
   const { app, page } = await openApp("success", port);
   try {
@@ -543,6 +557,9 @@ async function successWithManualRecovery() {
       menuCalls.includes("redownload-plan") && menuCalls.includes("sync-local"),
       "Download missing MP3s did not plan and persist the recovery",
     );
+    const recoveredFile = path.join(recoveryDir, "1. Recovered.mp3");
+    assert(fs.existsSync(recoveredFile), "Download missing MP3s did not write the file");
+    assert(fs.statSync(recoveredFile).size === MP3_BYTES.length, "Recovered MP3 has the wrong size");
 
     assert((await rowsLocator.count()) === 7, "Expected seven operational rows");
 
