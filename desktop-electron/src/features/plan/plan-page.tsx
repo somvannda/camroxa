@@ -8,20 +8,11 @@ import { Icon } from "../../components/icon";
 import { toast } from "../../components/toast";
 import { apiRequest, errorMessage } from "../../lib/api";
 import { formatCount, formatCredits, formatDateTime } from "../../lib/format";
+import { CreditPackCard } from "../billing/credit-pack-card";
+import { formatMoney, isPopularPack, type CreditPack } from "../billing/credit-pack";
 import { useAccountOverview } from "../dashboard/use-account-overview";
 import { CheckoutDialog } from "./checkout-dialog";
 import { useInAppCheckout, type PaymentStatus } from "./use-in-app-checkout";
-
-interface CreditPack {
-  id: string;
-  slug: string;
-  name: string;
-  description: string;
-  total_credits: number;
-  price_cents: number;
-  display_order: number;
-  songs_equivalent: number;
-}
 
 interface CreditPackList {
   packs: CreditPack[];
@@ -67,21 +58,6 @@ interface CreditHistoryResponse {
   total: number;
   limit: number;
   offset: number;
-}
-
-function formatMoney(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100);
-}
-
-function extraValue(pack: CreditPack, base: CreditPack | undefined): string {
-  if (!base || base.price_cents <= 0 || pack.price_cents <= 0) return "Base";
-  const baseRate = base.total_credits / base.price_cents;
-  const packRate = pack.total_credits / pack.price_cents;
-  const percent = Math.round((packRate / baseRate - 1) * 100);
-  return percent <= 0 ? "Base" : `+${percent}%`;
 }
 
 function creditUnitsToText(units: number): string {
@@ -385,93 +361,18 @@ export function PlanPage() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {packs.map((pack, index) => {
-              const popular =
-                pack.slug === "medium" ||
-                /medium/i.test(pack.name) ||
-                (packs.length > 1 && index === 0 && packs.length === 1);
-              const extra = extraValue(pack, packs[0]);
-              return (
-                <Card
-                  key={pack.id}
-                  className={
-                    popular
-                      ? "relative flex flex-col border-accent-line p-4"
-                      : "flex flex-col p-4"
-                  }
-                  data-testid={`plan-pack-${pack.slug}`}
-                >
-                  {popular ? (
-                    <span className="absolute right-3 top-3">
-                      <Badge tone="accent">Most popular</Badge>
-                    </span>
-                  ) : null}
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-control bg-accent-soft text-accent">
-                      <Icon name={popular ? "fa-crown" : "fa-bolt"} size={12} />
-                    </span>
-                    <p className="text-body font-semibold text-text-primary">{pack.name}</p>
-                  </div>
-
-                  <div className="mt-3 flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-[26px] font-semibold leading-8 text-text-primary text-tabular">
-                        {formatCredits(pack.total_credits)}
-                      </p>
-                      <p className="text-[10px] uppercase tracking-wide text-text-muted">Credits</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[20px] font-semibold leading-7 text-text-primary text-tabular">
-                        {formatMoney(pack.price_cents)}
-                      </p>
-                      <p className="text-[10px] uppercase tracking-wide text-text-muted">
-                        One-time
-                      </p>
-                    </div>
-                  </div>
-
-                  <dl className="mt-3 divide-y divide-border border-t border-border text-caption">
-                    <div className="flex items-center justify-between gap-2 py-1.5">
-                      <dt className="text-text-muted">Total songs</dt>
-                      <dd className="text-text-secondary text-tabular">
-                        {formatCount(pack.songs_equivalent)}
-                      </dd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 py-1.5">
-                      <dt className="text-text-muted">Extra value</dt>
-                      <dd
-                        className={
-                          extra === "Base"
-                            ? "text-text-secondary text-tabular"
-                            : "text-success text-tabular"
-                        }
-                      >
-                        {extra}
-                      </dd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 py-1.5">
-                      <dt className="text-text-muted">Valid</dt>
-                      <dd className="text-text-secondary">30 days</dd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 py-1.5">
-                      <dt className="text-text-muted">Delivery</dt>
-                      <dd className="text-success">Instant</dd>
-                    </div>
-                  </dl>
-
-                  <Button
-                    variant={popular ? "primary" : "secondary"}
-                    className="mt-4 w-full"
-                    loading={buying === pack.slug}
-                    disabled={Boolean(buying)}
-                    onClick={() => void buy(pack)}
-                    data-testid={`plan-buy-${pack.slug}`}
-                  >
-                    {buying === pack.slug ? "Opening checkout…" : `Buy ${pack.name}`}
-                  </Button>
-                </Card>
-              );
-            })}
+            {packs.map((pack) => (
+              <CreditPackCard
+                key={pack.id}
+                pack={pack}
+                base={packs[0]}
+                popular={isPopularPack(pack)}
+                buying={buying === pack.slug}
+                disabled={Boolean(buying)}
+                onBuy={(next) => void buy(next)}
+                testIdPrefix="plan"
+              />
+            ))}
           </div>
         )}
 

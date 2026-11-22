@@ -4,21 +4,12 @@ import { Button } from "../../components/button";
 import { Card } from "../../components/card";
 import { Icon } from "../../components/icon";
 import { apiRequest, errorMessage } from "../../lib/api";
-import { formatCount, formatCredits } from "../../lib/format";
+import { formatCredits } from "../../lib/format";
 import { useSessionStore } from "../../store/session";
+import { CreditPackCard } from "../billing/credit-pack-card";
+import { isPopularPack, type CreditPack } from "../billing/credit-pack";
 import { CheckoutDialog } from "../plan/checkout-dialog";
 import { useInAppCheckout, type PaymentStatus } from "../plan/use-in-app-checkout";
-
-interface CreditPack {
-  id: string;
-  slug: string;
-  name: string;
-  description: string;
-  total_credits: number;
-  price_cents: number;
-  display_order: number;
-  songs_equivalent: number;
-}
 
 interface CreditPackList {
   packs: CreditPack[];
@@ -32,10 +23,6 @@ interface PurchaseTopup {
   amount_cents: number;
   qr_string?: string;
   expires_at?: string;
-}
-
-function formatMoney(cents: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
 async function fetchPacks(): Promise<CreditPack[]> {
@@ -156,7 +143,7 @@ export function TopUpModal() {
 
   return (
     <div className="flex h-full items-center justify-center bg-bg p-6">
-      <Card className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden p-0">
+      <Card className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden p-0">
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>
             <p className="text-caption text-text-muted">DESKTOP STUDIO</p>
@@ -213,9 +200,9 @@ export function TopUpModal() {
           ) : null}
 
           {packsQuery.isLoading ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {[0, 1, 2, 3].map((index) => (
-                <div key={index} className="h-28 animate-pulse rounded-card bg-surface-2" />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="h-44 animate-pulse rounded-card bg-surface-2" />
               ))}
             </div>
           ) : packsQuery.isError ? (
@@ -233,35 +220,18 @@ export function TopUpModal() {
               No credit packs are published for this account yet.
             </p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {packs.map((pack) => (
-                <div
+                <CreditPackCard
                   key={pack.id}
-                  className="flex flex-col rounded-card border border-border bg-surface-1 p-4"
-                  data-testid={`topup-pack-${pack.slug}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-body font-semibold text-text-primary">{pack.name}</p>
-                    <p className="text-meta text-text-secondary">{formatMoney(pack.price_cents)}</p>
-                  </div>
-                  <p className="mt-2 text-[24px] font-semibold leading-7 text-text-primary text-tabular">
-                    {formatCredits(pack.total_credits)}
-                    <span className="ml-1 text-meta font-normal text-text-muted">credits</span>
-                  </p>
-                  <p className="text-caption text-text-muted">
-                    ≈ {formatCount(pack.songs_equivalent)} songs
-                  </p>
-                  <Button
-                    variant="primary"
-                    className="mt-3 w-full"
-                    loading={buying === pack.slug}
-                    disabled={Boolean(buying)}
-                    onClick={() => void buy(pack)}
-                    data-testid={`topup-buy-${pack.slug}`}
-                  >
-                    Buy {formatMoney(pack.price_cents)}
-                  </Button>
-                </div>
+                  pack={pack}
+                  base={packs[0]}
+                  popular={isPopularPack(pack)}
+                  buying={buying === pack.slug}
+                  disabled={Boolean(buying)}
+                  onBuy={(next) => void buy(next)}
+                  testIdPrefix="topup"
+                />
               ))}
             </div>
           )}

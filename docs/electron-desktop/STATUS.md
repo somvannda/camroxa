@@ -265,9 +265,11 @@ shell chunk is ~333 kB (103 kB gzip).
   editor view cannot cut them off.
 - Free accounts land on a full-page native **top-up** surface, not a portal or webview: pack grid,
   one click creates the ChmabaPay KHQR and shows it natively, with “I’ve paid — check access” and
-  “Use a different account”. The login fallback now asks the user to sign in instead of opening
-  the web billing page. The sandbox API was hotfixed (auth/desktop_access) and restarted so free
-  accounts can authenticate for this flow; generation remains paid-gated.
+  “Use a different account”. The top-up page and Plan page share the same `CreditPackCard`
+  (Most popular, credits/price, songs, extra value, validity, instant delivery), so packs read
+  the same everywhere. The login fallback now asks the user to sign in instead of opening the web
+  billing page. The sandbox API was hotfixed (auth/desktop_access) and restarted so free accounts
+  can authenticate for this flow; generation remains paid-gated.
 - Vizzy Export mirrors the editor's own Export dialog field-for-field: encoder (WASM /
   WebCodecs), the full resolution list, 24/30/60 fps, H.264/VP9/VP8, bitrate, CRF, preset,
   profile, audio bitrate, start/end and the estimated size, with the same defaults (60 fps,
