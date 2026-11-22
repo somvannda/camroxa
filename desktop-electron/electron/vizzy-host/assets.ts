@@ -37,7 +37,7 @@ export const VIZZY_CONTENT_SECURITY_POLICY = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: camxora-media:",
   "media-src 'self' blob: camxora-media:",
   "connect-src 'self' blob: data: camxora-media:",
   "font-src 'self' data:",
