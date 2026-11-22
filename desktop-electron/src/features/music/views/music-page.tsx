@@ -124,6 +124,7 @@ export function MusicPage() {
 
   const [settings, setSettings] = useState<MusicSettings>(DEFAULT_MUSIC_SETTINGS);
   const [settingsReady, setSettingsReady] = useState(false);
+  const selectionTouched = useRef(false);
   const [composer, setComposer] = useState<ComposerState>(blankComposer);
   const [descriptions, setDescriptions] = useState<PromptOption[]>([]);
   const [structures, setStructures] = useState<PromptOption[]>([]);
@@ -185,6 +186,16 @@ export function MusicPage() {
       );
     }
     setComposer((current) => {
+      if (selectionTouched.current) {
+        // Once the user has chosen channels, a background data refresh must not
+        // re-seed the pair from older persisted settings.
+        const valid = new Set(data.profiles.map((profile) => profile.id));
+        return {
+          ...current,
+          primaryIds: current.primaryIds.filter((id) => valid.has(id)),
+          secondaryIds: current.secondaryIds.filter((id) => valid.has(id)),
+        };
+      }
       const primaryFallback = data.profiles.length > 0 ? [data.profiles[0].id] : [];
       // Pairing needs two distinct channels; never default both sides to the
       // same profile (the lists hide each other's selection).
@@ -345,29 +356,40 @@ export function MusicPage() {
     setComposer((current) => ({ ...current, ...patch }));
   };
 
-  const toggleProfile = (side: "primary" | "secondary", profileId: string) => {
-    setComposer((current) => {
-      if (side === "primary") {
-        const primaryIds = toggleSelection(current.primaryIds, profileId);
-        // A channel can only be paired once, so selecting it on one side
-        // removes it from the other side instead of leaving a stale duplicate.
-        return {
-          ...current,
-          primaryIds,
-          secondaryIds: primaryIds.includes(profileId)
-            ? current.secondaryIds.filter((id) => id !== profileId)
-            : current.secondaryIds,
-        };
-      }
-      const secondaryIds = toggleSelection(current.secondaryIds, profileId);
-      return {
-        ...current,
-        secondaryIds,
-        primaryIds: secondaryIds.includes(profileId)
-          ? current.primaryIds.filter((id) => id !== profileId)
-          : current.primaryIds,
-      };
+  const persistSelection = (primaryIds: string[], secondaryIds: string[]) => {
+    void apiRequest({
+      method: "PATCH",
+      path: "/settings",
+      body: { primaryProfileIds: primaryIds, secondaryProfileIds: secondaryIds },
+    }).catch(() => {
+      // Autosave will retry the same keys; a transient failure must not block UI.
     });
+  };
+
+  const toggleProfile = (side: "primary" | "secondary", profileId: string) => {
+    selectionTouched.current = true;
+    let primaryIds = composer.primaryIds;
+    let secondaryIds = composer.secondaryIds;
+    if (side === "primary") {
+      primaryIds = toggleSelection(primaryIds, profileId);
+      // A channel can only be paired once, so selecting it on one side removes
+      // it from the other side instead of leaving a stale duplicate.
+      if (primaryIds.includes(profileId)) {
+        secondaryIds = secondaryIds.filter((id) => id !== profileId);
+      }
+    } else {
+      secondaryIds = toggleSelection(secondaryIds, profileId);
+      if (secondaryIds.includes(profileId)) {
+        primaryIds = primaryIds.filter((id) => id !== profileId);
+      }
+    }
+    setComposer((current) => ({ ...current, primaryIds, secondaryIds }));
+    setSettings((current) => ({
+      ...current,
+      primaryProfileIds: primaryIds,
+      secondaryProfileIds: secondaryIds,
+    }));
+    persistSelection(primaryIds, secondaryIds);
   };
 
   const chooseDescription = (id: string) => {
