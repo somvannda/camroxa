@@ -22,7 +22,7 @@ import {
   type ProjectSnapshot,
 } from "../services/pipeline-templates";
 import { buildPipelineRenderPlan } from "../services/pipeline-run";
-import { readVideoTemplate, saveVideoTemplate } from "../services/video-templates";
+import { readVideoTemplate, listVideoTemplates, saveVideoTemplate } from "../services/video-templates";
 import {
   bindingsFromSelection,
   firstBindingError,
@@ -122,6 +122,8 @@ const saveTemplateSchema = z
     bindings: bindingSelectionSchema.optional(),
     /** Export-dialog settings to persist with the template. */
     exportSettings: exportSettingsSchema.optional(),
+    /** Existing template id to replace; omitted means save a new template. */
+    templateId: z.string().min(1).max(200).optional(),
   })
   .strict();
 
@@ -374,6 +376,11 @@ export function registerVizzyIpc(host: VizzyHost): void {
         kind: inferKind(width, height),
         detected,
         options,
+        existing: listVideoTemplates(getAppPaths().templates).map((template) => ({
+          id: template.id,
+          name: template.name,
+          kind: template.kind,
+        })),
       });
     } catch (error) {
       return fail("VIZZY_NOT_READY", messageOf(error));
@@ -421,6 +428,8 @@ export function registerVizzyIpc(host: VizzyHost): void {
         bindings,
         kind: input.kind,
         exportSettings: input.exportSettings,
+        id: input.templateId,
+        overwrite: Boolean(input.templateId),
       });
       notifyVideoTemplatesChanged({ id: saved.id, action: "saved" });
       return ok(toVideoTemplateInfo(saved));

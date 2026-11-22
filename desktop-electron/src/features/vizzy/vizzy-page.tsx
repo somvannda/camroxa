@@ -190,6 +190,7 @@ export function VizzyPage() {
         const response = await window.camxora.vizzy.saveTemplate({
           name: draft.name.trim(),
           kind: draft.kind,
+          templateId: draft.templateId,
           exportSettings: templateExportSettings,
         });
         if (!response.ok) {

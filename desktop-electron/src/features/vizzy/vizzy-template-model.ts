@@ -28,6 +28,8 @@ export interface TemplateDraftState {
   name: string;
   kind: PipelineKind;
   selection: BindingSelection;
+  /** Existing template to replace; omitted saves a new one. */
+  templateId?: string;
 }
 
 export interface TemplateDraftErrors {

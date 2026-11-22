@@ -107,6 +107,8 @@ export function saveVideoTemplate(input: {
   kind?: PipelineKind;
   /** Export-dialog choices captured with the template. */
   exportSettings?: import("./pipeline-templates").PipelineExportSettings;
+  /** Existing template id to replace when overwriting. */
+  overwrite?: boolean;
   /** Test hook; normal saves get a unique slug id. */
   id?: string;
   createdAt?: string;
@@ -115,13 +117,24 @@ export function saveVideoTemplate(input: {
   if (!read.ok) throw new Error(read.message);
 
   const root = ensureRoot(input.root);
+  let existingCreatedAt: string | undefined;
+  if (input.id && fs.existsSync(path.join(root, input.id, PIPELINE_FILE))) {
+    try {
+      const existing = validatePipelineTemplate(
+        JSON.parse(fs.readFileSync(path.join(root, input.id, PIPELINE_FILE), "utf8")),
+      );
+      existingCreatedAt = existing.createdAt;
+    } catch {
+      // A broken existing template is replaced instead of blocking the save.
+    }
+  }
   const pipeline = buildPipelineTemplate({
     name: input.name,
     snapshot: read.snapshot,
     bindings: input.bindings,
     kind: input.kind,
     exportSettings: input.exportSettings,
-    createdAt: input.createdAt,
+    createdAt: input.createdAt ?? existingCreatedAt,
   });
 
   let thumbnail: Buffer | null = null;
@@ -139,7 +152,10 @@ export function saveVideoTemplate(input: {
   }
   const finalDir = path.join(root, id);
   if (!inside(root, finalDir)) throw new Error("That template path is outside the library.");
-  if (fs.existsSync(finalDir)) throw new Error("A video template with that id already exists.");
+  const replacing = fs.existsSync(finalDir);
+  if (replacing && input.overwrite !== true) {
+    throw new Error("A video template with that id already exists.");
+  }
 
   const tempDir = path.join(root, `.tmp-${crypto.randomUUID()}`);
   fs.mkdirSync(tempDir, { recursive: true });
@@ -147,7 +163,21 @@ export function saveVideoTemplate(input: {
     atomicWriteText(path.join(tempDir, PROJECT_FILE), serialiseProjectFile(read.snapshot));
     atomicWriteText(path.join(tempDir, PIPELINE_FILE), JSON.stringify(pipeline, null, 2) + "\n");
     if (thumbnail) fs.writeFileSync(path.join(tempDir, THUMBNAIL_FILE), thumbnail);
-    fs.renameSync(tempDir, finalDir);
+    if (replacing) {
+      // Replace the whole folder: a fresh project, pipeline and (or no) thumbnail.
+      const backup = path.join(root, `.bak-${crypto.randomUUID()}`);
+      fs.renameSync(finalDir, backup);
+      try {
+        fs.renameSync(tempDir, finalDir);
+        fs.rmSync(backup, { recursive: true, force: true });
+      } catch (error) {
+        fs.rmSync(finalDir, { recursive: true, force: true });
+        if (fs.existsSync(backup)) fs.renameSync(backup, finalDir);
+        throw error;
+      }
+    } else {
+      fs.renameSync(tempDir, finalDir);
+    }
   } catch (error) {
     fs.rmSync(tempDir, { recursive: true, force: true });
     throw error;

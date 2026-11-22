@@ -42,15 +42,23 @@ export function VizzyTemplateDialog({
 }: VizzyTemplateDialogProps) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<PipelineKind>("long");
+  const [templateId, setTemplateId] = useState("");
 
   useEffect(() => {
     if (!info) return;
     setName(info.name);
     setKind(info.kind);
+    setTemplateId("");
   }, [info]);
 
+  const existing = info?.existing.find((template) => template.id === templateId) ?? null;
   const draft: TemplateDraftState | null = info
-    ? { name, kind, selection: info.detected }
+    ? {
+        name,
+        kind,
+        selection: info.detected,
+        templateId: templateId || undefined,
+      }
     : null;
   const errors = info && draft ? templateDraftErrors(info, draft, name) : null;
   const canSave = Boolean(info && draft && errors && !errors.summary && !saving && !loading);
@@ -80,6 +88,32 @@ export function VizzyTemplateDialog({
               </p>
             ) : info && draft ? (
               <>
+                <label className="block space-y-1">
+                  <span className="text-caption text-text-muted">Save to</span>
+                  <Select
+                    value={templateId}
+                    options={[
+                      { value: "", label: "New template" },
+                      ...info.existing.map((template) => ({
+                        value: template.id,
+                        label: `${template.name} (${template.kind})`,
+                      })),
+                    ]}
+                    onValueChange={(value) => {
+                      setTemplateId(value);
+                      const target = info.existing.find((template) => template.id === value);
+                      if (target) {
+                        setName(target.name);
+                        setKind(target.kind);
+                      } else {
+                        setName(info.name);
+                        setKind(info.kind);
+                      }
+                    }}
+                    data-testid="vizzy-template-target"
+                  />
+                </label>
+
                 <div className="grid grid-cols-[1fr_150px] gap-3">
                   <label className="block space-y-1">
                     <span className="text-caption text-text-muted">Name</span>
@@ -100,6 +134,7 @@ export function VizzyTemplateDialog({
                         { value: "reel", label: "Reel" },
                       ]}
                       onValueChange={(value) => setKind(value === "reel" ? "reel" : "long")}
+                      disabled={Boolean(existing)}
                       data-testid="vizzy-template-kind"
                     />
                   </label>
@@ -149,7 +184,7 @@ export function VizzyTemplateDialog({
                     data-testid="vizzy-template-save"
                   >
                     <Icon name="fa-floppy-disk" size={12} />
-                    Save template
+                    {existing ? "Update template" : "Save template"}
                   </Button>
                 </div>
               </>

@@ -240,12 +240,16 @@ export interface VizzyTemplateDraftInfo {
   /** Binding pre-fill from `detectBindings()`, filtered to compatible options. */
   detected: BindingSelection;
   options: BindingOptions;
+  /** Templates that can be overwritten instead of creating a new one. */
+  existing: Array<{ id: string; name: string; kind: "long" | "reel" }>;
 }
 
 /** `vizzy:save-template` request; the host supplies the snapshot and thumbnail. */
 export interface VizzySaveTemplateInput {
   name: string;
   kind: "long" | "reel";
+  /** Existing template id: replace it with the current preview. */
+  templateId?: string;
   /** Omitted: the host saves every detected binding automatically. */
   bindings?: BindingSelection;
   /** Export-dialog settings that pipeline renders should reuse. */

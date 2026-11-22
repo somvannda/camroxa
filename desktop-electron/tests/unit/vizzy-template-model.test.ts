@@ -137,6 +137,7 @@ describe("template draft", () => {
     kind: "long" as const,
     detected: selectionFromDetected(detectBindings(snapshot()), optionsFor()),
     options: optionsFor(),
+    existing: [],
   };
 
   it("infers long/reel from the output aspect", () => {

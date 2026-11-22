@@ -325,6 +325,36 @@ try {
   await window.screenshot({ path: path.join(artifacts, "templates-panel.png") });
   step("templates rail verified");
 
+  // --- Save as an existing template (overwrite in place) -------------------
+  await window.getByTestId("vizzy-export-open").click();
+  await window.getByTestId("vizzy-export-menu").waitFor({ timeout: 10_000 });
+  await window.getByTestId("vizzy-export-bitrate").fill("60");
+  await window.getByRole("button", { name: "Close export settings" }).click();
+  await window.getByTestId("vizzy-export-menu").waitFor({ state: "detached", timeout: 10_000 });
+
+  await window.getByTestId("vizzy-template-open").click();
+  const overwriteDialog = window.getByTestId("vizzy-template-dialog");
+  await overwriteDialog.waitFor({ timeout: 20_000 });
+  const target = window.getByTestId("vizzy-template-target");
+  await target.click();
+  await window.getByRole("option", { name: new RegExp(TEMPLATE_NAME) }).click();
+  if ((await target.getAttribute("data-selected-value")) !== templateId) {
+    fail("The existing template was not selected as the save target");
+  }
+  await window.getByTestId("vizzy-template-save").click();
+  await overwriteDialog.waitFor({ state: "detached", timeout: 30_000 });
+  const afterOverwrite = fs.readdirSync(templatesDir).filter((name) => !name.startsWith("."));
+  if (afterOverwrite.length !== 1 || afterOverwrite[0] !== templateId) {
+    fail(`Overwrite must keep one template with id ${templateId}: ${JSON.stringify(afterOverwrite)}`);
+  }
+  const overwritten = JSON.parse(
+    fs.readFileSync(path.join(templatesDir, templateId, "pipeline.json"), "utf8"),
+  );
+  if (overwritten.name !== TEMPLATE_NAME || overwritten.export?.bitrate !== 60) {
+    fail(`Overwrite did not update the saved template: ${JSON.stringify(overwritten)}`);
+  }
+  step("existing template overwritten");
+
   // --- Preview: the saved project is loaded semantically unchanged --------
   await row.getByTestId("vizzy-template-preview").click();
   const liveProject = await poll(

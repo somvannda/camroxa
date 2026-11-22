@@ -73,6 +73,32 @@ describe("video templates", () => {
     ).toThrow(/already exists/i);
   });
 
+  it("overwrites an existing template in place when asked", () => {
+    const root = tempRoot();
+    const first = saveVideoTemplate({
+      root,
+      name: "Trap Motion",
+      snapshotJson: fixture,
+      thumbnail: PNG,
+      createdAt: "2026-11-19T00:00:00.000Z",
+    });
+    const updated = saveVideoTemplate({
+      root,
+      id: first.id,
+      overwrite: true,
+      name: "Trap Motion Updated",
+      snapshotJson: fixture,
+    });
+    expect(updated.id).toBe(first.id);
+    expect(updated.name).toBe("Trap Motion Updated");
+    const detail = readVideoTemplate(root, first.id);
+    expect(detail.pipeline.name).toBe("Trap Motion Updated");
+    expect(detail.pipeline.createdAt).toBe("2026-11-19T00:00:00.000Z");
+    expect(listVideoTemplates(root)).toHaveLength(1);
+    expect(fs.existsSync(path.join(root, first.id, "thumbnail.png"))).toBe(false);
+    expect(fs.readdirSync(root).some((name) => name.startsWith(".bak-"))).toBe(false);
+  });
+
   it("rejects invalid snapshots, thumbnails and ids", () => {
     const root = tempRoot();
     expect(() => saveVideoTemplate({ root, name: "Bad", snapshotJson: "{}" })).toThrow(
