@@ -1,9 +1,9 @@
 # Implementation Status
 
-> **Updated:** 2026-11-19
+> **Updated:** 2026-11-22
 > **Worktree:** `G:\Developments\Projects\Camxora Desktop`
 > **Branch:** `desktop/electron-v1`
-> **Phase:** P1–P8 complete; downloads and manual YouTube upload merged; packaging remains
+> **Phase:** P1–P8 complete; packaging produces a Windows NSIS installer that defaults to production
 
 ---
 
@@ -19,7 +19,7 @@
 | FFmpeg | probe, transcode queue, progress/cancel, E2E availability |
 | Logging/diagnostics | JSONL, redaction, renderer console/load logging, error boundary |
 | CI | Windows workflow: typecheck/lint/test/build/E2E |
-| Packaging | unpacked Windows build launched |
+| Packaging | `npm run package:win` produces `release/Camxora-2.0.0-setup.exe`; a packaged app defaults to `https://api.camxora.com/api/v1` (unpackaged dev still defaults to localhost) |
 | **P1 auth** | Email/password, remember-me, Google OAuth loopback, in-app credits/top-up gate, email-confirmation gate, sign-out, dev/E2E bypass. Free accounts can sign in and buy credits in the app; generation stays gated server-side. A missing channel profile is not a gate |
 | **P1 updates** | HTTPS release manifest, mandatory blocking gate, optional update card, download hand-off, unit + E2E coverage |
 | **P2 account** | Dashboard (KPIs, weekly chart, quota, activity) and Profile (account, membership, channels, activity) |
@@ -39,6 +39,7 @@
 | **P7 merge groundwork** | FFmpeg concat planning (copy/re-encode), escaped list files, timeout/cleanup and long/reel output naming |
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio+background→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; **auto-video coordinator** polls Progress every 12 s and starts long/reel branches independently with the generated 16:9/9:16 background; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
+| **P7 output layout** | Pipeline renders write beside their audio in the downloaded run folder under the configured Suno output directory (`<song>.mp4`, `<song>-reel.mp4`), never the managed `renders/` folder. The merged file is `<album><MMDD>.mp4`; a second merge on the same day becomes `<album><MMDD> (1).mp4`. Editor/manual exports still use `renders/` |
 | **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **P4 downloads** | Main-process coordinator (`download-coordinator.ts` + `download-targets.ts` + `download-io.ts`, `electron/ipc/downloads.ts`): 12 s/4 s polling, bounded concurrency, atomic temp→rename, 3-attempt backoff, dedupe, skip-if-present, cancel/pause/retry/reveal, completion sync; Progress shows live bytes and real actions; unit + `downloads` E2E |
 | **Manual YouTube upload** | Ported 1.7.1 flow behind an explicit Progress action: access token → `POST /publish/jobs` → resumable `videos.insert` (chunks, 308 resume, retry) → `/youtube/uploads/report` → `/publish/jobs/{uid}/complete`; playlist, cancel, retry and readable disable reasons. Auto-Upload stays disabled |
@@ -48,7 +49,7 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               389/389 PASS
+npm test               392/392 PASS
 npm run build          PASS (shell bundle unchanged; pages split)
 npm run vizzy:parity   PASS (59 decompile files; only 4 intentional patches + 3 host shims)
 npm run test:e2e       PASS (18 suites incl. downloads, auto-video, pipeline-batch and youtube-upload)
@@ -57,7 +58,7 @@ node tests/e2e/youtube-upload.mjs PASS (job, 3 chunks resuming at 308, report, c
                                       cancel, quota failure + /retry, Auto-Upload disabled)
 npm run api:check      PASS
 npm audit --omit=dev   0 vulnerabilities
-npx electron-builder --win --dir   Not re-run after the feature work; packaging is P9
+npm run package:win    PASS (`release/Camxora-2.0.0-setup.exe`)
 ```
 
 P8 was merged after the settings suite passed; the branch’s only extra requirement was the

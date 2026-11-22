@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain } from "electron";
+import { resolveApiBaseUrl, resolvePortalBaseUrl } from "../services/endpoints";
 import { logger } from "../services/logger";
 import { devAuthBypass } from "../shared/flags";
 import { ok, type AppInfo } from "../shared/types";
@@ -6,9 +7,7 @@ import { APP_NAME, APP_VERSION } from "../shared/version";
 
 export function registerSystemIpc(): void {
   ipcMain.handle("app:info", (): AppInfo => {
-    const apiBaseUrl =
-      process.env.CAMXORA_API_BASE_URL?.replace(/\/+$/, "") ??
-      "http://127.0.0.1:8000/api/v1";
+    const apiBaseUrl = resolveApiBaseUrl();
     const env =
       process.env.CAMXORA_BUILD_ENV ??
       (/sandbox/i.test(apiBaseUrl)
@@ -27,7 +26,7 @@ export function registerSystemIpc(): void {
       chrome: process.versions.chrome ?? "",
       node: process.versions.node ?? "",
       devBypass: devAuthBypass(),
-      portalUrl: process.env.CAMXORA_PORTAL_BASE_URL ?? "https://app.camxora.com",
+      portalUrl: resolvePortalBaseUrl(),
       build: process.env.CAMXORA_BUILD_ID ?? (app.isPackaged ? "release" : "dev"),
       apiBaseUrl,
     };

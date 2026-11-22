@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { BrowserWindow } from "electron";
+import { resolveApiBaseUrl } from "./endpoints";
 import {
   type InstallTemplateRequest,
   type InstallTemplateResult,
@@ -38,9 +39,7 @@ export class TemplateInstallError extends Error {
 }
 
 function apiBaseUrl(): string {
-  return (
-    process.env.CAMXORA_API_BASE_URL?.replace(/\/+$/, "") ?? "http://127.0.0.1:8000/api/v1"
-  );
+  return resolveApiBaseUrl();
 }
 
 function authHeaders(accept: string): Record<string, string> {

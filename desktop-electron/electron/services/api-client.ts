@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+import { resolveApiBaseUrl, resolvePortalBaseUrl } from "./endpoints";
 import { sessionStore } from "./session";
 import {
   DESKTOP_PLAN_REQUIRED_CODE,
@@ -36,10 +37,7 @@ export class ApiClientError extends Error {
 }
 
 function apiBaseUrl(): string {
-  return (
-    process.env.CAMXORA_API_BASE_URL?.replace(/\/+$/, "") ??
-    "http://127.0.0.1:8000/api/v1"
-  );
+  return resolveApiBaseUrl();
 }
 
 /** Swap the trailing `/api/vN` when a route only exists on another surface. */
@@ -55,8 +53,7 @@ export function getApiBaseUrl(): string {
 }
 
 export function portalBaseUrl(): string {
-  const configured = (process.env.CAMXORA_PORTAL_BASE_URL ?? "").trim().replace(/\/+$/, "");
-  return configured || "https://app.camxora.com";
+  return resolvePortalBaseUrl();
 }
 
 function buildUrl(request: ApiRequest): string {
