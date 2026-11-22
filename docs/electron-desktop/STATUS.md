@@ -28,7 +28,7 @@
 | **Shell guard** | Unsaved settings block sidebar navigation with a Stay / Discard-and-leave confirm |
 | **Shell footer parity** | 40 px footer with Ready, Local/Sandbox/Dev API badge, `v2.0.0`, live credits and profile allowance; auth footer shows env/version only |
 | **Update parity** | Checks the platform `/public/desktop-release`, blocks before auth on mandatory offers, persists the gate across restart/unreachable checks and clears it on withdrawal |
-| **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary |
+| **Device paths** | FFmpeg and Suno output paths persist locally, and FFmpeg resolution prefers the configured binary. Portable backend run keys (`profile\date_album`) and relative image outputs resolve under the Suno output folder, so Open folder, image preview and batch folder creation work from any page |
 | **P7 host spike** | `camxora-vizzy://` + loopback, all isolation/WebGL/worker/WASM checks pass; see [`vizzy/HOST-SPIKE.md`](vizzy/HOST-SPIKE.md) |
 | **P7 Vizzy host** | Vendored Rea editor served from `camxora-vizzy://`, sandboxed `WebContentsView`, native open/save, crash recovery, shell strip; see [`vizzy/INTEGRATION-STATUS.md`](vizzy/INTEGRATION-STATUS.md) |
 | **P7 template library** | All 91 templates staged with a manifest (`vizzy-library/`, 263.4 MB), safe slug-only reader, thumbnails allowed through `camxora-media://`; the editor's Creations browser lists and previews all 91, and `test:e2e:library` imports **91/91** with 0 skipped and exports one to a validated MP4 |
@@ -40,6 +40,8 @@
 | **P7 queue groundwork** | Durable `pipeline_jobs` queue with dedupe/retry, next-item API, and a sequential runner with failure isolation, stop and merge hooks |
 | **P7 batch orchestration** | Offscreen Vizzy render host (hidden `BrowserWindow`, dedicated `vizzy-render` partition) shared export session, template→plan→audio+background→export→ffprobe→merge orchestrator, `pipeline_*` IPC, durable batches; **auto-video coordinator** polls Progress every 12 s and starts long/reel branches independently with the generated 16:9/9:16 background; Progress “Video pipeline” table with real Cancel/Retry/Reveal; `pipeline-batch` E2E (no `/vizzy` open); reel 1080×1920 verified |
 | **P7 output layout** | Pipeline renders write beside their audio in the downloaded run folder under the configured Suno output directory (`<song>.mp4`, `<song>-reel.mp4`), never the managed `renders/` folder. The merged file is `<album><MMDD>.mp4`; a second merge on the same day becomes `<album><MMDD> (1).mp4`. Editor/manual exports still use `renders/` |
+| **Music Simple mode** | Simple mode is prompt-only: no content pools, moods, structures, titles or lyrics are generated locally. Camxora names only the album (needed for run folders); Suno Description mode writes the title and lyrics from the selected description. The callback copies Suno's title/lyrics onto the song before image jobs; retries resubmit the description. Covered by `test_batch_service.py` and `test_generation_service.py`. Deployed to sandbox only; production deploy awaits approval |
+| **Image previews** | The Image page reads a local output first, then falls back to `GET /image-jobs/{id}/output` (session auth) for AI outputs that only exist on the server/B2. Fetched bytes are cached at the portable run path under the Suno folder, so the auto-video coordinator can reuse them as backgrounds |
 | **P8 settings catalogs** | Descriptions, Structures, Moods (workspace defaults + paired structure + user prompt CRUD), Pools (read-only stats/table/pager) and Suno (bounded defaults); save-all covers all writable tabs |
 | **P4 downloads** | Main-process coordinator (`download-coordinator.ts` + `download-targets.ts` + `download-io.ts`, `electron/ipc/downloads.ts`): 12 s/4 s polling, bounded concurrency, atomic temp→rename, 3-attempt backoff, dedupe, skip-if-present, cancel/pause/retry/reveal, completion sync; Progress shows live bytes and real actions; unit + `downloads` E2E |
 | **Manual YouTube upload** | Ported 1.7.1 flow behind an explicit Progress action: access token → `POST /publish/jobs` → resumable `videos.insert` (chunks, 308 resume, retry) → `/youtube/uploads/report` → `/publish/jobs/{uid}/complete`; playlist, cancel, retry and readable disable reasons. Auto-Upload stays disabled |
@@ -49,7 +51,11 @@
 ```text
 npm run typecheck      PASS
 npm run lint           PASS
-npm test               394/394 PASS
+npm test               397/397 PASS
+python -m pytest platform_api/tests/test_generation_service.py \
+  platform_api/tests/test_callbacks_router.py platform_api/tests/test_batch_router.py \
+  platform_api/tests/test_batch_preflight_credits_only.py \
+  platform_api/tests/test_music_downloads_router.py            PASS (93)
 npm run build          PASS (shell bundle unchanged; pages split)
 npm run vizzy:parity   PASS (59 decompile files; only 4 intentional patches + 3 host shims)
 npm run test:e2e       PASS (18 suites incl. downloads, auto-video, pipeline-batch and youtube-upload)

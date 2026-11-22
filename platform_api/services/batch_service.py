@@ -1275,12 +1275,14 @@ class BatchService:
         if alt_album and self._album_names_equal(alt_album, ok_album):
             alt_album = self._fallback_distinct_album(ok_album)
 
-        await self._batch_repo.claim_batch_channel_albums(
+        locked_ok, locked_alt = await self._batch_repo.claim_batch_channel_albums(
             batch.id,
             ok_album=ok_album,
             alt_album=alt_album or None,
         )
-        batch.ok_album = ok_album
+        ok_album = str(locked_ok or ok_album).strip()
+        alt_album = str(locked_alt or alt_album or "").strip()
+        batch.ok_album = ok_album or None
         batch.alt_album = alt_album or None
         batch = await self._assign_batch_run_directories_if_needed(
             batch,

@@ -4,13 +4,16 @@
  *
  * Run after `npm run package:win`:
  *   node tests/e2e/packaged-smoke.mjs
+ *   CAMXORA_PACKAGED_EXE=... node tests/e2e/packaged-smoke.mjs
  */
 import fs from "node:fs";
 import path from "node:path";
 import { _electron as electron } from "playwright";
 
 const root = process.cwd();
-const exe = path.join(root, "release", "win-unpacked", "Camxora.exe");
+const exe =
+  process.env.CAMXORA_PACKAGED_EXE ??
+  path.join(root, "release", "win-unpacked", "Camxora.exe");
 if (!fs.existsSync(exe)) {
   throw new Error(`Packaged app not found: ${exe}`);
 }
@@ -47,6 +50,20 @@ try {
     throw new Error(`Unexpected portal base: ${portalUrl}`);
   }
   await window.getByText("Welcome back.", { exact: true }).waitFor({ timeout: 30_000 });
+
+  const sunoRoot = path.join(root, "artifacts", "packaged-smoke", "suno");
+  await window.evaluate(
+    async (dir) => window.camxora.preferences.setDevice({ sunoOutputDir: dir }),
+    sunoRoot,
+  );
+  const ensured = await window.evaluate(async () =>
+    window.camxora.files.ensureDir("bass-drive\\2026-11-22_Test"),
+  );
+  const expectedDir = path.join(sunoRoot, "bass-drive", "2026-11-22_Test");
+  if (!ensured.ok || path.normalize(ensured.data) !== path.normalize(expectedDir)) {
+    throw new Error(`Packaged relative path did not resolve under Suno: ${JSON.stringify(ensured)}`);
+  }
+
   console.log(
     JSON.stringify({
       packaged: true,
@@ -54,6 +71,7 @@ try {
       env: buildEnv,
       apiBaseUrl,
       portalUrl,
+      relativeRunDir: ensured.data,
       title: await window.title(),
     }),
   );
