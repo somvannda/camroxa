@@ -52,6 +52,7 @@ export function VizzyTemplateDialog({
   }, [info]);
 
   const existing = info?.existing.find((template) => template.id === templateId) ?? null;
+  const overwriteOptions = info?.existing.filter((template) => template.kind === info.kind) ?? [];
   const draft: TemplateDraftState | null = info
     ? {
         name,
@@ -94,7 +95,7 @@ export function VizzyTemplateDialog({
                     value={templateId}
                     options={[
                       { value: "", label: "New template" },
-                      ...info.existing.map((template) => ({
+                      ...overwriteOptions.map((template) => ({
                         value: template.id,
                         label: `${template.name} (${template.kind})`,
                       })),
