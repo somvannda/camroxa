@@ -292,10 +292,13 @@ try {
   if (runningVizzy.data.attached) fail("The batch must not attach the visible editor");
   step(`batch finished in ${batchMs} ms`);
 
-  // --- Two validated MP4s -------------------------------------------------
-  const renders = mp4s(rendersDir);
+  // --- Two validated MP4s in the run folder -------------------------------
+  const renders = mp4s(outDir).filter((name) => name !== "batch-main-merged.mp4");
   if (renders.length !== 2) fail(`Expected two renders, got ${JSON.stringify(renders)}`);
-  const probes = renders.map((name) => ({ name, ...ffprobe(path.join(rendersDir, name)) }));
+  if (mp4s(rendersDir).length !== 0) {
+    fail(`Pipeline renders must not use the managed renders folder: ${JSON.stringify(mp4s(rendersDir))}`);
+  }
+  const probes = renders.map((name) => ({ name, ...ffprobe(path.join(outDir, name)) }));
   for (const probe of probes) {
     if (probe.videoCodec !== "h264") fail(`${probe.name}: expected h264, got ${probe.videoCodec}`);
     if (probe.audioCodec !== "aac") fail(`${probe.name}: expected aac, got ${probe.audioCodec}`);
@@ -350,7 +353,7 @@ try {
   step("progress shows done + merged");
 
   // --- Cancel a third render: no partial file ----------------------------
-  const beforeCancel = mp4s(rendersDir).length;
+  const beforeCancel = mp4s(outDir).length;
   const cancelEnqueue = await window.evaluate(
     async (request) => window.camxora.pipeline.enqueue(request),
     {
@@ -401,7 +404,7 @@ try {
   );
   const cancelJob = afterCancel.jobs.find((item) => item.batchId === "batch-cancel");
   if (cancelJob?.output) fail("A cancelled row must not claim an output");
-  const afterCancelFiles = mp4s(rendersDir).length;
+  const afterCancelFiles = mp4s(outDir).length;
   if (afterCancelFiles !== beforeCancel) {
     fail(`A cancelled render left a file behind (${beforeCancel} -> ${afterCancelFiles})`);
   }
@@ -428,8 +431,8 @@ try {
   if (retriedJobs.length !== 2) {
     fail(`Retry must add one row, got ${JSON.stringify(retriedJobs.map((job) => job.status))}`);
   }
-  if (mp4s(rendersDir).length !== beforeCancel + 1) {
-    fail(`Retry must produce exactly one new file, got ${JSON.stringify(mp4s(rendersDir))}`);
+  if (mp4s(outDir).length !== beforeCancel + 1) {
+    fail(`Retry must produce exactly one new file, got ${JSON.stringify(mp4s(outDir))}`);
   }
   step("retry rendered only the cancelled row");
 

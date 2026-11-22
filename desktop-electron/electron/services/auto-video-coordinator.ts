@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logger } from "./logger";
 import { apiRequest } from "./api-client";
+import { getDevicePreferences } from "./device-settings";
 import { sessionStore } from "./session";
 import { listQueue } from "./pipeline-queue";
 import { enqueuePipelineRequest } from "./pipeline-enqueue";
@@ -47,6 +48,8 @@ export interface AutoVideoCoordinatorDeps {
   request?: typeof apiRequest;
   /** Test hook; the real coordinator only polls while signed in. */
   hasSession?: () => boolean;
+  /** Test hook; defaults to the device's configured Suno output folder. */
+  getSunoOutputDir?: () => string;
   intervalMs?: number;
   cacheMs?: number;
   log?: (level: "info" | "warn" | "error", message: string, detail?: unknown) => void;
@@ -171,9 +174,20 @@ export class AutoVideoCoordinator {
         this.templates(),
       ]);
 
-      const rows = asArray<AutoVideoProgressRow>(progress.data).filter(
+      const rawRows = asArray<AutoVideoProgressRow>(progress.data).filter(
         (row) => row && typeof row === "object" && row.meta && typeof row.meta === "object",
       );
+      // A relative run key is relative to the device's Suno output folder, not
+      // the app's working directory; resolve it before the render queue sees it.
+      const sunoRoot = this.sunoOutputDir();
+      const rows =
+        sunoRoot === ""
+          ? rawRows
+          : rawRows.map((row) => {
+              const runDir = clean(row.meta.run_dir);
+              if (!runDir || path.isAbsolute(runDir)) return row;
+              return { ...row, meta: { ...row.meta, run_dir: path.resolve(sunoRoot, runDir) } };
+            });
       const batches = asArray<AutoVideoHistoryBatch>(history.data);
       if (rows.length === 0 || batches.length === 0) {
         this.setStatus("waiting", "Waiting for a batch with finished downloads.");
@@ -198,19 +212,23 @@ export class AutoVideoCoordinator {
         return;
       }
 
+      const outputDir =
+        sunoRoot && !path.isAbsolute(candidate.outputDir)
+          ? path.resolve(sunoRoot, candidate.outputDir)
+          : candidate.outputDir;
       const result = enqueuePipelineRequest({
         store: this.deps.store,
         templatesRoot: this.deps.templatesRoot,
         request: {
           batchId: candidate.pipelineBatchId,
-          outputDir: candidate.outputDir,
+          outputDir,
           merge: candidate.merge,
-          mergeName: `${candidate.externalBatchId}-${candidate.branch}-merged`,
+          mergeName: candidate.mergeName,
           jobs: candidate.jobs.map((job) => ({
             ...job,
             audioDir: path.isAbsolute(job.audioDir)
               ? job.audioDir
-              : path.resolve(candidate.outputDir, job.audioDir),
+              : path.resolve(sunoRoot || outputDir, job.audioDir),
           })),
         },
       });
@@ -258,6 +276,15 @@ export class AutoVideoCoordinator {
   }
 
   /* ------------------------------------------------------------------ */
+
+  private sunoOutputDir(): string {
+    try {
+      const configured = this.deps.getSunoOutputDir?.() ?? getDevicePreferences(this.deps.store).sunoOutputDir;
+      return clean(configured);
+    } catch {
+      return "";
+    }
+  }
 
   private async settings(): Promise<AutoVideoSwitches> {
     // Read every tick: the user can check/uncheck Video at any moment.

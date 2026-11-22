@@ -48,10 +48,12 @@ export function enqueuePipelineRequest(
 
   const now = Date.now();
   const existing = store.getBatch(result.batchId);
+  const requestedMergeName = request.mergeName?.trim() ?? "";
   store.upsertBatch({
     batchId: result.batchId,
     outputDir,
     merge: request.merge === true || existing?.merge === true,
+    mergeName: requestedMergeName || existing?.mergeName || null,
     mergedOutput: existing?.mergedOutput ?? null,
     status: "idle",
     error: null,

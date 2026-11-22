@@ -123,11 +123,12 @@ function toLookup(filePath: string): AudioLookup {
 
 /** First free `<stem>.mp4` in `dir` (never overwrites an existing merge). */
 export function uniqueOutputPath(dir: string, stem: string): string {
-  const base = (stem || "merged").replace(/[\\/:*?"<>|]+/g, "-").replace(/\.(mp4|webm)$/i, "");
-  const resolved = path.resolve(dir, `${base}.mp4`);
+  const base = (stem || "merged").replace(/[\\/:*?"<>|]+/g, "-").replace(/\.(mp4|webm)$/i, "").trim();
+  const safeBase = base || "merged";
+  const resolved = path.resolve(dir, `${safeBase}.mp4`);
   if (!fs.existsSync(resolved)) return resolved;
-  for (let index = 2; index < 100; index += 1) {
-    const candidate = path.resolve(dir, `${base}-${index}.mp4`);
+  for (let index = 1; index < 100; index += 1) {
+    const candidate = path.resolve(dir, `${safeBase} (${index}).mp4`);
     if (!fs.existsSync(candidate)) return candidate;
   }
   return resolved;

@@ -346,7 +346,7 @@ export class PipelineRunner {
 
     const output =
       batch.mergedOutput ??
-      uniqueOutputPath(batch.outputDir, `${batchId}-merged`);
+      uniqueOutputPath(batch.outputDir, batch.mergeName?.trim() || `${batchId}-merged`);
     try {
       const merged = await this.deps.merge(outputs, output);
       const media = await this.deps.probeMedia(merged.output);

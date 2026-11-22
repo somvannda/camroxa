@@ -38,6 +38,8 @@ export interface PipelineBatchRecord {
   batchId: string;
   outputDir: string;
   merge: boolean;
+  /** File stem for the merged output, sanitised when the batch was created. */
+  mergeName: string | null;
   mergedOutput: string | null;
   status: string;
   error: string | null;
@@ -136,6 +138,17 @@ const MIGRATIONS: Array<{ version: number; sql?: string; run?: (db: DatabaseSync
           updated_at INTEGER NOT NULL
         );
       `);
+    },
+  },
+  {
+    version: 4,
+    run: (db) => {
+      const columns = db.prepare("PRAGMA table_info(pipeline_batches)").all() as Array<{
+        name: string;
+      }>;
+      if (!columns.some((column) => column.name === "merge_name")) {
+        db.exec("ALTER TABLE pipeline_batches ADD COLUMN merge_name TEXT");
+      }
     },
   },
 ];
@@ -341,11 +354,12 @@ export class Store {
   upsertBatch(record: PipelineBatchRecord): void {
     this.db
       .prepare(
-        `INSERT INTO pipeline_batches (batch_id, output_dir, merge, merged_output, status, error, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO pipeline_batches (batch_id, output_dir, merge, merge_name, merged_output, status, error, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(batch_id) DO UPDATE SET
            output_dir = excluded.output_dir,
            merge = excluded.merge,
+           merge_name = excluded.merge_name,
            merged_output = excluded.merged_output,
            status = excluded.status,
            error = excluded.error,
@@ -355,6 +369,7 @@ export class Store {
         record.batchId,
         record.outputDir,
         record.merge ? 1 : 0,
+        record.mergeName,
         record.mergedOutput,
         record.status,
         record.error,
@@ -387,6 +402,7 @@ function batchRow(row: Record<string, unknown>): PipelineBatchRecord {
     batchId: String(row.batch_id),
     outputDir: String(row.output_dir),
     merge: Number(row.merge) === 1,
+    mergeName: row.merge_name ? String(row.merge_name) : null,
     mergedOutput: row.merged_output ? String(row.merged_output) : null,
     status: String(row.status),
     error: row.error ? String(row.error) : null,

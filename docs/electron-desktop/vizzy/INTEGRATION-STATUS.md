@@ -41,8 +41,9 @@
 | 91-template library | Templates rail **Library** → editor's own Creations browser; `tests/e2e/vizzy-library.mjs` asserts 91 rows, manifest 200, a loaded thumbnail 200 and one template load (nebula-staff, 5 items) |
 | Offscreen batch render | `electron/vizzy-host/render-window.ts`: hidden `BrowserWindow` (sandboxed, `vizzy-render` partition, no Node, throttling off) loads the same editor bundle, applies a template project JSON, streams the run audio and runs the same exporter. `vizzy.state().attached === false` throughout `tests/e2e/pipeline-batch.mjs` |
 | Queue → render → ffprobe | `electron/services/pipeline-orchestrator.ts` + `electron/ipc/pipeline.ts`: `pipeline:enqueue/start/cancel/retry/list/reveal`. Two 2 s songs rendered 320×180 in **4.7–4.9 s** total, ffprobe h264+aac/60 frames each |
-| Merge | Batch-level long-form merge (`-c copy`, re-encode fallback): 4.01 s / 120 frames MP4 in the run folder, ffprobe-validated |
-| Cancel / retry | Cancel marks the row `cancelled` and leaves `renders/` untouched (no partial file); retry re-enqueues only failed/cancelled rows and produced exactly one new file in the E2E |
+| Merge | Batch-level long-form merge (`-c copy`, re-encode fallback) to `<album><MMDD>.mp4` in the run folder, ffprobe-validated; a same-day second merge takes `<album><MMDD> (1).mp4` |
+| Cancel / retry | Cancel marks the row `cancelled` and leaves no partial file in the run folder; retry re-enqueues only failed/cancelled rows and produced exactly one new file in the E2E |
+| Output location | Offscreen pipeline renders stream straight into the run folder beside the downloaded audio (`<song>.mp4`, `<song>-reel.mp4`), under the configured Suno output directory; editor/manual exports keep using `<userData>/renders/` |
 | Music trigger | Auto-video coordinator polls Progress/history and queues the profile's long/reel templates per ready song/branch; Video checkboxes gate each branch, merge is per branch; missing templates/audio report a specific message |
 | Progress UI | Compact “Video pipeline” table from the durable SQLite queue: status, template, song, progress, error, Cancel/Retry/Reveal, merged file per batch, honest empty state |
 | No leaks | project file and editor DOM contain no session email and no token fields; the render window adds no storage shared with the visible editor |

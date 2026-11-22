@@ -202,10 +202,30 @@ export function renderFileNameForTemplate(
 }
 
 /** A bare managed render name: no separators, no traversal, known extension. */
-export function isRenderFileName(name: unknown): name is string {
-  if (typeof name !== "string" || name.length === 0 || name.length > 160) return false;
+export function isRenderFileName(name: unknown): name is string {  if (typeof name !== "string" || name.length === 0 || name.length > 160) return false;
   if (name.includes("/") || name.includes("\\") || name.includes("..")) return false;
   return /^[a-z0-9][a-z0-9-]*-\d{8}-\d{6}(?:-\d{1,2})?\.(?:mp4|webm)$/.test(name);
+}
+
+/** Windows-safe file stem; strips separators, reserved characters and an extension. */
+export function safeRenderStem(value: string): string {
+  const base = path
+    .basename(String(value ?? ""))
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\.(mp4|webm)$/i, "")
+    .trim()
+    .slice(0, 120);
+  return base || "render";
+}
+
+/** First free `<name>` / `<name> (1)` / `<name> (2)` in any directory. */
+export function uniqueFilePath(directory: string, fileName: string): string {
+  const parsed = path.parse(fileName);
+  let candidate = path.join(directory, fileName);
+  for (let index = 1; index < 100 && fs.existsSync(candidate); index += 1) {
+    candidate = path.join(directory, `${parsed.name} (${index})${parsed.ext}`);
+  }
+  return candidate;
 }
 
 export function ensureRendersDir(rendersDir: string): string {

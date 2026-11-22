@@ -214,6 +214,9 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
         name: input.templateName,
         audioPath: input.job.audioPath,
         outputName: input.outputName,
+        outputDir: input.job.outputDir,
+        fileStem:
+          input.job.branch === "reel" ? `${input.outputName}-reel` : input.outputName,
         settings: {
           width: input.plan.settings.width,
           height: input.plan.settings.height,

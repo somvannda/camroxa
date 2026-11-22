@@ -15,6 +15,8 @@ import {
   renderFileName,
   renderTimestamp,
   resolveExportSettings,
+  safeRenderStem,
+  uniqueFilePath,
   uniqueRenderPath,
   validateChunkRange,
 } from "../../electron/vizzy-host/renders";
@@ -148,6 +150,14 @@ describe("vizzy render names", () => {
     expect(path.basename(uniqueRenderPath(directory, "a-20261119-142530.mp4"))).toBe(
       "a-20261119-142530-2.mp4",
     );
+  });
+
+  it("names run-folder collisions with a (1) suffix", () => {
+    fs.writeFileSync(path.join(directory, "Night Album1120.mp4"), "x");
+    expect(path.basename(uniqueFilePath(directory, "Night Album1120.mp4"))).toBe(
+      "Night Album1120 (1).mp4",
+    );
+    expect(safeRenderStem("Night/Album:1120.mp4")).toBe("Album-1120");
   });
 
   it("resolves only paths strictly inside renders/", () => {

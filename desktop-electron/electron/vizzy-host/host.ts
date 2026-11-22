@@ -633,6 +633,8 @@ export class VizzyHost {
     audioPath: string;
     settings: VizzyExportSettingsInput;
     outputName: string;
+    outputDir?: string;
+    fileStem?: string;
     onProgress?: (progress: VizzyExportProgress) => void;
     onStarted?: (jobId: string) => void;
     shouldAbort?: () => boolean;

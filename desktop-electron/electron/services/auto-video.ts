@@ -104,6 +104,8 @@ export interface AutoVideoCandidate {
   outputDir: string;
   backgroundPath: string;
   merge: boolean;
+  /** `<album><MMDD>`; collisions get a Windows-style ` (1)` suffix. */
+  mergeName: string;
   jobs: AutoVideoJob[];
 }
 
@@ -144,6 +146,12 @@ function songIsReady(song: AutoVideoHistorySong, side: "ok" | "alt"): boolean {
 
 function songTitle(song: AutoVideoHistorySong): string {
   return clean(song.title);
+}
+
+/** `2026-11-22` / `2026-11-22T…` → `1122`; empty when the date is unusable. */
+function monthDay(value: unknown): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(clean(value));
+  return match ? `${match[2]}${match[3]}` : "";
 }
 
 function branchTemplate(
@@ -205,8 +213,6 @@ export function selectAutoVideoCandidate(
     if (meta.pipeline_complete) continue;
     const externalBatchId = clean(meta.batch_id) || clean(row.batch);
     if (!externalBatchId) continue;
-    const runDir = clean(meta.run_dir);
-    if (!runDir) continue;
 
     const side = roleSide(meta.role);
     if (!side) continue;
@@ -219,6 +225,15 @@ export function selectAutoVideoCandidate(
 
     const songs = (batch.songs ?? []).filter((song) => songIsReady(song, side));
     if (songs.length === 0) continue;
+
+    // The render and the merge land in the downloaded run folder, which lives
+    // under the configured Suno output directory. `run_dir` is normally that
+    // absolute path; if the backend only recorded a relative key, the song's
+    // downloaded directory is the same folder and is always absolute.
+    const runDir =
+      clean(meta.run_dir) ||
+      clean(side === "ok" ? songs[0].output_dir_ok : songs[0].output_dir_alt);
+    if (!runDir) continue;
 
     const expected = Math.max(1, Number(meta.expected) || songs.length);
     if (songs.length < expected) continue;
@@ -279,6 +294,7 @@ export function selectAutoVideoCandidate(
         outputDir: runDir,
         backgroundPath,
         merge: input.settings.merge,
+        mergeName: `${batchAlbum || "album"}${monthDay(row.run_date)}`,
         jobs,
       };
     }

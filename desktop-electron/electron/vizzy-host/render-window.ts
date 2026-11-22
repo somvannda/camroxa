@@ -55,6 +55,10 @@ export interface OffscreenRenderRequest {
   settings: VizzyExportSettingsInput;
   /** Output stem; the host adds the timestamp and extension. */
   outputName: string;
+  /** Trusted run folder for a pipeline render; omitted for editor exports. */
+  outputDir?: string;
+  /** Exact untimestamped file stem (pipeline uses the song title). */
+  fileStem?: string;
   onProgress?: (progress: VizzyExportProgress) => void;
   onStarted?: (jobId: string) => void;
   /** Checked after the project and audio are loaded, before the export runs. */
@@ -145,6 +149,8 @@ export class OffscreenVizzyRenderer {
     try {
       return await this.session.start(request.settings, {
         outputName: request.outputName,
+        outputDir: request.outputDir,
+        fileStem: request.fileStem,
         onStarted: request.onStarted,
       });
     } finally {

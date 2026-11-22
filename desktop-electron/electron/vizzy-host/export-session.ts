@@ -13,6 +13,7 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import type { WebContents } from "electron";
 import type { VizzyExportOutcome, VizzyExportProgress, VizzyExportResult } from "../shared/types";
 import { probe } from "../services/ffmpeg";
@@ -20,10 +21,11 @@ import { logger } from "../services/logger";
 import type { VizzyBridge } from "./bridge";
 import {
   RenderChunkWriter,
-  deleteRenderFile,
   ensureRendersDir,
   renderFileNameForTemplate,
   resolveExportSettings,
+  safeRenderStem,
+  uniqueFilePath,
   uniqueRenderPath,
   type ResolvedVizzyExportSettings,
   type VizzyExportSettingsInput,
@@ -71,6 +73,16 @@ export interface VizzyExportSessionDeps {
 
 export interface StartExportOptions {
   outputName?: string;
+  /**
+   * Trusted absolute destination for a pipeline render. Omitted for editor
+   * exports, which stay inside the managed `renders/` directory.
+   */
+  outputDir?: string;
+  /**
+   * Exact, untimestamped file stem. Pipeline renders use the song title so the
+   * MP4 sits beside its audio in the run folder.
+   */
+  fileStem?: string;
   /** Called as soon as the job id exists, so a cancel can address it. */
   onStarted?: (jobId: string) => void;
 }
@@ -110,13 +122,25 @@ export class VizzyExportSession {
 
     const project = await this.deps.getProjectInfo();
     const settings = resolveExportSettings(input, project);
-    const directory = ensureRendersDir(this.deps.rendersDir);
+    const requestedDir = options.outputDir?.trim() ?? "";
+    const directory = requestedDir
+      ? (() => {
+          const resolved = path.resolve(requestedDir);
+          fs.mkdirSync(resolved, { recursive: true });
+          return resolved;
+        })()
+      : ensureRendersDir(this.deps.rendersDir);
+    const requestedStem = options.fileStem?.trim() ?? "";
     const requestedName = options.outputName?.trim();
-    const fileName = renderFileNameForTemplate(
-      requestedName || project?.name || this.deps.defaultName() || "untitled-project",
-      settings.format,
-    );
-    const filePath = uniqueRenderPath(directory, fileName);
+    const fileName = requestedStem
+      ? `${safeRenderStem(requestedStem)}.${settings.format}`
+      : renderFileNameForTemplate(
+          requestedName || project?.name || this.deps.defaultName() || "untitled-project",
+          settings.format,
+        );
+    const filePath = requestedDir
+      ? uniqueFilePath(directory, fileName)
+      : uniqueRenderPath(directory, fileName);
     const handle = await fs.promises.open(filePath, "w+");
 
     const writer = new RenderChunkWriter({
@@ -391,8 +415,12 @@ export class VizzyExportSession {
   }
 
   private removeFile(job: ExportJob): void {
-    const removed = deleteRenderFile(this.deps.rendersDir, job.fileName);
-    if (removed) logger.info("vizzy export cleanup", { file: job.fileName });
+    try {
+      fs.rmSync(job.filePath, { force: true });
+      logger.info("vizzy export cleanup", { file: job.fileName });
+    } catch {
+      /* the file may never have been created */
+    }
   }
 
   private clearTimers(job: ExportJob): void {

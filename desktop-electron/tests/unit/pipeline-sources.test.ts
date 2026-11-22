@@ -87,6 +87,6 @@ describe("pipeline sources", () => {
 
   it("never overwrites an existing merged file", () => {
     const dir = folder("out", ["batch-merged.mp4"]);
-    expect(path.basename(uniqueOutputPath(dir, "batch-merged"))).toBe("batch-merged-2.mp4");
+    expect(path.basename(uniqueOutputPath(dir, "batch-merged"))).toBe("batch-merged (1).mp4");
   });
 });

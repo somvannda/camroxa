@@ -76,6 +76,7 @@ function seedBatch(
     batchId,
     outputDir: root,
     merge,
+    mergeName: null,
     mergedOutput: null,
     status: "idle",
     error: null,

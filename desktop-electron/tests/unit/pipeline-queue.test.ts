@@ -102,6 +102,7 @@ describe("pipeline queue", () => {
       batchId: "batch-1",
       outputDir: "C:/runs/out",
       merge: true,
+      mergeName: null,
       mergedOutput: null,
       status: "running",
       error: null,
