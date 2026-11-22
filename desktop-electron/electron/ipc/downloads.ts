@@ -18,12 +18,47 @@ import { createNodeDownloadIo } from "../services/download-io";
 import { getDevicePreferences } from "../services/device-settings";
 import { getAppPaths } from "../services/paths";
 import { isPathInside } from "../services/media-utils";
+import { resolveUserPath } from "../services/user-paths";
 import { logger } from "../services/logger";
 import { fail, ok } from "../shared/types";
 import { toError } from "./errors";
 
 const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
 const keySchema = z.object({ key: z.string().min(1).max(200) }).strict();
+
+const recoverSchema = z
+  .object({
+    batchId: z.string().min(1).max(120),
+    profileId: z.string().min(1).max(120),
+    role: z.string().min(1).max(20),
+    mode: z.enum(["missing", "change"]),
+    runDir: z.string().max(4096).optional(),
+    currentRunDir: z.string().max(4096).optional(),
+    expected: z.number().int().min(0).max(500).optional(),
+  })
+  .strict();
+
+function runKeyFor(absoluteDir: string, root: string): string {
+  const resolved = path.resolve(absoluteDir);
+  const base = path.resolve(root);
+  if (!isPathInside(base, resolved)) return resolved;
+  return path.relative(base, resolved).replace(/\//g, "\\");
+}
+
+async function downloadToFile(url: string, target: string): Promise<void> {
+  const response = await fetch(url, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(10 * 60_000),
+    headers: { "X-Camxora-Client": "desktop" },
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength === 0) throw new Error("empty file");
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const temp = `${target}.part-${Date.now()}`;
+  fs.writeFileSync(temp, bytes);
+  fs.renameSync(temp, target);
+}
 
 let coordinator: DownloadCoordinator | null = null;
 
@@ -208,6 +243,133 @@ export function registerDownloadsIpc(options: DownloadsIpcOptions): void {
       }
       shell.showItemInFolder(item.targetPath);
       return ok(true);
+    } catch (error) {
+      return toError(error);
+    }
+  });
+
+  ipcMain.handle("downloads:recover-row", async (event, payload: unknown) => {
+    if (!shellOnly(event.sender.id)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    let input: z.infer<typeof recoverSchema>;
+    try {
+      input = recoverSchema.parse(payload);
+    } catch {
+      return fail("INVALID_REQUEST", "The recovery request is not valid.");
+    }
+    try {
+      const { root } = resolveDownloadRoot();
+      const currentRunDir = resolveUserPath(input.currentRunDir || "");
+      const newDir =
+        input.mode === "change" && input.runDir
+          ? path.resolve(input.runDir)
+          : currentRunDir;
+      if (!newDir) return fail("RUN_DIR_MISSING", "This row has no run folder.");
+      const runKey = runKeyFor(newDir, root);
+
+      const plan = await apiRequest({
+        method: "POST",
+        path: "/music/downloads/batch-redownload-plan",
+        body: {
+          batch_id: input.batchId,
+          role: input.role || "OK",
+          run_dir: runKey,
+        },
+      });
+      const planData = (plan.data ?? {}) as {
+        items?: Array<{
+          task_id: string;
+          title?: string | null;
+          download_url: string;
+          fallback_download_url?: string | null;
+          target_path: string;
+        }>;
+      };
+
+      let downloaded = 0;
+      let skipped = 0;
+      let failed = 0;
+      for (const item of planData.items ?? []) {
+        const target = path.isAbsolute(item.target_path)
+          ? path.resolve(item.target_path)
+          : path.resolve(root, item.target_path);
+        if (input.mode === "missing") {
+          try {
+            if (fs.statSync(target).size > 0) {
+              skipped += 1;
+              continue;
+            }
+          } catch {
+            // Missing: download it.
+          }
+        }
+        try {
+          await downloadToFile(item.download_url, target);
+          downloaded += 1;
+        } catch {
+          if (item.fallback_download_url) {
+            try {
+              await downloadToFile(item.fallback_download_url, target);
+              downloaded += 1;
+              continue;
+            } catch {
+              // fall through
+            }
+          }
+          failed += 1;
+        }
+      }
+
+      if (input.mode === "change" && currentRunDir && currentRunDir !== newDir) {
+        try {
+          fs.mkdirSync(newDir, { recursive: true });
+          for (const entry of fs.readdirSync(currentRunDir, { withFileTypes: true })) {
+            if (!entry.isFile()) continue;
+            if (!/\.(png|jpe?g|webp)$/i.test(entry.name)) continue;
+            fs.copyFileSync(
+              path.join(currentRunDir, entry.name),
+              path.join(newDir, entry.name),
+            );
+          }
+        } catch {
+          // Artwork is best effort; MP3 recovery still succeeds.
+        }
+      }
+
+      let localMp3Count = 0;
+      try {
+        localMp3Count = fs
+          .readdirSync(newDir)
+          .filter((name) => /\.mp3$/i.test(name)).length;
+      } catch {
+        localMp3Count = downloaded;
+      }
+
+      await apiRequest({
+        method: "POST",
+        path: "/progress/sync-local",
+        body: {
+          items: [
+            {
+              batch_id: input.batchId,
+              profile_id: input.profileId,
+              role: input.role || "OK",
+              run_dir: runKey,
+              persist_batch_run_dir: input.mode === "change",
+              local_mp3_count: localMp3Count,
+              expected: input.expected ?? localMp3Count,
+            },
+          ],
+        },
+      });
+
+      logger.info("row recovery finished", {
+        batchId: input.batchId,
+        mode: input.mode,
+        downloaded,
+        skipped,
+        failed,
+      });
+      return ok({ downloaded, skipped, failed, runDir: runKey });
     } catch (error) {
       return toError(error);
     }

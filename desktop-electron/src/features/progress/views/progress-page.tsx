@@ -168,8 +168,7 @@ export function ProgressPage() {
   );
 
   const retrySongs = useCallback(
-    async (row: ProgressRow, kind: "draft" | "suno") => {
-      const batchId = row.meta.batch_id || row.batch;
+    async (row: ProgressRow, kind: "draft" | "suno") => {      const batchId = row.meta.batch_id || row.batch;
       const ids =
         kind === "draft"
           ? (row.meta.draft_failed_song_ids ?? [])
@@ -191,6 +190,55 @@ export function ProgressPage() {
         await feed.refresh();
       } catch (error) {
         setNotice({ tone: "danger", text: errorMessage(error) });
+      }
+    },
+    [feed],
+  );
+
+  const recoverRow = useCallback(
+    async (row: ProgressRow, mode: "missing" | "change") => {
+      const batchId = row.meta.batch_id || row.batch;
+      const profileId = row.meta.profile_id;
+      if (!batchId || !profileId) {
+        setNotice({ tone: "danger", text: "This row has no batch/profile to recover." });
+        return;
+      }
+      let runDir: string | undefined;
+      if (mode === "change") {
+        const picked = await window.camxora.files.pick({
+          kind: "directory",
+          title: "Choose the new run folder",
+        });
+        if (!picked.ok || picked.data.length === 0) return;
+        runDir = picked.data[0];
+      }
+      try {
+        const result = await window.camxora.downloads.recoverRow({
+          batchId,
+          profileId,
+          role: row.meta.role || "OK",
+          mode,
+          runDir,
+          currentRunDir: row.meta.run_dir ?? undefined,
+          expected: row.meta.expected,
+        });
+        if (!result.ok) {
+          setNotice({ tone: "danger", text: result.error.message });
+          return;
+        }
+        setNotice({
+          tone: result.data.failed > 0 ? "danger" : "success",
+          text:
+            mode === "change"
+              ? `Run folder changed to ${result.data.runDir}. Downloaded ${result.data.downloaded} MP3s; ${result.data.failed} failed.`
+              : `Downloaded ${result.data.downloaded} missing MP3s; ${result.data.skipped} already present; ${result.data.failed} failed.`,
+        });
+        await feed.refresh();
+      } catch (cause) {
+        setNotice({
+          tone: "danger",
+          text: cause instanceof Error ? cause.message : "Unable to recover this run.",
+        });
       }
     },
     [feed],
@@ -405,6 +453,9 @@ export function ProgressPage() {
               onPipelineStart={() => {
                 void pipeline.start();
               }}
+              onPipelineForce={(request) => {
+                void pipeline.force(request);
+              }}
               onPipelineRetry={(batchId) => {
                 void pipeline.retry(batchId);
               }}
@@ -413,6 +464,15 @@ export function ProgressPage() {
               }}
               onRetrySuno={(row) => {
                 void retrySongs(row, "suno");
+              }}
+              onDownloadMissing={(row) => {
+                void recoverRow(row, "missing");
+              }}
+              onChangeRunFolder={(row) => {
+                void recoverRow(row, "change");
+              }}
+              onUpload={(row) => {
+                void uploads.openConfirm(row);
               }}
               manualFolderFor={(row) => {
                 const inspection = manual.inspections[rowKey(row)];

@@ -29,6 +29,7 @@ import {
   enqueuePipelineJobs,
   jobsForBatch,
   listQueue,
+  updateQueueJob,
   reconcileInterruptedJobs,
   retryableJobs,
 } from "../services/pipeline-queue";
@@ -81,6 +82,13 @@ const enqueueSchema = z
   .strict();
 
 const retrySchema = z.object({ batchId: z.string().min(1).max(120).optional() }).strict();
+const forceSchema = z
+  .object({
+    mode: z.enum(["force", "repair", "single"]),
+    batchId: z.string().min(1).max(120).optional(),
+    jobIds: z.array(z.string().min(1).max(100)).max(200).optional(),
+  })
+  .strict();
 const revealSchema = z.object({ path: z.string().min(1).max(4096) }).strict();
 
 function templateNameOf(root: string, id: string): string {
@@ -399,6 +407,77 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
     lastError = null;
     startInBackground();
     return ok({ enqueued: created.length, started: true });
+  });
+
+  ipcMain.handle("pipeline:force", (event, payload: unknown) => {
+    if (!shellOnly(event.sender.id)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    let input: z.infer<typeof forceSchema>;
+    try {
+      input = forceSchema.parse(payload);
+    } catch {
+      return fail("INVALID_REQUEST", "The regenerate request is not valid.");
+    }
+    if (runner.isRunning()) {
+      return fail("PIPELINE_BUSY", "Cancel the running batch before regenerating.");
+    }
+    const ids = new Set(input.jobIds ?? []);
+    const jobs = listQueue(store).filter(
+      (job) =>
+        (input.batchId ? job.batchId === input.batchId : true) &&
+        (ids.size === 0 || ids.has(job.id)),
+    );
+    const broken = (job: (typeof jobs)[number]): boolean => {
+      if (job.status === "failed" || job.status === "cancelled") return true;
+      if (!job.output) return true;
+      try {
+        return fs.statSync(job.output).size <= 0;
+      } catch {
+        return true;
+      }
+    };
+    const selected =
+      input.mode === "force"
+        ? jobs
+        : input.mode === "repair"
+          ? jobs.filter(broken)
+          : jobs.filter((job) => ids.has(job.id));
+    if (selected.length === 0) {
+      return fail("PIPELINE_NOTHING_TO_RETRY", "There is no render to regenerate.");
+    }
+    const touchedBatches = new Set<string>();
+    for (const job of selected) {
+      if (job.output) {
+        try {
+          fs.rmSync(job.output, { force: true });
+        } catch {
+          // The row is re-queued even when the old file is locked; the render
+          // writes a fresh unique name in that case.
+        }
+      }
+      updateQueueJob(store, job.id, {
+        status: "queued",
+        stage: "queued",
+        progress: 0,
+        error: null,
+        output: null,
+      });
+      touchedBatches.add(job.batchId);
+    }
+    for (const batchId of touchedBatches) {
+      const batch = store.getBatch(batchId);
+      if (!batch) continue;
+      if (batch.mergedOutput) {
+        try {
+          fs.rmSync(batch.mergedOutput, { force: true });
+        } catch {
+          // Keep going; the merge will pick a fresh unique path if needed.
+        }
+      }
+      store.upsertBatch({ ...batch, status: "idle", mergedOutput: null, error: null, updatedAt: Date.now() });
+    }
+    lastError = null;
+    startInBackground();
+    return ok({ enqueued: selected.length, started: true });
   });
 
   ipcMain.handle("pipeline:clear", (event) => {

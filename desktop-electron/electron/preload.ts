@@ -92,6 +92,7 @@ const bridge = {
     retry: (key: string) => invoke("downloads:retry", { key }),
     cancel: (key: string) => invoke("downloads:cancel", { key }),
     reveal: (key: string) => invoke("downloads:reveal", { key }),
+    recoverRow: (request: unknown) => invoke("downloads:recover-row", request),
     onChange: (callback: (payload: unknown) => void) => {
       const listener = (_event: unknown, payload: unknown) => callback(payload);
       ipcRenderer.on("downloads:changed", listener);
@@ -104,6 +105,7 @@ const bridge = {
     start: () => invoke("pipeline:start"),
     cancel: () => invoke("pipeline:cancel"),
     retry: (batchId?: string) => invoke("pipeline:retry", batchId ? { batchId } : {}),
+    force: (request: unknown) => invoke("pipeline:force", request),
     clear: () => invoke("pipeline:clear"),
     reveal: (path: string) => invoke("pipeline:reveal", { path }),
     onChange: (callback: (payload: unknown) => void) => {

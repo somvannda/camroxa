@@ -137,6 +137,17 @@ export interface CamxoraBridge {
     retry(key: string): Promise<IpcResult<DownloadSnapshot>>;
     cancel(key: string): Promise<IpcResult<DownloadSnapshot>>;
     reveal(key: string): Promise<IpcResult<boolean>>;
+    recoverRow(request: {
+      batchId: string;
+      profileId: string;
+      role: string;
+      mode: "missing" | "change";
+      runDir?: string;
+      expected?: number;
+      currentRunDir?: string;
+    }): Promise<
+      IpcResult<{ downloaded: number; skipped: number; failed: number; runDir: string }>
+    >;
     onChange(callback: (payload: DownloadChangedEvent) => void): () => void;
   };
   pipeline: {
@@ -145,6 +156,11 @@ export interface CamxoraBridge {
     start(): Promise<IpcResult<{ started: boolean; running: boolean }>>;
     cancel(): Promise<IpcResult<{ cancelled: boolean; batchIds: string[] }>>;
     retry(batchId?: string): Promise<IpcResult<{ enqueued: number; started: boolean }>>;
+    force(request: {
+      mode: "force" | "repair" | "single";
+      batchId?: string;
+      jobIds?: string[];
+    }): Promise<IpcResult<{ enqueued: number; started: boolean }>>;
     clear(): Promise<IpcResult<{ removed: number }>>;
     reveal(path: string): Promise<IpcResult<boolean>>;
     onChange(callback: (payload: PipelineChangedEvent) => void): () => void;

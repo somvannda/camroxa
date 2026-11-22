@@ -21,6 +21,8 @@ export interface LocalVideoSummary {
   mergedPath: string | null;
   /** Pipeline batch id that can be retried. */
   retryBatchId: string | null;
+  /** Jobs represented by this row, for single-track regeneration. */
+  jobs: Array<{ id: string; title: string; status: string }>;
   /** Newest local queue update, for the Updated column. */
   updatedAt: number | null;
 }
@@ -40,6 +42,7 @@ const EMPTY: LocalVideoSummary = {
   outputPath: null,
   mergedPath: null,
   retryBatchId: null,
+  jobs: [],
   updatedAt: null,
 };
 
@@ -129,6 +132,7 @@ export function localVideoForRow(
         ? (jobs.find((job) => job.status === "failed" || job.status === "cancelled")?.batchId ??
           null)
         : null,
+    jobs: jobs.map((job) => ({ id: job.id, title: job.title, status: job.status })),
     updatedAt: Math.max(...jobs.map((job) => job.updatedAt || 0)) || null,
   };
 }

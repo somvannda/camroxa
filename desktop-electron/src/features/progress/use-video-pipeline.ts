@@ -10,6 +10,11 @@ export interface VideoPipelineHandle {
   cancel: () => Promise<boolean>;
   start: () => Promise<boolean>;
   retry: (batchId?: string) => Promise<boolean>;
+  force: (request: {
+    mode: "force" | "repair" | "single";
+    batchId?: string;
+    jobIds?: string[];
+  }) => Promise<boolean>;
   clear: () => Promise<boolean>;
   reveal: (filePath: string) => Promise<boolean>;
 }
@@ -126,6 +131,19 @@ export function useVideoPipeline(): VideoPipelineHandle {
     [act],
   );
 
+  const force = useCallback(
+    (request: { mode: "force" | "repair" | "single"; batchId?: string; jobIds?: string[] }) =>
+      act(async () => {
+        const response = await window.camxora.pipeline.force(request);
+        if (!response.ok) {
+          setError(response.error.message);
+          return false;
+        }
+        return response.data.enqueued > 0;
+      }),
+    [act],
+  );
+
   const clear = useCallback(
     () =>
       act(async () => {
@@ -148,5 +166,5 @@ export function useVideoPipeline(): VideoPipelineHandle {
     return true;
   }, []);
 
-  return { snapshot, loading, error, busy, refresh, cancel, start, retry, clear, reveal };
+  return { snapshot, loading, error, busy, refresh, cancel, start, retry, force, clear, reveal };
 }

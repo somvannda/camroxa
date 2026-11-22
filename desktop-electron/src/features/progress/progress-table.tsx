@@ -56,9 +56,17 @@ interface ProgressTableProps {
   onRetryImage?: (row: ProgressRow) => void;
   onRetryDrafts?: (row: ProgressRow) => void;
   onRetrySuno?: (row: ProgressRow) => void;
+  onDownloadMissing?: (row: ProgressRow) => void;
+  onChangeRunFolder?: (row: ProgressRow) => void;
+  onUpload?: (row: ProgressRow) => void;
   onPipelineCancel?: () => void;
   onPipelineRetry?: (batchId: string) => void;
   onPipelineStart?: () => void;
+  onPipelineForce?: (request: {
+    mode: "force" | "repair" | "single";
+    batchId?: string;
+    jobIds?: string[];
+  }) => void;
   manualFolderFor?: (row: ProgressRow) => string | null;
 }
 
@@ -126,8 +134,12 @@ export function ProgressTable({
   onPipelineCancel,
   onPipelineRetry,
   onPipelineStart,
+  onPipelineForce,
   onRetryDrafts,
   onRetrySuno,
+  onDownloadMissing,
+  onChangeRunFolder,
+  onUpload,
   manualFolderFor,
 }: ProgressTableProps) {
   const [menu, setMenu] = useState<RowMenuState | null>(null);
@@ -177,6 +189,9 @@ export function ProgressTable({
   const draftFailures = menu?.row.meta.draft_failed_song_ids ?? [];
   const sunoFailures = menu?.row.meta.suno_failed_song_ids ?? [];
   const manualFolder = menu && manualFolderFor ? manualFolderFor(menu.row) : null;
+  const expected = menu?.row.meta.expected ?? 0;
+  const saved = menu?.row.meta.saved ?? menu?.row.meta.download_ready ?? 0;
+  const missingMp3s = Math.max(0, expected - saved);
 
   return (
     <>
@@ -435,6 +450,19 @@ export function ProgressTable({
               <Icon name="fa-folder-open" size={11} className="mr-2" />
               Open run folder
             </ContextItem>
+            {missingMp3s > 0 ? (
+              <ContextItem onClick={() => run(() => onDownloadMissing?.(menu.row))}>
+                <Icon name="fa-download" size={11} className="mr-2" />
+                Download missing MP3s ({missingMp3s})
+              </ContextItem>
+            ) : null}
+            <ContextItem
+              disabled={!runDir}
+              onClick={() => run(() => onChangeRunFolder?.(menu.row))}
+            >
+              <Icon name="fa-folder-tree" size={11} className="mr-2" />
+              Change run folder & resume…
+            </ContextItem>
             <ContextItem
               disabled={!menuLocal?.mergedPath && !menuLocal?.outputPath}
               onClick={() =>
@@ -503,11 +531,56 @@ export function ProgressTable({
               Retry failed render
             </ContextItem>
             <ContextItem
+              disabled={!menuLocal || menuLocal.total === 0 || !onPipelineForce}
+              onClick={() =>
+                run(() =>
+                  onPipelineForce?.({
+                    mode: "force",
+                    batchId: menuLocal?.jobs[0]
+                      ? pipeline?.jobs.find((job) => job.id === menuLocal.jobs[0].id)?.batchId
+                      : undefined,
+                  }),
+                )
+              }
+            >
+              <Icon name="fa-rotate-right" size={11} className="mr-2" />
+              Force regenerate MP4s
+            </ContextItem>
+            <ContextItem
+              disabled={!menuLocal || menuLocal.total === 0 || !onPipelineForce}
+              onClick={() =>
+                run(() =>
+                  onPipelineForce?.({
+                    mode: "repair",
+                    batchId: menuLocal?.jobs[0]
+                      ? pipeline?.jobs.find((job) => job.id === menuLocal.jobs[0].id)?.batchId
+                      : undefined,
+                  }),
+                )
+              }
+            >
+              <Icon name="fa-wrench" size={11} className="mr-2" />
+              Repair missing/broken MP4s
+            </ContextItem>
+            {menuLocal?.jobs.slice(0, 8).map((job) => (
+              <ContextItem
+                key={job.id}
+                onClick={() => run(() => onPipelineForce?.({ mode: "single", jobIds: [job.id] }))}
+              >
+                <Icon name="fa-film" size={11} className="mr-2" />
+                <span className="truncate">Regenerate {job.title || "track"}</span>
+              </ContextItem>
+            ))}
+            <ContextItem
               disabled={!youtubeUrl}
               onClick={() => run(() => onOpenExternal(youtubeUrl))}
             >
               <Icon name="fa-arrow-up-right-from-square" size={11} className="mr-2" />
               Open YouTube URL
+            </ContextItem>
+            <ContextItem disabled={!onUpload} onClick={() => run(() => onUpload?.(menu.row))}>
+              <Icon name="fa-arrow-up-from-bracket" size={11} className="mr-2" />
+              Upload to YouTube…
             </ContextItem>
           </div>,
           document.body,

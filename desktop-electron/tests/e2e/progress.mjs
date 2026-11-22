@@ -465,7 +465,12 @@ async function successWithManualRecovery() {
       "Copy album",
       "Retry images",
       "Cancel video render",
+      "Continue video render",
       "Retry failed render",
+      "Force regenerate MP4s",
+      "Repair missing/broken MP4s",
+      "Change run folder & resume",
+      "Upload to YouTube",
     ]) {
       assert(menuText.includes(label), `Row menu missing "${label}"`);
     }
