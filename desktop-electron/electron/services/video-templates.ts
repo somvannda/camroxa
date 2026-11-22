@@ -105,6 +105,8 @@ export function saveVideoTemplate(input: {
   thumbnail?: Uint8Array | null;
   bindings?: PipelineBindings;
   kind?: PipelineKind;
+  /** Export-dialog choices captured with the template. */
+  exportSettings?: import("./pipeline-templates").PipelineExportSettings;
   /** Test hook; normal saves get a unique slug id. */
   id?: string;
   createdAt?: string;
@@ -118,6 +120,7 @@ export function saveVideoTemplate(input: {
     snapshot: read.snapshot,
     bindings: input.bindings,
     kind: input.kind,
+    exportSettings: input.exportSettings,
     createdAt: input.createdAt,
   });
 

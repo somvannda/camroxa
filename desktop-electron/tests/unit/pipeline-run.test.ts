@@ -66,4 +66,42 @@ describe("pipeline render plan", () => {
     expect(plan.durationSec).toBe(18);
     expect(plan.settings.end).toBe(18);
   });
+
+  it("reuses the Export settings saved with the template", () => {
+    const source = template();
+    const saved = {
+      ...source,
+      pipeline: {
+        ...source.pipeline,
+        output: { width: 1080, height: 1920, fps: 60 },
+        export: {
+          width: 1080,
+          height: 1920,
+          fps: 60,
+          bitrate: 50,
+          crf: 18,
+          preset: "slow",
+          profile: "main",
+          audioBitrate: 256,
+          engine: "wasm" as const,
+          start: 0,
+          end: 12,
+        },
+      },
+    };
+    const plan = buildPipelineRenderPlan(saved, { audioDurationSec: 187.4 });
+    expect(plan.output).toEqual({ width: 1080, height: 1920, fps: 60 });
+    expect(plan.settings).toMatchObject({
+      width: 1080,
+      height: 1920,
+      fps: 60,
+      bitrate: 50,
+      crf: 18,
+      preset: "slow",
+      profile: "main",
+      audioBitrate: 256,
+      start: 0,
+      end: 187.4,
+    });
+  });
 });

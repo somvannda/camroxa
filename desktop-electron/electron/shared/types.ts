@@ -248,6 +248,8 @@ export interface VizzySaveTemplateInput {
   kind: "long" | "reel";
   /** Omitted: the host saves every detected binding automatically. */
   bindings?: BindingSelection;
+  /** Export-dialog settings that pipeline renders should reuse. */
+  exportSettings?: VizzyExportSettingsInput;
 }
 
 /** `vizzy:render-template` — one saved template rendered with a real track. */

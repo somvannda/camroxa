@@ -96,12 +96,32 @@ const bindingSelectionSchema = z
   })
   .strict();
 
+const exportSettingsSchema = z
+  .object({
+    width: z.number().int().min(16).max(7680).optional(),
+    height: z.number().int().min(16).max(7680).optional(),
+    fps: z.number().int().min(1).max(240).optional(),
+    format: z.enum(["mp4", "webm"]).optional(),
+    codec: z.enum(["h264", "vp8", "vp9"]).optional(),
+    engine: z.enum(["wasm", "webcodecs"]).optional(),
+    bitrate: z.number().min(0).max(1000).optional(),
+    crf: z.number().min(0).max(63).optional(),
+    preset: z.string().max(40).optional(),
+    profile: z.string().max(40).optional(),
+    audioBitrate: z.number().min(32).max(512).optional(),
+    start: z.number().min(0).optional(),
+    end: z.number().positive().optional(),
+  })
+  .strict();
+
 const saveTemplateSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     kind: z.enum(["long", "reel"]),
     /** Optional legacy override; omitted means detect every binding automatically. */
     bindings: bindingSelectionSchema.optional(),
+    /** Export-dialog settings to persist with the template. */
+    exportSettings: exportSettingsSchema.optional(),
   })
   .strict();
 
@@ -400,6 +420,7 @@ export function registerVizzyIpc(host: VizzyHost): void {
         thumbnail: source.thumbnail,
         bindings,
         kind: input.kind,
+        exportSettings: input.exportSettings,
       });
       notifyVideoTemplatesChanged({ id: saved.id, action: "saved" });
       return ok(toVideoTemplateInfo(saved));

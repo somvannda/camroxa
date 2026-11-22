@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { StatusDot } from "../../components/status";
 import { Button } from "../../components/button";
 import { Dialog, DialogContent } from "../../components/dialog";
 import { Icon } from "../../components/icon";
 import { toast } from "../../components/toast";
-import type { VizzyTemplateDraftInfo } from "../../../electron/shared/types";
+import type {
+  VizzyExportSettingsInput,
+  VizzyTemplateDraftInfo,
+} from "../../../electron/shared/types";
+import { defaultExportSettings } from "./export-settings";
 import { VizzyExportMenu } from "./vizzy-export-menu";
 import { VizzyExportStatus } from "./vizzy-export-status";
 import { VizzyRendersPanel } from "./vizzy-renders-panel";
@@ -49,6 +53,7 @@ export function VizzyPage() {
     fps: number;
     duration: number;
   } | null>(null);
+  const [exportSettings, setExportSettings] = useState<VizzyExportSettingsInput | null>(null);
   const [templateInfo, setTemplateInfo] = useState<VizzyTemplateDraftInfo | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
@@ -63,6 +68,29 @@ export function VizzyPage() {
 
   const attached = state.attached && !closed;
   const saveLabel = state.dirty ? "Unsaved changes" : "Saved";
+
+  const exportProjectInfo = useMemo(
+    () => ({
+      width: exportProject?.width ?? state.projectWidth,
+      height: exportProject?.height ?? state.projectHeight,
+      fps: exportProject?.fps ?? state.projectFps,
+      duration: exportProject?.duration ?? state.projectDuration,
+    }),
+    [
+      exportProject?.width,
+      exportProject?.height,
+      exportProject?.fps,
+      exportProject?.duration,
+      state.projectWidth,
+      state.projectHeight,
+      state.projectFps,
+      state.projectDuration,
+    ],
+  );
+  const templateExportSettings = useMemo(
+    () => exportSettings ?? defaultExportSettings(exportProjectInfo),
+    [exportSettings, exportProjectInfo],
+  );
 
   // A finished export is a new file in `renders/`; refresh an open list.
   useEffect(() => {
@@ -162,6 +190,7 @@ export function VizzyPage() {
         const response = await window.camxora.vizzy.saveTemplate({
           name: draft.name.trim(),
           kind: draft.kind,
+          exportSettings: templateExportSettings,
         });
         if (!response.ok) {
           setTemplateSaveError(response.error.message);
@@ -180,7 +209,7 @@ export function VizzyPage() {
         setTemplateSaving(false);
       }
     },
-    [refreshTemplates],
+    [refreshTemplates, templateExportSettings],
   );
 
   const previewTemplate = useCallback(
@@ -432,12 +461,9 @@ export function VizzyPage() {
               <VizzyExportMenu
                 open
                 onClose={() => setPanel(null)}
-                project={{
-                  width: exportProject?.width ?? state.projectWidth,
-                  height: exportProject?.height ?? state.projectHeight,
-                  fps: exportProject?.fps ?? state.projectFps,
-                  duration: exportProject?.duration ?? state.projectDuration,
-                }}
+                project={exportProjectInfo}
+                savedSettings={templateExportSettings}
+                onSettingsChange={setExportSettings}
                 running={exporter.running}
                 progress={exporter.progress}
                 result={exporter.result}

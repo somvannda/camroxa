@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../../components/button";
 import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
@@ -9,6 +9,7 @@ import type {
   VizzyExportResult,
   VizzyExportSettingsInput,
 } from "../../../electron/shared/types";
+import { defaultExportBitrate } from "./export-settings";
 import { formatBytes, formatDuration } from "./vizzy-format";
 
 /** Same list the editor's own Export dialog exposes. */
@@ -56,17 +57,6 @@ const PRESETS = [
 
 const PROFILES = ["baseline", "main", "high"] as const;
 
-/** Reference default: bitrate tracks the chosen height. */
-function defaultExportBitrate(height: number): number {
-  if (height <= 360) return 5;
-  if (height <= 480) return 5;
-  if (height <= 720) return 15;
-  if (height <= 1080) return 25;
-  if (height <= 1440) return 50;
-  if (height <= 2160) return 75;
-  return 16;
-}
-
 function resolutionValue(width: number, height: number): string {
   const value = `${width}x${height}`;
   return RESOLUTIONS.some((option) => option.value === value) ? value : "custom";
@@ -76,6 +66,9 @@ export interface VizzyExportMenuProps {
   open: boolean;
   onClose: () => void;
   project: { width: number; height: number; fps: number; duration: number };
+  /** Last selected settings; reopening the rail restores them. */
+  savedSettings?: VizzyExportSettingsInput | null;
+  onSettingsChange?: (settings: VizzyExportSettingsInput) => void;
   running: boolean;
   progress: VizzyExportProgress | null;
   result: VizzyExportResult | null;
@@ -98,6 +91,8 @@ export function VizzyExportMenu({
   open,
   onClose,
   project,
+  savedSettings,
+  onSettingsChange,
   running,
   progress,
   result,
@@ -119,25 +114,74 @@ export function VizzyExportMenu({
   const [audioBitrate, setAudioBitrate] = useState("192");
   const [start, setStart] = useState("0");
   const [end, setEnd] = useState("");
+  const savedRef = useRef<VizzyExportSettingsInput | null>(savedSettings ?? null);
+  const changeRef = useRef(onSettingsChange);
+  savedRef.current = savedSettings ?? null;
+  changeRef.current = onSettingsChange;
 
-  // Seed exactly like the editor's Export dialog when it opens.
+  // Seed exactly like the editor's Export dialog when it opens, but restore the
+  // user's last selection when this rail is reopened.
   useEffect(() => {
     if (!open) return;
-    const nextWidth = project.width || 1920;
-    const nextHeight = project.height || 1080;
+    const saved = savedRef.current;
+    const nextWidth = saved?.width ?? (project.width || 1920);
+    const nextHeight = saved?.height ?? (project.height || 1080);
     setWidth(String(nextWidth));
     setHeight(String(nextHeight));
-    setFps("60");
-    setCodec("h264");
-    setEngine("wasm");
-    setBitrate(String(defaultExportBitrate(nextHeight)));
-    setCrf("20");
-    setPreset("veryfast");
-    setProfile("high");
-    setAudioBitrate("192");
-    setStart("0");
-    setEnd(project.duration > 0 ? String(Number(project.duration.toFixed(2))) : "");
+    setFps(String(saved?.fps ?? 60));
+    setCodec(saved?.codec === "vp8" || saved?.codec === "vp9" ? saved.codec : "h264");
+    setEngine(saved?.engine === "webcodecs" ? "webcodecs" : "wasm");
+    setBitrate(String(saved?.bitrate ?? defaultExportBitrate(nextHeight)));
+    setCrf(String(saved?.crf ?? 20));
+    setPreset(saved?.preset ?? "veryfast");
+    setProfile(saved?.profile ?? "high");
+    setAudioBitrate(String(saved?.audioBitrate ?? 192));
+    setStart(String(saved?.start ?? 0));
+    setEnd(
+      String(
+        saved?.end ??
+          (project.duration > 0 ? Number(project.duration.toFixed(2)) : ""),
+      ),
+    );
   }, [open, project.width, project.height, project.duration]);
+
+  // Keep the template store in step with the fields the user is looking at.
+  useEffect(() => {
+    if (!open) return;
+    const widthNumber = Number(width) || 0;
+    const heightNumber = Number(height) || 0;
+    const startNumber = start.trim() === "" ? 0 : Number(start);
+    const endNumber = end.trim() === "" ? undefined : Number(end);
+    changeRef.current?.({
+      width: widthNumber,
+      height: heightNumber,
+      fps: Number(fps) || 30,
+      format: codec === "h264" ? "mp4" : "webm",
+      codec,
+      engine,
+      bitrate: Math.max(0, Number(bitrate) || 0),
+      crf: Number(crf) || 20,
+      preset,
+      profile,
+      audioBitrate: Number(audioBitrate) || 192,
+      start: Number.isFinite(startNumber) ? startNumber : 0,
+      end: Number.isFinite(endNumber) ? endNumber : undefined,
+    });
+  }, [
+    open,
+    width,
+    height,
+    fps,
+    codec,
+    engine,
+    bitrate,
+    crf,
+    preset,
+    profile,
+    audioBitrate,
+    start,
+    end,
+  ]);
 
   useEffect(() => {
     if (!open) return;

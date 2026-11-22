@@ -42,8 +42,27 @@ export interface PipelineTemplate {
   output: { width: number; height: number; fps: number };
   duration: { mode: "audio" } | { mode: "fixed"; seconds: number };
   bindings: PipelineBindings;
+  /** Export-dialog choices captured by "Save as template". */
+  export?: PipelineExportSettings;
   requirements: { renderer: "vizzy"; minVersion: string; features: string[] };
   createdAt: string;
+}
+
+/** The pipeline-relevant subset of the Export rail. */
+export interface PipelineExportSettings {
+  width?: number;
+  height?: number;
+  fps?: number;
+  format?: "mp4" | "webm";
+  codec?: "h264" | "vp8" | "vp9";
+  engine?: "wasm" | "webcodecs";
+  bitrate?: number;
+  crf?: number;
+  preset?: string;
+  profile?: string;
+  audioBitrate?: number;
+  start?: number;
+  end?: number;
 }
 
 interface SnapshotNode {
@@ -281,6 +300,23 @@ const pipelineSchema = z.object({
       })
       .optional(),
   }),
+  export: z
+    .object({
+      width: z.number().int().min(16).max(7680).optional(),
+      height: z.number().int().min(16).max(7680).optional(),
+      fps: z.number().int().min(1).max(240).optional(),
+      format: z.enum(["mp4", "webm"]).optional(),
+      codec: z.enum(["h264", "vp8", "vp9"]).optional(),
+      engine: z.enum(["wasm", "webcodecs"]).optional(),
+      bitrate: z.number().min(0).max(1000).optional(),
+      crf: z.number().min(0).max(63).optional(),
+      preset: z.string().min(1).max(40).optional(),
+      profile: z.string().min(1).max(40).optional(),
+      audioBitrate: z.number().min(32).max(512).optional(),
+      start: z.number().min(0).optional(),
+      end: z.number().positive().optional(),
+    })
+    .optional(),
   requirements: z.object({
     renderer: z.literal("vizzy"),
     minVersion: z.string().min(1),
@@ -378,25 +414,52 @@ export function buildPipelineTemplate(input: {
   snapshot: ProjectSnapshot;
   bindings?: PipelineBindings;
   kind?: PipelineKind;
+  exportSettings?: PipelineExportSettings;
   createdAt?: string;
 }): PipelineTemplate {
   const project = isRecord(input.snapshot.project) ? input.snapshot.project : {};
-  const width = Number(project.width ?? 1920);
-  const height = Number(project.height ?? 1080);
-  const fps = Number(project.fps ?? 30);
+  const projectWidth = Number(project.width ?? 1920);
+  const projectHeight = Number(project.height ?? 1080);
+  const projectFps = Number(project.fps ?? 30);
+  const exported = input.exportSettings;
+  const width = Math.round(
+    Number.isFinite(exported?.width) ? Number(exported?.width) : Number.isFinite(projectWidth) ? projectWidth : 1920,
+  );
+  const height = Math.round(
+    Number.isFinite(exported?.height) ? Number(exported?.height) : Number.isFinite(projectHeight) ? projectHeight : 1080,
+  );
+  const fps = Math.round(
+    Number.isFinite(exported?.fps) ? Number(exported?.fps) : Number.isFinite(projectFps) ? projectFps : 30,
+  );
   const name = input.name.trim() || textOf(project.name) || "Untitled template";
   const template: PipelineTemplate = {
     schemaVersion: 1,
     name,
     kind: input.kind ?? inferKind(width, height),
     project: "template.json",
-    output: {
-      width: Math.round(Number.isFinite(width) ? width : 1920),
-      height: Math.round(Number.isFinite(height) ? height : 1080),
-      fps: Math.round(Number.isFinite(fps) ? fps : 30),
-    },
+    output: { width, height, fps },
     duration: { mode: "audio" },
     bindings: input.bindings ?? detectBindings(input.snapshot),
+    ...(exported
+      ? {
+          export: {
+            width,
+            height,
+            fps,
+            format: exported.format === "webm" ? "webm" : "mp4",
+            codec:
+              exported.codec === "vp8" || exported.codec === "vp9" ? exported.codec : "h264",
+            engine: exported.engine === "webcodecs" ? "webcodecs" : "wasm",
+            bitrate: exported.bitrate,
+            crf: exported.crf,
+            preset: exported.preset,
+            profile: exported.profile,
+            audioBitrate: exported.audioBitrate,
+            start: exported.start,
+            end: exported.end,
+          },
+        }
+      : {}),
     requirements: { renderer: "vizzy", minVersion: "2.0.0", features: ["audio-analysis"] },
     createdAt: input.createdAt ?? new Date().toISOString(),
   };

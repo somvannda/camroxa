@@ -27,7 +27,7 @@ export interface PipelineRenderPlan {
     height: number;
     fps: number;
     codec: "h264";
-    engine: "wasm";
+    engine: "wasm" | "webcodecs";
     bitrate: number;
     crf: number;
     preset: string;
@@ -71,26 +71,31 @@ export function buildPipelineRenderPlan(
   );
 
   const { width, height, fps } = pipeline.output;
+  const exported = pipeline.export;
+  const exportWidth = exported?.width ?? width;
+  const exportHeight = exported?.height ?? height;
+  const exportFps = exported?.fps ?? fps;
   return {
     templateId: template.id ?? "",
     name: pipeline.name,
     kind: pipeline.kind,
     projectJson,
-    output: { width, height, fps },
+    output: { width: exportWidth, height: exportHeight, fps: exportFps },
     durationSec,
     settings: {
-      width,
-      height,
-      fps,
+      width: exportWidth,
+      height: exportHeight,
+      fps: exportFps,
       codec: "h264",
-      engine: "wasm",
-      /** Mirror the editor defaults: bitrate follows the chosen height. */
-      bitrate: defaultExportBitrate(height),
-      crf: 20,
-      preset: "veryfast",
-      profile: "high",
-      audioBitrate: 192,
+      engine: exported?.engine === "webcodecs" ? "webcodecs" : "wasm",
+      /** Mirror the Export rail saved with the template; defaults otherwise. */
+      bitrate: exported?.bitrate ?? defaultExportBitrate(exportHeight),
+      crf: exported?.crf ?? 20,
+      preset: exported?.preset ?? "veryfast",
+      profile: exported?.profile ?? "high",
+      audioBitrate: exported?.audioBitrate ?? 192,
       start: 0,
+      /** Pipeline renders always follow the run audio, never a saved 12 s trim. */
       end: durationSec,
     },
   };

@@ -224,6 +224,16 @@ try {
   const fixtureJson = fs.readFileSync(fixture, "utf8");
   step("fixture opened");
 
+  // Choose Export settings first, then save them with the template.
+  await window.getByTestId("vizzy-export-open").click();
+  const exportMenu = window.getByTestId("vizzy-export-menu");
+  await exportMenu.waitFor({ timeout: 10_000 });
+  await window.getByTestId("vizzy-export-bitrate").fill("50");
+  await window.getByTestId("vizzy-export-crf").fill("18");
+  await window.getByTestId("vizzy-export-audio-bitrate").fill("256");
+  await window.getByRole("button", { name: "Close export settings" }).click();
+  await exportMenu.waitFor({ state: "detached", timeout: 10_000 });
+
   // --- Save dialog: everything is automatic; only name/kind are chosen ------
   await window.getByTestId("vizzy-template-open").click();
   const dialog = window.getByTestId("vizzy-template-dialog");
@@ -275,6 +285,13 @@ try {
   }
   if (!pipeline.bindings.palette?.nodeIds?.includes("node_mwn7736u4")) {
     fail(`Palette binding not auto-detected: ${JSON.stringify(pipeline.bindings.palette)}`);
+  }
+  if (
+    pipeline.export?.bitrate !== 50 ||
+    pipeline.export?.crf !== 18 ||
+    pipeline.export?.audioBitrate !== 256
+  ) {
+    fail(`Export settings were not saved with the template: ${JSON.stringify(pipeline.export)}`);
   }
   step("template files verified");
 

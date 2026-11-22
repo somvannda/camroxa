@@ -160,6 +160,42 @@ describe("pipeline template", () => {
   });
 });
 
+describe("pipeline export settings", () => {
+  it("captures the Export rail into output and export", () => {
+    const pipeline = buildPipelineTemplate({
+      name: "Reel",
+      snapshot: snapshot(),
+      kind: "reel",
+      exportSettings: {
+        width: 1080,
+        height: 1920,
+        fps: 60,
+        format: "mp4",
+        codec: "h264",
+        engine: "wasm",
+        bitrate: 50,
+        crf: 18,
+        preset: "slow",
+        profile: "main",
+        audioBitrate: 256,
+        start: 0,
+        end: 12,
+      },
+    });
+    expect(pipeline.output).toEqual({ width: 1080, height: 1920, fps: 60 });
+    expect(pipeline.export).toMatchObject({
+      width: 1080,
+      height: 1920,
+      fps: 60,
+      bitrate: 50,
+      crf: 18,
+      preset: "slow",
+      profile: "main",
+      audioBitrate: 256,
+    });
+  });
+});
+
 describe("pipeline bindings applied to a run", () => {
   function json(): string {
     return JSON.stringify({ format: "studio-project", version: 1, ...snapshot() });
