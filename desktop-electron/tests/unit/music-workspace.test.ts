@@ -262,6 +262,8 @@ describe("settings mapping", () => {
       creativity: 40,
       defaultSongCount: 6,
       autoGenImage: true,
+      primaryProfileIds: ["p1", "p2"],
+      secondaryProfileIds: '["p3"]',
     });
     const patch = musicSettingsPatch(settings);
     expect(patch).toMatchObject({
@@ -270,6 +272,8 @@ describe("settings mapping", () => {
       defaultSongCount: 6,
       autoGenImage: true,
       lyricsPolishStrength: DEFAULT_MUSIC_SETTINGS.polishStrength,
+      primaryProfileIds: ["p1", "p2"],
+      secondaryProfileIds: ["p3"],
     });
     const snapshot = musicSettingsSnapshot(settings);
     expect(musicSettingsSnapshot({ ...settings })).toBe(snapshot);

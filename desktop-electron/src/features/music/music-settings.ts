@@ -20,6 +20,9 @@ export interface MusicSettings {
   shuffleStructure: boolean;
   shuffleMood: boolean;
   skipExistingBatches: boolean;
+  /** Saved Primary/Secondary channel pairing for the Music page. */
+  primaryProfileIds: string[];
+  secondaryProfileIds: string[];
 }
 
 export const LANGUAGE_OPTIONS = [
@@ -52,6 +55,8 @@ export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
   shuffleStructure: false,
   shuffleMood: false,
   skipExistingBatches: false,
+  primaryProfileIds: [],
+  secondaryProfileIds: [],
 };
 
 export const SONG_COUNT_MIN = 1;
@@ -88,6 +93,23 @@ function readString(settings: SettingsRecord, key: string, fallback = ""): strin
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
   return text || fallback;
+}
+
+/** Settings store arrays as JSON; older values may arrive as JSON strings. */
+function readStringArray(settings: SettingsRecord, key: string): string[] {
+  const value = settings[key];
+  let parsed: unknown = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
 }
 
 export function normaliseLanguage(value: string | undefined): string {
@@ -175,6 +197,8 @@ export function buildMusicSettings(settings: SettingsRecord | null | undefined):
       "skipExistingBatches",
       DEFAULT_MUSIC_SETTINGS.skipExistingBatches,
     ),
+    primaryProfileIds: readStringArray(raw, "primaryProfileIds"),
+    secondaryProfileIds: readStringArray(raw, "secondaryProfileIds"),
   };
 }
 
@@ -199,6 +223,8 @@ export function musicSettingsPatch(settings: MusicSettings): Record<string, unkn
     autoUploadYouTube: settings.autoUploadYouTube,
     skipExistingBatches: settings.skipExistingBatches,
     lyricsPolishStrength: settings.polishStrength,
+    primaryProfileIds: settings.primaryProfileIds,
+    secondaryProfileIds: settings.secondaryProfileIds,
   };
 }
 
