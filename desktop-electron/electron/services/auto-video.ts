@@ -155,9 +155,10 @@ function songTitle(song: AutoVideoHistorySong): string {
 }
 
 /** `2026-11-22` / `2026-11-22T…` → `1122`; empty when the date is unusable. */
-function monthDay(value: unknown): string {
+/** `2026-11-22` / `2026-11-22T…` → `2211` (DDMM) for merged file names. */
+function dayMonth(value: unknown): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(clean(value));
-  return match ? `${match[2]}${match[3]}` : "";
+  return match ? `${match[3]}${match[2]}` : "";
 }
 
 function branchTemplate(
@@ -296,6 +297,7 @@ export function selectAutoVideoCandidate(
         backgroundPath,
       }));
 
+      const mergeDate = dayMonth(row.run_date);
       return {
         key: `${externalBatchId}:${clean(meta.profile_id)}:${clean(meta.role)}`,
         externalBatchId,
@@ -305,7 +307,7 @@ export function selectAutoVideoCandidate(
         outputDir: runDir,
         backgroundPath,
         merge: input.settings.merge,
-        mergeName: `${batchAlbum || "album"}${monthDay(row.run_date)}`,
+        mergeName: `${batchAlbum || "album"}${mergeDate ? `_${mergeDate}` : ""}`,
         jobs,
       };
     }

@@ -92,7 +92,7 @@ describe("auto-video candidate selection", () => {
     expect(candidate?.templateId).toBe("long-1");
     expect(candidate?.backgroundPath).toBe("C:/runs/b1/background-16x9.png");
     expect(candidate?.merge).toBe(true);
-    expect(candidate?.mergeName).toBe("Night Album1120");
+    expect(candidate?.mergeName).toBe("Night Album_2011");
     expect(candidate?.jobs).toHaveLength(2);
     expect(candidate?.jobs[0]).toMatchObject({
       branch: "long",
@@ -112,7 +112,7 @@ describe("auto-video candidate selection", () => {
     expect(candidate?.jobs[0].audioDir).toBe("C:/runs/b1/Deep Focus");
     expect(candidate?.jobs[0].audioBranch).toBe("alt");
     expect(candidate?.jobs[0].album).toBe("Alt Album");
-    expect(candidate?.mergeName).toBe("Alt Album1120");
+    expect(candidate?.mergeName).toBe("Alt Album_2011");
   });
 
   it("renders into the downloaded song folder when run_dir is missing", () => {

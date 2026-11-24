@@ -295,6 +295,9 @@ try {
   // --- Two validated MP4s in the run folder -------------------------------
   const renders = mp4s(outDir).filter((name) => name !== "batch-main-merged.mp4");
   if (renders.length !== 2) fail(`Expected two renders, got ${JSON.stringify(renders)}`);
+  if (!renders.includes("1. Night Drive.mp4") || !renders.includes("2. Dawn Chorus.mp4")) {
+    fail(`Renders must keep the MP3 track prefix: ${JSON.stringify(renders)}`);
+  }
   if (mp4s(rendersDir).length !== 0) {
     fail(`Pipeline renders must not use the managed renders folder: ${JSON.stringify(mp4s(rendersDir))}`);
   }
@@ -466,6 +469,8 @@ try {
   step("force regenerate produced a fresh track");
 
   // --- Force regenerate a whole batch and repair a deleted output ---------
+  fs.writeFileSync(path.join(outDir, "1. Night Drive (1).mp4"), Buffer.from("stale"));
+  fs.writeFileSync(path.join(outDir, "Dusk Between Us_2211.mp4"), Buffer.from("stale"));
   const forceBatch = await window.evaluate(async () =>
     window.camxora.pipeline.force({ mode: "force", batchId: "batch-main" }),
   );
@@ -491,6 +496,15 @@ try {
   );
   const repairTarget = batchForced.jobs[0].output;
   if (!repairTarget || !fs.existsSync(repairTarget)) fail("Forced batch output missing");
+  if (fs.existsSync(path.join(outDir, "1. Night Drive (1).mp4"))) {
+    fail("Force regenerate left a duplicate MP4 behind");
+  }
+  if (fs.existsSync(path.join(outDir, "Dusk Between Us_2211.mp4"))) {
+    fail("Force regenerate left a stale merged MP4 behind");
+  }
+  if (mp4s(outDir).length !== 3) {
+    fail(`Force regenerate must leave exactly two tracks + one merge, got ${JSON.stringify(mp4s(outDir))}`);
+  }
   fs.rmSync(repairTarget, { force: true });
   const repaired = await window.evaluate(async () =>
     window.camxora.pipeline.force({ mode: "repair", batchId: "batch-main" }),

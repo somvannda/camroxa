@@ -91,6 +91,68 @@ const forceSchema = z
   .strict();
 const revealSchema = z.object({ path: z.string().min(1).max(4096) }).strict();
 
+function removeQuietly(filePath: string): void {
+  try {
+    fs.rmSync(filePath, { force: true });
+  } catch {
+    // A locked file is left for the next retry; the render writes a unique name.
+  }
+}
+
+function removeSiblings(filePath: string): void {
+  const directory = path.dirname(filePath);
+  const base = path.basename(filePath, path.extname(filePath)).replace(/ \(\d+\)$/, "");
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(directory);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (!/\.mp4$/i.test(name)) continue;
+    const stem = path.basename(name, path.extname(name)).replace(/ \(\d+\)$/, "");
+    if (stem === base) removeQuietly(path.join(directory, name));
+  }
+}
+
+function removeTrackVariants(job: { outputDir: string; title: string; output: string | null }): void {
+  const title = String(job.title || "").trim().replace(/^\d+\.\s*/, "").toLowerCase();
+  const targets = new Set<string>();
+  if (job.output) targets.add(path.basename(job.output, path.extname(job.output)).replace(/ \(\d+\)$/, ""));
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(job.outputDir);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (!/\.mp4$/i.test(name)) continue;
+    const stem = path.basename(name, path.extname(name));
+    const normalized = stem
+      .replace(/^\d+\.\s*/, "")
+      .replace(/ - reel$/i, "")
+      .replace(/ \(\d+\)$/, "")
+      .trim()
+      .toLowerCase();
+    const base = stem.replace(/ \(\d+\)$/, "");
+    if ((title && normalized === title) || targets.has(base)) {
+      removeQuietly(path.join(job.outputDir, name));
+    }
+  }
+}
+
+function removeAllMp4(directory: string): void {
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(directory);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (/\.mp4$/i.test(name)) removeQuietly(path.join(directory, name));
+  }
+}
+
 function templateNameOf(root: string, id: string): string {
   try {
     return readVideoTemplate(root, id).name;
@@ -217,14 +279,17 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
       };
     },
     render: async (input) => {
+      const trackMatch = path.basename(input.job.audioPath).match(/^(\d+)\.\s*/);
+      const trackPrefix = trackMatch ? `${trackMatch[1]}. ` : "";
+      const title = input.outputName.replace(/^\d+\.\s*/, "");
+      const fileStem = `${trackPrefix}${title}${input.job.branch === "reel" ? " - Reel" : ""}`;
       const outcome = await options.host.renderTemplateOffscreen({
         projectJson: input.plan.projectJson,
         name: input.templateName,
         audioPath: input.job.audioPath,
         outputName: input.outputName,
         outputDir: input.job.outputDir,
-        fileStem:
-          input.job.branch === "reel" ? `${input.outputName}-reel` : input.outputName,
+        fileStem,
         settings: {
           width: input.plan.settings.width,
           height: input.plan.settings.height,
@@ -445,15 +510,16 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
       return fail("PIPELINE_NOTHING_TO_RETRY", "There is no render to regenerate.");
     }
     const touchedBatches = new Set<string>();
+    const outputDirs = new Set(selected.map((job) => job.outputDir));
+    if (input.mode === "force") {
+      // A force rebuild owns the run folder: remove every previous MP4 so a
+      // regenerate can never leave an old take or a duplicate.
+      for (const directory of outputDirs) removeAllMp4(directory);
+    } else {
+      for (const job of selected) removeTrackVariants(job);
+    }
     for (const job of selected) {
-      if (job.output) {
-        try {
-          fs.rmSync(job.output, { force: true });
-        } catch {
-          // The row is re-queued even when the old file is locked; the render
-          // writes a fresh unique name in that case.
-        }
-      }
+      if (job.output) removeQuietly(job.output);
       updateQueueJob(store, job.id, {
         status: "queued",
         stage: "queued",
@@ -467,11 +533,8 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
       const batch = store.getBatch(batchId);
       if (!batch) continue;
       if (batch.mergedOutput) {
-        try {
-          fs.rmSync(batch.mergedOutput, { force: true });
-        } catch {
-          // Keep going; the merge will pick a fresh unique path if needed.
-        }
+        removeQuietly(batch.mergedOutput);
+        removeSiblings(batch.mergedOutput);
       }
       store.upsertBatch({ ...batch, status: "idle", mergedOutput: null, error: null, updatedAt: Date.now() });
     }
