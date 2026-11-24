@@ -20,6 +20,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error("Renderer error boundary", error, info.componentStack);
+    // The native Vizzy editor is a WebContentsView and always paints above the
+    // shell DOM. Without this it covers the recovery card, leaving a blank app.
+    void window.camxora?.vizzy?.setVisible(false);
   }
 
   render() {
