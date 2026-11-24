@@ -26,7 +26,8 @@ export interface PipelineRenderPlan {
     width: number;
     height: number;
     fps: number;
-    codec: "h264";
+    codec: "h264" | "vp8" | "vp9";
+    format: "mp4" | "webm";
     engine: "wasm" | "webcodecs";
     bitrate: number;
     crf: number;
@@ -86,7 +87,9 @@ export function buildPipelineRenderPlan(
       width: exportWidth,
       height: exportHeight,
       fps: exportFps,
-      codec: "h264",
+      codec:
+        exported?.codec === "vp8" || exported?.codec === "vp9" ? exported.codec : "h264",
+      format: exported?.format === "webm" ? "webm" : "mp4",
       engine: exported?.engine === "webcodecs" ? "webcodecs" : "wasm",
       /** Mirror the Export rail saved with the template; defaults otherwise. */
       bitrate: exported?.bitrate ?? defaultExportBitrate(exportHeight),

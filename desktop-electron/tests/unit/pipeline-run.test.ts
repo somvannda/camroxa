@@ -102,6 +102,8 @@ describe("pipeline render plan", () => {
       audioBitrate: 256,
       start: 0,
       end: 187.4,
+      codec: "h264",
+      format: "mp4",
     });
   });
 });
