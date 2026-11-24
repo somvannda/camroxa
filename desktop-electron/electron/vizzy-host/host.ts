@@ -135,6 +135,7 @@ export class VizzyHost {
     projectHeight: 0,
     projectFps: 0,
     projectDuration: 0,
+    projectRevision: 0,
     fftTier: "unknown",
     crossOriginIsolated: false,
     path: null,
@@ -293,6 +294,7 @@ export class VizzyHost {
       .catch((error: unknown) => {
         logger.warn("vizzy new project failed", { error: String(error) });
       });
+    this.update({ projectRevision: this.state.projectRevision + 1 });
     return true;
   }
 
@@ -310,10 +312,21 @@ export class VizzyHost {
           this.attached = true;
         }
       }
-      this.update({ attached: true, crashed: false, error: null, ready: false });
+      this.update({
+        attached: true,
+        crashed: false,
+        error: null,
+        ready: false,
+        projectRevision: this.state.projectRevision + 1,
+      });
       return;
     }
-    this.update({ crashed: false, error: null, ready: false });
+    this.update({
+      crashed: false,
+      error: null,
+      ready: false,
+      projectRevision: this.state.projectRevision + 1,
+    });
     contents.reload();
   }
 
@@ -489,6 +502,7 @@ export class VizzyHost {
       projectHeight: number(header.height),
       projectFps: number(header.fps),
       projectDuration: number(header.duration),
+      projectRevision: this.state.projectRevision + 1,
       path: resolved,
       error: null,
     });
@@ -590,6 +604,7 @@ export class VizzyHost {
       projectHeight: number(project.height),
       projectFps: number(project.fps),
       projectDuration: number(project.duration),
+      projectRevision: this.state.projectRevision + 1,
       path: resolved,
       error: null,
     });

@@ -13,6 +13,7 @@ const EMPTY_STATE: VizzyState = {
   projectHeight: 0,
   projectFps: 0,
   projectDuration: 0,
+  projectRevision: 0,
   fftTier: "unknown",
   crossOriginIsolated: false,
   path: null,

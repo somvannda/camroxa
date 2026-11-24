@@ -154,6 +154,8 @@ describe("template draft", () => {
     expect(draft.name).toBe("Night Drive");
     expect(draft.kind).toBe("long");
     expect(draft.selection).toEqual(info.detected);
+    // Export settings are opt-in, never inherited from the previous preview.
+    expect(draft.includeExportSettings).toBe(false);
     // Copying must not alias the IPC payload.
     draft.selection.title = "";
     expect(info.detected.title).toBe("text-title");
@@ -164,6 +166,7 @@ describe("template draft", () => {
       name: "Night Drive",
       kind: "long",
       selection: { ...info.detected, logo: "text-title" },
+      includeExportSettings: false,
     };
     const errors = templateDraftErrors(info, duplicate, "Night Drive");
     expect(errors.fields.logo).toMatch(/not a compatible logo/i);

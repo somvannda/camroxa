@@ -253,6 +253,18 @@ try {
   if ((await window.getByTestId("vizzy-template-advanced").count()) !== 0) {
     fail("Save dialog must not ask for node selections");
   }
+  // Export settings are opt-in; this run captures the rail settings chosen above.
+  const exportToggle = window.getByTestId("vizzy-template-export-toggle");
+  await exportToggle.waitFor({ timeout: 5_000 });
+  await exportToggle.click();
+  const capturedOutput = await window.getByTestId("vizzy-template-output").innerText();
+  if (
+    !capturedOutput.includes("1920×1080") ||
+    !capturedOutput.includes("30 fps") ||
+    !/H\.264 MP4/.test(capturedOutput)
+  ) {
+    fail(`Unexpected captured export summary: ${capturedOutput}`);
+  }
 
   await window.getByTestId("vizzy-template-name").fill(TEMPLATE_NAME);
   await window.screenshot({ path: path.join(artifacts, "save-dialog.png") });
@@ -341,6 +353,7 @@ try {
   if ((await target.getAttribute("data-selected-value")) !== templateId) {
     fail("The existing template was not selected as the save target");
   }
+  await window.getByTestId("vizzy-template-export-toggle").click();
   await window.getByTestId("vizzy-template-save").click();
   await overwriteDialog.waitFor({ state: "detached", timeout: 30_000 });
   const afterOverwrite = fs.readdirSync(templatesDir).filter((name) => !name.startsWith("."));

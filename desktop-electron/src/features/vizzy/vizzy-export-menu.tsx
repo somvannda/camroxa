@@ -9,7 +9,7 @@ import type {
   VizzyExportResult,
   VizzyExportSettingsInput,
 } from "../../../electron/shared/types";
-import { defaultExportBitrate } from "./export-settings";
+import { defaultExportBitrate, defaultExportFps } from "./export-settings";
 import { formatBytes, formatDuration } from "./vizzy-format";
 
 /** Same list the editor's own Export dialog exposes. */
@@ -128,7 +128,7 @@ export function VizzyExportMenu({
     const nextHeight = saved?.height ?? (project.height || 1080);
     setWidth(String(nextWidth));
     setHeight(String(nextHeight));
-    setFps(String(saved?.fps ?? 60));
+    setFps(String(saved?.fps ?? defaultExportFps(project.fps)));
     setCodec(saved?.codec === "vp8" || saved?.codec === "vp9" ? saved.codec : "h264");
     setEngine(saved?.engine === "webcodecs" ? "webcodecs" : "wasm");
     setBitrate(String(saved?.bitrate ?? defaultExportBitrate(nextHeight)));
@@ -143,7 +143,7 @@ export function VizzyExportMenu({
           (project.duration > 0 ? Number(project.duration.toFixed(2)) : ""),
       ),
     );
-  }, [open, project.width, project.height, project.duration]);
+  }, [open, project.width, project.height, project.fps, project.duration]);
 
   // Keep the template store in step with the fields the user is looking at.
   useEffect(() => {

@@ -50,6 +50,24 @@ describe("pipeline render plan", () => {
     expect(source.projectJson).not.toContain("camxora-media://local/bg");
   });
 
+  it("keeps every non-bound design node exactly as saved", () => {
+    const source = template();
+    const before = JSON.parse(source.projectJson).nodes as Array<{
+      id: string;
+      kind: string;
+      props: Record<string, unknown>;
+    }>;
+    const plan = buildPipelineRenderPlan(source, {
+      audioDurationSec: 30,
+      inputs: { title: "Run title", backgroundUrl: "camxora-media://local/bg" },
+    });
+    const after = JSON.parse(plan.projectJson).nodes as typeof before;
+    const design = (nodes: typeof before) =>
+      nodes.filter((node) => node.kind === "effects" || node.kind === "particles");
+    expect(design(after)).toEqual(design(before));
+    expect(design(after).length).toBeGreaterThan(0);
+  });
+
   it("rejects a kind mismatch and an empty track", () => {
     expect(() =>
       buildPipelineRenderPlan(template("reel"), { audioDurationSec: 30, expectedKind: "long" }),

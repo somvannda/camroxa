@@ -11,13 +11,20 @@ export function defaultExportBitrate(height: number): number {
   return 16;
 }
 
+/** Frame rates the Export rail offers; anything else falls back to 30. */
+export function defaultExportFps(fps: number | undefined): 24 | 30 | 60 {
+  return fps === 24 || fps === 60 ? fps : 30;
+}
+
 /**
- * The settings the Export rail starts from. Save-as-template stores them so a
- * pipeline render uses the same resolution, frame rate and encoder quality.
+ * The settings the Export rail starts from. Save-as-template stores them only
+ * when the user opts in, so a pipeline render can reuse the same resolution,
+ * frame rate and encoder quality.
  */
 export function defaultExportSettings(project: {
   width: number;
   height: number;
+  fps?: number;
   duration: number;
 }): VizzyExportSettingsInput {
   const width = project.width || 1920;
@@ -25,7 +32,7 @@ export function defaultExportSettings(project: {
   return {
     width,
     height,
-    fps: 30,
+    fps: defaultExportFps(project.fps),
     format: "mp4",
     codec: "h264",
     engine: "wasm",

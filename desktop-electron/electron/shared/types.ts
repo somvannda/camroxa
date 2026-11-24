@@ -179,6 +179,12 @@ export interface VizzyState {
   projectHeight: number;
   projectFps: number;
   projectDuration: number;
+  /**
+   * Bumped whenever the editor applies a different composition (open, new,
+   * preview). The shell uses it to drop per-project UI state such as the
+   * Export rail selection, so two templates never share settings.
+   */
+  projectRevision: number;
   fftTier: string;
   crossOriginIsolated: boolean;
   path: string | null;

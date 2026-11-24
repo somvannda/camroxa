@@ -92,6 +92,14 @@ export function VizzyPage() {
     [exportSettings, exportProjectInfo],
   );
 
+  // Export choices belong to the composition they were made on. Whenever the
+  // editor loads another project/template, drop both the rail selection and the
+  // stale project info so a new template can never inherit them.
+  useEffect(() => {
+    setExportSettings(null);
+    setExportProject(null);
+  }, [state.projectRevision]);
+
   // A finished export is a new file in `renders/`; refresh an open list.
   useEffect(() => {
     if (exporter.result && panel === "renders") void refreshRenders();
@@ -191,7 +199,9 @@ export function VizzyPage() {
           name: draft.name.trim(),
           kind: draft.kind,
           templateId: draft.templateId,
-          exportSettings: templateExportSettings,
+          // Opt-in only: the dialog starts unchecked, so a template saved after
+          // previewing another one keeps the project/default render profile.
+          exportSettings: draft.includeExportSettings ? templateExportSettings : undefined,
         });
         if (!response.ok) {
           setTemplateSaveError(response.error.message);
@@ -543,6 +553,7 @@ export function VizzyPage() {
         loadError={templateLoadError}
         saving={templateSaving}
         error={templateSaveError}
+        exportSettings={exportSettings}
         onClose={closeTemplateDialog}
         onSave={(draft) => void saveTemplate(draft)}
       />

@@ -409,7 +409,11 @@ export function registerVizzyIpc(host: VizzyHost): void {
       const fieldErrors = input.bindings
         ? validateBindingSelection(options, input.bindings)
         : {};
-      const kindError = kindAspectError(input.kind, width, height);
+      // Check the aspect of the output that will actually render: a captured
+      // portrait export must not be saved under a "long" template.
+      const outputWidth = input.exportSettings?.width ?? width;
+      const outputHeight = input.exportSettings?.height ?? height;
+      const kindError = kindAspectError(input.kind, outputWidth, outputHeight);
       const firstError = kindError ?? firstBindingError(fieldErrors);
       if (firstError) {
         return fail("TEMPLATE_INVALID", firstError, { fields: fieldErrors, kind: kindError });

@@ -28,6 +28,12 @@ export interface TemplateDraftState {
   name: string;
   kind: PipelineKind;
   selection: BindingSelection;
+  /**
+   * Opt-in capture of the Export rail. Off by default: a pipeline render then
+   * follows the project output and build defaults instead of inheriting
+   * whatever the previous preview happened to leave in the rail.
+   */
+  includeExportSettings: boolean;
   /** Existing template to replace; omitted saves a new one. */
   templateId?: string;
 }
@@ -47,6 +53,7 @@ export function draftFromInfo(info: VizzyTemplateDraftInfo): TemplateDraftState 
     name: info.name,
     kind: info.kind,
     selection: { ...info.detected },
+    includeExportSettings: false,
   };
 }
 

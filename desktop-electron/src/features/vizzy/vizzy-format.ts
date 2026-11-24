@@ -28,3 +28,23 @@ export function formatRenderDate(mtimeMs: number): string {
     minute: "2-digit",
   }).format(new Date(mtimeMs));
 }
+
+/** One-line encoder summary: `1920×1080 · 30 fps · H.264 MP4 · WebAssembly`. */
+export function formatExportSettings(settings: {
+  width?: number;
+  height?: number;
+  fps?: number;
+  format?: "mp4" | "webm";
+  codec?: "h264" | "vp8" | "vp9";
+  engine?: "wasm" | "webcodecs";
+}): string {
+  const width = settings.width ?? 1920;
+  const height = settings.height ?? 1080;
+  const fps = settings.fps ?? 30;
+  const codec = settings.codec === "vp8" ? "VP8" : settings.codec === "vp9" ? "VP9" : "H.264";
+  const format = settings.format === "webm" || settings.codec === "vp8" || settings.codec === "vp9"
+    ? "WebM"
+    : "MP4";
+  const engine = settings.engine === "webcodecs" ? "WebCodecs" : "WebAssembly";
+  return `${width}×${height} · ${fps} fps · ${codec} ${format} · ${engine}`;
+}

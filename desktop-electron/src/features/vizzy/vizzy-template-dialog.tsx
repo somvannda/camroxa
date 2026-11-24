@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../components/button";
+import { Checkbox } from "../../components/checkbox";
 import { Dialog, DialogContent } from "../../components/dialog";
 import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
 import { Select } from "../../components/select";
 import type { PipelineKind } from "../../../electron/shared/pipeline";
-import type { VizzyTemplateDraftInfo } from "../../../electron/shared/types";
+import type {
+  VizzyExportSettingsInput,
+  VizzyTemplateDraftInfo,
+} from "../../../electron/shared/types";
+import { formatExportSettings } from "./vizzy-format";
 import { templateDraftErrors, type TemplateDraftState } from "./vizzy-template-model";
 
 export interface VizzyTemplateDialogProps {
@@ -15,6 +20,11 @@ export interface VizzyTemplateDialogProps {
   loadError: string | null;
   saving: boolean;
   error: string | null;
+  /**
+   * Export rail settings for this project, or null when the rail has not been
+   * used. Never inherited from another template.
+   */
+  exportSettings: VizzyExportSettingsInput | null;
   onClose: () => void;
   onSave: (draft: TemplateDraftState) => void;
 }
@@ -27,6 +37,10 @@ export interface VizzyTemplateDialogProps {
  * it only replaces the run audio and the nodes it can detect automatically
  * (background, title, artist, album, palette).
  *
+ * Export settings are opt-in: by default the pipeline follows the project
+ * output with the default encoder, so a template never inherits the rail state
+ * of whichever project happened to be open before it.
+ *
  * The page hides the native editor view while the modal is open because a
  * `WebContentsView` always paints above shell DOM.
  */
@@ -37,32 +51,47 @@ export function VizzyTemplateDialog({
   loadError,
   saving,
   error,
+  exportSettings,
   onClose,
   onSave,
 }: VizzyTemplateDialogProps) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<PipelineKind>("long");
   const [templateId, setTemplateId] = useState("");
+  const [includeExport, setIncludeExport] = useState(false);
 
   useEffect(() => {
     if (!info) return;
     setName(info.name);
     setKind(info.kind);
     setTemplateId("");
+    setIncludeExport(false);
   }, [info]);
 
   const existing = info?.existing.find((template) => template.id === templateId) ?? null;
   const overwriteOptions = info?.existing.filter((template) => template.kind === info.kind) ?? [];
+  const captureExport = includeExport && Boolean(exportSettings);
+  const outputWidth = captureExport ? (exportSettings?.width ?? info?.width ?? 0) : (info?.width ?? 0);
+  const outputHeight = captureExport ? (exportSettings?.height ?? info?.height ?? 0) : (info?.height ?? 0);
   const draft: TemplateDraftState | null = info
     ? {
         name,
         kind,
         selection: info.detected,
+        includeExportSettings: captureExport,
         templateId: templateId || undefined,
       }
     : null;
-  const errors = info && draft ? templateDraftErrors(info, draft, name) : null;
+  // Kind is checked against the output that will actually be rendered, so a
+  // captured portrait export cannot be saved as a "long" template.
+  const errors = info && draft
+    ? templateDraftErrors({ ...info, width: outputWidth, height: outputHeight }, draft, name)
+    : null;
   const canSave = Boolean(info && draft && errors && !errors.summary && !saving && !loading);
+  const outputLine =
+    captureExport && exportSettings
+      ? formatExportSettings(exportSettings)
+      : `${info?.width ?? 0} × ${info?.height ?? 0} · ${info?.fps ?? 0} fps · default encoder`;
 
   return (
     <Dialog
@@ -142,7 +171,7 @@ export function VizzyTemplateDialog({
                 </div>
 
                 <p className="text-caption text-text-muted" data-testid="vizzy-template-output">
-                  Output: {info.width} × {info.height} · {info.fps} fps · duration = audio
+                  Render output: {outputLine} · duration = audio
                 </p>
 
                 <div className="space-y-2 rounded-control border border-border bg-surface-2 p-3">
@@ -155,6 +184,30 @@ export function VizzyTemplateDialog({
                     background, title, artist, album and palette nodes. Nodes that are not detected
                     stay exactly as designed.
                   </p>
+                </div>
+
+                <div className="space-y-2 rounded-control border border-border bg-surface-2 p-3">
+                  {exportSettings ? (
+                    <>
+                      <Checkbox
+                        checked={includeExport}
+                        onCheckedChange={setIncludeExport}
+                        label="Use the current Export settings"
+                        hint={formatExportSettings(exportSettings)}
+                        data-testid="vizzy-template-export-toggle"
+                      />
+                      <p className="text-caption text-text-muted">
+                        Off: pipeline renders use the project output and the default H.264 MP4
+                        encoder. Start/end trims never carry over; renders always follow the song.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-caption text-text-muted" data-testid="vizzy-template-export-none">
+                      Pipeline renders use the project output and the default H.264 MP4 encoder.
+                      Open Export first if you want to capture a different resolution, frame rate
+                      or quality with this template.
+                    </p>
+                  )}
                 </div>
 
                 {errors?.summary ? (
