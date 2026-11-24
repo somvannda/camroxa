@@ -286,6 +286,7 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
       const trackPrefix = trackMatch ? `${trackMatch[1]}. ` : "";
       const title = input.outputName.replace(/^\d+\.\s*/, "");
       const fileStem = `${trackPrefix}${title}${input.job.branch === "reel" ? " - Reel" : ""}`;
+      const renderStartedAt = Date.now();
       const outcome = await options.host.renderTemplateOffscreen({
         projectJson: input.plan.projectJson,
         name: input.templateName,
@@ -324,6 +325,19 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
       input.registerCancel?.(null);
       if (outcome.status === "cancelled") throw new PipelineCancelledError();
       if (outcome.status === "failed") throw new Error(outcome.message);
+      logger.info("pipeline render profile", {
+        title: input.outputName,
+        branch: input.job.branch,
+        engine: input.plan.settings.engine,
+        codec: input.plan.settings.codec,
+        format: input.plan.settings.format,
+        width: input.plan.settings.width,
+        height: input.plan.settings.height,
+        fps: input.plan.settings.fps,
+        durationSec: input.plan.durationSec,
+        ms: Date.now() - renderStartedAt,
+        bytes: outcome.result.bytes,
+      });
       return { output: outcome.result.path, bytes: outcome.result.bytes };
     },
     merge: async (outputs, output) => {
