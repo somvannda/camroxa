@@ -32,7 +32,11 @@ import type {
   PipelineSnapshot,
 } from "../../electron/shared/types";
 import type { LocalVideoSummary } from "../../src/features/progress/progress-local-video";
-import { localVideoForRow } from "../../src/features/progress/progress-local-video";
+import {
+  formatRenderTime,
+  formatVideoLength,
+  localVideoForRow,
+} from "../../src/features/progress/progress-local-video";
 import type { ProgressRow, ProgressRowMeta } from "../../src/features/progress/progress-types";
 
 type RowOverrides = Omit<Partial<ProgressRow>, "meta"> & { meta?: Partial<ProgressRowMeta> };
@@ -102,6 +106,10 @@ function pipelineSnapshot(options: { merged?: boolean; failed?: boolean } = {}):
       progress: failed ? 0 : 100,
       error: failed ? "render failed" : null,
       output: failed ? null : `C:\\runs\\${index}.mp4`,
+      startedAt: 1,
+      elapsedMs: failed ? null : 892_000,
+      durationSec: failed ? null : 267.2,
+      frames: failed ? null : 8017,
       merge: true,
       createdAt: 1,
       updatedAt: 1,
@@ -296,6 +304,10 @@ describe("row presentation", () => {
       mergedPath: "C:\\runs\\Neon Garden Runway_2411.mp4",
       retryBatchId: null,
       jobs: [],
+      renders: [],
+      renderMs: 0,
+      videoSec: 0,
+      frames: 0,
       updatedAt: 1,
     };
     const steps = stageTimeline(row({ stage: "converter", status: "queued" }), false, merged);
@@ -329,6 +341,10 @@ describe("row presentation", () => {
       mergedPath: null,
       retryBatchId: null,
       jobs: [],
+      renders: [],
+      renderMs: 0,
+      videoSec: 0,
+      frames: 0,
       updatedAt: 1,
     };
     const steps = stageTimeline(row({ stage: "converter", status: "running" }), false, rendering);
@@ -357,6 +373,10 @@ describe("row presentation", () => {
       mergedPath: null,
       retryBatchId: "batch:long:profile:OK",
       jobs: [],
+      renders: [],
+      renderMs: 0,
+      videoSec: 0,
+      frames: 0,
       updatedAt: 1,
     };
     const steps = stageTimeline(row({ stage: "converter", status: "running" }), false, failedLocal);
@@ -432,11 +452,34 @@ describe("row presentation", () => {
     const local = localVideoForRow(bassRow, queue);
     expect(local.total).toBe(3);
     expect(local.mergedPath).toBe(mergedOutput);
+    expect(local.renderMs).toBe(3 * 892_000);
+    expect(local.frames).toBe(3 * 8017);
+    expect(local.renders[0]).toMatchObject({
+      title: "Song 1",
+      status: "done",
+      durationSec: 267.2,
+      elapsedMs: 892_000,
+      frames: 8017,
+    });
+    expect(local.videoSecondary).toBe(`Merged · ${formatRenderTime(3 * 892_000)}`);
 
     const steps = stageTimeline(bassRow, false, local);
-    expect(steps[2]).toMatchObject({ state: "passed", detail: "3/3 rendered" });
+    expect(steps[2]).toMatchObject({
+      state: "passed",
+      detail: `3/3 rendered · ${formatRenderTime(3 * 892_000)}`,
+    });
     expect(steps[3]).toMatchObject({ state: "passed", detail: "Neon Garden Runway_2411.mp4" });
     expect(steps[4].state).toBe("pending");
+  });
+
+  it("formats render wall time and video length", () => {
+    expect(formatRenderTime(892_000)).toBe("14m 52s");
+    expect(formatRenderTime(3_720_000)).toBe("1h 02m");
+    expect(formatRenderTime(45_000)).toBe("45s");
+    expect(formatRenderTime(null)).toBeNull();
+    expect(formatVideoLength(267.24)).toBe("4:27");
+    expect(formatVideoLength(3725)).toBe("1:02:05");
+    expect(formatVideoLength(0)).toBeNull();
   });
 
   it("formats relative times from an injected clock", () => {

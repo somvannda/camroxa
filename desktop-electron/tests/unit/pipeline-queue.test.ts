@@ -65,6 +65,31 @@ describe("pipeline queue", () => {
     store.close();
   });
 
+  it("keeps per-video render timing on the queue item", () => {
+    const store = createDatabase(":memory:");
+    const [job] = enqueuePipelineJobs(store, [item()]);
+    expect(listQueue(store)[0]).toMatchObject({
+      startedAt: null,
+      elapsedMs: null,
+      durationSec: null,
+      frames: null,
+    });
+    updateQueueJob(store, job.id, {
+      status: "done",
+      startedAt: 1_000,
+      elapsedMs: 892_000,
+      durationSec: 267.2,
+      frames: 8017,
+    });
+    expect(listQueue(store)[0]).toMatchObject({
+      startedAt: 1_000,
+      elapsedMs: 892_000,
+      durationSec: 267.2,
+      frames: 8017,
+    });
+    store.close();
+  });
+
   it("clears done and cancelled jobs only", () => {
     const store = createDatabase(":memory:");
     const jobs = enqueuePipelineJobs(store, [

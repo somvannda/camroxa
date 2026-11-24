@@ -40,6 +40,14 @@ export interface PipelineQueueItem {
   error: string | null;
   /** Absolute path of the validated render, written when the row is done. */
   output: string | null;
+  /** When the render started (not the queue time). */
+  startedAt: number | null;
+  /** Wall time the render took, written on done/failed. */
+  elapsedMs: number | null;
+  /** Probed length of the rendered video. */
+  durationSec: number | null;
+  /** Frames the exporter produced. */
+  frames: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -111,6 +119,10 @@ export function listQueue(store: Store): PipelineQueueItem[] {
       progress: job.progress,
       error: job.error,
       output: job.outputPath ?? null,
+      startedAt: job.startedAt ?? null,
+      elapsedMs: job.elapsedMs ?? null,
+      durationSec: job.durationSec ?? null,
+      frames: job.frames ?? null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
     });
@@ -155,6 +167,10 @@ export function enqueuePipelineJobs(store: Store, inputs: PipelineQueueInput[]):
       payload: JSON.stringify(normalized),
       error: null,
       outputPath: null,
+      startedAt: null,
+      elapsedMs: null,
+      durationSec: null,
+      frames: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -172,6 +188,10 @@ export function enqueuePipelineJobs(store: Store, inputs: PipelineQueueInput[]):
       progress: 0,
       error: null,
       output: null,
+      startedAt: null,
+      elapsedMs: null,
+      durationSec: null,
+      frames: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -192,6 +212,10 @@ export function updateQueueJob(
     progress?: number;
     error?: string | null;
     output?: string | null;
+    startedAt?: number | null;
+    elapsedMs?: number | null;
+    durationSec?: number | null;
+    frames?: number | null;
   },
 ): void {
   store.updateJob(id, {
@@ -200,6 +224,10 @@ export function updateQueueJob(
     ...(typeof patch.progress === "number" ? { progress: patch.progress } : {}),
     ...(patch.error !== undefined ? { error: patch.error } : {}),
     ...(patch.output !== undefined ? { outputPath: patch.output } : {}),
+    ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt } : {}),
+    ...(patch.elapsedMs !== undefined ? { elapsedMs: patch.elapsedMs } : {}),
+    ...(patch.durationSec !== undefined ? { durationSec: patch.durationSec } : {}),
+    ...(patch.frames !== undefined ? { frames: patch.frames } : {}),
   });
 }
 

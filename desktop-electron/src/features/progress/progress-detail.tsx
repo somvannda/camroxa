@@ -23,7 +23,7 @@ import {
   youtubeCellText,
   type TimelineState,
 } from "./progress-format";
-import { localVideoForRow } from "./progress-local-video";
+import { formatRenderTime, formatVideoLength, localVideoForRow } from "./progress-local-video";
 import type { PipelineSnapshot } from "../../../electron/shared/types";
 import type { ProgressRow } from "./progress-types";
 
@@ -347,6 +347,62 @@ export function ProgressDetail({
           ))}
         </ol>
       </div>
+
+      {local.renders.length > 0 ? (
+        <div className="mt-4" data-testid="progress-renders">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-card font-semibold text-text-primary">Rendered videos</h3>
+            <span className="text-caption text-text-muted">
+              {local.renders.length} video{local.renders.length === 1 ? "" : "s"}
+              {local.renderMs > 0 ? ` · ${formatRenderTime(local.renderMs)} total` : ""}
+            </span>
+          </div>
+          <ul className="mt-1 divide-y divide-border">
+            {local.renders.map((render) => {
+              const live = formatRenderTime(
+                render.startedAt ? Date.now() - render.startedAt : null,
+              );
+              const settled = formatRenderTime(render.elapsedMs);
+              const length = formatVideoLength(render.durationSec);
+              const frames = render.frames ? `${render.frames.toLocaleString("en-US")} frames` : null;
+              const meta = [length, frames].filter(Boolean).join(" · ") || "Length not reported";
+              const state =
+                render.status === "done"
+                  ? { text: settled ? `Rendered in ${settled}` : "Rendered", tone: "text-success" }
+                  : render.status === "rendering" || render.status === "encoding"
+                    ? {
+                        text: `Rendering ${Math.round(render.progress)}%${live ? ` · ${live}` : ""}`,
+                        tone: "text-accent",
+                      }
+                    : render.status === "failed"
+                      ? { text: settled ? `Failed after ${settled}` : "Failed", tone: "text-danger" }
+                      : render.status === "cancelled"
+                        ? {
+                            text: settled ? `Cancelled after ${settled}` : "Cancelled",
+                            tone: "text-text-muted",
+                          }
+                        : { text: "Queued", tone: "text-text-muted" };
+              return (
+                <li
+                  key={render.id}
+                  className="flex items-start justify-between gap-3 py-1.5"
+                  data-testid="progress-render-row"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-meta text-text-primary" title={render.title}>
+                      {render.title || "Untitled track"}
+                    </p>
+                    <p className="text-caption text-text-muted">{meta}</p>
+                  </div>
+                  <span className={classNames("shrink-0 text-right text-caption", state.tone)}>
+                    {state.text}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="mt-4">
         <h3 className="text-card font-semibold text-text-primary">Paths</h3>

@@ -390,6 +390,14 @@ export interface PipelineJobInfo {
   error: string | null;
   /** Absolute path of the validated render, once the row is done. */
   output: string | null;
+  /** When the render itself started (not the queue time). */
+  startedAt: number | null;
+  /** Wall time the render took (done/failed/cancelled). */
+  elapsedMs: number | null;
+  /** Probed length of the rendered video. */
+  durationSec: number | null;
+  /** Frames the exporter produced. */
+  frames: number | null;
   merge: boolean;
   createdAt: number;
   updatedAt: number;

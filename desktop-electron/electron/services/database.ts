@@ -30,6 +30,14 @@ export interface PipelineJobRecord {
   error: string | null;
   /** Absolute path of the validated render, written when the row is done. */
   outputPath?: string | null;
+  /** When the render itself started (not the queue time). */
+  startedAt?: number | null;
+  /** Wall time the render took, written on done/failed. */
+  elapsedMs?: number | null;
+  /** Probed length of the rendered video, written on done. */
+  durationSec?: number | null;
+  /** Frames the exporter produced, written on done. */
+  frames?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -149,6 +157,24 @@ const MIGRATIONS: Array<{ version: number; sql?: string; run?: (db: DatabaseSync
       if (!columns.some((column) => column.name === "merge_name")) {
         db.exec("ALTER TABLE pipeline_batches ADD COLUMN merge_name TEXT");
       }
+    },
+  },
+  {
+    version: 5,
+    run: (db) => {
+      // Render timing and length per video: shown in the Progress rows/detail.
+      const columns = db.prepare("PRAGMA table_info(pipeline_jobs)").all() as Array<{
+        name: string;
+      }>;
+      const add = (name: string, type: string) => {
+        if (!columns.some((column) => column.name === name)) {
+          db.exec(`ALTER TABLE pipeline_jobs ADD COLUMN ${name} ${type}`);
+        }
+      };
+      add("started_at", "INTEGER");
+      add("elapsed_ms", "INTEGER");
+      add("duration_sec", "REAL");
+      add("frames", "INTEGER");
     },
   },
 ];
@@ -289,8 +315,8 @@ export class Store {
   createJob(record: PipelineJobRecord): void {
     this.db
       .prepare(
-        `INSERT INTO pipeline_jobs (id, batch_id, status, stage, progress, payload, error, output_path, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO pipeline_jobs (id, batch_id, status, stage, progress, payload, error, output_path, started_at, elapsed_ms, duration_sec, frames, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -301,6 +327,10 @@ export class Store {
         record.payload,
         record.error,
         record.outputPath ?? null,
+        record.startedAt ?? null,
+        record.elapsedMs ?? null,
+        record.durationSec ?? null,
+        record.frames ?? null,
         record.createdAt,
         record.updatedAt,
       );
@@ -308,17 +338,42 @@ export class Store {
 
   updateJob(
     id: string,
-    patch: Partial<Pick<PipelineJobRecord, "status" | "stage" | "progress" | "error" | "outputPath">>,
+    patch: Partial<
+      Pick<
+        PipelineJobRecord,
+        | "status"
+        | "stage"
+        | "progress"
+        | "error"
+        | "outputPath"
+        | "startedAt"
+        | "elapsedMs"
+        | "durationSec"
+        | "frames"
+      >
+    >,
   ): void {
     const current = this.db
-      .prepare("SELECT status, stage, progress, error, output_path FROM pipeline_jobs WHERE id = ?")
+      .prepare(
+        "SELECT status, stage, progress, error, output_path, started_at, elapsed_ms, duration_sec, frames FROM pipeline_jobs WHERE id = ?",
+      )
       .get(id) as
-      | { status: string; stage: string; progress: number; error: string | null; output_path: string | null }
+      | {
+          status: string;
+          stage: string;
+          progress: number;
+          error: string | null;
+          output_path: string | null;
+          started_at: number | null;
+          elapsed_ms: number | null;
+          duration_sec: number | null;
+          frames: number | null;
+        }
       | undefined;
     if (!current) return;
     this.db
       .prepare(
-        "UPDATE pipeline_jobs SET status = ?, stage = ?, progress = ?, error = ?, output_path = ?, updated_at = ? WHERE id = ?",
+        "UPDATE pipeline_jobs SET status = ?, stage = ?, progress = ?, error = ?, output_path = ?, started_at = ?, elapsed_ms = ?, duration_sec = ?, frames = ?, updated_at = ? WHERE id = ?",
       )
       .run(
         patch.status ?? current.status,
@@ -326,6 +381,10 @@ export class Store {
         patch.progress ?? current.progress,
         patch.error === undefined ? current.error : patch.error,
         patch.outputPath === undefined ? current.output_path : patch.outputPath,
+        patch.startedAt === undefined ? current.started_at : patch.startedAt,
+        patch.elapsedMs === undefined ? current.elapsed_ms : patch.elapsedMs,
+        patch.durationSec === undefined ? current.duration_sec : patch.durationSec,
+        patch.frames === undefined ? current.frames : patch.frames,
         Date.now(),
         id,
       );
@@ -346,6 +405,10 @@ export class Store {
       payload: String(row.payload),
       error: row.error ? String(row.error) : null,
       outputPath: row.output_path ? String(row.output_path) : null,
+      startedAt: row.started_at == null ? null : Number(row.started_at),
+      elapsedMs: row.elapsed_ms == null ? null : Number(row.elapsed_ms),
+      durationSec: row.duration_sec == null ? null : Number(row.duration_sec),
+      frames: row.frames == null ? null : Number(row.frames),
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
     }));

@@ -46,6 +46,40 @@ describe("database", () => {
     store.close();
   });
 
+  it("stores render timing and output metadata", () => {
+    const store = createDatabase(":memory:");
+    const now = Date.now();
+    store.createJob({
+      id: "job-timed",
+      batchId: "batch-1",
+      status: "queued",
+      stage: "queued",
+      progress: 0,
+      payload: "{}",
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    store.updateJob("job-timed", {
+      status: "done",
+      progress: 100,
+      outputPath: "C:/runs/1. Song.mp4",
+      startedAt: now,
+      elapsedMs: 892_000,
+      durationSec: 267.2,
+      frames: 8017,
+    });
+    expect(store.listJobs()[0]).toMatchObject({
+      status: "done",
+      outputPath: "C:/runs/1. Song.mp4",
+      startedAt: now,
+      elapsedMs: 892_000,
+      durationSec: 267.2,
+      frames: 8017,
+    });
+    store.close();
+  });
+
   it("upgrades an existing v1 templates table in place", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "camxora-db-"));
     const file = path.join(directory, "camxora.db");

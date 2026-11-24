@@ -51,6 +51,8 @@ export interface PipelineRenderInput {
 export interface PipelineRenderResult {
   output: string;
   bytes?: number;
+  /** Frames the exporter produced, when the port knows them. */
+  frames?: number;
 }
 
 export interface PipelineMediaInfo {
@@ -259,6 +261,14 @@ export class PipelineRunner {
   private async renderOne(job: PipelineQueueItem): Promise<{ output: string }> {
     if (this.cancelled) throw new PipelineCancelledError();
     const store = this.deps.store;
+    const renderStartedAt = this.now();
+    updateQueueJob(store, job.id, {
+      status: "rendering",
+      stage: "rendering",
+      progress: 0,
+      startedAt: renderStartedAt,
+    });
+    this.deps.onEvent?.({ batchId: job.batchId, reason: "progress" });
     const template = this.deps.readTemplate(job.templateId);
     const audioDurationSec = await this.deps.probeDuration(job.audioPath);
     if (this.cancelled) throw new PipelineCancelledError();
@@ -291,9 +301,6 @@ export class PipelineRunner {
       updateQueueJob(store, job.id, { status: stage, stage, progress: percent });
       this.deps.onEvent?.({ batchId: job.batchId, reason: "progress" });
     };
-
-    updateQueueJob(store, job.id, { status: "rendering", stage: "rendering", progress: 0 });
-    this.deps.onEvent?.({ batchId: job.batchId, reason: "progress" });
 
     const result = await this.deps.render({
       job,
@@ -329,6 +336,9 @@ export class PipelineRunner {
       progress: 100,
       error: null,
       output: result.output,
+      elapsedMs: Math.max(0, this.now() - renderStartedAt),
+      durationSec: media.durationSec,
+      frames: result.frames ?? null,
     });
     this.deps.onEvent?.({ batchId: job.batchId, reason: "progress" });
     return { output: result.output };

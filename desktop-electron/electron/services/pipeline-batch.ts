@@ -70,7 +70,13 @@ export async function runPipelineQueue(deps: PipelineRunnerDeps): Promise<Pipeli
     const job = nextQueuedJob(deps.store);
     if (!job) break;
 
-    updateQueueJob(deps.store, job.id, { status: "rendering", stage: "rendering", progress: 0 });
+    const startedAt = Date.now();
+    updateQueueJob(deps.store, job.id, {
+      status: "rendering",
+      stage: "rendering",
+      progress: 0,
+      startedAt,
+    });
     deps.onUpdate?.({ ...job, status: "rendering", stage: "rendering", progress: 0 });
 
     try {
@@ -102,6 +108,7 @@ export async function runPipelineQueue(deps: PipelineRunnerDeps): Promise<Pipeli
           status: "cancelled",
           stage: "cancelled",
           error: error.message,
+          elapsedMs: Date.now() - startedAt,
         });
         summary.cancelled += 1;
         deps.onUpdate?.({
@@ -118,6 +125,7 @@ export async function runPipelineQueue(deps: PipelineRunnerDeps): Promise<Pipeli
         status: "failed",
         stage: "failed",
         error: message,
+        elapsedMs: Date.now() - startedAt,
       });
       summary.failed += 1;
       deps.onUpdate?.({ ...job, status: "failed", stage: "failed", error: message });

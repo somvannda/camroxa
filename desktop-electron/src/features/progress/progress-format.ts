@@ -4,7 +4,7 @@ import type {
   DownloadItemState,
   PipelineSnapshot,
 } from "../../../electron/shared/types";
-import { localVideoForRow, type LocalVideoSummary } from "./progress-local-video";
+import { localVideoForRow, formatRenderTime, type LocalVideoSummary } from "./progress-local-video";
 import type { ProgressListResponse, ProgressRow } from "./progress-types";
 
 export const PROGRESS_POLL_MS = 12_000;
@@ -639,13 +639,22 @@ export function stageTimeline(
   const failureRank = failureStage ? Math.max(1, timelineRank(failureStage)) : 0;
   const video = localVideoState(row);
 
+  const totalTime = local ? formatRenderTime(local.renderMs) : null;
+  const activeRender = local?.renders.find(
+    (render) => render.status === "rendering" || render.status === "encoding",
+  );
+  const activeTime = formatRenderTime(
+    activeRender?.startedAt ? Date.now() - activeRender.startedAt : null,
+  );
   const converterDetail = local
     ? `${local.done}/${local.total} rendered${
         local.failed > 0
           ? ` · ${local.failed} failed`
           : local.status === "rendering"
-            ? ` · ${local.percent}%`
-            : ""
+            ? ` · ${local.percent}%${activeTime ? ` · ${activeTime}` : ""}`
+            : totalTime
+              ? ` · ${totalTime}`
+              : ""
       }`
     : (video.converter ?? PIPELINE_MISSING);
   const mergeDetail = local

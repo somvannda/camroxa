@@ -1,6 +1,20 @@
 import type { PipelineSnapshot } from "../../../electron/shared/types";
 import type { ProgressRow } from "./progress-types";
 
+export interface LocalVideoRender {
+  id: string;
+  title: string;
+  status: string;
+  progress: number;
+  /** Probed length of the rendered video. */
+  durationSec: number | null;
+  /** Wall time the render took once it settled. */
+  elapsedMs: number | null;
+  frames: number | null;
+  startedAt: number | null;
+  output: string | null;
+}
+
 export interface LocalVideoSummary {
   /** Jobs that belong to this operational row's batch/branch. */
   total: number;
@@ -23,6 +37,14 @@ export interface LocalVideoSummary {
   retryBatchId: string | null;
   /** Jobs represented by this row, for single-track regeneration. */
   jobs: Array<{ id: string; title: string; status: string }>;
+  /** Per-video render details, in track order. */
+  renders: LocalVideoRender[];
+  /** Sum of measured render times (settled rows only). */
+  renderMs: number;
+  /** Sum of probed video lengths. */
+  videoSec: number;
+  /** Sum of encoded frames. */
+  frames: number;
   /** Newest local queue update, for the Updated column. */
   updatedAt: number | null;
 }
@@ -43,8 +65,37 @@ const EMPTY: LocalVideoSummary = {
   mergedPath: null,
   retryBatchId: null,
   jobs: [],
+  renders: [],
+  renderMs: 0,
+  videoSec: 0,
+  frames: 0,
   updatedAt: null,
 };
+
+/** `14m 52s` / `1h 04m` for render wall time. */
+export function formatRenderTime(ms: number | null | undefined): string | null {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return null;
+  const total = Math.round(ms / 1000);
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  if (minutes < 60) return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/** `4:27` / `1:04:09` for a video's length. */
+export function formatVideoLength(seconds: number | null | undefined): string | null {
+  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return null;
+  const whole = Math.round(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const secs = whole % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
+}
 
 function baseName(filePath: string): string {
   const parts = filePath.split(/[\\/]/);
@@ -87,6 +138,19 @@ export function localVideoForRow(
   );
   const merged = batches.find((batch) => Boolean(batch.mergedOutput)) ?? null;
   const mergeFailed = batches.some((batch) => batch.status === "failed" && batch.merge);
+  const renderMs = jobs.reduce(
+    (sum, job) => sum + (job.status === "done" ? (job.elapsedMs ?? 0) : 0),
+    0,
+  );
+  const videoSec = jobs.reduce(
+    (sum, job) => sum + (job.status === "done" ? (job.durationSec ?? 0) : 0),
+    0,
+  );
+  const frames = jobs.reduce(
+    (sum, job) => sum + (job.status === "done" ? (job.frames ?? 0) : 0),
+    0,
+  );
+  const totalTime = formatRenderTime(renderMs);
 
   let status: LocalVideoSummary["status"] = "queued";
   if (failed > 0) status = "failed";
@@ -98,13 +162,13 @@ export function localVideoForRow(
     ? baseName(merged.mergedOutput ?? "")
     : `${done}/${jobs.length} rendered`;
   const videoSecondary = merged
-    ? "Merged"
+    ? `Merged${totalTime ? ` · ${totalTime}` : ""}`
     : failed > 0
       ? `${failed} failed`
       : running
         ? `Rendering ${percent}%`
         : done === jobs.length
-          ? "Ready to merge"
+          ? `Ready to merge${totalTime ? ` · ${totalTime}` : ""}`
           : "Waiting to render";
 
   return {
@@ -133,6 +197,20 @@ export function localVideoForRow(
           null)
         : null,
     jobs: jobs.map((job) => ({ id: job.id, title: job.title, status: job.status })),
+    renders: jobs.map((job) => ({
+      id: job.id,
+      title: job.title,
+      status: job.status,
+      progress: job.progress,
+      durationSec: job.durationSec ?? null,
+      elapsedMs: job.elapsedMs ?? null,
+      frames: job.frames ?? null,
+      startedAt: job.startedAt ?? null,
+      output: job.output ?? null,
+    })),
+    renderMs,
+    videoSec,
+    frames,
     updatedAt: Math.max(...jobs.map((job) => job.updatedAt || 0)) || null,
   };
 }

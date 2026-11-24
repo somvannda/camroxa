@@ -212,6 +212,10 @@ function snapshotOf(
     progress: job.progress,
     error: job.error,
     output: job.output,
+    startedAt: job.startedAt,
+    elapsedMs: job.elapsedMs,
+    durationSec: job.durationSec,
+    frames: job.frames,
     merge: job.merge,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
@@ -338,7 +342,7 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
         ms: Date.now() - renderStartedAt,
         bytes: outcome.result.bytes,
       });
-      return { output: outcome.result.path, bytes: outcome.result.bytes };
+      return { output: outcome.result.path, bytes: outcome.result.bytes, frames: outcome.result.frames };
     },
     merge: async (outputs, output) => {
       const merged = await mergeWithFallback(outputs, output);
