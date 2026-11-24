@@ -120,10 +120,16 @@ export interface AutoVideoSelectInput {
   resolveBackground: (row: AutoVideoProgressRow, branch: AutoVideoBranch) => string | null;
 }
 
-/** One durable pipeline batch per branch; merging cannot mix long and reel. */
-export function autoPipelineBatchId(externalBatchId: string, branch: AutoVideoBranch): string {
+/** One durable pipeline batch per profile + branch; merging cannot mix channels. */
+export function autoPipelineBatchId(
+  externalBatchId: string,
+  branch: AutoVideoBranch,
+  profileId = "",
+  role = "",
+): string {
   const base = externalBatchId.trim() || "batch";
-  return `${base}:${branch}`;
+  const owner = [profileId.trim(), role.trim()].filter(Boolean).join(":");
+  return owner ? `${base}:${branch}:${owner}` : `${base}:${branch}`;
 }
 
 function clean(value: unknown): string {
@@ -251,7 +257,12 @@ export function selectAutoVideoCandidate(
       const done = branch === "long" ? meta.long_ready === true : meta.reel_ready === true;
       if (done) continue;
 
-      const pipelineBatchId = autoPipelineBatchId(externalBatchId, branch);
+      const pipelineBatchId = autoPipelineBatchId(
+        externalBatchId,
+        branch,
+        clean(meta.profile_id),
+        clean(meta.role),
+      );
       const state = localBranchState(
         input.localJobs,
         pipelineBatchId,

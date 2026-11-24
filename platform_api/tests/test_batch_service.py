@@ -2287,6 +2287,51 @@ async def test_execute_batch_simple_mode_sends_description_without_drafts(
     batch_repo.update_batch_songs_album.assert_awaited_once_with(batch_id, "Generated Album")
 
 
+@pytest.mark.asyncio
+async def test_simple_batch_fanout_skips_drafts(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    batch_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    batch_repo.get_batch_for_user = AsyncMock(
+        return_value=SimpleNamespace(id=batch_id, structure_mode="suno")
+    )
+    batch_repo.update_batch_status = AsyncMock()
+    job_queue = AsyncMock()
+    job_queue.enqueue = AsyncMock()
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+
+    created = await service.fanout_draft_jobs(
+        job_queue=job_queue,
+        batch_id=batch_id,
+        user_id=str(user_id),
+    )
+
+    assert created == 1
+    assert job_queue.enqueue.await_count == 1
+    kwargs = job_queue.enqueue.await_args.kwargs
+    assert kwargs["job_type"] == "execute_simple_batch"
+    assert all(
+        call.kwargs.get("job_type") != "draft" for call in job_queue.enqueue.await_args_list
+    )
+
+
 def test_build_suno_download_target_path_uses_ok_alt_suffixes() -> None:
     ok_path = BatchService._build_suno_download_target_path(
         output_dir=r"D:\Music\bass-drive\2026-07-12_02",

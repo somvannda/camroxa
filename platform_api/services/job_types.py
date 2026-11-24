@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 JOB_EXECUTE_BATCH = "execute_batch"
+JOB_EXECUTE_SIMPLE_BATCH = "execute_simple_batch"
 JOB_DRAFT = "draft"
 JOB_SUNO_SUBMIT = "suno_submit"
 JOB_WEB_MUSIC_GENERATE = "web_music_generate"
@@ -17,6 +18,7 @@ JOB_SYNC_PUBLISH_RESULTS = "sync_publish_results"
 WORKER_JOB_TYPES = frozenset(
     {
         JOB_EXECUTE_BATCH,
+        JOB_EXECUTE_SIMPLE_BATCH,
         JOB_DRAFT,
         JOB_SUNO_SUBMIT,
         JOB_WEB_MUSIC_GENERATE,
@@ -53,7 +55,14 @@ def draft_priority_for_index(batch_index: int) -> int:
 
 # Stage shards for systemd multi-worker deploy (CAMXORA_WORKER_JOB_TYPES).
 STAGE_DRAFT_TYPES = frozenset({JOB_EXECUTE_BATCH, JOB_DRAFT, JOB_RETRY_SONG_DRAFT})
-STAGE_SUNO_TYPES = frozenset({JOB_SUNO_SUBMIT, JOB_RETRY_SONG_SUNO, JOB_WEB_MUSIC_GENERATE})
+STAGE_SUNO_TYPES = frozenset(
+    {
+        JOB_EXECUTE_SIMPLE_BATCH,
+        JOB_SUNO_SUBMIT,
+        JOB_RETRY_SONG_SUNO,
+        JOB_WEB_MUSIC_GENERATE,
+    }
+)
 STAGE_IMAGES_TYPES = frozenset(
     {JOB_RUN_IMAGE_JOBS, JOB_RUN_YOUTUBE_UPLOADS, JOB_SYNC_PUBLISH_RESULTS}
 )

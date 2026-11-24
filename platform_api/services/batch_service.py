@@ -1230,6 +1230,15 @@ class BatchService:
             )
             return batch
 
+    async def execute_description_batch(
+        self, batch_id: UUID | str, user_id: str
+    ) -> Batch | None:
+        """Run a Simple batch (used by the Suno worker)."""
+        batch = await self._batch_repo.get_batch_for_user(UUID(str(batch_id)), UUID(user_id))
+        if batch is None:
+            return None
+        return await self._execute_description_batch(batch, user_id)
+
     async def _execute_description_batch(
         self, batch: Batch, user_id: str
     ) -> Batch:
@@ -2659,7 +2668,12 @@ class BatchService:
         Fair multi-tenant scheduling: worker drains per-song jobs interleaved with
         other users instead of holding one ``execute_batch`` for the whole album.
         """
-        from platform_api.services.job_types import JOB_DRAFT, draft_priority_for_index
+        from platform_api.services.job_types import (
+            JOB_DRAFT,
+            JOB_EXECUTE_SIMPLE_BATCH,
+            PRI_EXECUTE_BATCH,
+            draft_priority_for_index,
+        )
 
         batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
         if batch is None:
@@ -2669,6 +2683,24 @@ class BatchService:
                 user_id,
             )
             return 0
+
+        from platform_api.services.generation_service import STRUCTURE_MODE_SUNO
+
+        if str(getattr(batch, "structure_mode", "") or "") == STRUCTURE_MODE_SUNO:
+            # Simple mode is prompt-only: no drafts, no LLM title/lyrics. Hand the
+            # whole batch to the Suno stage executor.
+            await self._batch_repo.update_batch_status(batch.id, BATCH_STATUS_PROCESSING)
+            await job_queue.enqueue(
+                user_id=UUID(user_id),
+                batch_id=batch.id,
+                job_type=JOB_EXECUTE_SIMPLE_BATCH,
+                payload={
+                    "batch_id": str(batch.id),
+                    "user_id": user_id,
+                },
+                priority=PRI_EXECUTE_BATCH,
+            )
+            return 1
 
         songs = await self._batch_repo.get_songs_by_batch(batch.id)
         await self._batch_repo.update_batch_status(batch.id, BATCH_STATUS_PROCESSING)
@@ -6123,6 +6155,7 @@ class BatchService:
                     style=payload.style,
                     instrumental=False,
                     description=description.strip(),
+                    nonce=str(song.id) if description.strip() else "",
                 ),
                 skip_pricing=self._enforcement_service is not None,
             )

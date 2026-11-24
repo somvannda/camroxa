@@ -909,6 +909,19 @@ class TestSunoRequestHash:
         )
         assert first != second
 
+    def test_description_mode_nonce_keeps_songs_distinct(self):
+        first = compute_suno_request_hash(
+            "V5", "", "", "", False, description="Same idea", nonce="song-1"
+        )
+        second = compute_suno_request_hash(
+            "V5", "", "", "", False, description="Same idea", nonce="song-2"
+        )
+        assert first != second
+        repeat = compute_suno_request_hash(
+            "V5", "", "", "", False, description="Same idea", nonce="song-1"
+        )
+        assert first == repeat
+
 
 class TestNormalizeText:
     """Tests for _normalize_text."""

@@ -319,10 +319,10 @@ try {
       window.evaluate(async () => {
         const response = await window.camxora.pipeline.list();
         if (!response.ok) return null;
-        const rows = response.data.jobs.filter((job) => job.batchId === "b-auto:long");
+        const rows = response.data.jobs.filter((job) => job.batchId === `b-auto:long:${PROFILE_ID}:OK`);
         if (rows.length !== 2) return null;
         if (!rows.every((job) => job.status === "done")) return null;
-        const batch = response.data.batches.find((item) => item.batchId === "b-auto:long");
+        const batch = response.data.batches.find((item) => item.batchId === `b-auto:long:${PROFILE_ID}:OK`);
         return batch?.mergedOutput ? response.data : null;
       }),
     "two auto-video renders and their merge to finish",
@@ -330,7 +330,7 @@ try {
   );
 
   step("two jobs rendered");
-  const jobs = snapshot.jobs.filter((job) => job.batchId === "b-auto:long");
+  const jobs = snapshot.jobs.filter((job) => job.batchId === `b-auto:long:${PROFILE_ID}:OK`);
   if (jobs.length !== 2) fail(`Expected two long jobs, got ${jobs.length}`);
   if (!jobs.every((job) => job.backgroundPath === backgroundPath)) {
     fail(`Jobs must carry the generated background: ${JSON.stringify(jobs.map((job) => job.backgroundPath))}`);
@@ -344,7 +344,7 @@ try {
     }
   }
 
-  const batch = snapshot.batches.find((item) => item.batchId === "b-auto:long");
+  const batch = snapshot.batches.find((item) => item.batchId === `b-auto:long:${PROFILE_ID}:OK`);
   if (!batch) fail("The long branch batch record is missing");
   if (!batch.mergedOutput) fail(`Expected a merged long output: ${JSON.stringify(batch)}`);
   if (!fs.existsSync(batch.mergedOutput)) fail(`Merged file missing: ${batch.mergedOutput}`);

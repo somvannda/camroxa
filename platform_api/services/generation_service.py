@@ -1693,7 +1693,13 @@ def build_suno_lyrics_prompt(
 
 
 def compute_suno_request_hash(
-    model: str, title: str, lyrics: str, style: str, instrumental: bool, description: str = ""
+    model: str,
+    title: str,
+    lyrics: str,
+    style: str,
+    instrumental: bool,
+    description: str = "",
+    nonce: str = "",
 ) -> str:
     """Compute SHA-256 hash of a Suno request for deduplication (Requirement 11.5).
 
@@ -1707,6 +1713,8 @@ def compute_suno_request_hash(
         "instrumental": bool(instrumental),
         "description": description.strip(),
     }
+    if nonce.strip():
+        normalized["nonce"] = nonce.strip()
     payload = json.dumps(normalized, sort_keys=True, ensure_ascii=False).encode()
     return hashlib.sha256(payload).hexdigest()
 
@@ -2876,6 +2884,7 @@ class GenerationService:
             style=safe_style,
             instrumental=request.instrumental,
             description=description,
+            nonce=request.nonce,
         )
 
         # Check for existing task with same hash (studio only — web Create is a

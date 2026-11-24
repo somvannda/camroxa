@@ -21,6 +21,7 @@ from uuid import UUID
 
 from platform_api.services.job_types import (
     JOB_DRAFT,
+    JOB_EXECUTE_SIMPLE_BATCH,
     JOB_EXECUTE_BATCH,
     JOB_RETRY_SONG_DRAFT,
     JOB_RETRY_SONG_SUNO,
@@ -198,6 +199,16 @@ async def _handle_execute_batch(job: Any, payload: dict[str, Any]) -> None:
         batch_id=UUID(batch_id),
         user_id=user_id,
     )
+
+
+async def _handle_execute_simple_batch(job: Any, payload: dict[str, Any]) -> None:
+    from platform_api.dependencies import get_batch_service
+
+    batch_id = str(payload.get("batch_id") or job.batch_id or "")
+    user_id = str(payload.get("user_id") or job.user_id)
+    if not batch_id:
+        raise ValueError("execute_simple_batch job missing batch_id")
+    await get_batch_service().execute_description_batch(batch_id, user_id)
 
 
 async def _handle_draft(job: Any, payload: dict[str, Any], *, submit_suno_inline: bool) -> None:
@@ -406,6 +417,8 @@ async def _handle_job(job: Any) -> None:
 
     if job.job_type == JOB_EXECUTE_BATCH:
         await _handle_execute_batch(job, payload)
+    elif job.job_type == JOB_EXECUTE_SIMPLE_BATCH:
+        await _handle_execute_simple_batch(job, payload)
         return
 
     if job.job_type == JOB_DRAFT:

@@ -88,7 +88,7 @@ describe("auto-video candidate selection", () => {
     const candidate = selectAutoVideoCandidate(baseInput());
     expect(candidate).not.toBeNull();
     expect(candidate?.branch).toBe("long");
-    expect(candidate?.pipelineBatchId).toBe("b1:long");
+    expect(candidate?.pipelineBatchId).toBe("b1:long:p1:ok");
     expect(candidate?.templateId).toBe("long-1");
     expect(candidate?.backgroundPath).toBe("C:/runs/b1/background-16x9.png");
     expect(candidate?.merge).toBe(true);
@@ -162,7 +162,7 @@ describe("auto-video candidate selection", () => {
     const input = baseInput({ settings: { long: false, reel: true, merge: false } });
     const candidate = selectAutoVideoCandidate(input);
     expect(candidate?.branch).toBe("reel");
-    expect(candidate?.pipelineBatchId).toBe("b1:reel");
+    expect(candidate?.pipelineBatchId).toBe("b1:reel:p1:ok");
     expect(candidate?.templateId).toBe("reel-1");
     expect(candidate?.backgroundPath).toBe("C:/runs/b1/background-9x16.png");
   });
@@ -185,21 +185,21 @@ describe("auto-video candidate selection", () => {
   it("never restarts a finished local branch", () => {
     const input = baseInput();
     input.localJobs = [
-      { batchId: "b1:long", branch: "long", status: "done" },
-      { batchId: "b1:long", branch: "long", status: "done" },
+      { batchId: "b1:long:p1:ok", branch: "long", status: "done" },
+      { batchId: "b1:long:p1:ok", branch: "long", status: "done" },
     ];
     expect(selectAutoVideoCandidate(input)).toBeNull();
   });
 
   it("leaves a failed local branch for an explicit retry", () => {
     const input = baseInput();
-    input.localJobs = [{ batchId: "b1:long", branch: "long", status: "failed" }];
+    input.localJobs = [{ batchId: "b1:long:p1:ok", branch: "long", status: "failed" }];
     expect(selectAutoVideoCandidate(input)).toBeNull();
   });
 
   it("skips a running local branch", () => {
     const input = baseInput();
-    input.localJobs = [{ batchId: "b1:long", branch: "long", status: "rendering" }];
+    input.localJobs = [{ batchId: "b1:long:p1:ok", branch: "long", status: "rendering" }];
     expect(selectAutoVideoCandidate(input)).toBeNull();
   });
 
@@ -209,8 +209,10 @@ describe("auto-video candidate selection", () => {
     expect(selectAutoVideoCandidate(input)).toBeNull();
   });
 
-  it("uses one pipeline batch id per branch", () => {
+  it("uses one pipeline batch id per profile and branch", () => {
     expect(autoPipelineBatchId("batch-1", "long")).toBe("batch-1:long");
     expect(autoPipelineBatchId("batch-1", "reel")).toBe("batch-1:reel");
+    expect(autoPipelineBatchId("batch-1", "long", "p1", "OK")).toBe("batch-1:long:p1:OK");
+    expect(autoPipelineBatchId("batch-1", "long", "p2", "ALT")).toBe("batch-1:long:p2:ALT");
   });
 });

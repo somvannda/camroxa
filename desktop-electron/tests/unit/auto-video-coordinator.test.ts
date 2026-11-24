@@ -168,7 +168,7 @@ describe("AutoVideoCoordinator", () => {
     const jobs = listQueue(store);
     expect(jobs).toHaveLength(1);
     expect(jobs[0]).toMatchObject({
-      batchId: "b1:long",
+      batchId: "b1:long:p1:OK",
       branch: "long",
       templateId: "long-1",
       title: "First Light",
@@ -297,7 +297,7 @@ describe("AutoVideoCoordinator", () => {
     const jobs = listQueue(store);
     expect(jobs).toHaveLength(1);
     expect(jobs[0]).toMatchObject({
-      batchId: "b1:reel",
+      batchId: "b1:reel:p1:OK",
       branch: "reel",
       templateId: "reel-1",
       backgroundPath: path.join(runDir, "background-9x16.png"),

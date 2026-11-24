@@ -31,6 +31,9 @@ class SunoRequest:
     persona_model: str | None = None
     # Description mode: Suno writes the title and the lyrics (web Simple mode).
     description: str = ""
+    # Per-song key that keeps identical description prompts from deduping into
+    # one task. Empty in custom mode so existing hashes stay stable.
+    nonce: str = ""
 
 
 @dataclass(frozen=True, slots=True)
