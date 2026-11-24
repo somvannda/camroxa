@@ -118,6 +118,10 @@ export class WebCodecsExporter {
           ? { bitrate: options.bitrate * 1_000_000 }
           : { quality: QUALITY_HIGH }),
         keyFrameInterval: 2,
+        // The RTX-class encoders are idle by default ("no-preference" measured
+        // 2.3x slower than hardware in this app). Fall back automatically when
+        // the platform cannot honour it.
+        hardwareAcceleration: "prefer-hardware",
       });
       output.addVideoTrack(video, { frameRate: options.fps });
 
@@ -137,16 +141,38 @@ export class WebCodecsExporter {
         );
       }
 
+      let tickMs = 0;
+      let drawMs = 0;
+      let encodeMs = 0;
       for (let frame = 0; frame < total; frame += 1) {
         if (options.shouldCancel?.()) {
           throw new DOMException("Export cancelled", "AbortError");
         }
         const time = (start + frame / options.fps) % Math.max(0.001, project.duration);
+        const beforeTick = performance.now();
         await options.beforeFrame?.(time);
+        const beforeDraw = performance.now();
         renderer.render(time);
+        const beforeEncode = performance.now();
         await video.add(frame / options.fps, 1 / options.fps);
+        const afterEncode = performance.now();
+        tickMs += beforeDraw - beforeTick;
+        drawMs += beforeEncode - beforeDraw;
+        encodeMs += afterEncode - beforeEncode;
         options.onProgress(frame + 1, total, "encoding frames");
       }
+      // Forwarded to the app log (console.warn is the host's forwarded level).
+      // This is the attribution the export dialog cannot show on its own.
+      console.warn(
+        "vizzy export profile",
+        JSON.stringify({
+          engine: "webcodecs",
+          frames: total,
+          tickMs: Math.round(tickMs / total),
+          drawMs: Math.round(drawMs / total),
+          encodeMs: Math.round(encodeMs / total),
+        }),
+      );
 
       await output.finalize();
       const extension = format.fileExtension.replace(/^\./, "");
