@@ -12047,9 +12047,13 @@ Object.assign(globalThis, {
         codec,
         bitrate: request.bitrate,
         crf: request.crf,
-        // MP4/H.264 uses the reference wasm encoder; WebM prefers WebCodecs.
-        // Both streaming backends hand chunks to the host as they are produced.
-        engine: format === "webm" && WebCodecsExporter.available() ? "webcodecs" : "wasm",
+        // Honour the requested encoder. WebCodecs supports AVC/MP4 as well as
+        // VP8/VP9/WebM; the export dialog's choice used to be ignored for MP4,
+        // which forced every H.264 render through the wasm encoder.
+        engine:
+          request.engine === "webcodecs" && WebCodecsExporter.available()
+            ? "webcodecs"
+            : "wasm",
       };
       let framesTotal = Math.max(
         1,
