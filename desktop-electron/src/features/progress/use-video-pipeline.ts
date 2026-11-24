@@ -15,6 +15,7 @@ export interface VideoPipelineHandle {
     batchId?: string;
     jobIds?: string[];
   }) => Promise<boolean>;
+  deleteExternal: (externalBatchId: string) => Promise<boolean>;
   clear: () => Promise<boolean>;
   reveal: (filePath: string) => Promise<boolean>;
 }
@@ -144,6 +145,19 @@ export function useVideoPipeline(): VideoPipelineHandle {
     [act],
   );
 
+  const deleteExternal = useCallback(
+    (externalBatchId: string) =>
+      act(async () => {
+        const response = await window.camxora.pipeline.deleteExternal(externalBatchId);
+        if (!response.ok) {
+          setError(response.error.message);
+          return false;
+        }
+        return response.data.removed >= 0;
+      }),
+    [act],
+  );
+
   const clear = useCallback(
     () =>
       act(async () => {
@@ -166,5 +180,5 @@ export function useVideoPipeline(): VideoPipelineHandle {
     return true;
   }, []);
 
-  return { snapshot, loading, error, busy, refresh, cancel, start, retry, force, clear, reveal };
+  return { snapshot, loading, error, busy, refresh, cancel, start, retry, force, deleteExternal, clear, reveal };
 }

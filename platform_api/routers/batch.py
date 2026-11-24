@@ -226,16 +226,19 @@ async def delete_failed_batch(
     http_request: Request,
     ctx: CurrentUserDep,
     batch_service: BatchServiceDep,
+    force: bool = False,
 ) -> BatchDeleteResponse:
-    """Hard-delete a batch when every song is pending/draft-failed/draft-ready/suno-failed.
+    """Delete a user-owned batch and its dependent rows.
 
-    Restores leftover draft-meter slots for draft_failed songs. Does not re-credit
-    the wallet or gift song quota.
+    The default policy only deletes batches with no live/completed Suno audio.
+    The desktop's explicit “Delete batch” confirmation sends ``force=true`` so a
+    stuck or partially rendered generation can be removed too.
     """
     await enforce_rate_limit(http_request, ctx.user_id)
     result = await batch_service.delete_failed_batch(
         batch_id=UUID(batch_id),
         user_id=ctx.user_id,
+        force=force,
     )
     return BatchDeleteResponse(**result)
 

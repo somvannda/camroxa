@@ -161,6 +161,7 @@ export interface CamxoraBridge {
       batchId?: string;
       jobIds?: string[];
     }): Promise<IpcResult<{ enqueued: number; started: boolean }>>;
+    deleteExternal(externalBatchId: string): Promise<IpcResult<{ removed: number }>>;
     clear(): Promise<IpcResult<{ removed: number }>>;
     reveal(path: string): Promise<IpcResult<boolean>>;
     onChange(callback: (payload: PipelineChangedEvent) => void): () => void;

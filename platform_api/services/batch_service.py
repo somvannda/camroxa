@@ -2484,12 +2484,12 @@ class BatchService:
         *,
         batch_id: UUID,
         user_id: str,
+        force: bool = False,
     ) -> dict[str, Any]:
-        """Hard-delete a user-owned batch that has no successful/pending Suno audio.
+        """Hard-delete a user-owned batch.
 
-        Restores leftover draft-meter slots for ``draft_failed`` songs (legacy
-        under-refund repair). Does not re-credit the wallet and does not gift
-        song quota.
+        Default keeps the safety check. ``force`` is the desktop confirmation for
+        deleting a batch with pending/successful Suno audio or a partial render.
         """
         owner_id = UUID(user_id)
         batch = await self._batch_repo.get_batch_for_user(batch_id, owner_id)
@@ -2500,15 +2500,16 @@ class BatchService:
             )
 
         songs = await self._batch_repo.get_songs_for_user_batch(batch_id, owner_id)
-        ok, reason = batch_songs_are_user_deletable(songs)
-        if not ok:
-            raise ValidationError(
-                reason or "Batch cannot be deleted.",
-                details={
-                    "batch_id": str(batch_id),
-                    "statuses": [str(song.status or "") for song in songs],
-                },
-            )
+        if not force:
+            ok, reason = batch_songs_are_user_deletable(songs)
+            if not ok:
+                raise ValidationError(
+                    reason or "Batch cannot be deleted.",
+                    details={
+                        "batch_id": str(batch_id),
+                        "statuses": [str(song.status or "") for song in songs],
+                    },
+                )
 
         draft_failed_count = sum(
             1

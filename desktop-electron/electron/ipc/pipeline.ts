@@ -89,6 +89,9 @@ const forceSchema = z
     jobIds: z.array(z.string().min(1).max(100)).max(200).optional(),
   })
   .strict();
+const deleteExternalSchema = z
+  .object({ externalBatchId: z.string().min(1).max(120) })
+  .strict();
 const revealSchema = z.object({ path: z.string().min(1).max(4096) }).strict();
 
 function removeQuietly(filePath: string): void {
@@ -541,6 +544,37 @@ export function registerPipelineIpc(options: PipelineIpcOptions): void {
     lastError = null;
     startInBackground();
     return ok({ enqueued: selected.length, started: true });
+  });
+
+  ipcMain.handle("pipeline:delete-external", (event, payload: unknown) => {
+    if (!shellOnly(event.sender.id)) return fail("FORBIDDEN", "Wrong sender for this channel.");
+    let input: z.infer<typeof deleteExternalSchema>;
+    try {
+      input = deleteExternalSchema.parse(payload);
+    } catch {
+      return fail("INVALID_REQUEST", "The delete request is not valid.");
+    }
+    if (runner.isRunning()) {
+      return fail("PIPELINE_BUSY", "Cancel the running render before deleting its batch.");
+    }
+    const prefix = `${input.externalBatchId}:`;
+    const jobs = listQueue(store).filter((job) => job.batchId.startsWith(prefix));
+    const dirs = new Set(jobs.map((job) => job.outputDir));
+    for (const directory of dirs) removeAllMp4(directory);
+    for (const job of jobs) {
+      if (job.output) removeQuietly(job.output);
+      store.deleteJob(job.id);
+    }
+    for (const batch of store.listBatches()) {
+      if (!batch.batchId.startsWith(prefix)) continue;
+      if (batch.mergedOutput) {
+        removeQuietly(batch.mergedOutput);
+        removeSiblings(batch.mergedOutput);
+      }
+      store.deleteBatch(batch.batchId);
+    }
+    notify();
+    return ok({ removed: jobs.length });
   });
 
   ipcMain.handle("pipeline:clear", (event) => {

@@ -106,6 +106,8 @@ const bridge = {
     cancel: () => invoke("pipeline:cancel"),
     retry: (batchId?: string) => invoke("pipeline:retry", batchId ? { batchId } : {}),
     force: (request: unknown) => invoke("pipeline:force", request),
+    deleteExternal: (externalBatchId: string) =>
+      invoke("pipeline:delete-external", { externalBatchId }),
     clear: () => invoke("pipeline:clear"),
     reveal: (path: string) => invoke("pipeline:reveal", { path }),
     onChange: (callback: (payload: unknown) => void) => {

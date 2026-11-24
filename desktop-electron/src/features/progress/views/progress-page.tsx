@@ -256,14 +256,22 @@ export function ProgressPage() {
         return;
       }
       try {
-        await apiRequest({ method: "DELETE", path: `/batches/${batchId}` });
+        if (pipeline.snapshot?.running) {
+          await pipeline.cancel();
+        }
+        await apiRequest({
+          method: "DELETE",
+          path: `/batches/${batchId}`,
+          query: { force: true },
+        });
+        await pipeline.deleteExternal(batchId);
         setNotice({ tone: "success", text: `Deleted batch ${label}.` });
         await feed.refresh();
       } catch (error) {
         setNotice({ tone: "danger", text: errorMessage(error) });
       }
     },
-    [feed],
+    [feed, pipeline],
   );
 
   const retryDownload = useCallback(

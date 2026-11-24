@@ -2529,6 +2529,16 @@ class BatchRepository:
                             batch_id,
                             exc,
                         )
+                # Cancel any pending retries/generation tied to this batch so a
+                # worker cannot resurrect it after the rows are gone.
+                try:
+                    await conn.execute(
+                        "DELETE FROM job_queue WHERE batch_id = $1",
+                        batch_id,
+                    )
+                except Exception as exc:
+                    if "does not exist" not in str(exc).lower():
+                        raise
                 await conn.execute(
                     "DELETE FROM songs WHERE batch_id = $1",
                     batch_id,
