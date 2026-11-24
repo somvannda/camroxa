@@ -55,4 +55,35 @@ describe.skipIf(!hasFfmpeg)("real ffmpeg merge", () => {
     expect(metadata.durationSec).toBeGreaterThan(0.8);
     expect(metadata.durationSec).toBeLessThan(1.4);
   }, 60_000);
+
+  it("reports the decoded length of an MP3 whose header has no Xing duration", async () => {
+    const file = path.join(root, "no-xing.mp3");
+    const made = spawnSync(
+      ffmpegExecutable(),
+      [
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=60",
+        "-c:a",
+        "libmp3lame",
+        "-q:a",
+        "9",
+        "-write_xing",
+        "0",
+        file,
+      ],
+      { windowsHide: true, encoding: "utf8" },
+    );
+    if (made.status !== 0) throw new Error(`fixture encode failed: ${made.stderr?.slice(-400)}`);
+    // ffprobe estimates ~55.5 s from the bitrate; the decoded audio is 60 s.
+    const metadata = await probe(file);
+    expect(metadata.videoCodec).toBeNull();
+    expect(metadata.audioCodec).toBe("mp3");
+    expect(metadata.durationSec).toBeGreaterThan(59.5);
+    expect(metadata.durationSec).toBeLessThan(60.5);
+  }, 60_000);
 });

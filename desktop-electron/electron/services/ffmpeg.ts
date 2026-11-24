@@ -98,6 +98,47 @@ function runCapture(command: string, args: string[], timeoutMs = 30_000): Promis
   });
 }
 
+/**
+ * Accurate duration for an audio-only file, in seconds.
+ *
+ * ffprobe estimates MP3 duration from the bitrate when the file has no Xing
+ * header (Suno's downloads do not carry one), which overstates a 4:27 track as
+ * 4:55. Decoding to the null muxer runs at roughly 1000x realtime and reports
+ * the real end, so pipeline renders stop exactly at the song's last sample.
+ */
+export function parseDecodedDuration(stdout: string): number {
+  let latest = 0;
+  for (const line of stdout.split(/\r?\n/)) {
+    const match = /^out_time_(?:us|ms)=(\d+)\s*$/.exec(line.trim());
+    if (!match) continue;
+    // Both keys carry microseconds in ffmpeg's progress output.
+    latest = Math.max(latest, Number(match[1]) / 1_000_000);
+  }
+  return latest;
+}
+
+async function decodedAudioDuration(filePath: string): Promise<number> {
+  const stdout = await runCapture(
+    resolveTool("ffmpeg"),
+    [
+      "-v",
+      "error",
+      "-progress",
+      "pipe:1",
+      "-nostats",
+      "-i",
+      filePath,
+      "-map",
+      "0:a:0",
+      "-f",
+      "null",
+      "-",
+    ],
+    120_000,
+  );
+  return parseDecodedDuration(stdout);
+}
+
 export async function probe(filePath: string): Promise<ProbeResult> {
   if (!fs.existsSync(filePath)) throw new Error("Media file does not exist");
   const stdout = await runCapture(resolveTool("ffprobe"), [
@@ -120,8 +161,21 @@ export async function probe(filePath: string): Promise<ProbeResult> {
   };
   const video = payload.streams?.find((stream) => stream.codec_type === "video");
   const audio = payload.streams?.find((stream) => stream.codec_type === "audio");
+  let durationSec = Number(payload.format?.duration ?? 0) || 0;
+  if (!video && audio) {
+    // A demuxer estimate is not good enough for a render's end frame.
+    try {
+      const exact = await decodedAudioDuration(filePath);
+      if (exact > 0) durationSec = exact;
+    } catch (error) {
+      logger.warn("exact audio duration failed; using the container estimate", {
+        file: path.basename(filePath),
+        error: String(error),
+      });
+    }
+  }
   return {
-    durationSec: Number(payload.format?.duration ?? 0) || 0,
+    durationSec,
     width: video?.width ?? null,
     height: video?.height ?? null,
     videoCodec: video?.codec_name ?? null,
