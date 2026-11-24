@@ -10,6 +10,7 @@ import type {
   VizzyExportSettingsInput,
   VizzyTemplateDraftInfo,
 } from "../../../electron/shared/types";
+import { exportSettingRows } from "./export-settings";
 import { formatExportSettings } from "./vizzy-format";
 import { templateDraftErrors, type TemplateDraftState } from "./vizzy-template-model";
 
@@ -39,11 +40,32 @@ export interface VizzyTemplateDialogProps {
  *
  * Export settings are opt-in: by default the pipeline follows the project
  * output with the default encoder, so a template never inherits the rail state
- * of whichever project happened to be open before it.
+ * of whichever project happened to be open before it. The dialog always shows
+ * the exact counts it will store and the exact render profile it will capture.
  *
  * The page hides the native editor view while the modal is open because a
  * `WebContentsView` always paints above shell DOM.
  */
+function Stat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number;
+  hint?: string | null;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-caption text-text-muted">{label}</dt>
+      <dd className="mt-0.5 flex items-baseline gap-1 text-body font-medium text-text-primary">
+        <span className="text-tabular">{value}</span>
+        {hint ? <span className="truncate text-caption font-normal text-text-muted">{hint}</span> : null}
+      </dd>
+    </div>
+  );
+}
+
 export function VizzyTemplateDialog({
   open,
   info,
@@ -92,6 +114,8 @@ export function VizzyTemplateDialog({
     captureExport && exportSettings
       ? formatExportSettings(exportSettings)
       : `${info?.width ?? 0} × ${info?.height ?? 0} · ${info?.fps ?? 0} fps · default encoder`;
+  const contents = info?.contents ?? null;
+  const exportRows = captureExport && exportSettings ? exportSettingRows(exportSettings) : [];
 
   return (
     <Dialog
@@ -104,7 +128,7 @@ export function VizzyTemplateDialog({
         <DialogContent
           title="Save as video template"
           description="Saves everything in this composition. No node selection is needed."
-          className="max-w-lg"
+          className="max-w-xl"
         >
           <div className="space-y-3" data-testid="vizzy-template-dialog">
             {loading ? (
@@ -179,6 +203,34 @@ export function VizzyTemplateDialog({
                     Everything is saved: layers, objects, effects, spectrum, particles, analyzers,
                     automations, media and assets.
                   </p>
+                  {contents ? (
+                    <dl
+                      className="grid grid-cols-3 gap-x-4 gap-y-2"
+                      data-testid="vizzy-template-contents"
+                    >
+                      <Stat label="Layers" value={contents.layers} />
+                      <Stat label="Objects" value={contents.objects} />
+                      <Stat label="Effects" value={contents.effects} />
+                      <Stat
+                        label="Spectrum"
+                        value={contents.spectrum}
+                        hint={contents.spectrumLayers > 0 ? `${contents.spectrumLayers} layers` : null}
+                      />
+                      <Stat label="Particles" value={contents.particles} />
+                      <Stat label="Analyzers" value={contents.analyzers} />
+                      <Stat
+                        label="Automations"
+                        value={contents.automations}
+                        hint={
+                          contents.automationGroups > 0
+                            ? `${contents.automationGroups} groups`
+                            : null
+                        }
+                      />
+                      <Stat label="Media" value={contents.media} />
+                      <Stat label="Assets" value={contents.assets} />
+                    </dl>
+                  ) : null}
                   <p className="text-caption text-text-muted">
                     Per song, the pipeline only replaces the run audio and fills the detected
                     background, title, artist, album and palette nodes. Nodes that are not detected
@@ -186,26 +238,48 @@ export function VizzyTemplateDialog({
                   </p>
                 </div>
 
-                <div className="space-y-2 rounded-control border border-border bg-surface-2 p-3">
+                <div
+                  className="space-y-2 rounded-control border border-border bg-surface-2 p-3"
+                  data-testid="vizzy-template-export"
+                >
                   {exportSettings ? (
                     <>
                       <Checkbox
                         checked={includeExport}
                         onCheckedChange={setIncludeExport}
-                        label="Use the current Export settings"
+                        label="Save the Export settings with this template"
                         hint={formatExportSettings(exportSettings)}
                         data-testid="vizzy-template-export-toggle"
                       />
+                      {exportRows.length ? (
+                        <dl
+                          className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border pt-2"
+                          data-testid="vizzy-template-export-summary"
+                        >
+                          {exportRows.map((row) => (
+                            <div key={row.label} className="min-w-0">
+                              <dt className="text-caption text-text-muted">{row.label}</dt>
+                              <dd className="truncate text-meta text-text-primary" title={row.value}>
+                                {row.value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : (
+                        <p className="text-caption text-text-muted">
+                          {`Not saved: pipeline renders use the project output and the default H.264 MP4 encoder. Turn this on to store ${formatExportSettings(exportSettings)}.`}
+                        </p>
+                      )}
                       <p className="text-caption text-text-muted">
-                        Off: pipeline renders use the project output and the default H.264 MP4
-                        encoder. Start/end trims never carry over; renders always follow the song.
+                        Start/end trims are never stored; every render follows the song.
                       </p>
                     </>
                   ) : (
                     <p className="text-caption text-text-muted" data-testid="vizzy-template-export-none">
-                      Pipeline renders use the project output and the default H.264 MP4 encoder.
-                      Open Export first if you want to capture a different resolution, frame rate
-                      or quality with this template.
+                      No Export settings were chosen for this project. Pipeline renders use the
+                      project output ({info?.width ?? 0}×{info?.height ?? 0} · {info?.fps ?? 0} fps)
+                      and the default H.264 MP4 encoder. Open Export first to capture a different
+                      resolution, frame rate or quality with this template.
                     </p>
                   )}
                 </div>

@@ -45,3 +45,44 @@ export function defaultExportSettings(project: {
     end: project.duration > 0 ? Number(project.duration.toFixed(2)) : undefined,
   };
 }
+
+export interface ExportSettingRow {
+  label: string;
+  value: string;
+}
+
+/**
+ * The exact render profile stored in `pipeline.json`, as label/value pairs for
+ * the Save-as-template dialog. Start/end are intentionally not listed: pipeline
+ * renders always follow the song, never a saved trim.
+ */
+export function exportSettingRows(settings: VizzyExportSettingsInput): ExportSettingRow[] {
+  const width = settings.width ?? 1920;
+  const height = settings.height ?? 1080;
+  const codec = settings.codec === "vp8" ? "VP8" : settings.codec === "vp9" ? "VP9" : "H.264";
+  const container =
+    settings.format === "webm" || codec !== "H.264" ? "WebM" : "MP4";
+  const engine = settings.engine === "webcodecs" ? "WebCodecs" : "WebAssembly (x264)";
+  const bitrate = Number(settings.bitrate) || 0;
+  const crf = settings.crf ?? 20;
+  const audio = settings.audioBitrate ?? 192;
+  const rows: ExportSettingRow[] = [
+    { label: "Resolution", value: `${width}×${height}` },
+    { label: "Frame rate", value: `${settings.fps ?? 30} fps` },
+    { label: "Encoder", value: engine },
+    { label: "Format", value: `${codec} · ${container}` },
+    {
+      label: "Quality",
+      value: bitrate > 0 ? `${bitrate} Mbps · CRF ${crf}` : `CRF ${crf}`,
+    },
+    { label: "Audio", value: `${audio} kbps` },
+  ];
+  if (codec === "H.264") {
+    rows.push({
+      label: "x264",
+      value: `${settings.preset || "veryfast"} · ${settings.profile || "high"}`,
+    });
+  }
+  rows.push({ label: "Trim", value: "Follows each song" });
+  return rows;
+}

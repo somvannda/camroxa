@@ -5,6 +5,7 @@ import {
   type BindingOptions,
   type PipelineKind,
 } from "../shared/pipeline";
+import type { TemplateContentsSummary } from "../shared/types";
 
 /**
  * Pipeline template contract (see docs/electron-desktop/vizzy/PIPELINE-TEMPLATE-CONTRACT.md).
@@ -84,10 +85,29 @@ export interface ProjectSnapshot {
   project?: Record<string, unknown>;
   nodes?: unknown;
   layers?: unknown;
+  automations?: unknown;
+  automationGroups?: unknown;
+  analyzers?: unknown;
+  effects?: unknown;
   assets?: unknown;
 }
 
 const TEXT_KINDS = new Set(["skia-text", "animated-text", "lyrics"]);
+
+/** Node kinds shown as "Media" in the save dialog. */
+const MEDIA_KINDS = new Set(["media", "video", "video-2", "wasm-video"]);
+/** Node kinds shown as "Particles" in the save dialog. */
+const PARTICLE_KINDS = new Set([
+  "particles",
+  "particle-lines",
+  "particle-time-line",
+  "particle-system",
+  "instanced-particle-system",
+  "confetti",
+  "spherical-field",
+]);
+/** Visualizer nodes whose `props.layers` are spectrum layers. */
+const SPECTRUM_KINDS = new Set(["effects", "basic-spectrum-bars"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -199,6 +219,39 @@ export function collectBindingOptions(snapshot: ProjectSnapshot): BindingOptions
     artist: texts.map(optionOf),
     album: texts.map(optionOf),
     palette: nodes.filter(hasColorProp).map(optionOf),
+  };
+}
+
+function arrayLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+/**
+ * Counts the parts of the exact snapshot "Save as video template" writes, so
+ * the dialog can show the composition it is about to store instead of a static
+ * sentence. Every field is read defensively: an older project may omit arrays.
+ */
+export function summarizeTemplateContents(snapshot: ProjectSnapshot): TemplateContentsSummary {
+  const nodes = nodesOf(snapshot);
+  let spectrumLayers = 0;
+  for (const node of nodes) {
+    if (!SPECTRUM_KINDS.has(textOf(node.kind))) continue;
+    if (isRecord(node.props) && Array.isArray(node.props.layers)) {
+      spectrumLayers += node.props.layers.length;
+    }
+  }
+  return {
+    layers: arrayLength(snapshot.layers),
+    objects: nodes.length,
+    effects: arrayLength(snapshot.effects),
+    spectrum: nodes.filter((node) => SPECTRUM_KINDS.has(textOf(node.kind))).length,
+    spectrumLayers,
+    particles: nodes.filter((node) => PARTICLE_KINDS.has(textOf(node.kind))).length,
+    analyzers: arrayLength(snapshot.analyzers),
+    automations: arrayLength(snapshot.automations),
+    automationGroups: arrayLength(snapshot.automationGroups),
+    media: nodes.filter((node) => MEDIA_KINDS.has(textOf(node.kind))).length,
+    assets: arrayLength(snapshot.assets),
   };
 }
 

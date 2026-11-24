@@ -18,6 +18,7 @@ import { getAppPaths } from "../services/paths";
 import {
   collectBindingOptions,
   detectBindings,
+  summarizeTemplateContents,
   type PipelineRunInputs,
   type ProjectSnapshot,
 } from "../services/pipeline-templates";
@@ -376,6 +377,7 @@ export function registerVizzyIpc(host: VizzyHost): void {
         kind: inferKind(width, height),
         detected,
         options,
+        contents: summarizeTemplateContents(snapshot as ProjectSnapshot),
         existing: listVideoTemplates(getAppPaths().templates).map((template) => ({
           id: template.id,
           name: template.name,

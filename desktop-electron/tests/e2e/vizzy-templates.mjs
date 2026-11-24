@@ -250,6 +250,27 @@ try {
   if (!/everything is saved/i.test(saveCopy) || !/spectrum/i.test(saveCopy) || !/particles/i.test(saveCopy)) {
     fail(`Save dialog must say the whole composition is saved: ${saveCopy}`);
   }
+  // The dialog must show the actual counts it is about to store.
+  const contentsText = await window.getByTestId("vizzy-template-contents").innerText();
+  for (const [label, count] of [
+    ["Layers", 3],
+    ["Objects", 3],
+    ["Effects", 1],
+    ["Spectrum", 1],
+    ["Particles", 1],
+    ["Analyzers", 13],
+    ["Automations", 2],
+    ["Media", 1],
+    ["Assets", 1],
+  ]) {
+    const pattern = new RegExp(`${label}\\s+${count}(?!\\d)`);
+    if (!pattern.test(contentsText)) {
+      fail(`Save dialog contents missing ${label} ${count}: ${contentsText}`);
+    }
+  }
+  if (!/12 layers/.test(contentsText)) {
+    fail(`Save dialog must show the spectrum layer count: ${contentsText}`);
+  }
   if ((await window.getByTestId("vizzy-template-advanced").count()) !== 0) {
     fail("Save dialog must not ask for node selections");
   }
@@ -264,6 +285,14 @@ try {
     !/H\.264 MP4/.test(capturedOutput)
   ) {
     fail(`Unexpected captured export summary: ${capturedOutput}`);
+  }
+  const exportSummary = window.getByTestId("vizzy-template-export-summary");
+  await exportSummary.waitFor({ timeout: 5_000 });
+  const exportText = await exportSummary.innerText();
+  for (const expected of ["1920×1080", "30 fps", "WebAssembly", "H.264 · MP4", "50 Mbps", "256 kbps"]) {
+    if (!exportText.includes(expected)) {
+      fail(`Export summary missing ${expected}: ${exportText}`);
+    }
   }
 
   await window.getByTestId("vizzy-template-name").fill(TEMPLATE_NAME);

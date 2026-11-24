@@ -4,6 +4,7 @@ import {
   buildPipelineTemplate,
   detectBindings,
   inferKind,
+  summarizeTemplateContents,
   validatePipelineTemplate,
   type ProjectSnapshot,
 } from "../../electron/services/pipeline-templates";
@@ -105,6 +106,59 @@ describe("pipeline template bindings", () => {
   it("returns no bindings for an empty project", () => {
     expect(detectBindings({ project: { width: 1080, height: 1920 } })).toEqual({
       audio: { mode: "replace" },
+    });
+  });
+});
+
+describe("template contents summary", () => {
+  it("counts the parts the save dialog lists", () => {
+    const value = snapshot({
+      nodes: [
+        ...(snapshot().nodes as unknown[]),
+        {
+          id: "spec-2",
+          kind: "effects",
+          name: "Spectrum",
+          visible: true,
+          props: { layers: [{ id: "a" }, { id: "b" }, { id: "c" }] },
+        },
+        { id: "particles-1", kind: "particles", name: "Particles" },
+        { id: "video-1", kind: "video", name: "Video" },
+      ],
+      analyzers: [{ id: "analyzer_default" }],
+      automations: [{ id: "automation-1" }, { id: "automation-2" }],
+      automationGroups: [{ id: "group-1" }],
+      effects: [{ id: "effect:global_fade" }],
+      assets: [{ id: "asset-bg" }],
+    });
+    expect(summarizeTemplateContents(value)).toEqual({
+      layers: 3,
+      objects: 9,
+      effects: 1,
+      spectrum: 2,
+      spectrumLayers: 3,
+      particles: 1,
+      analyzers: 1,
+      automations: 2,
+      automationGroups: 1,
+      media: 2,
+      assets: 1,
+    });
+  });
+
+  it("tolerates a project without optional arrays", () => {
+    expect(summarizeTemplateContents({ project: {} })).toEqual({
+      layers: 0,
+      objects: 0,
+      effects: 0,
+      spectrum: 0,
+      spectrumLayers: 0,
+      particles: 0,
+      analyzers: 0,
+      automations: 0,
+      automationGroups: 0,
+      media: 0,
+      assets: 0,
     });
   });
 });

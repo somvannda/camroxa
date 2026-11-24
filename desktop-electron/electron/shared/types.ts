@@ -233,6 +233,27 @@ export interface VideoTemplateChangedEvent {
   action: "saved" | "deleted";
 }
 
+/** Counts shown in "Save as video template" so the whole snapshot is visible. */
+export interface TemplateContentsSummary {
+  /** Layers in the composition. */
+  layers: number;
+  /** Every saved node. */
+  objects: number;
+  /** Project-level global effects (alpha, colour, …). */
+  effects: number;
+  /** Spectrum/effects nodes. */
+  spectrum: number;
+  /** Total spectrum layers across those nodes. */
+  spectrumLayers: number;
+  particles: number;
+  analyzers: number;
+  automations: number;
+  automationGroups: number;
+  /** Image/video media nodes. */
+  media: number;
+  assets: number;
+}
+
 /**
  * `vizzy:template-options` — what the save dialog needs from the live project.
  * The options come from the exact snapshot the save will capture.
@@ -246,6 +267,8 @@ export interface VizzyTemplateDraftInfo {
   /** Binding pre-fill from `detectBindings()`, filtered to compatible options. */
   detected: BindingSelection;
   options: BindingOptions;
+  /** What the exact snapshot contains, for the dialog's summary. */
+  contents: TemplateContentsSummary;
   /** Templates that can be overwritten instead of creating a new one. */
   existing: Array<{ id: string; name: string; kind: "long" | "reel" }>;
 }

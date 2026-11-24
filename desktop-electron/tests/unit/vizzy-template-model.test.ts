@@ -11,6 +11,7 @@ import {
 import {
   collectBindingOptions,
   detectBindings,
+  summarizeTemplateContents,
   type ProjectSnapshot,
 } from "../../electron/services/pipeline-templates";
 import { renderFileNameForTemplate } from "../../electron/vizzy-host/renders";
@@ -137,6 +138,7 @@ describe("template draft", () => {
     kind: "long" as const,
     detected: selectionFromDetected(detectBindings(snapshot()), optionsFor()),
     options: optionsFor(),
+    contents: summarizeTemplateContents(snapshot()),
     existing: [],
   };
 
