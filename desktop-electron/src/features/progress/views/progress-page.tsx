@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import { Icon } from "../../../components/icon";
 import { PageHeader } from "../../../components/page-header";
 import { Card } from "../../../components/card";
+import { Button } from "../../../components/button";
+import { Dialog, DialogContent } from "../../../components/dialog";
 import { apiRequest, errorMessage } from "../../../lib/api";
 import { DownloadQueue } from "../download-queue";
 import { ProgressDetail } from "../progress-detail";
@@ -51,6 +53,8 @@ export function ProgressPage() {
   const [stage, setStage] = useState<StageFilter>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<ActionNotice | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProgressRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [syncingBatch, setSyncingBatch] = useState<string | null>(null);
 
   const feed = useProgressFeed({ from, to, activeOnly, limit });
@@ -243,36 +247,32 @@ export function ProgressPage() {
     [feed],
   );
 
-  const deleteBatch = useCallback(
-    async (row: ProgressRow) => {
-      const batchId = row.meta.batch_id || row.batch;
-      if (!batchId) return;
-      const label = row.album?.trim() || batchId;
-      if (
-        !window.confirm(
-          `Delete batch "${label}"?\n\nThis removes the batch and both Primary/Secondary channel rows. It cannot be undone.`,
-        )
-      ) {
-        return;
+  const deleteBatch = useCallback(async () => {
+    const row = deleteTarget;
+    if (!row) return;
+    const batchId = row.meta.batch_id || row.batch;
+    if (!batchId) return;
+    const label = row.album?.trim() || batchId;
+    setDeleting(true);
+    try {
+      if (pipeline.snapshot?.running) {
+        await pipeline.cancel();
       }
-      try {
-        if (pipeline.snapshot?.running) {
-          await pipeline.cancel();
-        }
-        await apiRequest({
-          method: "DELETE",
-          path: `/batches/${batchId}`,
-          query: { force: true },
-        });
-        await pipeline.deleteExternal(batchId);
-        setNotice({ tone: "success", text: `Deleted batch ${label}.` });
-        await feed.refresh();
-      } catch (error) {
-        setNotice({ tone: "danger", text: errorMessage(error) });
-      }
-    },
-    [feed, pipeline],
-  );
+      await apiRequest({
+        method: "DELETE",
+        path: `/batches/${batchId}`,
+        query: { force: true },
+      });
+      await pipeline.deleteExternal(batchId);
+      setNotice({ tone: "success", text: `Deleted batch ${label}.` });
+      setDeleteTarget(null);
+      await feed.refresh();
+    } catch (error) {
+      setNotice({ tone: "danger", text: errorMessage(error) });
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, feed, pipeline]);
 
   const retryDownload = useCallback(
     async (key: string) => {
@@ -505,7 +505,7 @@ export function ProgressPage() {
                 void uploads.openConfirm(row);
               }}
               onDeleteBatch={(row) => {
-                void deleteBatch(row);
+                setDeleteTarget(row);
               }}
               manualFolderFor={(row) => {
                 const inspection = manual.inspections[rowKey(row)];
@@ -552,6 +552,45 @@ export function ProgressPage() {
             )}
           </div>
         </div>
+
+        <Dialog
+          open={Boolean(deleteTarget)}
+          onOpenChange={(next) => {
+            if (!next && !deleting) setDeleteTarget(null);
+          }}
+        >
+          {deleteTarget ? (
+            <DialogContent
+              title="Delete this batch?"
+              description="This removes the batch and both Primary/Secondary channel rows. It cannot be undone."
+              className="max-w-md"
+            >
+              <p className="mt-3 text-body text-text-primary">
+                {deleteTarget.album?.trim() || deleteTarget.meta.batch_id || deleteTarget.batch}
+              </p>
+              <p className="mt-1 text-caption text-text-muted">
+                Local renders and merge files for this batch will also be removed.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  disabled={deleting}
+                  onClick={() => setDeleteTarget(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={deleting}
+                  onClick={() => void deleteBatch()}
+                  data-testid="batch-delete-confirm"
+                >
+                  Delete batch
+                </Button>
+              </div>
+            </DialogContent>
+          ) : null}
+        </Dialog>
 
         <YoutubeUploadDialog
           confirmation={uploads.confirmation}
