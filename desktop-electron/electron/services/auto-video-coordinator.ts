@@ -193,10 +193,20 @@ export class AutoVideoCoordinator {
         this.setStatus("waiting", "Waiting for a batch with finished downloads.");
         return;
       }
+      // Only continue the newest generation. Older unfinished batches are left
+      // alone; the Python app never auto-restarts a previous day's run.
+      const latestRunDate = rows
+        .map((row) => clean(row.run_date))
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+      const activeRows = latestRunDate
+        ? rows.filter((row) => !clean(row.run_date) || clean(row.run_date) === latestRunDate)
+        : rows;
 
       const candidate = selectAutoVideoCandidate({
         settings,
-        rows,
+        rows: activeRows,
         batches,
         profiles,
         templates,

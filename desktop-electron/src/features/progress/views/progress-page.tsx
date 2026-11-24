@@ -10,7 +10,6 @@ import { ProgressStatCards } from "../progress-stat-cards";
 import { ProgressTable } from "../progress-table";
 import { ProgressToolbar } from "../progress-toolbar";
 import { copyText } from "../progress-clipboard";
-import { VideoPipelineSection } from "../video-pipeline-table";
 import {
   DEFAULT_LIMIT,
   countStats,
@@ -239,6 +238,29 @@ export function ProgressPage() {
           tone: "danger",
           text: cause instanceof Error ? cause.message : "Unable to recover this run.",
         });
+      }
+    },
+    [feed],
+  );
+
+  const deleteBatch = useCallback(
+    async (row: ProgressRow) => {
+      const batchId = row.meta.batch_id || row.batch;
+      if (!batchId) return;
+      const label = row.album?.trim() || batchId;
+      if (
+        !window.confirm(
+          `Delete batch "${label}"?\n\nThis removes the batch and both Primary/Secondary channel rows. It cannot be undone.`,
+        )
+      ) {
+        return;
+      }
+      try {
+        await apiRequest({ method: "DELETE", path: `/batches/${batchId}` });
+        setNotice({ tone: "success", text: `Deleted batch ${label}.` });
+        await feed.refresh();
+      } catch (error) {
+        setNotice({ tone: "danger", text: errorMessage(error) });
       }
     },
     [feed],
@@ -474,6 +496,9 @@ export function ProgressPage() {
               onUpload={(row) => {
                 void uploads.openConfirm(row);
               }}
+              onDeleteBatch={(row) => {
+                void deleteBatch(row);
+              }}
               manualFolderFor={(row) => {
                 const inspection = manual.inspections[rowKey(row)];
                 return inspection?.runDir ?? null;
@@ -557,9 +582,6 @@ export function ProgressPage() {
           }}
         />
 
-        <VideoPipelineSection
-          knownBatchIds={visibleRows.map((row) => row.meta.batch_id || row.batch)}
-        />
       </div>
     </div>
   );

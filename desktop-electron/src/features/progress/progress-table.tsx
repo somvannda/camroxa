@@ -59,6 +59,7 @@ interface ProgressTableProps {
   onDownloadMissing?: (row: ProgressRow) => void;
   onChangeRunFolder?: (row: ProgressRow) => void;
   onUpload?: (row: ProgressRow) => void;
+  onDeleteBatch?: (row: ProgressRow) => void;
   onPipelineCancel?: () => void;
   onPipelineRetry?: (batchId: string) => void;
   onPipelineStart?: () => void;
@@ -143,6 +144,7 @@ export function ProgressTable({
   onDownloadMissing,
   onChangeRunFolder,
   onUpload,
+  onDeleteBatch,
   manualFolderFor,
 }: ProgressTableProps) {
   const [menu, setMenu] = useState<RowMenuState | null>(null);
@@ -591,6 +593,14 @@ export function ProgressTable({
             <ContextItem disabled={!onUpload} onClick={() => run(() => onUpload?.(menu.row))}>
               <Icon name="fa-arrow-up-from-bracket" size={11} className="mr-2" />
               Upload to YouTube…
+            </ContextItem>
+            <div className="my-1 h-px bg-border" />
+            <ContextItem
+              disabled={!onDeleteBatch}
+              onClick={() => run(() => onDeleteBatch?.(menu.row))}
+            >
+              <Icon name="fa-trash" size={11} className="mr-2" />
+              Delete batch…
             </ContextItem>
           </div>,
           document.body,

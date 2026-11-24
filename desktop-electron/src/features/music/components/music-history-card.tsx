@@ -348,10 +348,10 @@ export function MusicHistoryCard({
                       {row.song.description_name || "—"}
                     </TD>
                     <TD className="max-w-[140px] truncate text-text-secondary">
-                      {row.song.structure_name || "—"}
+                      {row.song.structure_id ? row.song.structure_name || "-" : "-"}
                     </TD>
                     <TD className="max-w-[120px] truncate text-text-secondary">
-                      {row.song.mood_name || "—"}
+                      {row.song.mood_id ? row.song.mood_name || "-" : "-"}
                     </TD>
                     <TD className="text-text-secondary">
                       <span className="inline-flex max-w-[150px] items-center">

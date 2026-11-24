@@ -206,14 +206,11 @@ try {
   const window = await app.firstWindow();
   await window.waitForLoadState("domcontentloaded");
   await window.getByRole("link", { name: "Progress" }).click();
-  await window.getByTestId("video-pipeline").waitFor({ timeout: 20_000 });
-  await window.getByTestId("pipeline-empty").waitFor({ timeout: 20_000 });
-  const emptyText = await window.getByTestId("pipeline-empty").innerText();
-  if (!/No video renders yet/i.test(emptyText)) fail(`Unexpected empty state: ${emptyText}`);
-  if (!/Video \(16:9\)/i.test(emptyText) || !/Music/i.test(emptyText)) {
-    fail("The empty state must point at Music");
+  const emptySnapshot = await snapshot(window);
+  if (!emptySnapshot.ok || emptySnapshot.data.jobs.length !== 0) {
+    fail(`Expected an empty pipeline queue: ${JSON.stringify(emptySnapshot)}`);
   }
-  step("empty state verified");
+  step("empty queue verified");
 
   // --- Enqueue two songs with merge, no /vizzy route ---------------------
   const enqueued = await window.evaluate(
@@ -256,16 +253,18 @@ try {
   const started = await window.evaluate(async () => window.camxora.pipeline.start());
   if (!started.ok || !started.data.started) fail(`pipeline:start failed: ${JSON.stringify(started)}`);
 
-  // The Progress rows come from the durable queue, so they appear immediately.
+  // The durable queue exposes both rows immediately.
   await poll(
-    async () => (await window.getByTestId("pipeline-row").count()) === 2,
-    "the Progress pipeline rows",
+    async () => {
+      const response = await snapshot(window);
+      return response.ok && response.data.jobs.length === 2 ? response.data : null;
+    },
+    "the queued pipeline rows",
     30_000,
   );
-  await window.getByTestId("video-pipeline").scrollIntoViewIfNeeded();
   await window.waitForTimeout(250);
   await window.screenshot({ path: path.join(artifacts, "batch-progress.png") });
-  step("progress rows visible");
+  step("queue rows visible");
 
   const finished = await poll(
     async () => {
@@ -336,24 +335,22 @@ try {
   }
   step("merged file probed");
 
-  // --- Progress reflects the durable queue --------------------------------
+  // --- Queue reflects completion ------------------------------------------
   await poll(
     async () => {
-      const statuses = await window
-        .locator('[data-testid="pipeline-row"]')
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-status")));
-      return statuses.length === 2 && statuses.every((status) => status === "done")
-        ? statuses
+      const response = await snapshot(window);
+      return response.ok &&
+        response.data.jobs.length === 2 &&
+        response.data.jobs.every((job) => job.status === "done")
+        ? response.data
         : null;
     },
-    "the Progress rows to show Done",
+    "the queued renders to show Done",
     60_000,
-);
-  await window.getByTestId("pipeline-merged-reveal").waitFor({ timeout: 20_000 });
-  await window.getByTestId("video-pipeline").scrollIntoViewIfNeeded();
+  );
   await window.waitForTimeout(250);
   await window.screenshot({ path: path.join(artifacts, "batch-complete.png") });
-  step("progress shows done + merged");
+  step("queue shows done + merged");
 
   // --- Cancel a third render: no partial file ----------------------------
   const beforeCancel = mp4s(outDir).length;
@@ -379,9 +376,7 @@ try {
 
   const cancelStart = await window.evaluate(async () => window.camxora.pipeline.start());
   if (!cancelStart.ok) fail(`cancel start failed: ${cancelStart.error.message}`);
-  // Cancel through the real Progress control, not only through IPC.
-  const cancelButton = window.getByTestId("pipeline-cancel-batch");
-  await cancelButton.waitFor({ timeout: 120_000 });
+  // Cancel through the IPC the row menu uses.
   await poll(
     async () => {
       const response = await snapshot(window);
@@ -393,7 +388,8 @@ try {
     120_000,
     100,
   );
-  await cancelButton.click();
+  const cancelled = await window.evaluate(async () => window.camxora.pipeline.cancel());
+  if (!cancelled.ok) fail(`pipeline:cancel failed: ${cancelled.error.message}`);
   const afterCancel = await poll(
     async () => {
       const response = await snapshot(window);
@@ -414,9 +410,12 @@ try {
   step("cancel left no partial output");
 
   // --- Retry runs only the failed/cancelled row --------------------------
-  const retryButton = window.getByTestId("pipeline-retry");
-  await retryButton.waitFor({ timeout: 60_000 });
-  await retryButton.click();
+  const retried = await window.evaluate(async () =>
+    window.camxora.pipeline.retry("batch-cancel"),
+  );
+  if (!retried.ok || !retried.data.enqueued) {
+    fail(`pipeline:retry failed: ${JSON.stringify(retried)}`);
+  }
   const retriedDone = await poll(
     async () => {
       const response = await snapshot(window);
