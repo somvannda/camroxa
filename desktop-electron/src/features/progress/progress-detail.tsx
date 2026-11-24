@@ -10,24 +10,27 @@ import { missingAssetHint, type ManualInspection } from "./manual-assets";
 import {
   failureStageLabel,
   formatAbsoluteTime,
+  localStageDisplay,
   localVideoState,
   normalizeStatus,
   notesText,
   rowKey,
   runDateLabel,
-  stageBadgeTone,
   stageKey,
-  stageLabel,
   stageTimeline,
   statusLabel,
   updatedCellText,
   youtubeCellText,
   type TimelineState,
 } from "./progress-format";
+import { localVideoForRow } from "./progress-local-video";
+import type { PipelineSnapshot } from "../../../electron/shared/types";
 import type { ProgressRow } from "./progress-types";
 
 interface ProgressDetailProps {
   row: ProgressRow;
+  /** Local durable render queue, folded into the stage timeline. */
+  pipeline?: PipelineSnapshot | null;
   manualMode: boolean;
   inspection: ManualInspection | undefined;
   inspecting: boolean;
@@ -109,6 +112,7 @@ function PathRow({
 
 export function ProgressDetail({
   row,
+  pipeline,
   manualMode,
   inspection,
   inspecting,
@@ -146,7 +150,18 @@ export function ProgressDetail({
 
   const meta = row.meta;
   const video = localVideoState(row);
-  const timeline = stageTimeline(row, manualMode);
+  const local = localVideoForRow(row, pipeline);
+  const timeline = stageTimeline(row, manualMode, local);
+  const stageDisplay = localStageDisplay(row, local);
+  const statusDisplay = local.failed
+    ? "Failed"
+    : local.mergedPath
+      ? "Completed"
+      : local.total > 0 && local.done === local.total
+        ? "Rendered"
+        : local.running
+          ? "Rendering"
+          : statusLabel(row.status);
   const note = notesText(row);
   const failed =
     stageKey(row.stage) === "error" ||
@@ -168,6 +183,12 @@ export function ProgressDetail({
 
   const paths = [
     meta.run_dir ? { label: "Run folder", value: meta.run_dir, kind: "folder" as const } : null,
+    local.mergedPath
+      ? { label: "Merged video", value: local.mergedPath, kind: "file" as const }
+      : null,
+    local.outputPath && !local.mergedPath
+      ? { label: "Rendered video", value: local.outputPath, kind: "file" as const }
+      : null,
     meta.background_16x9_path
       ? { label: "Background 16:9", value: meta.background_16x9_path, kind: "file" as const }
       : null,
@@ -217,8 +238,8 @@ export function ProgressDetail({
             <h2 className="truncate font-mono text-title text-text-primary">
               {row.batch || "Not reported"}
             </h2>
-            <Badge tone={stageBadgeTone(row.stage)}>{stageLabel(row.stage)}</Badge>
-            <Badge tone={failed ? "danger" : "neutral"}>{statusLabel(row.status)}</Badge>
+            <Badge tone={stageDisplay.tone}>{stageDisplay.text}</Badge>
+            <Badge tone={failed ? "danger" : "neutral"}>{statusDisplay}</Badge>
           </div>
         </div>
         <Button variant="ghost" aria-label="Close row detail" onClick={onClose}>
@@ -249,12 +270,18 @@ export function ProgressDetail({
         <Field label="Run date" mono>
           {runDateLabel(row.run_date)}
         </Field>
-        <Field label="Stage">{stageLabel(row.stage)}</Field>
+        <Field label="Stage">{stageDisplay.text}</Field>
         <Field label="Profile" mono>
           {meta.profile_id || "--"}
         </Field>
         <Field label="Updated">{updated.primary}</Field>
-        <Field label="Pipeline">{video.source === "local" ? "Local output" : video.source === "api" ? "API values" : "Not reported"}</Field>
+        <Field label="Pipeline">
+          {local.total > 0 || video.source === "local"
+            ? "Local output"
+            : video.source === "api"
+              ? "API values"
+              : "Not reported"}
+        </Field>
       </dl>
 
       <dl className="mt-3 grid grid-cols-3 gap-4 border-b border-border pb-3">
@@ -424,7 +451,7 @@ export function ProgressDetail({
         </div>
       ) : null}
 
-      {video.source === "none" ? (
+      {video.source === "none" && local.total === 0 ? (
         <p className="mt-3 text-caption text-text-muted">
           Render and merge have no local output or API value for this run.
         </p>

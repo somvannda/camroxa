@@ -1,5 +1,10 @@
 import { formatCount } from "../../lib/format";
-import type { DownloadItemInfo, DownloadItemState } from "../../../electron/shared/types";
+import type {
+  DownloadItemInfo,
+  DownloadItemState,
+  PipelineSnapshot,
+} from "../../../electron/shared/types";
+import { localVideoForRow, type LocalVideoSummary } from "./progress-local-video";
 import type { ProgressListResponse, ProgressRow } from "./progress-types";
 
 export const PROGRESS_POLL_MS = 12_000;
@@ -139,6 +144,24 @@ export function stageBadgeTone(stage: string): ProgressTone {
   return "neutral";
 }
 
+/**
+ * The stage badge shown for a row. Local render/merge truth overrides the API
+ * stage so a run whose album is already merged never still reads "Converter".
+ */
+export function localStageDisplay(
+  row: ProgressRow,
+  local: LocalVideoSummary | null | undefined,
+): { text: string; tone: ProgressTone } {
+  const summary = local && local.total > 0 ? local : null;
+  if (summary) {
+    if (summary.failed > 0) return { text: "Error", tone: "danger" };
+    if (summary.mergedPath) return { text: "Done", tone: "success" };
+    if (summary.done === summary.total) return { text: "Merge", tone: "accent" };
+    return { text: "Render", tone: "accent" };
+  }
+  return { text: stageLabel(row.stage), tone: stageBadgeTone(row.stage) };
+}
+
 export function normalizeStatus(status: string): string {
   const key = String(status ?? "").trim().toLowerCase();
   if (key === "done" || key === "success") return "completed";
@@ -187,8 +210,28 @@ function hasReelBranch(row: ProgressRow): boolean {
   );
 }
 
+function localStageKey(local: LocalVideoSummary): string {
+  if (local.failed > 0) return "error";
+  if (local.mergedPath) return "done";
+  if (local.done === local.total) return "merger";
+  return "converter";
+}
+
+/**
+ * Stage used for badges, filters and stats. The local render queue outranks the
+ * API stage so a merged album is "done" even while the backend still reports
+ * converter/queued.
+ */
+export function effectiveStageKey(
+  row: ProgressRow,
+  local?: LocalVideoSummary | null,
+): string {
+  return local && local.total > 0 ? localStageKey(local) : stageKey(row.stage);
+}
+
 /** PG-03: hide finished runs, keep YouTube, errors and waiting rows visible. */
-export function isActiveRow(row: ProgressRow): boolean {
+export function isActiveRow(row: ProgressRow, local?: LocalVideoSummary | null): boolean {
+  if (local && local.total > 0) return local.failed > 0 || !local.mergedPath;
   const key = stageKey(row.stage);
   if (ACTIVE_HIDDEN_STAGES.has(key)) return false;
   if (row.meta.pipeline_complete) return false;
@@ -199,9 +242,13 @@ export function isActiveRow(row: ProgressRow): boolean {
   return true;
 }
 
-export function matchesStageFilter(stage: string, filter: StageFilter): boolean {
+export function matchesStageFilter(
+  stage: string,
+  filter: StageFilter,
+  local?: LocalVideoSummary | null,
+): boolean {
   if (filter === "all") return true;
-  const key = stageKey(stage);
+  const key = local && local.total > 0 ? localStageKey(local) : stageKey(stage);
   if (filter === "converter") return CONVERTER_STAGES.has(key) || key === "converter";
   if (filter === "merger") return MERGER_STAGES.has(key) || key === "merger";
   return key === filter;
@@ -211,13 +258,18 @@ export interface FilterOptions {
   activeOnly: boolean;
   stage: StageFilter;
   limit?: number | null;
+  /** Local render queue; folds merged/rendering truth into filters. */
+  pipeline?: PipelineSnapshot | null;
 }
 
 export function filterProgressRows(rows: ProgressRow[], options: FilterOptions): ProgressRow[] {
+  const localOf = (row: ProgressRow) => localVideoForRow(row, options.pipeline);
   let filtered = rows;
-  if (options.activeOnly) filtered = filtered.filter(isActiveRow);
+  if (options.activeOnly) filtered = filtered.filter((row) => isActiveRow(row, localOf(row)));
   if (options.stage !== "all") {
-    filtered = filtered.filter((row) => matchesStageFilter(row.stage, options.stage));
+    filtered = filtered.filter((row) =>
+      matchesStageFilter(row.stage, options.stage, localOf(row)),
+    );
   }
   if (options.limit != null) return filtered.slice(0, Math.max(0, options.limit));
   return filtered;
@@ -234,13 +286,15 @@ export function countStats(
   rows: ProgressRow[],
   manualMode: boolean,
   waitingKeys: ReadonlySet<string>,
+  pipeline?: PipelineSnapshot | null,
 ): ProgressStats {
   let active = 0;
   let video = 0;
   let waiting = 0;
   let failed = 0;
   for (const row of rows) {
-    const key = stageKey(row.stage);
+    const local = localVideoForRow(row, pipeline);
+    const key = effectiveStageKey(row, local);
     if (key !== "done" && key !== "completed" && key !== "error") active += 1;
     if (key === "converter" || key === "merger") video += 1;
     if (key === "image" && manualMode && waitingKeys.has(rowKey(row))) waiting += 1;
@@ -524,7 +578,9 @@ const TIMELINE_RANKS: Record<string, number> = {
   music: 1,
   image: 2,
   converter: 3,
+  // The API calls the stage "merger"; the timeline step key is "merge".
   merger: 4,
+  merge: 4,
   youtube: 5,
   done: 6,
   completed: 6,
@@ -551,40 +607,99 @@ function inferFailureStage(row: ProgressRow): "music" | "image" | "converter" | 
   return null;
 }
 
-export function stageTimeline(row: ProgressRow, manualMode: boolean): TimelineStep[] {
+export function stageTimeline(
+  row: ProgressRow,
+  manualMode: boolean,
+  localInput?: LocalVideoSummary | null,
+): TimelineStep[] {
   const status = normalizeStatus(row.status);
-  const failed = stageKey(row.stage) === "error" || status === "failed" || status === "blocked";
-  const failureStage = failed ? inferFailureStage(row) : null;
-  const currentRank = timelineRank(row.stage);
+  const stage = stageKey(row.stage);
+  const local = localInput && localInput.total > 0 ? localInput : null;
+  const localFailed = local?.status === "failed";
+  const localMergeFailed = localFailed && local?.mergePrimary === "Merge failed";
+  const failed =
+    stage === "error" || status === "failed" || status === "blocked" || Boolean(localFailed);
+  const failureStage = failed
+    ? localFailed
+      ? localMergeFailed
+        ? ("merge" as const)
+        : ("converter" as const)
+      : inferFailureStage(row)
+    : null;
+  // Local render/merge truth outranks a stale API stage (e.g. the API still
+  // says converter/queued while every track and the album are already merged).
+  const localRank = local
+    ? local.status === "merged"
+      ? TIMELINE_RANKS.done
+      : local.status === "done"
+        ? TIMELINE_RANKS.merger
+        : TIMELINE_RANKS.converter
+    : 0;
+  const currentRank = Math.max(timelineRank(row.stage), localRank);
   const failureRank = failureStage ? Math.max(1, timelineRank(failureStage)) : 0;
   const video = localVideoState(row);
+
+  const converterDetail = local
+    ? `${local.done}/${local.total} rendered${
+        local.failed > 0
+          ? ` · ${local.failed} failed`
+          : local.status === "rendering"
+            ? ` · ${local.percent}%`
+            : ""
+      }`
+    : (video.converter ?? PIPELINE_MISSING);
+  const mergeDetail = local
+    ? (local.mergePrimary ??
+      (local.mergeSecondary === "Merged"
+        ? "Merged"
+        : local.done === local.total
+          ? "Ready to merge"
+          : "Waiting for renders"))
+    : (video.merge ?? PIPELINE_MISSING);
 
   return (
     [
       { key: "music", label: "Music", detail: musicCellText(row).primary },
       { key: "image", label: "Image", detail: imageCellText(row, manualMode).primary },
-      { key: "converter", label: "Converter", detail: video.converter ?? PIPELINE_MISSING },
-      { key: "merge", label: "Merge", detail: video.merge ?? PIPELINE_MISSING },
+      { key: "converter", label: "Converter", detail: converterDetail },
+      { key: "merge", label: "Merge", detail: mergeDetail },
       { key: "youtube", label: "YouTube", detail: youtubeCellText(row).primary },
     ] as const
   ).map((step) => {
     const rank = TIMELINE_RANKS[step.key];
     if (failed) {
       if (failureStage === step.key) {
-        return { ...step, state: "failed" as const, detail: statusLabel(row.status) };
+        const detail = localFailed
+          ? step.key === "merge"
+            ? "Merge failed"
+            : `${local?.failed ?? 0} failed`
+          : statusLabel(row.status);
+        return { ...step, state: "failed" as const, detail };
       }
       if (failureRank > rank) return { ...step, state: "passed" as const };
       return { ...step, state: "pending" as const };
     }
+    // YouTube is its own workflow: a finished render/merge never uploads a video.
+    if (step.key === "youtube") {
+      const uploaded = (row.meta.youtube_success ?? 0) > 0;
+      const uploading =
+        (row.meta.youtube_pending ?? 0) > 0 || (stage === "youtube" && stageRunning(status));
+      if (uploaded) return { ...step, state: "passed" as const };
+      return { ...step, state: uploading ? ("current" as const) : ("pending" as const) };
+    }
     if (currentRank > rank) return { ...step, state: "passed" as const };
     if (currentRank === rank) {
-      if (stageKey(row.stage) === "done" || stageKey(row.stage) === "completed") {
+      if (stage === "done" || stage === "completed") {
         return { ...step, state: "passed" as const };
       }
-      return { ...step, state: "current" as const, detail: statusLabel(row.status) };
+      // A video step reports local truth (files/progress), not the API word.
+      const detail =
+        step.key === "converter" || step.key === "merge" ? step.detail : statusLabel(row.status);
+      return { ...step, state: "current" as const, detail };
     }
     if (
       (step.key === "converter" || step.key === "merge") &&
+      !local &&
       video.source === "none"
     ) {
       return { ...step, state: "unavailable" as const };

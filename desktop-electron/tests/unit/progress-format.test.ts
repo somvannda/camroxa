@@ -10,6 +10,7 @@ import {
   formatBytes,
   imageCellText,
   isActiveRow,
+  localStageDisplay,
   localVideoState,
   metaLine,
   musicCellText,
@@ -25,6 +26,13 @@ import {
   youtubeCellText,
 } from "../../src/features/progress/progress-format";
 import type { DownloadItemInfo } from "../../electron/shared/types";
+import type {
+  PipelineBatchInfo,
+  PipelineJobInfo,
+  PipelineSnapshot,
+} from "../../electron/shared/types";
+import type { LocalVideoSummary } from "../../src/features/progress/progress-local-video";
+import { localVideoForRow } from "../../src/features/progress/progress-local-video";
 import type { ProgressRow, ProgressRowMeta } from "../../src/features/progress/progress-types";
 
 type RowOverrides = Omit<Partial<ProgressRow>, "meta"> & { meta?: Partial<ProgressRowMeta> };
@@ -68,6 +76,55 @@ function row(overrides: RowOverrides = {}): ProgressRow {
     ...overrides,
     meta,
   };
+}
+
+/** Minimal local queue that maps onto `row()`: batch-1 / profile-1 / OK. */
+function pipelineSnapshot(options: { merged?: boolean; failed?: boolean } = {}): PipelineSnapshot {
+  const batchId = "batch-1:long:profile-1:OK";
+  const failedIndex = options.failed ? 3 : 0;
+  const jobs: PipelineJobInfo[] = [1, 2, 3].map((index) => {
+    const failed = index === failedIndex;
+    return {
+      id: `job-${index}`,
+      batchId,
+      branch: "long",
+      templateId: "night-drive",
+      templateName: "Night Drive",
+      audioPath: `C:\\runs\\${index}.mp3`,
+      audioName: `${index}.mp3`,
+      title: `Song ${index}`,
+      artist: "Artist",
+      album: "Night Drive",
+      outputDir: "C:\\runs",
+      backgroundPath: "C:\\runs\\bg.png",
+      status: failed ? "failed" : "done",
+      stage: failed ? "failed" : "done",
+      progress: failed ? 0 : 100,
+      error: failed ? "render failed" : null,
+      output: failed ? null : `C:\\runs\\${index}.mp4`,
+      merge: true,
+      createdAt: 1,
+      updatedAt: 1,
+    } satisfies PipelineJobInfo;
+  });
+  const batches: PipelineBatchInfo[] = [
+    {
+      batchId,
+      outputDir: "C:\\runs",
+      merge: true,
+      mergedOutput: options.merged ? "C:\\runs\\Night Drive_2411.mp4" : null,
+      status: options.failed ? "failed" : "done",
+      error: null,
+      total: 3,
+      done: options.failed ? 2 : 3,
+      failed: options.failed ? 1 : 0,
+      cancelled: 0,
+      running: false,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ];
+  return { running: false, jobs, batches, error: null };
 }
 
 describe("filters", () => {
@@ -219,6 +276,166 @@ describe("row presentation", () => {
     );
     expect(steps[3].state).toBe("failed");
     expect(steps[0].state).toBe("passed");
+    expect(steps[4].state).toBe("pending");
+  });
+
+  it("lets merged local output override a stale API converter stage", () => {
+    const merged: LocalVideoSummary = {
+      total: 3,
+      done: 3,
+      failed: 0,
+      cancelled: 0,
+      running: false,
+      percent: 100,
+      status: "merged",
+      videoPrimary: "Neon Garden Runway_2411.mp4",
+      videoSecondary: "Merged",
+      mergePrimary: "Neon Garden Runway_2411.mp4",
+      mergeSecondary: "Merged",
+      outputPath: "C:\\runs\\3. Song.mp4",
+      mergedPath: "C:\\runs\\Neon Garden Runway_2411.mp4",
+      retryBatchId: null,
+      jobs: [],
+      updatedAt: 1,
+    };
+    const steps = stageTimeline(row({ stage: "converter", status: "queued" }), false, merged);
+    expect(steps[2]).toMatchObject({ state: "passed", detail: "3/3 rendered" });
+    expect(steps[3]).toMatchObject({
+      state: "passed",
+      detail: "Neon Garden Runway_2411.mp4",
+    });
+    // A finished album is not a YouTube upload.
+    expect(steps[4]).toMatchObject({ state: "pending", detail: "Not started" });
+    expect(localStageDisplay(row({ stage: "converter" }), merged)).toEqual({
+      text: "Done",
+      tone: "success",
+    });
+  });
+
+  it("shows local render progress and the ready-to-merge step", () => {
+    const rendering: LocalVideoSummary = {
+      total: 3,
+      done: 2,
+      failed: 0,
+      cancelled: 0,
+      running: true,
+      percent: 70,
+      status: "rendering",
+      videoPrimary: "2/3 rendered",
+      videoSecondary: "Rendering 70%",
+      mergePrimary: null,
+      mergeSecondary: null,
+      outputPath: null,
+      mergedPath: null,
+      retryBatchId: null,
+      jobs: [],
+      updatedAt: 1,
+    };
+    const steps = stageTimeline(row({ stage: "converter", status: "running" }), false, rendering);
+    expect(steps[2]).toMatchObject({ state: "current", detail: "2/3 rendered · 70%" });
+    expect(steps[3]).toMatchObject({ state: "pending", detail: "Waiting for renders" });
+    expect(localStageDisplay(row({ stage: "converter" }), rendering)).toEqual({
+      text: "Render",
+      tone: "accent",
+    });
+  });
+
+  it("marks a failed local render on the converter step", () => {
+    const failedLocal: LocalVideoSummary = {
+      total: 3,
+      done: 2,
+      failed: 1,
+      cancelled: 0,
+      running: false,
+      percent: 67,
+      status: "failed",
+      videoPrimary: "2/3 rendered",
+      videoSecondary: "1 failed",
+      mergePrimary: null,
+      mergeSecondary: null,
+      outputPath: null,
+      mergedPath: null,
+      retryBatchId: "batch:long:profile:OK",
+      jobs: [],
+      updatedAt: 1,
+    };
+    const steps = stageTimeline(row({ stage: "converter", status: "running" }), false, failedLocal);
+    expect(steps[2]).toMatchObject({ state: "failed", detail: "1 failed" });
+    expect(localStageDisplay(row({ stage: "converter" }), failedLocal).text).toBe("Error");
+  });
+
+  it("keeps YouTube pending until an upload actually succeeds", () => {
+    expect(stageTimeline(row({ stage: "done" }), false)[4]).toMatchObject({
+      state: "pending",
+      detail: "Not started",
+    });
+    expect(
+      stageTimeline(row({ stage: "done", meta: { youtube_success: 1 } }), false)[4].state,
+    ).toBe("passed");
+  });
+
+  it("uses local render truth for filters and stat counts", () => {
+    const mergedRow = row({ stage: "converter", status: "queued" });
+    const merged = pipelineSnapshot({ merged: true });
+    // A merged album is finished: it drops out of Active only and matches Done.
+    expect(
+      filterProgressRows([mergedRow], { activeOnly: true, stage: "all", pipeline: merged }),
+    ).toHaveLength(0);
+    expect(
+      filterProgressRows([mergedRow], { activeOnly: false, stage: "done", pipeline: merged }),
+    ).toHaveLength(1);
+    expect(
+      filterProgressRows([mergedRow], { activeOnly: false, stage: "converter", pipeline: merged }),
+    ).toHaveLength(0);
+    // Without local truth the API stage still applies.
+    expect(
+      filterProgressRows([mergedRow], { activeOnly: true, stage: "all", pipeline: null }),
+    ).toHaveLength(1);
+    expect(countStats([mergedRow], false, new Set(), merged)).toEqual({
+      active: 0,
+      video: 0,
+      waiting: 0,
+      failed: 0,
+    });
+
+    const failedLocal = pipelineSnapshot({ failed: true });
+    expect(
+      filterProgressRows([mergedRow], { activeOnly: true, stage: "error", pipeline: failedLocal }),
+    ).toHaveLength(1);
+    expect(countStats([mergedRow], false, new Set(), failedLocal).failed).toBe(1);
+  });
+
+  it("maps the real Primary/Secondary batch onto the API row", () => {
+    const external = "1679ef79-8bd0-43be-b909-727e24c2a536";
+    const jobBatch = `${external}:long:3706a307-4085-4bcc-934d-378a48b3c707:ALT`;
+    const mergedOutput =
+      "E:\\SUNO\\bass-reactor\\2026-11-24_Neon-Garden-Runway\\Neon Garden Runway_2411.mp4";
+    const queue = pipelineSnapshot({ merged: true });
+    queue.jobs = queue.jobs.map((job) => ({
+      ...job,
+      batchId: jobBatch,
+      album: "Neon Garden Runway",
+    }));
+    queue.batches = [{ ...queue.batches[0], batchId: jobBatch, mergedOutput }];
+    const bassRow = row({
+      batch: external,
+      album: "Neon Garden Runway",
+      stage: "converter",
+      status: "queued",
+      meta: {
+        batch_id: external,
+        profile_id: "3706a307-4085-4bcc-934d-378a48b3c707",
+        role: "ALT",
+      },
+    });
+
+    const local = localVideoForRow(bassRow, queue);
+    expect(local.total).toBe(3);
+    expect(local.mergedPath).toBe(mergedOutput);
+
+    const steps = stageTimeline(bassRow, false, local);
+    expect(steps[2]).toMatchObject({ state: "passed", detail: "3/3 rendered" });
+    expect(steps[3]).toMatchObject({ state: "passed", detail: "Neon Garden Runway_2411.mp4" });
     expect(steps[4].state).toBe("pending");
   });
 

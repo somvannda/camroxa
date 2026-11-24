@@ -10,14 +10,13 @@ import {
   PIPELINE_MISSING,
   channelCellText,
   imageCellText,
+  localStageDisplay,
   localVideoState,
   musicCellText,
   progressPercent,
   relativeTime,
   rowKey,
   runDateLabel,
-  stageBadgeTone,
-  stageLabel,
   statusBadgeTone,
   updatedCellText,
   youtubeCellText,
@@ -262,25 +261,10 @@ export function ProgressTable({
               const image = imageCellText(row, manualMode);
               const video = localVideoState(row);
               const progress = progressPercent(row);
-              const stageText = stageLabel(row.stage);
-              const stageTone = stageBadgeTone(row.stage);
               const local = localVideoForRow(row, pipeline);
-              const displayStage = local.failed
-                ? "Error"
-                : local.mergedPath
-                  ? "Done"
-                  : local.total > 0 && local.done === local.total
-                    ? "Merge"
-                    : local.running
-                      ? "Render"
-                      : stageText;
-              const displayStageTone = local.failed
-                ? "danger"
-                : local.mergedPath
-                  ? "success"
-                  : local.running
-                    ? "accent"
-                    : stageTone;
+              const stageDisplay = localStageDisplay(row, local);
+              const displayStage = stageDisplay.text;
+              const displayStageTone = stageDisplay.tone;
               const displayProgress =
                 local.total > 0
                   ? {

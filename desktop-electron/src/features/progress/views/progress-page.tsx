@@ -66,16 +66,22 @@ export function ProgressPage() {
   const uploads = useYoutubeUpload(feed.rows);
 
   const visibleRows = useMemo(
-    () => filterProgressRows(feed.rows, { activeOnly, stage, limit }),
-    [feed.rows, activeOnly, stage, limit],
+    () => filterProgressRows(feed.rows, { activeOnly, stage, limit, pipeline: pipeline.snapshot }),
+    [feed.rows, activeOnly, stage, limit, pipeline.snapshot],
   );
   const statsRows = useMemo(
-    () => filterProgressRows(feed.rows, { activeOnly, stage, limit: null }),
-    [feed.rows, activeOnly, stage],
+    () =>
+      filterProgressRows(feed.rows, {
+        activeOnly,
+        stage,
+        limit: null,
+        pipeline: pipeline.snapshot,
+      }),
+    [feed.rows, activeOnly, stage, pipeline.snapshot],
   );
   const stats = useMemo(
-    () => countStats(statsRows, manualMode, manual.waitingKeys),
-    [statsRows, manualMode, manual.waitingKeys],
+    () => countStats(statsRows, manualMode, manual.waitingKeys, pipeline.snapshot),
+    [statsRows, manualMode, manual.waitingKeys, pipeline.snapshot],
   );
   const downloads = useMemo(
     () => downloadQueueRows(downloadsFeed.snapshot?.items ?? [], feed.rows),
@@ -519,6 +525,7 @@ export function ProgressPage() {
               <ProgressDetail
                 key={rowKey(selectedRow)}
                 row={selectedRow}
+                pipeline={pipeline.snapshot}
                 manualMode={manualMode}
                 inspection={manual.inspections[rowKey(selectedRow)]}
                 inspecting={Boolean(manual.inspecting[rowKey(selectedRow)])}
