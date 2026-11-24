@@ -22,10 +22,13 @@ export interface VizzyTemplateDialogProps {
   saving: boolean;
   error: string | null;
   /**
-   * Export rail settings for this project, or null when the rail has not been
-   * used. Never inherited from another template.
+   * The render profile for this project. Always resolved: the rail's last
+   * selection, or the project output with build defaults when the rail was
+   * never used. Never inherited from another template.
    */
-  exportSettings: VizzyExportSettingsInput | null;
+  exportSettings: VizzyExportSettingsInput;
+  /** True when the values came from the Export rail rather than the defaults. */
+  exportSettingsCustomized: boolean;
   onClose: () => void;
   onSave: (draft: TemplateDraftState) => void;
 }
@@ -38,10 +41,9 @@ export interface VizzyTemplateDialogProps {
  * it only replaces the run audio and the nodes it can detect automatically
  * (background, title, artist, album, palette).
  *
- * Export settings are opt-in: by default the pipeline follows the project
- * output with the default encoder, so a template never inherits the rail state
- * of whichever project happened to be open before it. The dialog always shows
- * the exact counts it will store and the exact render profile it will capture.
+ * The dialog always shows the render profile that will be used. Capturing it in
+ * `pipeline.json` is opt-in: off, each render derives the same profile from the
+ * project, so a template never inherits the rail state of another project.
  *
  * The page hides the native editor view while the modal is open because a
  * `WebContentsView` always paints above shell DOM.
@@ -74,6 +76,7 @@ export function VizzyTemplateDialog({
   saving,
   error,
   exportSettings,
+  exportSettingsCustomized,
   onClose,
   onSave,
 }: VizzyTemplateDialogProps) {
@@ -92,9 +95,9 @@ export function VizzyTemplateDialog({
 
   const existing = info?.existing.find((template) => template.id === templateId) ?? null;
   const overwriteOptions = info?.existing.filter((template) => template.kind === info.kind) ?? [];
-  const captureExport = includeExport && Boolean(exportSettings);
-  const outputWidth = captureExport ? (exportSettings?.width ?? info?.width ?? 0) : (info?.width ?? 0);
-  const outputHeight = captureExport ? (exportSettings?.height ?? info?.height ?? 0) : (info?.height ?? 0);
+  const captureExport = includeExport;
+  const outputWidth = captureExport ? (exportSettings.width ?? info?.width ?? 0) : (info?.width ?? 0);
+  const outputHeight = captureExport ? (exportSettings.height ?? info?.height ?? 0) : (info?.height ?? 0);
   const draft: TemplateDraftState | null = info
     ? {
         name,
@@ -110,12 +113,13 @@ export function VizzyTemplateDialog({
     ? templateDraftErrors({ ...info, width: outputWidth, height: outputHeight }, draft, name)
     : null;
   const canSave = Boolean(info && draft && errors && !errors.summary && !saving && !loading);
-  const outputLine =
-    captureExport && exportSettings
-      ? formatExportSettings(exportSettings)
-      : `${info?.width ?? 0} × ${info?.height ?? 0} · ${info?.fps ?? 0} fps · default encoder`;
+  const outputLine = captureExport
+    ? formatExportSettings(exportSettings)
+    : `${info?.width ?? 0} × ${info?.height ?? 0} · ${info?.fps ?? 0} fps · default encoder`;
   const contents = info?.contents ?? null;
-  const exportRows = captureExport && exportSettings ? exportSettingRows(exportSettings) : [];
+  // Always show the profile: with capture off these are the defaults each render
+  // derives from the project, so the visible numbers stay truthful either way.
+  const exportRows = exportSettingRows(exportSettings);
 
   return (
     <Dialog
@@ -242,46 +246,40 @@ export function VizzyTemplateDialog({
                   className="space-y-2 rounded-control border border-border bg-surface-2 p-3"
                   data-testid="vizzy-template-export"
                 >
-                  {exportSettings ? (
-                    <>
-                      <Checkbox
-                        checked={includeExport}
-                        onCheckedChange={setIncludeExport}
-                        label="Save the Export settings with this template"
-                        hint={formatExportSettings(exportSettings)}
-                        data-testid="vizzy-template-export-toggle"
-                      />
-                      {exportRows.length ? (
-                        <dl
-                          className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border pt-2"
-                          data-testid="vizzy-template-export-summary"
-                        >
-                          {exportRows.map((row) => (
-                            <div key={row.label} className="min-w-0">
-                              <dt className="text-caption text-text-muted">{row.label}</dt>
-                              <dd className="truncate text-meta text-text-primary" title={row.value}>
-                                {row.value}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      ) : (
-                        <p className="text-caption text-text-muted">
-                          {`Not saved: pipeline renders use the project output and the default H.264 MP4 encoder. Turn this on to store ${formatExportSettings(exportSettings)}.`}
-                        </p>
-                      )}
-                      <p className="text-caption text-text-muted">
-                        Start/end trims are never stored; every render follows the song.
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-caption text-text-muted" data-testid="vizzy-template-export-none">
-                      No Export settings were chosen for this project. Pipeline renders use the
-                      project output ({info?.width ?? 0}×{info?.height ?? 0} · {info?.fps ?? 0} fps)
-                      and the default H.264 MP4 encoder. Open Export first to capture a different
-                      resolution, frame rate or quality with this template.
-                    </p>
-                  )}
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-body-sm font-medium text-text-primary">Render settings</p>
+                    <span className="shrink-0 text-caption text-text-muted">
+                      {exportSettingsCustomized ? "From the Export rail" : "Project defaults"}
+                    </span>
+                  </div>
+                  <Checkbox
+                    checked={includeExport}
+                    onCheckedChange={setIncludeExport}
+                    label="Save these render settings with this template"
+                    hint={formatExportSettings(exportSettings)}
+                    data-testid="vizzy-template-export-toggle"
+                  />
+                  <dl
+                    className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border pt-2"
+                    data-testid="vizzy-template-export-summary"
+                  >
+                    {exportRows.map((row) => (
+                      <div key={row.label} className="min-w-0">
+                        <dt className="text-caption text-text-muted">{row.label}</dt>
+                        <dd className="truncate text-meta text-text-primary" title={row.value}>
+                          {row.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="text-caption text-text-muted">
+                    {captureExport
+                      ? "Saved in pipeline.json; every pipeline render uses these values."
+                      : "Not stored: each render derives this same profile from the project. Turn this on to pin it."}
+                  </p>
+                  <p className="text-caption text-text-muted">
+                    Start/end trims are ignored; every render follows the song.
+                  </p>
                 </div>
 
                 {errors?.summary ? (

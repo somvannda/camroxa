@@ -553,7 +553,8 @@ export function VizzyPage() {
         loadError={templateLoadError}
         saving={templateSaving}
         error={templateSaveError}
-        exportSettings={exportSettings}
+        exportSettings={templateExportSettings}
+        exportSettingsCustomized={exportSettings !== null}
         onClose={closeTemplateDialog}
         onSave={(draft) => void saveTemplate(draft)}
       />

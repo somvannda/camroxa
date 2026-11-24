@@ -247,6 +247,9 @@ describe("pipeline export settings", () => {
       profile: "main",
       audioBitrate: 256,
     });
+    // A tile trim belongs to the editor; pipeline renders follow the song.
+    expect(pipeline.export).not.toHaveProperty("start");
+    expect(pipeline.export).not.toHaveProperty("end");
   });
 });
 

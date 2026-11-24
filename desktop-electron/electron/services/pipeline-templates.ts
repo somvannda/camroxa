@@ -514,8 +514,6 @@ export function buildPipelineTemplate(input: {
             preset: exported.preset,
             profile: exported.profile,
             audioBitrate: exported.audioBitrate,
-            start: exported.start,
-            end: exported.end,
           },
         }
       : {}),

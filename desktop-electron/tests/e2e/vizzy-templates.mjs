@@ -274,7 +274,16 @@ try {
   if ((await window.getByTestId("vizzy-template-advanced").count()) !== 0) {
     fail("Save dialog must not ask for node selections");
   }
-  // Export settings are opt-in; this run captures the rail settings chosen above.
+  // Export settings are always visible; the checkbox only decides whether they
+  // are pinned in pipeline.json.
+  const preToggleSummary = await window.getByTestId("vizzy-template-export-summary").innerText();
+  if (!preToggleSummary.includes("1920×1080") || !preToggleSummary.includes("30 fps")) {
+    fail(`Render settings must be visible before opting in: ${preToggleSummary}`);
+  }
+  if (!/From the Export rail/.test(await window.getByTestId("vizzy-template-export").innerText())) {
+    fail("Render settings must name their source");
+  }
+  // Opt in and confirm the same profile is what gets stored.
   const exportToggle = window.getByTestId("vizzy-template-export-toggle");
   await exportToggle.waitFor({ timeout: 5_000 });
   await exportToggle.click();
