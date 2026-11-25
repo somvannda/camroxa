@@ -9116,6 +9116,7 @@ function openExportDialog(): void {
     ["1440x1440", "1440x1440 (1440p, Square)"],
     ["2160x2160", "2160x2160 (4K, Square)"],
     ["1080x1350", "1080x1350 (Portrait)"],
+    ["1080x2160", "1080x2160 (1:2)"],
   ];
   const resolution = document.createElement("select");
   resolution.id = "export-resolution";

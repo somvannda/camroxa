@@ -11,6 +11,7 @@ import type {
 } from "../../../electron/shared/types";
 import { defaultExportBitrate, defaultExportFps } from "./export-settings";
 import {
+  EXPORT_ENCODERS,
   EXPORT_FORMATS as FORMATS,
   EXPORT_FRAME_RATES as FRAME_RATES,
   EXPORT_PRESETS as PRESETS,
@@ -273,16 +274,16 @@ export function VizzyExportMenu({
       ) : (
         <div className="space-y-2.5">
           <label className="block space-y-1">
-            <span className="text-caption text-text-muted">Encoder</span>
+            <span className="text-caption text-text-muted">Video encoder</span>
             <Select
               value={engine}
-              options={[
-                { value: "wasm", label: "WebAssembly (x264)" },
-                { value: "webcodecs", label: "WebCodecs (Experimental)" },
-              ]}
+              options={EXPORT_ENCODERS.map((option) => ({ ...option }))}
               onValueChange={(value) => setEngine(value === "webcodecs" ? "webcodecs" : "wasm")}
               data-testid="vizzy-export-engine"
             />
+            <span className="block text-caption text-text-muted">
+              The scene is rendered on the GPU either way; this chooses the encoder.
+            </span>
           </label>
 
           <label className="block space-y-1">

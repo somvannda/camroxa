@@ -2,6 +2,7 @@ import { Input } from "../../components/input";
 import { Select } from "../../components/select";
 import type { VizzyExportSettingsInput } from "../../../electron/shared/types";
 import {
+  EXPORT_ENCODERS,
   EXPORT_FORMATS,
   EXPORT_FRAME_RATES,
   EXPORT_PRESETS,
@@ -57,16 +58,16 @@ export function ExportSettingsFields({ value, onChange }: ExportSettingsFieldsPr
   return (
     <div className="space-y-2.5">
       <label className="block space-y-1">
-        <span className="text-caption text-text-muted">Encoder</span>
+        <span className="text-caption text-text-muted">Video encoder</span>
         <Select
           value={engine}
-          options={[
-            { value: "wasm", label: "WebAssembly (x264)" },
-            { value: "webcodecs", label: "WebCodecs (hardware)" },
-          ]}
+          options={EXPORT_ENCODERS.map((option) => ({ ...option }))}
           onValueChange={(next) => patch({ engine: next === "webcodecs" ? "webcodecs" : "wasm" })}
           data-testid="vizzy-template-export-engine"
         />
+        <span className="block text-caption text-text-muted">
+          Scene rendering always uses the GPU; this picks the video encoder.
+        </span>
       </label>
 
       <label className="block space-y-1">
