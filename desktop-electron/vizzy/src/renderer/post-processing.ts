@@ -3968,6 +3968,15 @@ export class PostProcessingManager {
           // Alpha is carried through the chain so a layer's result can be
           // composited over the frame beneath it.
           transparent: true,
+          // The reference builds every effect material through
+          // `getBlendingParams()`: CustomBlending with src ONE and dst
+          // ONE_MINUS_SRC_ALPHA (ONE/ONE for a perspective layer). A pass may
+          // output alpha 0 and still contribute RGB; NormalBlending
+          // multiplied that RGB away, which cost `abnormal` 81.06 -> 45.24.
+          blending: THREE.CustomBlending,
+          blendEquation: THREE.AddEquation,
+          blendSrc: THREE.OneFactor,
+          blendDst: THREE.OneMinusSrcAlphaFactor,
         });
       }
       this.materials.set(effect.type, material);
