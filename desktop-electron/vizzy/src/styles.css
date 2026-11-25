@@ -1833,11 +1833,6 @@ html[data-dev="1"] .dev-only {
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* The inspector toggles the `hidden` attribute; the display rule above would
-   otherwise keep the controls visible. */
-.layer-controls[hidden] {
-  display: none;
-}
 
 .layer-field {
   display: grid;
