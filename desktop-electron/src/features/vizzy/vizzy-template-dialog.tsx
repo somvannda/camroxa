@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../../components/button";
-import { Checkbox } from "../../components/checkbox";
 import { Dialog, DialogContent } from "../../components/dialog";
 import { Icon } from "../../components/icon";
 import { Input } from "../../components/input";
@@ -10,7 +9,7 @@ import type {
   VizzyExportSettingsInput,
   VizzyTemplateDraftInfo,
 } from "../../../electron/shared/types";
-import { exportSettingRows } from "./export-settings";
+import { ExportSettingsFields } from "./vizzy-export-fields";
 import { formatExportSettings } from "./vizzy-format";
 import { templateDraftErrors, type TemplateDraftState } from "./vizzy-template-model";
 
@@ -27,8 +26,6 @@ export interface VizzyTemplateDialogProps {
    * never used. Never inherited from another template.
    */
   exportSettings: VizzyExportSettingsInput;
-  /** True when the values came from the Export rail rather than the defaults. */
-  exportSettingsCustomized: boolean;
   onClose: () => void;
   onSave: (draft: TemplateDraftState) => void;
 }
@@ -76,50 +73,52 @@ export function VizzyTemplateDialog({
   saving,
   error,
   exportSettings,
-  exportSettingsCustomized,
   onClose,
   onSave,
 }: VizzyTemplateDialogProps) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<PipelineKind>("long");
   const [templateId, setTemplateId] = useState("");
-  const [includeExport, setIncludeExport] = useState(false);
+  const [tab, setTab] = useState<"template" | "export">("template");
+  const [settings, setSettings] = useState<VizzyExportSettingsInput>(exportSettings);
+  // Seed only when the live draft arrives: the shell re-renders while the modal
+  // is open, and re-seeding would discard edits made on the Export settings tab.
+  const seedRef = useRef(exportSettings);
+  seedRef.current = exportSettings;
 
   useEffect(() => {
     if (!info) return;
     setName(info.name);
     setKind(info.kind);
     setTemplateId("");
-    setIncludeExport(false);
+    setTab("template");
+    setSettings({ ...seedRef.current });
   }, [info]);
 
   const existing = info?.existing.find((template) => template.id === templateId) ?? null;
   const overwriteOptions = info?.existing.filter((template) => template.kind === info.kind) ?? [];
-  const captureExport = includeExport;
-  const outputWidth = captureExport ? (exportSettings.width ?? info?.width ?? 0) : (info?.width ?? 0);
-  const outputHeight = captureExport ? (exportSettings.height ?? info?.height ?? 0) : (info?.height ?? 0);
+  const outputWidth = settings.width ?? info?.width ?? 0;
+  const outputHeight = settings.height ?? info?.height ?? 0;
   const draft: TemplateDraftState | null = info
     ? {
         name,
         kind,
         selection: info.detected,
-        includeExportSettings: captureExport,
+        includeExportSettings: true,
+        exportSettings: settings,
         templateId: templateId || undefined,
       }
     : null;
-  // Kind is checked against the output that will actually be rendered, so a
-  // captured portrait export cannot be saved as a "long" template.
+  // Kind is checked against the output that will actually be rendered: these
+  // settings are saved, so a portrait profile cannot be a "long" template.
   const errors = info && draft
     ? templateDraftErrors({ ...info, width: outputWidth, height: outputHeight }, draft, name)
     : null;
   const canSave = Boolean(info && draft && errors && !errors.summary && !saving && !loading);
-  const outputLine = captureExport
-    ? formatExportSettings(exportSettings)
-    : `${info?.width ?? 0} × ${info?.height ?? 0} · ${info?.fps ?? 0} fps · default encoder`;
+  const outputLine = formatExportSettings(settings);
   const contents = info?.contents ?? null;
   // Always show the profile: with capture off these are the defaults each render
   // derives from the project, so the visible numbers stay truthful either way.
-  const exportRows = exportSettingRows(exportSettings);
 
   return (
     <Dialog
@@ -202,85 +201,101 @@ export function VizzyTemplateDialog({
                   Render output: {outputLine} · duration = audio
                 </p>
 
-                <div className="space-y-2 rounded-control border border-border bg-surface-2 p-3">
-                  <p className="text-body-sm text-text-primary" data-testid="vizzy-template-audio">
-                    Everything is saved: layers, objects, effects, spectrum, particles, analyzers,
-                    automations, media and assets.
-                  </p>
-                  {contents ? (
-                    <dl
-                      className="grid grid-cols-3 gap-x-4 gap-y-2"
-                      data-testid="vizzy-template-contents"
+                <div
+                  role="tablist"
+                  aria-label="Save as template sections"
+                  className="flex gap-1 rounded-control border border-border bg-surface-2 p-1"
+                >
+                  {(
+                    [
+                      ["template", "Template"],
+                      ["export", "Export settings"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === value}
+                      data-testid={`vizzy-template-tab-${value}`}
+                      onClick={() => setTab(value)}
+                      className={
+                        tab === value
+                          ? "flex-1 rounded-[6px] bg-surface-1 px-3 py-1.5 text-body-sm font-medium text-text-primary shadow-sm"
+                          : "flex-1 rounded-[6px] px-3 py-1.5 text-body-sm text-text-secondary hover:text-text-primary"
+                      }
                     >
-                      <Stat label="Layers" value={contents.layers} />
-                      <Stat label="Objects" value={contents.objects} />
-                      <Stat label="Effects" value={contents.effects} />
-                      <Stat
-                        label="Spectrum"
-                        value={contents.spectrum}
-                        hint={contents.spectrumLayers > 0 ? `${contents.spectrumLayers} layers` : null}
-                      />
-                      <Stat label="Particles" value={contents.particles} />
-                      <Stat label="Analyzers" value={contents.analyzers} />
-                      <Stat
-                        label="Automations"
-                        value={contents.automations}
-                        hint={
-                          contents.automationGroups > 0
-                            ? `${contents.automationGroups} groups`
-                            : null
-                        }
-                      />
-                      <Stat label="Media" value={contents.media} />
-                      <Stat label="Assets" value={contents.assets} />
-                    </dl>
-                  ) : null}
-                  <p className="text-caption text-text-muted">
-                    Per song, the pipeline only replaces the run audio and fills the detected
-                    background, title, artist, album and palette nodes. Nodes that are not detected
-                    stay exactly as designed.
-                  </p>
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
-                <div
-                  className="space-y-2 rounded-control border border-border bg-surface-2 p-3"
-                  data-testid="vizzy-template-export"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-body-sm font-medium text-text-primary">Render settings</p>
-                    <span className="shrink-0 text-caption text-text-muted">
-                      {exportSettingsCustomized ? "From the Export rail" : "Project defaults"}
-                    </span>
-                  </div>
-                  <Checkbox
-                    checked={includeExport}
-                    onCheckedChange={setIncludeExport}
-                    label="Save these render settings with this template"
-                    hint={formatExportSettings(exportSettings)}
-                    data-testid="vizzy-template-export-toggle"
-                  />
-                  <dl
-                    className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border pt-2"
-                    data-testid="vizzy-template-export-summary"
+                {tab === "template" ? (
+                  <div
+                    role="tabpanel"
+                    className="space-y-2 rounded-control border border-border bg-surface-2 p-3"
                   >
-                    {exportRows.map((row) => (
-                      <div key={row.label} className="min-w-0">
-                        <dt className="text-caption text-text-muted">{row.label}</dt>
-                        <dd className="truncate text-meta text-text-primary" title={row.value}>
-                          {row.value}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <p className="text-caption text-text-muted">
-                    {captureExport
-                      ? "Saved in pipeline.json; every pipeline render uses these values."
-                      : "Not stored: each render derives this same profile from the project. Turn this on to pin it."}
-                  </p>
-                  <p className="text-caption text-text-muted">
-                    Start/end trims are ignored; every render follows the song.
-                  </p>
-                </div>
+                    <p className="text-body-sm text-text-primary" data-testid="vizzy-template-audio">
+                      Everything is saved: layers, objects, effects, spectrum, particles, analyzers,
+                      automations, media and assets.
+                    </p>
+                    {contents ? (
+                      <dl
+                        className="grid grid-cols-3 gap-x-4 gap-y-2"
+                        data-testid="vizzy-template-contents"
+                      >
+                        <Stat label="Layers" value={contents.layers} />
+                        <Stat label="Objects" value={contents.objects} />
+                        <Stat label="Effects" value={contents.effects} />
+                        <Stat
+                          label="Spectrum"
+                          value={contents.spectrum}
+                          hint={
+                            contents.spectrumLayers > 0 ? `${contents.spectrumLayers} layers` : null
+                          }
+                        />
+                        <Stat label="Particles" value={contents.particles} />
+                        <Stat label="Analyzers" value={contents.analyzers} />
+                        <Stat
+                          label="Automations"
+                          value={contents.automations}
+                          hint={
+                            contents.automationGroups > 0
+                              ? `${contents.automationGroups} groups`
+                              : null
+                          }
+                        />
+                        <Stat label="Media" value={contents.media} />
+                        <Stat label="Assets" value={contents.assets} />
+                      </dl>
+                    ) : null}
+                    <p className="text-caption text-text-muted">
+                      Per song, the pipeline only replaces the run audio and fills the detected
+                      background, title, artist, album and palette nodes. Nodes that are not detected
+                      stay exactly as designed.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    role="tabpanel"
+                    className="space-y-2 rounded-control border border-border bg-surface-2 p-3"
+                    data-testid="vizzy-template-export"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-body-sm font-medium text-text-primary">Render settings</p>
+                      <span className="shrink-0 text-caption text-text-muted">
+                        {formatExportSettings(settings)}
+                      </span>
+                    </div>
+                    <ExportSettingsFields value={settings} onChange={setSettings} />
+                    <p className="text-caption text-text-muted">
+                      These values are saved in pipeline.json and every pipeline render uses them.
+                    </p>
+                    <p className="text-caption text-text-muted">
+                      Start/end trims are ignored; every render follows the song.
+                    </p>
+                  </div>
+                )}
 
                 {errors?.summary ? (
                   <p className="text-body-sm text-danger" role="alert" data-testid="vizzy-template-error">

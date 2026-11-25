@@ -274,19 +274,19 @@ try {
   if ((await window.getByTestId("vizzy-template-advanced").count()) !== 0) {
     fail("Save dialog must not ask for node selections");
   }
-  // Export settings are always visible; the checkbox only decides whether they
-  // are pinned in pipeline.json.
-  const preToggleSummary = await window.getByTestId("vizzy-template-export-summary").innerText();
-  if (!preToggleSummary.includes("1920×1080") || !preToggleSummary.includes("30 fps")) {
-    fail(`Render settings must be visible before opting in: ${preToggleSummary}`);
+  // The Export settings tab edits the exact profile saved with the template.
+  await window.getByTestId("vizzy-template-tab-export").click();
+  const exportPanel = window.getByTestId("vizzy-template-export");
+  await exportPanel.waitFor({ timeout: 5_000 });
+  const resolution = await window
+    .getByTestId("vizzy-template-export-resolution")
+    .getAttribute("data-selected-value");
+  const frameRate = await window
+    .getByTestId("vizzy-template-export-fps")
+    .getAttribute("data-selected-value");
+  if (resolution !== "1920x1080" || frameRate !== "30") {
+    fail(`Unexpected export profile: ${resolution} @ ${frameRate}`);
   }
-  if (!/From the Export rail/.test(await window.getByTestId("vizzy-template-export").innerText())) {
-    fail("Render settings must name their source");
-  }
-  // Opt in and confirm the same profile is what gets stored.
-  const exportToggle = window.getByTestId("vizzy-template-export-toggle");
-  await exportToggle.waitFor({ timeout: 5_000 });
-  await exportToggle.click();
   const capturedOutput = await window.getByTestId("vizzy-template-output").innerText();
   if (
     !capturedOutput.includes("1920×1080") ||
@@ -295,14 +295,10 @@ try {
   ) {
     fail(`Unexpected captured export summary: ${capturedOutput}`);
   }
-  const exportSummary = window.getByTestId("vizzy-template-export-summary");
-  await exportSummary.waitFor({ timeout: 5_000 });
-  const exportText = await exportSummary.innerText();
-  for (const expected of ["1920×1080", "30 fps", "WebAssembly", "H.264 · MP4", "50 Mbps", "256 kbps"]) {
-    if (!exportText.includes(expected)) {
-      fail(`Export summary missing ${expected}: ${exportText}`);
-    }
-  }
+  // Edit the profile in the modal itself; the saved template must use it.
+  await window.getByTestId("vizzy-template-export-bitrate").fill("55");
+  await window.getByTestId("vizzy-template-export-crf").fill("18");
+  await window.getByTestId("vizzy-template-export-audio").fill("256");
 
   await window.getByTestId("vizzy-template-name").fill(TEMPLATE_NAME);
   await window.screenshot({ path: path.join(artifacts, "save-dialog.png") });
@@ -337,7 +333,7 @@ try {
     fail(`Palette binding not auto-detected: ${JSON.stringify(pipeline.bindings.palette)}`);
   }
   if (
-    pipeline.export?.bitrate !== 50 ||
+    pipeline.export?.bitrate !== 55 ||
     pipeline.export?.crf !== 18 ||
     pipeline.export?.audioBitrate !== 256
   ) {
@@ -376,12 +372,6 @@ try {
   step("templates rail verified");
 
   // --- Save as an existing template (overwrite in place) -------------------
-  await window.getByTestId("vizzy-export-open").click();
-  await window.getByTestId("vizzy-export-menu").waitFor({ timeout: 10_000 });
-  await window.getByTestId("vizzy-export-bitrate").fill("60");
-  await window.getByRole("button", { name: "Close export settings" }).click();
-  await window.getByTestId("vizzy-export-menu").waitFor({ state: "detached", timeout: 10_000 });
-
   await window.getByTestId("vizzy-template-open").click();
   const overwriteDialog = window.getByTestId("vizzy-template-dialog");
   await overwriteDialog.waitFor({ timeout: 20_000 });
@@ -391,7 +381,8 @@ try {
   if ((await target.getAttribute("data-selected-value")) !== templateId) {
     fail("The existing template was not selected as the save target");
   }
-  await window.getByTestId("vizzy-template-export-toggle").click();
+  await window.getByTestId("vizzy-template-tab-export").click();
+  await window.getByTestId("vizzy-template-export-bitrate").fill("60");
   await window.getByTestId("vizzy-template-save").click();
   await overwriteDialog.waitFor({ state: "detached", timeout: 30_000 });
   const afterOverwrite = fs.readdirSync(templatesDir).filter((name) => !name.startsWith("."));

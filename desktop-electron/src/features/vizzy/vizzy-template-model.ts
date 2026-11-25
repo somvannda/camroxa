@@ -19,7 +19,10 @@ import {
   type PipelineKind,
   type PipelineBindingsDraft,
 } from "../../../electron/shared/pipeline";
-import type { VizzyTemplateDraftInfo } from "../../../electron/shared/types";
+import type {
+  VizzyExportSettingsInput,
+  VizzyTemplateDraftInfo,
+} from "../../../electron/shared/types";
 
 export type { BindingOptions, BindingSelection, PipelineKind };
 export { emptySelection, inferKind };
@@ -29,9 +32,13 @@ export interface TemplateDraftState {
   kind: PipelineKind;
   selection: BindingSelection;
   /**
-   * Opt-in capture of the Export rail. Off by default: a pipeline render then
-   * follows the project output and build defaults instead of inheriting
-   * whatever the previous preview happened to leave in the rail.
+   * The render profile edited in the dialog, saved with the template. The
+   * dialog always provides it; the field stays optional for older callers.
+   */
+  exportSettings?: VizzyExportSettingsInput;
+  /**
+   * Kept for callers that deliberately do not pin a profile. The dialog always
+   * sets it: its Export settings tab is the explicit choice.
    */
   includeExportSettings: boolean;
   /** Existing template to replace; omitted saves a new one. */

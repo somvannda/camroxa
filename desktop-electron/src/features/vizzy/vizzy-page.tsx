@@ -199,9 +199,8 @@ export function VizzyPage() {
           name: draft.name.trim(),
           kind: draft.kind,
           templateId: draft.templateId,
-          // Opt-in only: the dialog starts unchecked, so a template saved after
-          // previewing another one keeps the project/default render profile.
-          exportSettings: draft.includeExportSettings ? templateExportSettings : undefined,
+          // The dialog's Export settings tab is the explicit profile: save it.
+          exportSettings: draft.exportSettings ?? templateExportSettings,
         });
         if (!response.ok) {
           setTemplateSaveError(response.error.message);
@@ -554,7 +553,6 @@ export function VizzyPage() {
         saving={templateSaving}
         error={templateSaveError}
         exportSettings={templateExportSettings}
-        exportSettingsCustomized={exportSettings !== null}
         onClose={closeTemplateDialog}
         onSave={(draft) => void saveTemplate(draft)}
       />
