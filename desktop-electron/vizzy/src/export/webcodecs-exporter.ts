@@ -118,9 +118,8 @@ export class WebCodecsExporter {
           ? { bitrate: options.bitrate * 1_000_000 }
           : { quality: QUALITY_HIGH }),
         keyFrameInterval: 2,
-        // The RTX-class encoders are idle by default ("no-preference" measured
-        // 2.3x slower than hardware in this app). Fall back automatically when
-        // the platform cannot honour it.
+        // Hardware encoders are idle by default (prefer-hardware measured
+        // 2.3x faster here); Chromium falls back when it cannot honour it.
         hardwareAcceleration: "prefer-hardware",
       });
       output.addVideoTrack(video, { frameRate: options.fps });
@@ -161,8 +160,6 @@ export class WebCodecsExporter {
         encodeMs += afterEncode - beforeEncode;
         options.onProgress(frame + 1, total, "encoding frames");
       }
-      // Forwarded to the app log (console.warn is the host's forwarded level).
-      // This is the attribution the export dialog cannot show on its own.
       console.warn(
         "vizzy export profile",
         JSON.stringify({

@@ -426,6 +426,7 @@ function sync(sourceRoot) {
       "    codec: \"h264\" | \"vp8\" | \"vp9\";",
       "    bitrate: number;",
       "    crf: number;",
+      "    engine?: \"wasm\" | \"webcodecs\";",
       "    start: number;",
       "    end: number;",
       "  }",
@@ -486,9 +487,12 @@ function sync(sourceRoot) {
       "        codec,",
       "        bitrate: request.bitrate,",
       "        crf: request.crf,",
-      "        // MP4/H.264 uses the reference wasm encoder; WebM prefers WebCodecs.",
-      "        // Both streaming backends hand chunks to the host as they are produced.",
-      "        engine: format === \"webm\" && WebCodecsExporter.available() ? \"webcodecs\" : \"wasm\",",
+      "        // Honour the requested encoder. WebCodecs supports AVC/MP4 as well",
+      "        // as VP8/VP9/WebM; the export dialog's choice must not be ignored.",
+      "        engine:",
+      "          request.engine === \"webcodecs\" && WebCodecsExporter.available()",
+      "            ? \"webcodecs\"",
+      "            : \"wasm\",",
       "      };",
       "      let framesTotal = Math.max(",
       "        1,",
@@ -587,6 +591,226 @@ function sync(sourceRoot) {
     ].join("\n"),
     "main.ts host export",
   );
+
+  // Patch set for Camxora's parity and performance fixes. Each anchor is
+  // matched against the pristine Rea file; a Rea change fails the sync loudly.
+  replaceOnce(
+    path.join(target, "src", "audio", "spectrum.ts"),
+    [
+      "    if (!this.threaded) return;",
+      "    while (this.busy) {",
+      "      await new Promise((resolve) => setTimeout(resolve, 1));",
+      "    }",
+      "    this.busy = true;",
+      "    try {",
+      "      const result = await this.threaded.transform(this.samples.slice(), this.fftSize);",
+      "      this.bins.set(result.magnitudes);",
+      "      this.lastMs = result.elapsedMs;",
+      "      this.mapBands(dt);",
+      "    } catch (error) {",
+      '      this.degrade("threads", String(error));',
+      "      const result = this.sequential.transform(this.samples, this.fftSize);",
+      "      this.bins.set(result.magnitudes);",
+      "      this.lastMs = result.elapsedMs;",
+      "      this.mapBands(dt);",
+      "    } finally {",
+      "      this.busy = false;",
+      "    }",
+    ].join("\n"),
+    [
+      "    if (!this.threaded) return;",
+      "    // Export is not real time. A worker round-trip measured ~34 ms per frame",
+      "    // here, while the same 2048-point transform runs in ~0.2 ms in-process, so",
+      "    // run it on the calling thread and never stall the export loop on",
+      "    // postMessage latency. Preview keeps the threaded tier above.",
+      "    const result = this.sequential.transform(this.samples, this.fftSize);",
+      "    this.bins.set(result.magnitudes);",
+      "    this.lastMs = result.elapsedMs;",
+      "    this.mapBands(dt);",
+    ].join("\n"),
+    "spectrum export fft",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "export", "webcodecs-exporter.ts"),
+    ["        keyFrameInterval: 2,", "      });"].join("\n"),
+    [
+      "        keyFrameInterval: 2,",
+      "        // Hardware encoders are idle by default (prefer-hardware measured",
+      "        // 2.3x faster here); Chromium falls back when it cannot honour it.",
+      '        hardwareAcceleration: "prefer-hardware",',
+      "      });",
+    ].join("\n"),
+    "webcodecs hardware encoder",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "export", "webcodecs-exporter.ts"),
+    [
+      "      for (let frame = 0; frame < total; frame += 1) {",
+      "        if (options.shouldCancel?.()) {",
+      '          throw new DOMException("Export cancelled", "AbortError");',
+      "        }",
+      "        const time = (start + frame / options.fps) % Math.max(0.001, project.duration);",
+      "        await options.beforeFrame?.(time);",
+      "        renderer.render(time);",
+      "        await video.add(frame / options.fps, 1 / options.fps);",
+      '        options.onProgress(frame + 1, total, "encoding frames");',
+      "      }",
+    ].join("\n"),
+    [
+      "      let tickMs = 0;",
+      "      let drawMs = 0;",
+      "      let encodeMs = 0;",
+      "      for (let frame = 0; frame < total; frame += 1) {",
+      "        if (options.shouldCancel?.()) {",
+      '          throw new DOMException("Export cancelled", "AbortError");',
+      "        }",
+      "        const time = (start + frame / options.fps) % Math.max(0.001, project.duration);",
+      "        const beforeTick = performance.now();",
+      "        await options.beforeFrame?.(time);",
+      "        const beforeDraw = performance.now();",
+      "        renderer.render(time);",
+      "        const beforeEncode = performance.now();",
+      "        await video.add(frame / options.fps, 1 / options.fps);",
+      "        const afterEncode = performance.now();",
+      "        tickMs += beforeDraw - beforeTick;",
+      "        drawMs += beforeEncode - beforeDraw;",
+      "        encodeMs += afterEncode - beforeEncode;",
+      '        options.onProgress(frame + 1, total, "encoding frames");',
+      "      }",
+      '      console.warn(',
+      '        "vizzy export profile",',
+      "        JSON.stringify({",
+      '          engine: "webcodecs",',
+      "          frames: total,",
+      "          tickMs: Math.round(tickMs / total),",
+      "          drawMs: Math.round(drawMs / total),",
+      "          encodeMs: Math.round(encodeMs / total),",
+      "        }),",
+      "      );",
+    ].join("\n"),
+    "webcodecs export profile",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "main.ts"),
+    [
+      "function newProject(): void {",
+      '  if (!window.confirm("Start a new project? Unsaved changes will be lost.")) return;',
+    ].join("\n"),
+    [
+      "function newProject(force = false): void {",
+      '  if (!force && !window.confirm("Start a new project? Unsaved changes will be lost.")) return;',
+    ].join("\n"),
+    "main.ts new project force",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "main.ts"),
+    "  editorOpenExportDialog: openExportDialog,",
+    [
+      "  editorOpenExportDialog: openExportDialog,",
+      "  editorNewProject: (force = false) => newProject(force),",
+    ].join("\n"),
+    "main.ts new project hook",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "ui", "inspector.ts"),
+    [
+      "      if (row.impact) {",
+      "        range.append(",
+      '          makeInput(row.impact.from, "from", "from"),',
+      '          makeInput(row.impact.to, "to", "to"),',
+      "        );",
+      "      } else {",
+    ].join("\n"),
+    [
+      "      if (row.impact) {",
+      "        const readout = document.createElement(\"span\");",
+      '        readout.className = "value";',
+      "        readout.textContent = `${axis} ${trimNumber(row.impact.from)} -> ${trimNumber(row.impact.to)}`;",
+      "        range.append(",
+      "          readout,",
+      '          makeInput(row.impact.from, "from", "from"),',
+      '          makeInput(row.impact.to, "to", "to"),',
+      "        );",
+      "      } else {",
+    ].join("\n"),
+    "inspector audio-impact readout",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "main.ts"),
+    ['    ["1080x1350", "1080x1350 (Portrait)"],', "  ];"].join("\n"),
+    [
+      '    ["1080x1350", "1080x1350 (Portrait)"],',
+      '    ["1080x2160", "1080x2160 (1:2)"],',
+      "  ];",
+    ].join("\n"),
+    "main.ts 1:2 export preset",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "renderer", "renderer.ts"),
+    "  private fullResolution = false;",
+    [
+      "  private fullResolution = false;",
+      "  /** Explicit framebuffer while an export owns the renderer. */",
+      "  private exportSize: { width: number; height: number } | null = null;",
+    ].join("\n"),
+    "renderer export size field",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "renderer", "renderer.ts"),
+    ["  resize(): void {", "    const parent = this.canvas.parentElement;"].join("\n"),
+    [
+      "  resize(): void {",
+      "    // During an export the renderer owns an explicit framebuffer size. A shell",
+      "    // panel resize must not shrink it mid-render or frames use the wrong stride.",
+      "    if (this.exportSize) {",
+      "      this.renderer.setPixelRatio(1);",
+      "      this.renderer.setSize(this.exportSize.width, this.exportSize.height, false);",
+      "      return;",
+      "    }",
+      "",
+      "    const parent = this.canvas.parentElement;",
+    ].join("\n"),
+    "renderer export size resize guard",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "renderer", "renderer.ts"),
+    [
+      "  setExportSize(width: number, height: number): () => void {",
+      "    const previousRatio = this.renderer.getPixelRatio();",
+      "    this.renderer.setPixelRatio(1);",
+      "    this.renderer.setSize(width, height, false);",
+      "    return () => {",
+      "      this.renderer.setPixelRatio(previousRatio);",
+    ].join("\n"),
+    [
+      "  setExportSize(width: number, height: number): () => void {",
+      "    const previousRatio = this.renderer.getPixelRatio();",
+      "    this.exportSize = { width, height };",
+      "    this.renderer.setPixelRatio(1);",
+      "    this.renderer.setSize(width, height, false);",
+      "    return () => {",
+      "      this.exportSize = null;",
+      "      this.renderer.setPixelRatio(previousRatio);",
+    ].join("\n"),
+    "renderer export size setter",
+  );
+
+  const themePatch = path.join(target, "patches", "theme.css");
+  if (fs.existsSync(themePatch)) {
+    fs.appendFileSync(
+      path.join(target, "src", "styles.css"),
+      "\n" + readText(themePatch).replace(/\r\n/g, "\n"),
+    );
+  }
 
   writeGeneratedPackageJson(path.join(target, "package.json"), path.join(target, "package.json"));
   fs.writeFileSync(path.join(target, "vite.config.ts"), VITE_CONFIG);

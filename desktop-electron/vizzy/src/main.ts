@@ -11988,6 +11988,7 @@ Object.assign(globalThis, {
     codec: "h264" | "vp8" | "vp9";
     bitrate: number;
     crf: number;
+    engine?: "wasm" | "webcodecs";
     start: number;
     end: number;
   }
@@ -12048,9 +12049,8 @@ Object.assign(globalThis, {
         codec,
         bitrate: request.bitrate,
         crf: request.crf,
-        // Honour the requested encoder. WebCodecs supports AVC/MP4 as well as
-        // VP8/VP9/WebM; the export dialog's choice used to be ignored for MP4,
-        // which forced every H.264 render through the wasm encoder.
+        // Honour the requested encoder. WebCodecs supports AVC/MP4 as well
+        // as VP8/VP9/WebM; the export dialog's choice must not be ignored.
         engine:
           request.engine === "webcodecs" && WebCodecsExporter.available()
             ? "webcodecs"

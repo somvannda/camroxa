@@ -1301,7 +1301,6 @@ export class Inspector {
     actions.append(groupEdit, remove, add, shiftButton, popover);
     headRow.append(head, actions);
 
-
     const body = document.createElement("div");
     body.className = "group-body";
     body.append(...this.buildLayerRows(node, automations, analyzers));

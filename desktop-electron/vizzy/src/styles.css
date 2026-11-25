@@ -30,22 +30,15 @@
 }
 
 :root {
-  color-scheme: dark;
-  --bg: #070a13;
-  --panel: #0f1322;
-  --panel-2: #121728;
-  --line: rgba(255, 255, 255, 0.075);
-  --text: #f4f5fb;
-  --text-2: #c9cde0;
-  --muted: #8b90a6;
-  --dim: #6f748a;
-  --accent: #a855f7;
-  --accent-hover: #c084fc;
-  --accent-soft: rgba(168, 85, 247, 0.14);
-  --accent-2: #c084fc;
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --surface-3: #181f36;
-  --surface-hover: #222a45;
+  --bg: #0b0b0f;
+  --panel: #111116;
+  --panel-2: #16161c;
+  --line: #22222b;
+  --text: #e6e6ee;
+  --muted: #7f8090;
+  --dim: #5a5b6a;
+  --accent: #3d7bfd;
+  --accent-2: #f72585;
   --rail: 68px;
   /* Reference geometry at 1297px wide: left region 347, canvas 658, inspector 243. */
   --compositor: 279px;
@@ -65,7 +58,7 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font: 12px/1.45 "Inter Variable", "Inter", "Niradei", "Noto Sans Khmer", system-ui, sans-serif;
+  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -1833,7 +1826,6 @@ html[data-dev="1"] .dev-only {
   background: rgba(255, 255, 255, 0.02);
 }
 
-
 .layer-field {
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr);
@@ -3204,7 +3196,40 @@ button:disabled {
   height: 42px;
 }
 
-/* ------------------------------------------------------------------ */
+/* CAMXORA THEME (scripts/sync-vizzy.mjs)
+ *
+ * Appended after Rea's stylesheet so the embedded editor uses the shell's navy
+ * surfaces, Inter stack and purple accent. Kept out of src/styles.css because
+ * that file is regenerated from Rea on every sync.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #070a13;
+  --panel: #0f1322;
+  --panel-2: #121728;
+  --line: rgba(255, 255, 255, 0.075);
+  --text: #f4f5fb;
+  --text-2: #c9cde0;
+  --muted: #8b90a6;
+  --dim: #6f748a;
+  --accent: #a855f7;
+  --accent-hover: #c084fc;
+  --accent-soft: rgba(168, 85, 247, 0.14);
+  --accent-2: #c084fc;
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --surface-3: #181f36;
+  --surface-hover: #222a45;
+  --rail: 68px;
+  --compositor: 279px;
+  --inspector: 243px;
+  --topbar: 48px;
+  --timeline: 346px;
+}
+
+html,
+body {
+  font: 12px/1.45 "Inter Variable", "Inter", "Niradei", "Noto Sans Khmer", system-ui, sans-serif;
+}
 /* Camxora embedded theme                                             */
 /* The shell owns the outer frame; these rules make the editor use the */
 /* same navy surfaces, Inter stack, purple accent and 6-8px radii.     */

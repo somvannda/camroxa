@@ -468,8 +468,7 @@ export class StageRenderer {
 
   resize(): void {
     // During an export the renderer owns an explicit framebuffer size. A shell
-    // panel/status resize must not shrink it mid-render, or frames are read
-    // from the wrong stride and the video comes out corrupted.
+    // panel resize must not shrink it mid-render or frames use the wrong stride.
     if (this.exportSize) {
       this.renderer.setPixelRatio(1);
       this.renderer.setSize(this.exportSize.width, this.exportSize.height, false);
