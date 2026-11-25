@@ -317,3 +317,16 @@ shell chunk is ~333 kB (103 kB gzip).
   database was repaired in place (schema + representative pricing seeds) and stamped to `211`.
   This is a local-only repair; a fresh DB should come from `alembic upgrade head`.
 
+- Every effect pass now composites the way the reference does: `getBlendingParams()` gives
+  `CustomBlending`, src `ONE`, dst `ONE_MINUS_SRC_ALPHA` (`ONE`/`ONE` for a perspective layer), so
+  a pass that writes alpha 0 still contributes RGB. `NormalBlending` multiplied that RGB away and
+  cost `abnormal` 81.06 -> 45.2 against its reference; a 20-row A/B across blur/glow/alpha chains
+  moved by at most 0.3 (rebecca 32.77 -> 30.27), so nothing regressed. The change lives in
+  `scripts/sync-vizzy.mjs` and survives a re-sync.
+- Parity note (reference-limited, not renderer): `retro`'s VHS Overlay does render - the audit
+  clock 10.909 lands on a dim frame of the clip (Chrome presents 10.875) where the reference's
+  10.820 lands on the bright one; at the reference's clock the band matches. `manga-phonk` and the
+  rest of the top of the fail table carry the harness's own "ref 3x / stale ref vs capture
+  tooling" flag; a 480px shift/scale search finds no registration gain there, so their residual
+  is reference capture, not the compositor.
+
