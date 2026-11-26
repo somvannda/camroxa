@@ -96,6 +96,7 @@ async def preflight_music_plan(
         from_date=request.from_date,
         to_date=request.to_date,
         song_count=request.song_count,
+        structure_mode=request.structure_mode,
         auto_gen_image=request.auto_gen_image,
         auto_gsuno=request.auto_gsuno,
         auto_video_after_suno=request.auto_video_after_suno,
@@ -175,6 +176,7 @@ async def create_batch(
         from_date=batch.planned_from_date or request.from_date,
         to_date=batch.planned_to_date or request.to_date,
         planned_days=((batch.planned_to_date or request.to_date) - (batch.planned_from_date or request.from_date)).days + 1,
+        structure_mode=str(getattr(batch, "structure_mode", "") or "template"),
         ok_run_dir=batch.ok_run_dir,
         alt_run_dir=batch.alt_run_dir,
     )

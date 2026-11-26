@@ -285,6 +285,22 @@ export function songFolder(song: MusicHistorySong, side: "primary" | "secondary"
   return (side === "primary" ? song.output_dir_ok : song.output_dir_alt)?.trim() ?? "";
 }
 
+/**
+ * True when Simple mode was requested but the server did not persist it.
+ *
+ * A build without the Simple-mode backend drops `structure_mode` from the
+ * request (Pydantic ignores unknown fields) and stores a template batch, so an
+ * absent or non-`suno` echo is the only reliable signal that titles, lyrics
+ * and moods will be generated locally instead of by Suno.
+ */
+export function simpleModeWasIgnored(
+  requested: boolean,
+  response: { structure_mode?: string | null } | null | undefined,
+): boolean {
+  if (!requested) return false;
+  return String(response?.structure_mode ?? "").trim() !== "suno";
+}
+
 export function batchStatusText(status: {
   status: string;
   drafts_completed: number;

@@ -12,6 +12,7 @@ import {
   matchesHistoryDateRange,
   planManualRunDirectories,
   plannedDaysText,
+  simpleModeWasIgnored,
   toggleSelection,
   validatePairs,
   songFolder,
@@ -340,5 +341,21 @@ describe("batch summaries", () => {
         suno_failed: 0,
       }),
     ).toBe("drafting · 2/4 drafts");
+  });
+});
+
+describe("simple mode response check", () => {
+  it("flags a server that did not persist the requested mode", () => {
+    // Older backends drop the unknown request field and never echo it.
+    expect(simpleModeWasIgnored(true, undefined)).toBe(true);
+    expect(simpleModeWasIgnored(true, { structure_mode: null })).toBe(true);
+    expect(simpleModeWasIgnored(true, { structure_mode: "template" })).toBe(true);
+    expect(simpleModeWasIgnored(true, { structure_mode: "ai_free" })).toBe(true);
+  });
+
+  it("accepts a persisted Simple batch and ignores the check otherwise", () => {
+    expect(simpleModeWasIgnored(true, { structure_mode: "suno" })).toBe(false);
+    expect(simpleModeWasIgnored(false, { structure_mode: "template" })).toBe(false);
+    expect(simpleModeWasIgnored(false, undefined)).toBe(false);
   });
 });

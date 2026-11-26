@@ -348,7 +348,13 @@ export function MusicHistoryCard({
                       {row.song.description_name || "—"}
                     </TD>
                     <TD className="max-w-[140px] truncate text-text-secondary">
-                      {row.song.structure_id ? row.song.structure_name || "-" : "-"}
+                      {row.batch.structure_mode === "suno"
+                        ? "Suno / Simple"
+                        : row.batch.structure_mode === "ai_free"
+                          ? "AI Structure"
+                          : row.song.structure_id
+                            ? row.song.structure_name || "-"
+                            : "-"}
                     </TD>
                     <TD className="max-w-[120px] truncate text-text-secondary">
                       {row.song.mood_id ? row.song.mood_name || "-" : "-"}

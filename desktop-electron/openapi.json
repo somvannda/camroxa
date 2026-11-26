@@ -11327,7 +11327,7 @@
           "batches"
         ],
         "summary": "Delete a failed batch with no Suno audio",
-        "description": "Hard-delete a batch when every song is pending/draft-failed/draft-ready/suno-failed.\n\nRestores leftover draft-meter slots for draft_failed songs. Does not re-credit\nthe wallet or gift song quota.",
+        "description": "Delete a user-owned batch and its dependent rows.\n\nThe default policy only deletes batches with no live/completed Suno audio.\nThe desktop's explicit \u201cDelete batch\u201d confirmation sends ``force=true`` so a\nstuck or partially rendered generation can be removed too.",
         "operationId": "delete_failed_batch_api_v1_batches__batch_id__delete",
         "parameters": [
           {
@@ -11337,6 +11337,16 @@
             "schema": {
               "type": "string",
               "title": "Batch Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
             }
           },
           {
@@ -45748,7 +45758,7 @@
           "batches"
         ],
         "summary": "Delete a failed batch with no Suno audio",
-        "description": "Hard-delete a batch when every song is pending/draft-failed/draft-ready/suno-failed.\n\nRestores leftover draft-meter slots for draft_failed songs. Does not re-credit\nthe wallet or gift song quota.",
+        "description": "Delete a user-owned batch and its dependent rows.\n\nThe default policy only deletes batches with no live/completed Suno audio.\nThe desktop's explicit \u201cDelete batch\u201d confirmation sends ``force=true`` so a\nstuck or partially rendered generation can be removed too.",
         "operationId": "delete_failed_batch_api_v3_batches__batch_id__delete",
         "parameters": [
           {
@@ -45758,6 +45768,16 @@
             "schema": {
               "type": "string",
               "title": "Batch Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
             }
           },
           {
@@ -74834,6 +74854,11 @@
             "type": "integer",
             "title": "Planned Days"
           },
+          "structure_mode": {
+            "type": "string",
+            "title": "Structure Mode",
+            "default": "template"
+          },
           "ok_run_dir": {
             "anyOf": [
               {
@@ -83609,6 +83634,11 @@
             "type": "integer",
             "title": "Planned Days"
           },
+          "structure_mode": {
+            "type": "string",
+            "title": "Structure Mode",
+            "default": "template"
+          },
           "ok_profile_id": {
             "anyOf": [
               {
@@ -84032,6 +84062,18 @@
             "maximum": 50.0,
             "minimum": 1.0,
             "title": "Song Count"
+          },
+          "structure_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(template|ai_free|suno)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structure Mode"
           },
           "auto_gen_image": {
             "type": "boolean",

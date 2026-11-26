@@ -72,6 +72,8 @@ export interface MusicHistoryBatch {
   from_date?: string | null;
   to_date?: string | null;
   planned_days?: number;
+  /** "suno" = Simple/description mode, "ai_free" = AI structure, "template". */
+  structure_mode?: "template" | "ai_free" | "suno" | null;
   ok_profile_id?: string | null;
   ok_profile_name?: string | null;
   alt_profile_id?: string | null;
@@ -122,6 +124,8 @@ export interface BatchCreateResponse {
   from_date: string;
   to_date: string;
   planned_days: number;
+  /** Persisted mode; absent on servers older than the Simple-mode backend. */
+  structure_mode?: string | null;
   ok_run_dir?: string | null;
   alt_run_dir?: string | null;
 }

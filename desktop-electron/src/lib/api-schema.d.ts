@@ -2980,10 +2980,11 @@ export interface paths {
         post?: never;
         /**
          * Delete a failed batch with no Suno audio
-         * @description Hard-delete a batch when every song is pending/draft-failed/draft-ready/suno-failed.
+         * @description Delete a user-owned batch and its dependent rows.
          *
-         *     Restores leftover draft-meter slots for draft_failed songs. Does not re-credit
-         *     the wallet or gift song quota.
+         *     The default policy only deletes batches with no live/completed Suno audio.
+         *     The desktop's explicit “Delete batch” confirmation sends ``force=true`` so a
+         *     stuck or partially rendered generation can be removed too.
          */
         delete: operations["delete_failed_batch_api_v1_batches__batch_id__delete"];
         options?: never;
@@ -11781,10 +11782,11 @@ export interface paths {
         post?: never;
         /**
          * Delete a failed batch with no Suno audio
-         * @description Hard-delete a batch when every song is pending/draft-failed/draft-ready/suno-failed.
+         * @description Delete a user-owned batch and its dependent rows.
          *
-         *     Restores leftover draft-meter slots for draft_failed songs. Does not re-credit
-         *     the wallet or gift song quota.
+         *     The default policy only deletes batches with no live/completed Suno audio.
+         *     The desktop's explicit “Delete batch” confirmation sends ``force=true`` so a
+         *     stuck or partially rendered generation can be removed too.
          */
         delete: operations["delete_failed_batch_api_v3_batches__batch_id__delete"];
         options?: never;
@@ -19356,6 +19358,11 @@ export interface components {
             to_date: string;
             /** Planned Days */
             planned_days: number;
+            /**
+             * Structure Mode
+             * @default template
+             */
+            structure_mode: string;
             /** Ok Run Dir */
             ok_run_dir?: string | null;
             /** Alt Run Dir */
@@ -22772,6 +22779,11 @@ export interface components {
             to_date?: string | null;
             /** Planned Days */
             planned_days: number;
+            /**
+             * Structure Mode
+             * @default template
+             */
+            structure_mode: string;
             /** Ok Profile Id */
             ok_profile_id?: string | null;
             /** Ok Profile Name */
@@ -22921,6 +22933,8 @@ export interface components {
             to_date: string;
             /** Song Count */
             song_count: number;
+            /** Structure Mode */
+            structure_mode?: string | null;
             /**
              * Auto Gen Image
              * @default false
@@ -35389,7 +35403,9 @@ export interface operations {
     };
     delete_failed_batch_api_v1_batches__batch_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: {
                 Authorization?: string | null;
             };
@@ -54643,7 +54659,9 @@ export interface operations {
     };
     delete_failed_batch_api_v3_batches__batch_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: {
                 Authorization?: string | null;
             };

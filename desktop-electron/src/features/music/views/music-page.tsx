@@ -34,6 +34,7 @@ import {
   isTerminalBatchStatus,
   planManualRunDirectories,
   sanitizeSelection,
+  simpleModeWasIgnored,
   toggleSelection,
   validatePairs,
   type HistoryRow,
@@ -700,6 +701,7 @@ export function MusicPage() {
       pairCount,
       created: [] as Array<{ date: string; okName: string; altName: string }>,
       failed: [] as Array<{ date: string; okName: string; altName: string; message: string }>,
+      simpleIgnored: 0,
     };
     let lastBatchId = "";
 
@@ -711,6 +713,13 @@ export function MusicPage() {
           body: slot.payload,
         });
         lastBatchId = response.batch_id;
+        // The server echoes the persisted mode. A build without the Simple-mode
+        // backend drops the field (Pydantic ignores unknown request fields), so
+        // the batch silently runs the template pipeline. Say so instead of
+        // letting local titles, lyrics and moods appear unexplained.
+        if (simpleModeWasIgnored(simpleMode, response)) {
+          outcome.simpleIgnored += 1;
+        }
         outcome.created.push({ date: slot.date, okName: slot.okName, altName: slot.altName });
         await ensureRunDirs([
           response.ok_run_dir || slot.okRunDir,
@@ -733,7 +742,13 @@ export function MusicPage() {
       setBatchStatus("Batch queued. Watching progress.");
       setBatchStatusTone("neutral");
     }
-    if (outcome.created.length === 0) {
+    if (outcome.simpleIgnored > 0) {
+      setError(
+        `The server did not apply Simple mode for ${outcome.simpleIgnored === 1 ? "this batch" : `${outcome.simpleIgnored} batches`}: ` +
+          "it runs an older build, so titles, lyrics and moods will be generated locally. " +
+          "Update the API before generating again.",
+      );
+    } else if (outcome.created.length === 0) {
       setError(summary);
     } else if (outcome.failed.length > 0) {
       toast(summary, "warning", 8000);

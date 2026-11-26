@@ -155,6 +155,10 @@ class BatchCreateResponse(BaseModel):
     from_date: date
     to_date: date
     planned_days: int
+    # Echoes the persisted mode so a client can tell whether the server
+    # understood its request. Older builds drop the field, which is the
+    # signal that the batch will run the template pipeline instead.
+    structure_mode: str = "template"
     ok_run_dir: str | None = None
     alt_run_dir: str | None = None
 
@@ -167,6 +171,9 @@ class MusicPlanPreflightRequest(BaseModel):
     from_date: date
     to_date: date
     song_count: int = Field(ge=1, le=50)
+    # Optional: lets a client price the plan it is about to create. Falls back
+    # to the saved `simpleMode` setting for clients that do not send it.
+    structure_mode: str | None = Field(default=None, pattern=r"^(template|ai_free|suno)$")
     auto_gen_image: bool = False
     auto_gsuno: bool = False
     auto_video_after_suno: bool = False
@@ -345,6 +352,8 @@ class MusicHistoryBatchResponse(BaseModel):
     from_date: date | None = None
     to_date: date | None = None
     planned_days: int
+    # "suno" = Simple/description mode, "ai_free" = AI structure, "template".
+    structure_mode: str = "template"
     ok_profile_id: str | None = None
     ok_profile_name: str | None = None
     alt_profile_id: str | None = None

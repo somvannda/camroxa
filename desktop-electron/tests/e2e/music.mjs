@@ -697,6 +697,7 @@ async function generateScenario() {
         from_date: body.from_date,
         to_date: body.to_date,
         planned_days: 1,
+        structure_mode: body.structure_mode ?? "template",
         ok_run_dir: null,
         alt_run_dir: null,
       });
@@ -740,6 +741,10 @@ async function generateScenario() {
       "Partial success summary must report created batches",
     );
     assert(summary.includes("2026-11-19"), "Partial failure must name the missing day");
+    assert(
+      (await page.locator('[data-testid="music-error"]').count()) === 0,
+      "A server that echoes structure_mode=suno must not warn about an ignored Simple mode",
+    );
 
     assert(batchBodies.length === 3, "Generate must POST one batch per day × pair");
     assert(
