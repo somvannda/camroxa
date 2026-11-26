@@ -1110,6 +1110,50 @@ class BatchRepository:
             duration_alt,
         )
 
+    async def update_suno_generated_metadata(
+        self,
+        task_id: UUID,
+        *,
+        title_ok: str = "",
+        title_alt: str = "",
+        lyrics: str = "",
+    ) -> None:
+        """Backfill Suno's generated title/lyrics for a description-mode task.
+
+        Description mode lets Suno write both. The callback path persisted them,
+        but a missed webhook (for example a callback rejected by the IP/HMAC
+        guard) left the task and the song without a title even after the
+        reconciler polled a SUCCESS record that carried them. Fill only empty
+        fields, so a retried job or a re-sent callback never overwrites what is
+        already on the row.
+        """
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET title_ok = COALESCE(NULLIF(BTRIM($2), ''), title_ok),
+                title_alt = COALESCE(NULLIF(BTRIM($3), ''), title_alt),
+                title = CASE
+                    WHEN COALESCE(title, '') IN ('', 'Untitled')
+                    THEN COALESCE(NULLIF(BTRIM($2), ''), title)
+                    ELSE title
+                END,
+                lyrics = CASE
+                    WHEN COALESCE(BTRIM(lyrics), '') = '' THEN $4
+                    ELSE lyrics
+                END,
+                updated_at = NOW()
+            WHERE id = $1
+              AND (
+                source = 'web_music'
+                OR COALESCE(BTRIM(title), '') IN ('', 'Untitled')
+              )
+            """,
+            task_id,
+            title_ok,
+            title_alt,
+            lyrics,
+        )
+
     async def list_pending_suno_downloads(
         self,
         *,

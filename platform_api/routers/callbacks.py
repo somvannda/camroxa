@@ -677,33 +677,13 @@ async def suno_callback(
         # them only where they are still empty, so a retried job or a re-sent
         # callback can never overwrite what is already on the row.
         try:
-            from platform_api.dependencies import get_db_pool
+            from platform_api.dependencies import get_batch_repo
 
-            await get_db_pool().execute(
-                """
-                UPDATE suno_tasks
-                SET title_ok = COALESCE(NULLIF(BTRIM($2), ''), title_ok),
-                    title_alt = COALESCE(NULLIF(BTRIM($3), ''), title_alt),
-                    title = CASE
-                        WHEN COALESCE(title, '') IN ('', 'Untitled')
-                        THEN COALESCE(NULLIF(BTRIM($2), ''), title)
-                        ELSE title
-                    END,
-                    lyrics = CASE
-                        WHEN COALESCE(BTRIM(lyrics), '') = '' THEN $4
-                        ELSE lyrics
-                    END,
-                    updated_at = NOW()
-                WHERE id = $1
-                  AND (
-                    source = 'web_music'
-                    OR COALESCE(BTRIM(title), '') IN ('', 'Untitled')
-                  )
-                """,
+            await get_batch_repo().update_suno_generated_metadata(
                 task_id,
-                parsed_urls.title_ok,
-                parsed_urls.title_alt,
-                parsed_urls.lyrics or "",
+                title_ok=parsed_urls.title_ok,
+                title_alt=parsed_urls.title_alt,
+                lyrics=parsed_urls.lyrics or "",
             )
         except Exception as exc:  # noqa: BLE001 - never fail a delivered song on this
             logger.warning(

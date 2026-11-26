@@ -4361,6 +4361,22 @@ class BatchService:
                     audio_id_ok=id_ok,
                     audio_id_alt=id_alt,
                 )
+                generated_title = str(
+                    getattr(poll_result, "title_ok", "")
+                    or getattr(poll_result, "title_alt", "")
+                    or ""
+                ).strip()
+                generated_lyrics = str(getattr(poll_result, "lyrics", "") or "").strip()
+                if generated_title or generated_lyrics:
+                    # The callback persists Suno's title/lyrics on delivery. A
+                    # missed webhook must not lose them: the poll that has just
+                    # proved SUCCESS carries the same values.
+                    await self._batch_repo.update_suno_generated_metadata(
+                        task_id,
+                        title_ok=str(getattr(poll_result, "title_ok", "") or ""),
+                        title_alt=str(getattr(poll_result, "title_alt", "") or ""),
+                        lyrics=str(getattr(poll_result, "lyrics", "") or ""),
+                    )
                 if song_id and batch_id:
                     await self.handle_suno_task_update(
                         song_id=song_id,
