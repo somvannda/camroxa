@@ -7,11 +7,11 @@
 | Field | Value |
 |---|---|
 | Source | `G:/Developments/Rea/editor` |
-| Synced at | 2026-11-25T12:21:34.861Z |
+| Synced at | 2026-11-26T06:53:03.049Z |
 | Files vendored | 242 |
 | Public dirs | `export/`, `fonts/`, `img/`, `lottie/`, `media/`, `models/`, `particles/`, `presets/`, `vendor/` (no `creations/`) |
 
-Vendored tree sha256: `210f9fe826ac0d37c8f8c945bc82595ea4277ea5f645fe8febcda7fa05685387`
+Vendored tree sha256: `286af33350d77afc4d22b423925ffcf022f81336ba0741331ce95b0cde32fc3c`
 
 ## Patch set
 

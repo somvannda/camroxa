@@ -1537,6 +1537,14 @@ export class ParticlesNode extends SceneNode {
   private textureUrlPending: string | null = null;
   private cumMult = 0;
   private previous: Float32Array | null = null;
+  /**
+   * Wall time of the previous `sync`. The reference adds the band impact to
+   * `cumMult` once per rendered frame, so a frame-rate change changed the
+   * particle speed: a 30 fps export accumulated half the audio-driven motion of
+   * the 60 Hz preview. Scaling the add by `delta * 60` keeps the 60 Hz result
+   * identical while making any other rate accumulate per second.
+   */
+  private lastSyncTime: number | null = null;
 
   /**
    * The active preset's reaction axis. `null` keeps module 1354's shipped
@@ -1863,6 +1871,14 @@ export class ParticlesNode extends SceneNode {
     // The item's mesh is scaled by `scale + 34`; the particle attributes are the
     // only values the reference converts from degrees. The item's own position is
     // a plain world transform (−500 on z in the export).
+    const deltaSeconds =
+      this.lastSyncTime === null
+        ? 1 / 60
+        : Math.min(0.25, Math.max(0, time - this.lastSyncTime));
+    this.lastSyncTime = time;
+    // One unit = one 60 Hz frame, so the 60 Hz preview matches the shipped
+    // per-frame behaviour exactly and a 30 fps export advances twice per frame.
+    const frameScale = deltaSeconds * 60;
     this.group.scale.set(
       this.particleScale.x + 34,
       this.particleScale.y + 34,
@@ -1880,8 +1896,12 @@ export class ParticlesNode extends SceneNode {
       for (let i = 0; i < data.length; i += 1) raw[i] = data[i] * 200;
       const smoothed = new Float32Array(raw.length);
       if (this.previous && this.previous.length === raw.length) {
+        // An exponential smoother advances once per frame in the reference. Use
+        // the per-second equivalent so a lower frame rate does not lag behind.
+        const constant = Math.min(0.999, Math.max(0, this.smoothingTimeConstant));
+        const smoothing = 1 - Math.pow(1 - constant, frameScale);
         for (let i = 0; i < raw.length; i += 1) {
-          smoothed[i] = this.previous[i] + (raw[i] - this.previous[i]) * this.smoothingTimeConstant;
+          smoothed[i] = this.previous[i] + (raw[i] - this.previous[i]) * smoothing;
         }
       } else {
         smoothed.set(raw);
@@ -1891,7 +1911,7 @@ export class ParticlesNode extends SceneNode {
       impact = (sum / (6000 * smoothed.length)) * this.impactMultiplier;
       this.previous = smoothed;
     }
-    this.cumMult += impact;
+    this.cumMult += impact * frameScale;
     const reaction = this.sampleReaction();
     const target = this.reaction?.target ?? null;
     const amount = this.reaction?.amount ?? 0;
@@ -1922,7 +1942,7 @@ export class ParticlesNode extends SceneNode {
     if (target === "speed") {
       // Module 1354 adds the band average to `cumMult`; a speed preset scales
       // that same term instead of adding a second, different one.
-      this.cumMult += impact * reaction;
+      this.cumMult += impact * reaction * frameScale;
     }
     const realTime = this.incrementWithTime
       ? time * this.timeIncrementMultiplier + this.cumMult
@@ -10534,7 +10554,15 @@ export class ParticleLinesNode extends SceneNode {
     this.lastTime = time;
     const step = delta * 60 * this.speedAmplitude;
 
-    if (this.state.length < this.maxNrLines && Math.random() < this.frequency / 100) {
+    // The reference rolls the spawn once per rendered frame, so a 30 fps export
+    // spawned roughly half as often as the 60 Hz preview. One unit is a 60 Hz
+    // frame, so this is the same probability per second at any frame rate.
+    const spawnSteps = delta > 0 ? delta * 60 : 1;
+    const spawnChance = 1 - Math.pow(
+      1 - Math.min(0.99, Math.max(0, this.frequency / 100)),
+      spawnSteps,
+    );
+    if (this.state.length < this.maxNrLines && Math.random() < spawnChance) {
       this.spawn();
     }
 

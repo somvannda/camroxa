@@ -830,6 +830,112 @@ function sync(sourceRoot) {
     "post-processing effect material premultiplied blending",
   );
 
+  // Particles (description mode): the reference adds the audio impact to
+  // `cumMult` once per rendered frame, so a 30 fps render accumulated half the
+  // motion of the 60 Hz preview and the exported field diverged from what the
+  // user saw. One unit = one 60 Hz frame keeps the 60 Hz result identical.
+  replaceOnce(
+    path.join(target, "src", "domain", "nodes.ts"),
+    [
+      "  private cumMult = 0;",
+      "  private previous: Float32Array | null = null;",
+    ].join("\n"),
+    [
+      "  private cumMult = 0;",
+      "  private previous: Float32Array | null = null;",
+      "  /**",
+      "   * Wall time of the previous `sync`. The reference adds the band impact to",
+      "   * `cumMult` once per rendered frame, so a frame-rate change changed the",
+      "   * particle speed: a 30 fps export accumulated half the audio-driven motion of",
+      "   * the 60 Hz preview. Scaling the add by `delta * 60` keeps the 60 Hz result",
+      "   * identical while making any other rate accumulate per second.",
+      "   */",
+      "  private lastSyncTime: number | null = null;",
+    ].join("\n"),
+    "nodes.ts particle frame-rate clock field",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "domain", "nodes.ts"),
+    [
+      "    // a plain world transform (−500 on z in the export).",
+      "    this.group.scale.set(",
+    ].join("\n"),
+    [
+      "    // a plain world transform (−500 on z in the export).",
+      "    const deltaSeconds =",
+      "      this.lastSyncTime === null",
+      "        ? 1 / 60",
+      "        : Math.min(0.25, Math.max(0, time - this.lastSyncTime));",
+      "    this.lastSyncTime = time;",
+      "    // One unit = one 60 Hz frame, so the 60 Hz preview matches the shipped",
+      "    // per-frame behaviour exactly and a 30 fps export advances twice per frame.",
+      "    const frameScale = deltaSeconds * 60;",
+      "    this.group.scale.set(",
+    ].join("\n"),
+    "nodes.ts particle frame-rate clock",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "domain", "nodes.ts"),
+    [
+      "      if (this.previous && this.previous.length === raw.length) {",
+      "        for (let i = 0; i < raw.length; i += 1) {",
+      "          smoothed[i] = this.previous[i] + (raw[i] - this.previous[i]) * this.smoothingTimeConstant;",
+      "        }",
+      "      } else {",
+    ].join("\n"),
+    [
+      "      if (this.previous && this.previous.length === raw.length) {",
+      "        // An exponential smoother advances once per frame in the reference. Use",
+      "        // the per-second equivalent so a lower frame rate does not lag behind.",
+      "        const constant = Math.min(0.999, Math.max(0, this.smoothingTimeConstant));",
+      "        const smoothing = 1 - Math.pow(1 - constant, frameScale);",
+      "        for (let i = 0; i < raw.length; i += 1) {",
+      "          smoothed[i] = this.previous[i] + (raw[i] - this.previous[i]) * smoothing;",
+      "        }",
+      "      } else {",
+    ].join("\n"),
+    "nodes.ts particle impact smoothing per second",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "domain", "nodes.ts"),
+    "    this.cumMult += impact;\n",
+    "    this.cumMult += impact * frameScale;\n",
+    "nodes.ts particle impact accumulation per second",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "domain", "nodes.ts"),
+    "      this.cumMult += impact * reaction;\n",
+    "      this.cumMult += impact * reaction * frameScale;\n",
+    "nodes.ts particle speed reaction per second",
+  );
+
+  replaceOnce(
+    path.join(target, "src", "domain", "nodes.ts"),
+    [
+      "    if (this.state.length < this.maxNrLines && Math.random() < this.frequency / 100) {",
+      "      this.spawn();",
+      "    }",
+    ].join("\n"),
+    [
+      "    // The reference rolls the spawn once per rendered frame, so a 30 fps export",
+      "    // spawned roughly half as often as the 60 Hz preview. One unit is a 60 Hz",
+      "    // frame, so this is the same probability per second at any frame rate.",
+      "    const spawnSteps = delta > 0 ? delta * 60 : 1;",
+      "    const spawnChance = 1 - Math.pow(",
+      "      1 - Math.min(0.99, Math.max(0, this.frequency / 100)),",
+      "      spawnSteps,",
+      "    );",
+      "    if (this.state.length < this.maxNrLines && Math.random() < spawnChance) {",
+      "      this.spawn();",
+      "    }",
+    ].join("\n"),
+    "nodes.ts particle-lines spawn per second",
+  );
+
   const themePatch = path.join(target, "patches", "theme.css");
   if (fs.existsSync(themePatch)) {
     fs.appendFileSync(
