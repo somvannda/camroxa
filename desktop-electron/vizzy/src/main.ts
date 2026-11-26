@@ -8842,10 +8842,6 @@ async function runExport(
   // A full-length 1080p export is impossible to hold in ffmpeg.wasm memory.
   // Long runs therefore use WebCodecs, streaming chunks straight to the chosen
   // file when the user picked one.
-  const useReference =
-    settings.engine === "wasm" &&
-    settings.codec === "h264" &&
-    ReferenceWasmExporter.supported();
   // CAMXORA: a long render is unattended; WebCodecs is ~4x faster than the
   // reference wasm encoder. Prefer it for long exports even when that encoder
   // is available, so a template saved with the wasm engine cannot turn a
@@ -8854,6 +8850,11 @@ async function runExport(
     settings.engine === "wasm" &&
     totalFrames > 2400 &&
     WebCodecsExporter.available();
+  const useReference =
+    !forcedWebCodecs &&
+    settings.engine === "wasm" &&
+    settings.codec === "h264" &&
+    ReferenceWasmExporter.supported();
   const engine = forcedWebCodecs ? "webcodecs" : settings.engine;
   if (forcedWebCodecs) {
     progress.update(0, totalFrames, "using WebCodecs for this long export");

@@ -939,6 +939,10 @@ function sync(sourceRoot) {
   replaceOnce(
     path.join(target, "src", "main.ts"),
     [
+      "  const useReference =",
+      '    settings.engine === "wasm" &&',
+      '    settings.codec === "h264" &&',
+      "    ReferenceWasmExporter.supported();",
       "  const forcedWebCodecs =",
       '    settings.engine === "wasm" &&',
       "    !useReference &&",
@@ -954,6 +958,11 @@ function sync(sourceRoot) {
       '    settings.engine === "wasm" &&',
       "    totalFrames > 2400 &&",
       "    WebCodecsExporter.available();",
+      "  const useReference =",
+      "    !forcedWebCodecs &&",
+      '    settings.engine === "wasm" &&',
+      '    settings.codec === "h264" &&',
+      "    ReferenceWasmExporter.supported();",
     ].join("\n"),
     "main.ts prefer WebCodecs for long exports",
   );
