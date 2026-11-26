@@ -2332,6 +2332,135 @@ async def test_simple_batch_fanout_skips_drafts(
     )
 
 
+@pytest.mark.asyncio
+async def test_validate_song_suno_retry_allows_simple_song_without_draft(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    """Simple songs have no local title/lyrics until Suno returns.
+
+    Requiring them rejected the retry of a song whose first Suno call failed,
+    i.e. the only case where a retry is needed.
+    """
+    batch_id = uuid4()
+    song_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    batch_repo.get_batch_for_user = AsyncMock(
+        return_value=SimpleNamespace(id=batch_id, structure_mode="suno")
+    )
+    batch_repo.get_songs_for_user_batch = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                id=song_id,
+                title="",
+                lyrics="",
+                status="suno_failed",
+            )
+        ]
+    )
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(return_value=None)
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+
+    await service.validate_song_suno_retry(
+        batch_id=batch_id,
+        song_id=song_id,
+        user_id=str(user_id),
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_song_suno_retry_requires_draft_for_template_batch(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    batch_id = uuid4()
+    song_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    batch_repo.get_batch_for_user = AsyncMock(
+        return_value=SimpleNamespace(id=batch_id, structure_mode="template")
+    )
+    batch_repo.get_songs_for_user_batch = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                id=song_id,
+                title="",
+                lyrics="",
+                status="suno_failed",
+            )
+        ]
+    )
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(return_value=None)
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+
+    with pytest.raises(ValidationError, match="Song draft is incomplete"):
+        await service.validate_song_suno_retry(
+            batch_id=batch_id,
+            song_id=song_id,
+            user_id=str(user_id),
+        )
+
+
+@pytest.mark.asyncio
+async def test_retry_song_draft_rejects_simple_batch(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    """A draft retry would write a local title/lyrics onto a Simple song.
+
+    The Suno callback only backfills empty fields, so the song could never
+    return to description mode afterwards.
+    """
+    batch_id = uuid4()
+    song_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    batch_repo.get_batch_for_user = AsyncMock(
+        return_value=SimpleNamespace(id=batch_id, structure_mode="suno")
+    )
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+
+    with pytest.raises(ValidationError, match="no draft step"):
+        await service.retry_song_draft(
+            batch_id=batch_id,
+            song_id=song_id,
+            user_id=str(user_id),
+        )
+
+    generation_service.submit_draft.assert_not_awaited()
+
+
 def test_build_suno_download_target_path_uses_ok_alt_suffixes() -> None:
     ok_path = BatchService._build_suno_download_target_path(
         output_dir=r"D:\Music\bass-drive\2026-07-12_02",
@@ -3238,6 +3367,56 @@ async def test_preflight_includes_video_and_merge_credits(
     assert result["merge_ops"] == 2
     assert result["video_wallet_cost"] == 24
     assert result["merge_wallet_cost"] == 6
+
+
+@pytest.mark.asyncio
+async def test_preflight_prices_the_requested_structure_mode(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """An explicit Simple request must not be priced from the saved setting.
+
+    The preflight used to read only `settings.simpleMode`, so a desktop that
+    ticked the box but had not finished the debounced settings save reserved
+    draft operations for a batch that would never run them.
+    """
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    base: dict[str, object] = {
+        "user_id": "00000000-0000-0000-0000-000000000001",
+        "ok_profile_ids": ["00000000-0000-0000-0000-000000000002"],
+        "alt_profile_ids": ["00000000-0000-0000-0000-000000000003"],
+        "from_date": date(2026, 6, 25),
+        "to_date": date(2026, 6, 25),
+        "song_count": 4,
+        "auto_gen_image": False,
+        "auto_gsuno": True,
+    }
+
+    templated = await service.preflight_music_plan(**base)  # type: ignore[arg-type]
+    simple = await service.preflight_music_plan(  # type: ignore[arg-type]
+        **base,
+        structure_mode="suno",
+    )
+
+    # Music only: 4 songs x 7 units, and no lyric/title/album draft ops.
+    assert simple["total_wallet_cost"] == 28
+    assert templated["total_wallet_cost"] > simple["total_wallet_cost"]
+    assert simple["can_generate"] is True
 
 
 @pytest.mark.asyncio

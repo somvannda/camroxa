@@ -350,6 +350,7 @@ class BatchService:
         from_date: date,
         to_date: date,
         song_count: int,
+        structure_mode: str | None = None,
         auto_gen_image: bool,
         auto_gsuno: bool,
         auto_video_after_suno: bool = False,
@@ -442,7 +443,15 @@ class BatchService:
 
         batch_count = len(run_dates) * len(profile_pairs)
         total_songs = batch_count * song_count
-        simple_mode = _read_bool_setting(settings, "simpleMode")
+        # The request is the source of truth when the client states the mode;
+        # saved settings are only the fallback for older clients. Two sources
+        # disagreed during the Simple-mode rollout and priced drafts for a batch
+        # that would never run them.
+        simple_mode = (
+            structure_mode == "suno"
+            if structure_mode is not None
+            else _read_bool_setting(settings, "simpleMode")
+        )
         # Lyric + title per song + one album ≈ 2N+1 draft ops per batch. Simple
         # mode has no draft at all; only the album is named.
         draft_ops_per_batch = 0 if simple_mode else song_count * 2 + 1
@@ -2620,9 +2629,16 @@ class BatchService:
                 details={"batch_id": str(batch_id), "song_id": str(song_id)},
             )
         await self._assert_song_allows_suno_retry(song)
+        from platform_api.services.generation_service import STRUCTURE_MODE_SUNO
+
+        # Simple mode has no local draft by design: title and lyrics only exist
+        # after Suno returns. Requiring them here rejected every retry of a
+        # song whose first Suno call failed, which is exactly when a retry is
+        # needed. The description is the payload instead.
+        is_simple = str(getattr(batch, "structure_mode", "") or "") == STRUCTURE_MODE_SUNO
         title = str(title_override if title_override is not None else song.title or "").strip()
         lyrics = str(lyrics_override if lyrics_override is not None else song.lyrics or "").strip()
-        if not title or not lyrics:
+        if not is_simple and (not title or not lyrics):
             raise ValidationError(
                 "Song draft is incomplete. Retry draft generation first.",
                 details={"song_id": str(song_id)},
@@ -2745,6 +2761,21 @@ class BatchService:
             raise NotFoundError(
                 f"Batch '{batch_id}' not found.",
                 details={"batch_id": str(batch_id)},
+            )
+
+        from platform_api.services.generation_service import STRUCTURE_MODE_SUNO
+
+        # Simple batches never run the draft pipeline. Accepting a draft retry
+        # here would let one click write a local title and lyrics onto a song
+        # that Suno is supposed to write, and the callback only backfills empty
+        # fields, so the song could never return to description mode.
+        if str(getattr(batch, "structure_mode", "") or "") == STRUCTURE_MODE_SUNO:
+            raise ValidationError(
+                "Simple batches have no draft step. Retry the Suno submission instead.",
+                details={
+                    "batch_id": str(batch_id),
+                    "structure_mode": STRUCTURE_MODE_SUNO,
+                },
             )
 
         songs = await self._batch_repo.get_songs_for_user_batch(batch_id, UUID(user_id))
