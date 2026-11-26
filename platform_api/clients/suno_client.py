@@ -903,7 +903,7 @@ class SunoClient:
 
         normalized_title = str(title or "").strip()
         normalized_lyrics = str(lyrics or "").strip()
-        normalized_style = str(style or "").strip() or "Contemporary pop"
+        normalized_style = str(style or "").strip()
         normalized_description = str(description or "").strip()
         if not normalized_description:
             if not normalized_title:
@@ -938,7 +938,7 @@ class SunoClient:
             "model": model,
             "title": normalized_title,
             "prompt": normalized_prompt,
-            "style": normalized_style,
+            "style": normalized_style or "Contemporary pop",
             "instrumental": instrumental,
             "customMode": True,
             "callBackUrl": callback,
@@ -947,7 +947,9 @@ class SunoClient:
         if normalized_description:
             # Description mode: Suno writes the title and the lyrics. One call,
             # no lyrics task, no prompt/lyrics to police — the listener's idea is
-            # the whole input. `style` still travels so the genre is honoured.
+            # the whole input. A style is only forwarded when a caller supplies
+            # one; the custom-mode default must not leak in here, or every
+            # description-mode song carries the same generic genre tag.
             payload = {
                 "model": model,
                 "gpt_description_prompt": normalized_description[:2000],
