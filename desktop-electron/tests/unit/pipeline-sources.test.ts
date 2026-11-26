@@ -63,6 +63,33 @@ describe("pipeline sources", () => {
     if (!both.ok) expect(both.reason).toMatch(/more than one/i);
   });
 
+  it("uses the track number when two songs share a title", () => {
+    const dir = folder("duplicate-title", [
+      "3. Pulse Divide_OK.mp3",
+      "9. Pulse Divide_OK.mp3",
+      "1. Hit.mp3",
+      "10. Hit.mp3",
+    ]);
+    const ambiguous = findAudioForSong(dir, "Pulse Divide", "ok");
+    expect(ambiguous.ok).toBe(false);
+
+    const third = findAudioForSong(dir, "Pulse Divide", "ok", { trackIndex: 3 });
+    expect(third.ok).toBe(true);
+    if (third.ok) expect(path.basename(third.path)).toBe("3. Pulse Divide_OK.mp3");
+
+    const ninth = findAudioForSong(dir, "Pulse Divide", "ok", { trackIndex: 9 });
+    expect(ninth.ok).toBe(true);
+    if (ninth.ok) expect(path.basename(ninth.path)).toBe("9. Pulse Divide_OK.mp3");
+
+    const first = findAudioForSong(dir, "Hit", "ok", { trackIndex: 1 });
+    expect(first.ok).toBe(true);
+    if (first.ok) expect(path.basename(first.path)).toBe("1. Hit.mp3");
+
+    const tenth = findAudioForSong(dir, "Hit", "ok", { trackIndex: 10 });
+    expect(tenth.ok).toBe(true);
+    if (tenth.ok) expect(path.basename(tenth.path)).toBe("10. Hit.mp3");
+  });
+
   it("falls back to the only file when the title changed", () => {
     const dir = folder("renamed", ["01 - Old Working Title.mp3"]);
     const strict = findAudioForSong(dir, "Brand New Title", "ok");

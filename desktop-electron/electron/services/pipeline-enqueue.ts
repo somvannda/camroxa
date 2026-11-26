@@ -87,6 +87,7 @@ export function enqueuePipelineRequest(
     if (!audioPath && job.audioDir) {
       const found = findAudioForSong(job.audioDir, job.title ?? "", job.audioBranch ?? "ok", {
         allowOnlyFile: true,
+        trackIndex: job.trackIndex,
       });
       if (!found.ok) {
         result.skippedDetails.push({

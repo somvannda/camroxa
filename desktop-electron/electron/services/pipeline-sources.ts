@@ -63,7 +63,7 @@ export function findAudioForSong(
   dir: string,
   title: string,
   branch: AudioBranch = "ok",
-  options: { allowOnlyFile?: boolean } = {},
+  options: { allowOnlyFile?: boolean; trackIndex?: number } = {},
 ): AudioLookup {
   const resolved = dir?.trim();
   if (!resolved) return { ok: false, reason: "The run folder is not set." };
@@ -81,6 +81,21 @@ export function findAudioForSong(
   const branchMatches = files.filter((file) => isAltFile(file) === (branch === "alt"));
   const pool = branchMatches.length > 0 ? branchMatches : files;
   const target = normaliseSongName(title);
+
+  // Suno names downloads after the track (`3. Pulse Divide_OK.mp3`). Two songs
+  // can share a title, so the track number decides before the title does.
+  const trackIndex = Number(options.trackIndex ?? 0);
+  if (Number.isInteger(trackIndex) && trackIndex > 0) {
+    const prefix = new RegExp(`^\\s*${trackIndex}\\s*[.)\\-–]?\\s`);
+    const byTrack = pool.filter((file) => prefix.test(path.basename(file)));
+    if (byTrack.length === 1) return toLookup(byTrack[0]);
+    if (byTrack.length > 1 && target) {
+      const exactByTrack = byTrack.filter(
+        (file) => normaliseSongName(path.basename(file)) === target,
+      );
+      if (exactByTrack.length === 1) return toLookup(exactByTrack[0]);
+    }
+  }
 
   if (target) {
     const exact = pool.filter((file) => normaliseSongName(path.basename(file)) === target);

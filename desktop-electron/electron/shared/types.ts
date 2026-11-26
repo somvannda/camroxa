@@ -447,6 +447,8 @@ export interface PipelineEnqueueJob {
   audioDir?: string;
   /** Which side of the run folder `audioDir` belongs to. */
   audioBranch?: "ok" | "alt";
+  /** 1-based track number, used to disambiguate songs that share a title. */
+  trackIndex?: number;
   title?: string;
   artist?: string;
   album?: string;

@@ -40,6 +40,8 @@ export interface AutoVideoProgressRow {
 }
 
 export interface AutoVideoHistorySong {
+  /** 0-based index in the batch; Suno numbers downloads from 1. */
+  batch_index?: number | null;
   title?: string | null;
   album?: string | null;
   output_dir_ok?: string | null;
@@ -87,6 +89,8 @@ export interface AutoVideoJob {
   templateId: string;
   audioDir: string;
   audioBranch: "ok" | "alt";
+  /** 1-based track number; two songs can share a title. */
+  trackIndex?: number;
   title: string;
   artist: string;
   album: string;
@@ -291,6 +295,9 @@ export function selectAutoVideoCandidate(
         templateId,
         audioDir: clean(side === "ok" ? song.output_dir_ok : song.output_dir_alt),
         audioBranch: side,
+        trackIndex: Number.isFinite(Number(song.batch_index))
+          ? Number(song.batch_index) + 1
+          : undefined,
         title: songTitle(song),
         artist,
         album: batchAlbum || clean(song.album),
