@@ -8846,9 +8846,12 @@ async function runExport(
     settings.engine === "wasm" &&
     settings.codec === "h264" &&
     ReferenceWasmExporter.supported();
+  // CAMXORA: a long render is unattended; WebCodecs is ~4x faster than the
+  // reference wasm encoder. Prefer it for long exports even when that encoder
+  // is available, so a template saved with the wasm engine cannot turn a
+  // 10-track pipeline into a multi-hour job.
   const forcedWebCodecs =
     settings.engine === "wasm" &&
-    !useReference &&
     totalFrames > 2400 &&
     WebCodecsExporter.available();
   const engine = forcedWebCodecs ? "webcodecs" : settings.engine;

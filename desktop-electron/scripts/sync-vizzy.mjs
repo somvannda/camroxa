@@ -936,6 +936,28 @@ function sync(sourceRoot) {
     "nodes.ts particle-lines spawn per second",
   );
 
+  replaceOnce(
+    path.join(target, "src", "main.ts"),
+    [
+      "  const forcedWebCodecs =",
+      '    settings.engine === "wasm" &&',
+      "    !useReference &&",
+      "    totalFrames > 2400 &&",
+      "    WebCodecsExporter.available();",
+    ].join("\n"),
+    [
+      "  // CAMXORA: a long render is unattended; WebCodecs is ~4x faster than the",
+      "  // reference wasm encoder. Prefer it for long exports even when that encoder",
+      "  // is available, so a template saved with the wasm engine cannot turn a",
+      "  // 10-track pipeline into a multi-hour job.",
+      "  const forcedWebCodecs =",
+      '    settings.engine === "wasm" &&',
+      "    totalFrames > 2400 &&",
+      "    WebCodecsExporter.available();",
+    ].join("\n"),
+    "main.ts prefer WebCodecs for long exports",
+  );
+
   const themePatch = path.join(target, "patches", "theme.css");
   if (fs.existsSync(themePatch)) {
     fs.appendFileSync(
