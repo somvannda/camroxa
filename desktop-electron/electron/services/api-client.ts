@@ -231,7 +231,11 @@ export async function apiRequest(request: ApiRequest): Promise<ApiResponse> {  c
   let response: Response;
   try {
     response = await send(request, tokens?.accessToken ?? null);
-    if (response.status === 401 && requiresAuth && request.method === "GET") {
+    // Any method can hit an expired access token. A 401 means the request was
+    // rejected before it ran, so refreshing and replaying it once is safe; the
+    // GET-only rule left settings saves (PATCH) failing when the token expired
+    // between refreshes.
+    if (response.status === 401 && requiresAuth) {
       const refreshed = await refreshSession();
       if (refreshed === "plan_required") {
         throw new ApiClientError(
@@ -291,7 +295,11 @@ export async function apiRequestBytes(request: ApiRequest): Promise<{
   let response: Response;
   try {
     response = await send(request, tokens?.accessToken ?? null);
-    if (response.status === 401 && requiresAuth && request.method === "GET") {
+    // Any method can hit an expired access token. A 401 means the request was
+    // rejected before it ran, so refreshing and replaying it once is safe; the
+    // GET-only rule left settings saves (PATCH) failing when the token expired
+    // between refreshes.
+    if (response.status === 401 && requiresAuth) {
       const refreshed = await refreshSession();
       if (refreshed === "plan_required") {
         throw new ApiClientError(
