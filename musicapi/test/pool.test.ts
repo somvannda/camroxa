@@ -13,6 +13,7 @@ const {
   belowCreditFloor,
   parseRenewsOn,
   daysUntilRenewal,
+  resetsSoon,
   forecastRenewals,
   monthlyPlanPriceUsd,
 } = await import("../src/pool.js");
@@ -101,6 +102,31 @@ test("daysUntilRenewal rounds up and goes negative once passed", () => {
   assert.equal(daysUntilRenewal(new Date(now - day).toISOString(), now), -1);
   assert.equal(daysUntilRenewal(null, now), null);
   assert.equal(daysUntilRenewal("garbage", now), null);
+});
+
+test("resetsSoon flags a balance that is wiped inside the window", () => {
+  const now = Date.parse("2026-11-01T00:00:00Z");
+  const day = 86_400_000;
+  const at = (days: number): string => new Date(now + days * day).toISOString();
+  // The window boundary is inclusive, and a renewal in hours counts as today+1.
+  assert.equal(resetsSoon(at(1), { withinDays: 2, now }), true);
+  assert.equal(resetsSoon(at(2), { withinDays: 2, now }), true);
+  assert.equal(resetsSoon("2026-11-01T06:00:00Z", { withinDays: 2, now }), true);
+  // Outside the window, no date, or no renewal at all -> nothing to spend down.
+  assert.equal(resetsSoon(at(3), { withinDays: 2, now }), false);
+  assert.equal(resetsSoon(null, { withinDays: 2, now }), false);
+  assert.equal(resetsSoon("garbage", { withinDays: 2, now }), false);
+});
+
+test("resetsSoon ignores a date that already billed and a disabled window", () => {
+  const now = Date.parse("2026-11-01T00:00:00Z");
+  const day = 86_400_000;
+  // The renewal instant itself has billed: the new allowance is not expiring.
+  assert.equal(resetsSoon(new Date(now).toISOString(), { withinDays: 2, now }), false);
+  // A passed date means the allowance already reset; the balance is fresh.
+  assert.equal(resetsSoon(new Date(now - day).toISOString(), { withinDays: 2, now }), false);
+  // 0 disables the preference entirely.
+  assert.equal(resetsSoon(new Date(now + day).toISOString(), { withinDays: 0, now }), false);
 });
 
 test("forecastRenewals totals only live subscriptions inside the window", () => {
@@ -237,4 +263,52 @@ test("credit-aware ordering falls back to least-loaded on equal balances", () =>
     strategy: "balanced",
   });
   assert.deepEqual(ids(ordered), ["b", "c", "a"]);
+});
+
+test("an account resetting inside the window is picked before a richer one", () => {
+  // a has the smaller balance but its allowance resets in two days, so those
+  // credits are lost unless they are spent now; b keeps its balance for later.
+  const credits: Record<string, number> = { a: 800, b: 2_250, c: 100 };
+  const ordered = orderForDispatch(clients, {
+    credits: (id) => credits[id] ?? 0,
+    expiringSoon: (id) => id === "a",
+    strategy: "balanced",
+  });
+  assert.deepEqual(ids(ordered), ["a", "b", "c"]);
+});
+
+test("inside the renewal window the highest balance still goes first", () => {
+  // Both a and b expire; higher-credit-first still decides between them.
+  const credits: Record<string, number> = { a: 300, b: 900, c: 10 };
+  const ordered = orderForDispatch(clients, {
+    credits: (id) => credits[id] ?? 0,
+    expiringSoon: (id) => id !== "c",
+    strategy: "balanced",
+  });
+  assert.deepEqual(ids(ordered), ["b", "a", "c"]);
+});
+
+test("expiring paid credits outrank preferFree", () => {
+  // b and c are free and would normally win; a's balance cannot be saved.
+  const credits: Record<string, number> = { a: 800, b: 100, c: 100 };
+  const ordered = orderForDispatch(clients, {
+    credits: (id) => credits[id] ?? 0,
+    preferFree: true,
+    expiringSoon: (id) => id === "a",
+    strategy: "balanced",
+  });
+  assert.equal(ordered[0]?.account.id, "a");
+});
+
+test("an over-cap account stays last even when its credits expire soon", () => {
+  const loads: Record<string, number> = { a: 0, b: 4, c: 0 };
+  const credits: Record<string, number> = { a: 10, b: 1_000, c: 10 };
+  const ordered = orderForDispatch(clients, {
+    load: (id) => loads[id] ?? 0,
+    credits: (id) => credits[id] ?? 0,
+    maxPerAccount: 4,
+    expiringSoon: (id) => id === "b",
+    strategy: "balanced",
+  });
+  assert.equal(ordered[ordered.length - 1]?.account.id, "b");
 });

@@ -237,6 +237,19 @@ export const config = {
      * cleared whenever a fresh `billing/info` arrives. 0 disables reservations.
      */
     creditReserve: Math.max(0, Number(process.env.SUNO_CREDIT_RESERVE ?? 10)),
+    /**
+     * Use-it-or-lose-it window (see `resetsSoon` in `src/pool.ts`). Suno resets
+     * a paid plan's monthly allowance on the renewal date, so any credits still
+     * on the account that morning are gone. Accounts renewing inside this many
+     * days are therefore selected ahead of richer accounts, draining the
+     * soon-to-be-wiped balance first. 0 disables the preference (the configured
+     * credit strategy alone decides, as before). A NaN from a typo collapses to
+     * the default.
+     */
+    renewalWindowDays: (() => {
+      const days = Number(process.env.SUNO_RENEWAL_WINDOW_DAYS ?? 2);
+      return Number.isFinite(days) ? Math.max(0, days) : 2;
+    })(),
   },
   /**
    * Customer-account credit floor. "Free" generation endpoints cost 0 credits
