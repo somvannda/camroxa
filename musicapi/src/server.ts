@@ -5,7 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { AccountPool, RoutingPolicy, daysUntilRenewal, forecastRenewals } from "./pool.js";
+import { AccountPool, RoutingPolicy, belowCreditFloor, daysUntilRenewal, forecastRenewals, resetsSoon } from "./pool.js";
 import { SunoClient } from "./client.js";
 import { StudioProjectSync, coverageSummary, isRetryableStudioSyncError, stateSyncEnabled, type StudioProjectDocument } from "./sunoStudio.js";
 import { isCapacityExhaustionError, isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
@@ -6547,6 +6547,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const l = liveById.get(row.label);
       const liveCredits = l?.credits ?? row.credits_left ?? 0;
       const liveRenewsOn = l?.renewsOn ?? null;
+      // Mirrors the dispatch preference in `AccountPool.orderCandidates`: a live
+      // renewal inside the window makes the leftover balance use-it-or-lose-it,
+      // so the router spends it first. Computed here (not in the UI) so the
+      // badge and the router can never disagree about the window or the floor.
+      // A stale date is excluded — the probe failed, so we cannot claim the plan
+      // still renews — as are plans that will not bill again and accounts too
+      // drained to be picked anyway.
+      const expiringCredits =
+        liveRenewsOn !== null &&
+        !l?.pastDue &&
+        !l?.paused &&
+        !l?.pauseScheduled &&
+        !belowCreditFloor(liveCredits) &&
+        resetsSoon(liveRenewsOn, { withinDays: config.suno.renewalWindowDays });
       return {
         id: row.id,
         label: row.label,
@@ -6569,6 +6583,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         // so the console never presents an old date as current.
         live_renews_on: liveRenewsOn ?? row.renews_on ?? null,
         renews_on_stale: !liveRenewsOn && Boolean(row.renews_on),
+        /** Leftover credits are dispatched first because the plan renews soon. */
+        expiring_credits: expiringCredits,
         live_models: l?.models ?? [],
         // Operator-facing health flags (REQUIREMENTS §4.2). `low_credits` uses the
         // same threshold as the §4.10 alert so the badge and the alert never disagree.
@@ -6589,7 +6605,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         },
       };
     });
-    return { accounts };
+    return { accounts, renewal_window_days: config.suno.renewalWindowDays };
   });
 
   app.post("/admin/accounts", async (req, reply) => {
