@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Icon } from "../components/icon";
 import { ToastHistoryList, useToastStore } from "../components/toast";
+import { useVizzyObscure } from "../features/vizzy/vizzy-obscure";
 import type { UpdateCheckResult, UpdateOffer } from "../../electron/shared/types";
 
 async function checkForUpdate(): Promise<UpdateCheckResult> {
@@ -24,14 +25,26 @@ export function NotificationsButton() {
   const markAllRead = useToastStore((state) => state.markAllRead);
   const clearHistory = useToastStore((state) => state.clearHistory);
   const { pathname } = useLocation();
+  const setSnapshot = useVizzyObscure((state) => state.setSnapshot);
 
   // The Vizzy editor is a native WebContentsView and always paints above the
   // shell DOM, so this dropdown would be cut off by it. Hide the view while the
-  // panel is open and restore it on close (the same rule shell modals use).
+  // panel is open and restore it on close (the same rule shell modals use); the
+  // captured frame keeps the editor visible behind the panel.
   useEffect(() => {
     if (!pathname.startsWith("/vizzy")) return;
-    void window.camxora?.vizzy?.setObscured(open);
-  }, [open, pathname]);
+    let cancelled = false;
+    void (async () => {
+      const response = await window.camxora?.vizzy?.setObscured(open);
+      if (cancelled) return;
+      const snapshot = open && response?.ok ? response.data.snapshot : null;
+      setSnapshot(snapshot ?? null);
+    })();
+    return () => {
+      cancelled = true;
+      if (!open) setSnapshot(null);
+    };
+  }, [open, pathname, setSnapshot]);
 
   return (
     <div className="relative">

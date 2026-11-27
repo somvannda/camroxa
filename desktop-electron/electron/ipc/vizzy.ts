@@ -332,14 +332,16 @@ export function registerVizzyIpc(host: VizzyHost): void {
   });
 
   // A transient shell overlay (the notifications dropdown) sits over the native
-  // view. Hide the view for as long as the overlay is open, without treating it
-  // as a modal: no preview-audio stop, and the route/modal visibility is kept.
-  ipcMain.handle("vizzy:set-obscured", (event, payload: unknown) => {
+  // view. Capture the editor first, hide the view for as long as the overlay is
+  // open, and hand the shell a frozen frame to display instead of its loading
+  // placeholder. No modal semantics: preview audio and route visibility stay.
+  ipcMain.handle("vizzy:set-obscured", async (event, payload: unknown) => {
     if (!shellOnly(event.sender)) return fail("FORBIDDEN", "Wrong sender for this channel.");
     try {
       const { obscured } = z.object({ obscured: z.boolean() }).parse(payload);
+      const snapshot = obscured ? await host.captureSnapshotDataUrl() : null;
       host.setObscured(obscured);
-      return ok(true);
+      return ok({ obscured, snapshot });
     } catch (error) {
       return toError(error);
     }

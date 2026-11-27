@@ -266,6 +266,25 @@ export class VizzyHost {
     view.setVisible(obscured ? false : this.viewVisible);
   }
 
+  /**
+   * PNG/JPEG data URL of the live editor, for a transient shell overlay.
+   *
+   * The notifications dropdown hides the native view so it can paint above the
+   * shell; capturing first lets the shell show a frozen frame of the editor
+   * instead of its "Starting the Vizzy editor" placeholder.
+   */
+  async captureSnapshotDataUrl(): Promise<string | null> {
+    const contents = this.view?.webContents;
+    if (!contents || contents.isDestroyed() || !this.viewVisible) return null;
+    try {
+      const image = await contents.capturePage();
+      if (image.isEmpty()) return null;
+      return `data:image/jpeg;base64,${image.toJPEG(80).toString("base64")}`;
+    } catch {
+      return null;
+    }
+  }
+
   setBounds(bounds: VizzyBounds): void {
     if (!this.view || !this.attached) return;
     const clamped = clampBounds(bounds, this.deps.getWindow());

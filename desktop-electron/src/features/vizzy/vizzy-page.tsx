@@ -16,6 +16,7 @@ import { VizzyTemplateDialog } from "./vizzy-template-dialog";
 import { VizzyTemplatesPanel } from "./vizzy-templates-panel";
 import { useVizzyExport } from "./use-vizzy-export";
 import { useVizzyHost } from "./use-vizzy-host";
+import { useVizzyObscure } from "./vizzy-obscure";
 import { useVizzyRenders } from "./use-vizzy-renders";
 import { useVizzyTemplates } from "./use-vizzy-templates";
 import type { TemplateDraftState } from "./vizzy-template-model";
@@ -65,6 +66,8 @@ export function VizzyPage() {
     name: string;
   } | null>(null);
   const [templateRenderError, setTemplateRenderError] = useState<string | null>(null);
+  // Frozen frame shown while the notifications dropdown hides the native view.
+  const obscuredSnapshot = useVizzyObscure((store) => store.snapshot);
 
   const attached = state.attached && !closed;
   const saveLabel = state.dirty ? "Unsaved changes" : "Saved";
@@ -450,16 +453,27 @@ export function VizzyPage() {
           ) : (
             <>
               {/* The native view is positioned over this rectangle. The text is the
-                  honest loading state behind it, visible only while it boots. */}
+                  honest loading state behind it, visible only while it boots; the
+                  snapshot keeps the editor visible while a shell overlay hides it. */}
               <div
                 ref={containerRef}
                 className="absolute inset-2 flex items-center justify-center overflow-hidden rounded-card border border-border bg-bg"
                 data-testid="vizzy-view-slot"
               >
-                <div className="flex items-center gap-2 text-body-sm text-text-muted">
-                  <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-                  Starting the Vizzy editor
-                </div>
+                {obscuredSnapshot ? (
+                  <img
+                    src={obscuredSnapshot}
+                    alt=""
+                    draggable={false}
+                    className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                    data-testid="vizzy-obscured-snapshot"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 text-body-sm text-text-muted">
+                    <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                    Starting the Vizzy editor
+                  </div>
+                )}
               </div>
             </>
           )}
