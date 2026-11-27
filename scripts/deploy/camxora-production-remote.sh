@@ -244,6 +244,13 @@ sudo -u camxora -H bash -lc "
 "
 
 CORS='["https://camxora.com","https://www.camxora.com","https://app.camxora.com","https://admin.camxora.com","https://music.camxora.com"]'
+# Snapshot the live .env first: the heredoc below regenerates it from scratch,
+# and an operator secrets file that omits an integration must not blank the
+# working credentials (2026-11-26: Google sign-in 503'd for a day this way).
+PREV_ENV="$(mktemp /tmp/camxora-platform-env.XXXXXX)"
+if [[ -f "${REPO_DIR}/platform_api/.env" ]]; then
+  cp -p "${REPO_DIR}/platform_api/.env" "${PREV_ENV}"
+fi
 sudo -u camxora tee "${REPO_DIR}/platform_api/.env" >/dev/null <<EOF
 PLATFORM_ENVIRONMENT=production
 PLATFORM_DEBUG=false
@@ -302,6 +309,19 @@ CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
 CLOUDFLARE_TURNSTILE_SECRET_KEY=${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
 CLOUDFLARE_TURNSTILE_HOSTNAMES=${CLOUDFLARE_TURNSTILE_HOSTNAMES:-music.camxora.com,app.camxora.com,camxora.com,www.camxora.com}
 EOF
+if [[ -s "${PREV_ENV}" ]]; then
+  # Keep credentials the deploy did not supply. An explicit value always wins,
+  # so rotation still works; disable a feature with its own *_ENABLED flag.
+  "${REPO_DIR}/platform_api/.venv/bin/python" \
+    "${REPO_DIR}/scripts/deploy/env_preserve.py" \
+    --previous "${PREV_ENV}" \
+    --current "${REPO_DIR}/platform_api/.env" \
+    PLATFORM_GOOGLE_CLIENT_ID \
+    PLATFORM_GOOGLE_CLIENT_SECRET \
+    PLATFORM_POSTFORME_API_KEY \
+    PLATFORM_POSTFORME_WEBHOOK_SECRET
+fi
+rm -f "${PREV_ENV}"
 chmod 600 "${REPO_DIR}/platform_api/.env"
 chown camxora:camxora "${REPO_DIR}/platform_api/.env"
 
