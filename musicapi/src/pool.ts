@@ -77,6 +77,27 @@ export function daysUntilRenewal(
 }
 
 /**
+ * Whether an account's monthly allowance is about to reset, making the credits
+ * still on it use-it-or-lose-it: Suno replaces the period's allowance on the
+ * renewal date instead of carrying the leftover forward. Accounts in this window
+ * are dispatched ahead of richer ones so the soonest-expiring balance is spent
+ * first.
+ *
+ * Only whole days ahead count (`1..withinDays`). A date at or past `now` has
+ * already billed, so the balance is fresh for the new period and must not keep
+ * jumping the queue. `withinDays <= 0` disables the preference. Pure and
+ * exported so the boundary can be unit-tested without a live pool.
+ */
+export function resetsSoon(
+  renewsOn: string | null,
+  opts: { withinDays: number; now?: number },
+): boolean {
+  if (!(opts.withinDays > 0)) return false;
+  const days = daysUntilRenewal(renewsOn, opts.now);
+  return days !== null && days > 0 && days <= opts.withinDays;
+}
+
+/**
  * Monthly cost of the account's paid plan in USD, or null for a free/unknown
  * plan.
  *
@@ -175,10 +196,21 @@ export interface AccountStatus {
 
 /**
  * Order eligible clients for dispatch. The ranking is, in order:
- *   1. `prefer_free` routing preference (free before paid when set);
- *   2. accounts still below `maxPerAccount` (an over-cap account is a last resort);
- *   3. credit balance, highest first — skipped entirely for `off`;
- *   4. least in-flight.
+ *   1. accounts still below `maxPerAccount` (an over-cap account is a last
+ *      resort, so a burst can never pile onto one account);
+ *   2. accounts whose monthly allowance resets inside `renewalWindowDays` —
+ *      their leftover credits are wiped at renewal, so spend them first
+ *      (`resetsSoon`);
+ *   3. `prefer_free` routing preference (free before paid when set);
+ *   4. credit balance, highest first — skipped entirely for `off`;
+ *   5. least in-flight.
+ *
+ * The expiring term ranks above both `prefer_free` and the balance term on
+ * purpose: those credits cannot be saved, because Suno replaces the allowance
+ * on the renewal date instead of carrying the remainder forward. Preserving a
+ * cheaper account's balance is worth less than spending a paid balance that is
+ * about to vanish. It is driven by its own window (`renewalWindowDays`), so it
+ * still applies when the credit strategy is `off`.
  *
  * The final tiebreak is what spreads a burst across the pool instead of
  * hammering whichever account happens to be first — with a global cap of
@@ -204,14 +236,18 @@ export function orderForDispatch<T extends { account: { id: string; type?: strin
     maxPerAccount?: number;
     preferFree?: boolean;
     strategy?: CreditStrategy;
+    /** True when the account's leftover credits expire at its next renewal. */
+    expiringSoon?: (id: string) => boolean;
   } = {},
 ): T[] {
   const load = opts.load ?? (() => 0);
   const credits = opts.credits ?? (() => 0);
+  const expiringSoon = opts.expiringSoon ?? (() => false);
   const creditAware = (opts.strategy ?? "off") !== "off";
-  const rank = (c: T): [number, number, number, number] => [
-    opts.preferFree && c.account.type === "paid" ? 1 : 0,
+  const rank = (c: T): [number, number, number, number, number] => [
     opts.maxPerAccount != null && load(c.account.id) >= opts.maxPerAccount ? 1 : 0,
+    expiringSoon(c.account.id) ? 0 : 1,
+    opts.preferFree && c.account.type === "paid" ? 1 : 0,
     creditAware ? -credits(c.account.id) : 0,
     load(c.account.id),
   ];
@@ -661,6 +697,16 @@ export class AccountPool {
       credits: (id) => {
         const probed = healths.get(id);
         return probed && "health" in probed ? this.effectiveCredits(id, probed.health.credits) : 0;
+      },
+      // Use-it-or-lose-it: only a live renewal wipes the balance. A paused,
+      // pause-scheduled, or past-due plan will not bill again, so its credits
+      // stay usable and must not jump the queue (same rule as `forecastRenewals`).
+      expiringSoon: (id) => {
+        const probed = healths.get(id);
+        if (!probed || !("health" in probed)) return false;
+        const health = probed.health;
+        if (health.pastDue || health.paused || health.pauseScheduled) return false;
+        return resetsSoon(health.renewsOn, { withinDays: config.suno.renewalWindowDays });
       },
     });
   }

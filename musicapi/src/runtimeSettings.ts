@@ -160,7 +160,7 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         type: "string",
         env: "SUNO_CREDIT_STRATEGY",
         def: SUNO_CONCURRENCY_DEFAULTS.creditStrategy,
-        help: "off = least-loaded only (legacy). balanced = prefer the account with the most credits and reserve each in-flight job's spend against its balance, so concurrent jobs spread across the pool and the accounts drain together (default). max_first = always drain the single highest-credit account first.",
+        help: "off = least-loaded only (legacy). balanced = prefer the account with the most credits and reserve each in-flight job's spend against its balance, so concurrent jobs spread across the pool and the accounts drain together (default). max_first = always drain the single highest-credit account first. The renewal-window preference below applies on top of whichever strategy is set.",
       },
       {
         key: "creditReserve",
@@ -169,6 +169,14 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         env: "SUNO_CREDIT_RESERVE",
         def: SUNO_CONCURRENCY_DEFAULTS.creditReserve,
         help: "Estimated Suno credits an in-flight generation consumes, subtracted from the cached balance while the job runs so a burst spreads instead of re-picking the same account between the 30s billing refreshes. Used by the balanced strategy; 0 disables it.",
+      },
+      {
+        key: "renewalWindowDays",
+        label: "Spend expiring credits first (days before renewal)",
+        type: "number",
+        env: "SUNO_RENEWAL_WINDOW_DAYS",
+        def: SUNO_CONCURRENCY_DEFAULTS.renewalWindowDays,
+        help: "Suno replaces a paid plan's monthly allowance on the renewal date, so leftover credits are lost. Accounts renewing within this many days are picked before richer ones to spend that balance first. Higher-credit-first still applies inside the window. 0 disables it.",
       },
     ],
   },
@@ -449,6 +457,12 @@ function applyToConfig(): void {
   config.suno.creditReserve = Math.max(
     0,
     num("sunoConcurrency", "creditReserve", SUNO_CONCURRENCY_DEFAULTS.creditReserve),
+  );
+  // Use-it-or-lose-it window for account selection. 0 disables it; a cleared
+  // field falls back to the boot default.
+  config.suno.renewalWindowDays = Math.max(
+    0,
+    num("sunoConcurrency", "renewalWindowDays", SUNO_CONCURRENCY_DEFAULTS.renewalWindowDays),
   );
 
   // Customer credit gate (see the `creditGate` block in src/config.ts). Applied

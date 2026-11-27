@@ -32,6 +32,8 @@ interface Account {
   live_renews_on: string | null;
   /** True when the date is the last value Suno reported, not a fresh read. */
   renews_on_stale: boolean;
+  /** Leftover credits are dispatched first because the plan renews soon. */
+  expiring_credits: boolean;
   live_models: string[];
   health: {
     disabled: boolean;
@@ -53,8 +55,11 @@ interface RoutingRule {
   policy: string;
 }
 
-function healthBadges(a: Account): { label: string; tone: BadgeTone }[] {
-  const badges: { label: string; tone: BadgeTone }[] = [];
+function healthBadges(
+  a: Account,
+  renewalWindowDays: number,
+): { label: string; tone: BadgeTone; title?: string }[] {
+  const badges: { label: string; tone: BadgeTone; title?: string }[] = [];
   if (a.health.disabled) badges.push({ label: "Disabled", tone: "danger" });
   // Subscription problems come before credit ones: a past-due or paused plan
   // still serves work from its remaining balance but will never refresh it.
@@ -65,6 +70,16 @@ function healthBadges(a: Account): { label: string; tone: BadgeTone }[] {
     badges.push({ label: "Won't renew", tone: "warning" });
   }
   if (a.health.low_credits) badges.push({ label: "Low credits", tone: "warning" });
+  // Not a problem — a routing hint: the allowance resets inside the window, so
+  // the router spends this balance before richer accounts rather than losing it.
+  if (a.expiring_credits) {
+    const hint = a.live_renews_on ? renewalHint(a.live_renews_on) : null;
+    badges.push({
+      label: "Expiring credits",
+      tone: "info",
+      title: `Suno resets the allowance ${hint?.text ?? "at renewal"}, so the remaining ${num(a.live_credits)} credits are dispatched before other accounts (${renewalWindowDays}-day window).`,
+    });
+  }
   // An enabled, funded account stays healthy even when Suno challenges its
   // captcha — the worker solves it automatically at generation time.
   const captchaBlocks = a.health.captcha_required && !a.health.captcha_solver;
@@ -128,11 +143,12 @@ function RenewalCell({ iso, stale }: { iso: string | null; stale: boolean }) {
 
 export default function AccountsPage() {
   const toast = useToast();
-  const accountsRes = useResource<{ accounts: Account[] }>(() =>
-    apiFetch<{ accounts: Account[] }>("/admin/accounts"),
+  const accountsRes = useResource<{ accounts: Account[]; renewal_window_days?: number }>(() =>
+    apiFetch<{ accounts: Account[]; renewal_window_days?: number }>("/admin/accounts"),
   );
   const rulesRes = useResource<RoutingRule[]>(() => apiFetch<RoutingRule[]>("/admin/routing"));
   const accounts = accountsRes.data?.accounts ?? [];
+  const renewalWindowDays = accountsRes.data?.renewal_window_days ?? 0;
   const rules = rulesRes.data ?? [];
   const error = accountsRes.error || rulesRes.error;
 
@@ -435,10 +451,10 @@ export default function AccountsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="flex flex-wrap gap-1">
-                      {healthBadges(a).map((b) => (
-                        <Badge key={b.label} tone={b.tone}>
-                          {b.label}
-                        </Badge>
+                      {healthBadges(a, renewalWindowDays).map((b) => (
+                        <span key={b.label} title={b.title}>
+                          <Badge tone={b.tone}>{b.label}</Badge>
+                        </span>
                       ))}
                     </span>
                   </td>
