@@ -15,7 +15,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "./logger";
-import { apiRequest } from "./api-client";
+import { apiRequest, apiRequestBytes } from "./api-client";
+import { isPathInside } from "./media-utils";
 import { getDevicePreferences } from "./device-settings";
 import { sessionStore } from "./session";
 import { listQueue } from "./pipeline-queue";
@@ -203,6 +204,10 @@ export class AutoVideoCoordinator {
       const activeRows = latestRunDate
         ? rows.filter((row) => !clean(row.run_date) || clean(row.run_date) === latestRunDate)
         : rows;
+
+      // A missing run background blocks the plan; cache the generated images
+      // here instead of waiting for the Image page to be opened.
+      await this.syncRunImages(activeRows, settings).catch(() => 0);
 
       const candidate = selectAutoVideoCandidate({
         settings,
@@ -402,6 +407,106 @@ export class AutoVideoCoordinator {
       if (found) return found;
     }
     return null;
+  }
+
+  private lastImageSyncAt = 0;
+
+  /**
+   * Download the run's generated images into the run folder.
+   *
+   * Image outputs live on the server until something reads them; the Image page
+   * caches them only while its previews are mounted, so a batch could sit for
+   * hours until the user happened to open that page. The coordinator needs the
+   * 16:9/9:16 background to plan a render, so it caches the missing images
+   * itself (backgrounds and thumbnails) before selecting a candidate.
+   */
+  private async syncRunImages(
+    rows: AutoVideoProgressRow[],
+    settings: AutoVideoSwitches,
+  ): Promise<number> {
+    const now = Date.now();
+    if (now - this.lastImageSyncAt < 60_000) return 0;
+    this.lastImageSyncAt = now;
+
+    const root = this.sunoOutputDir();
+    if (!root) return 0;
+
+    const wanted = new Map<string, string>();
+    const remember = (value: string, runDir: string): void => {
+      const text = clean(value);
+      if (!text) return;
+      const absolute = path.isAbsolute(text) ? text : path.resolve(runDir, text);
+      if (!isPathInside(root, absolute)) return;
+      wanted.set(absolute.toLowerCase(), absolute);
+    };
+    const branches: AutoVideoBranch[] = [];
+    if (settings.long) branches.push("long");
+    if (settings.reel) branches.push("reel");
+
+    for (const row of rows) {
+      const runDir = clean(row.meta.run_dir);
+      if (!runDir) continue;
+      for (const branch of branches) {
+        remember(
+          (branch === "long" ? row.meta.background_16x9_path : row.meta.background_9x16_path) ??
+            "",
+          runDir,
+        );
+        const stems =
+          branch === "long"
+            ? ["background-16x9", "background_16x9", "thumbnail-16x9", "thumbnail_16x9"]
+            : ["background-9x16", "background_9x16", "thumbnail-9x16", "thumbnail_9x16"];
+        for (const stem of stems) {
+          for (const extension of ["png", "jpg", "jpeg", "webp"]) {
+            remember(path.join(runDir, `${stem}.${extension}`), runDir);
+          }
+        }
+      }
+    }
+
+    const missing = [...wanted.values()].filter((absolute) => !fs.existsSync(absolute));
+    if (missing.length === 0) return 0;
+
+    let items: Array<Record<string, unknown>>;
+    try {
+      const response = await this.request({
+        method: "GET",
+        path: "/image-jobs",
+        query: { limit: 200 },
+      });
+      items = asArray<Record<string, unknown>>(asRecord(response.data).items);
+    } catch {
+      return 0;
+    }
+
+    let written = 0;
+    for (const job of items) {
+      const status = String(job.status ?? "").toLowerCase();
+      if (status !== "success" && status !== "completed") continue;
+      const target = clean(
+        typeof job.output_image_path === "string" ? job.output_image_path : "",
+      );
+      if (!target) continue;
+      const absolute = path.isAbsolute(target) ? target : path.resolve(root, target);
+      const desired = wanted.get(absolute.toLowerCase());
+      if (!desired || fs.existsSync(desired)) continue;
+      const jobId = clean(typeof job.id === "string" ? job.id : "");
+      if (!jobId) continue;
+      try {
+        const bytes = await apiRequestBytes({
+          method: "GET",
+          path: `/image-jobs/${encodeURIComponent(jobId)}/output`,
+        });
+        if (!bytes.bytes.byteLength) continue;
+        fs.mkdirSync(path.dirname(desired), { recursive: true });
+        fs.writeFileSync(desired, Buffer.from(bytes.bytes));
+        written += 1;
+      } catch {
+        // A failed fetch is retried on a later tick.
+      }
+    }
+    if (written > 0) this.log("info", "image assets cached", { written });
+    return written;
   }
 
   private log(
