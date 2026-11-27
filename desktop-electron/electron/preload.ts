@@ -154,6 +154,7 @@ const bridge = {
     revealRender: (name: string) => invoke("vizzy:renders:reveal", { name }),
     renderUrl: (name: string) => invoke("vizzy:renders:url", { name }),
     setVisible: (visible: boolean) => invoke("vizzy:set-visible", { visible }),
+    setObscured: (obscured: boolean) => invoke("vizzy:set-obscured", { obscured }),
     templateOptions: () => invoke("vizzy:template-options"),
     saveTemplate: (input: unknown) => invoke("vizzy:save-template", input),
     previewTemplate: (id: string) => invoke("vizzy:preview-template", { id }),

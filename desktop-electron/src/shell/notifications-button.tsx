@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Icon } from "../components/icon";
 import { ToastHistoryList, useToastStore } from "../components/toast";
 import type { UpdateCheckResult, UpdateOffer } from "../../electron/shared/types";
@@ -21,6 +23,15 @@ export function NotificationsButton() {
   const unread = useToastStore((state) => state.unread);
   const markAllRead = useToastStore((state) => state.markAllRead);
   const clearHistory = useToastStore((state) => state.clearHistory);
+  const { pathname } = useLocation();
+
+  // The Vizzy editor is a native WebContentsView and always paints above the
+  // shell DOM, so this dropdown would be cut off by it. Hide the view while the
+  // panel is open and restore it on close (the same rule shell modals use).
+  useEffect(() => {
+    if (!pathname.startsWith("/vizzy")) return;
+    void window.camxora?.vizzy?.setObscured(open);
+  }, [open, pathname]);
 
   return (
     <div className="relative">

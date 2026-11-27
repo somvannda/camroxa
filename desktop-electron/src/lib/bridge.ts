@@ -190,6 +190,8 @@ export interface CamxoraBridge {
     renderUrl(name: string): Promise<IpcResult<{ url: string }>>;
     /** Hide the native editor while a shell modal is open. */
     setVisible(visible: boolean): Promise<IpcResult<boolean>>;
+    /** Hide the native editor behind a transient shell overlay (notifications). */
+    setObscured(obscured: boolean): Promise<IpcResult<boolean>>;
     templateOptions(): Promise<IpcResult<VizzyTemplateDraftInfo>>;
     saveTemplate(input: VizzySaveTemplateInput): Promise<IpcResult<VideoTemplateInfo>>;
     previewTemplate(id: string): Promise<IpcResult<VizzyOpenResult>>;

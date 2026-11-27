@@ -258,6 +258,14 @@ export class VizzyHost {
     }
   }
 
+  setObscured(obscured: boolean): void {
+    const view = this.view;
+    if (!view || view.webContents.isDestroyed()) return;
+    // A transient shell overlay covers part of the view. Hide the native layer
+    // while it is up, then restore only if the view was logically visible.
+    view.setVisible(obscured ? false : this.viewVisible);
+  }
+
   setBounds(bounds: VizzyBounds): void {
     if (!this.view || !this.attached) return;
     const clamped = clampBounds(bounds, this.deps.getWindow());
