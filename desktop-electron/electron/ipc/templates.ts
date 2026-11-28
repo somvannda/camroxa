@@ -8,6 +8,7 @@ import {
 } from "../services/templates";
 import { fail, ok } from "../shared/types";
 import { toError } from "./errors";
+import { notifyVideoTemplatesChanged } from "./video-templates";
 
 const installSchema = z.object({
   itemId: z.string().min(1).max(200),
@@ -41,7 +42,10 @@ export function registerTemplatesIpc(): void {
   ipcMain.handle("templates:install", async (_event, payload: unknown) => {
     try {
       const request = installSchema.parse(payload);
-      return ok(await installTemplate(request));
+      const result = await installTemplate(request);
+      // The Studio picker lists installed folders, so refresh it right away.
+      notifyVideoTemplatesChanged({ id: result.uid, action: "saved" });
+      return ok(result);
     } catch (error) {
       return toTemplateError(error);
     }

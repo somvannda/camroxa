@@ -33,6 +33,25 @@ export interface VideoTemplateDetail extends VideoTemplateSummary {
 const PIPELINE_FILE = "pipeline.json";
 const PROJECT_FILE = "template.json";
 const THUMBNAIL_FILE = "thumbnail.png";
+/**
+ * Thumbnails that can sit next to a template. Marketplace bundles ship a
+ * `preview.png`, saved templates use `thumbnail.png`, so the picker accepts
+ * every name the archive reader accepts.
+ */
+const THUMBNAIL_FILES = [
+  "thumbnail.png",
+  "thumbnail.jpg",
+  "thumbnail.jpeg",
+  "thumbnail.webp",
+  "preview.png",
+  "preview.jpg",
+  "preview.jpeg",
+  "preview.webp",
+  "cover.png",
+  "cover.jpg",
+  "cover.jpeg",
+  "cover.webp",
+];
 const MAX_THUMBNAIL_BYTES = 8 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -60,7 +79,9 @@ function uniqueId(root: string, name: string): string {
 
 function summaryOf(root: string, id: string, pipeline: PipelineTemplate): VideoTemplateSummary {
   const dir = path.join(root, id);
-  const thumbnailPath = path.join(dir, THUMBNAIL_FILE);
+  const thumbnailPath = THUMBNAIL_FILES.map((name) => path.join(dir, name)).find((candidate) =>
+    fs.existsSync(candidate),
+  );
   return {
     id,
     name: pipeline.name,
@@ -68,12 +89,45 @@ function summaryOf(root: string, id: string, pipeline: PipelineTemplate): VideoT
     dir,
     output: pipeline.output,
     createdAt: pipeline.createdAt,
-    thumbnailPath: fs.existsSync(thumbnailPath) ? thumbnailPath : null,
+    thumbnailPath: thumbnailPath ?? null,
   };
 }
 
-/** Validate a directory contains a complete, loadable template. */
-export function readVideoTemplate(root: string, id: string): VideoTemplateDetail {
+/**
+ * Materialise `pipeline.json` next to an existing `template.json`.
+ *
+ * A marketplace install already wrote a valid project into the templates
+ * folder; the Studio picker and auto-video only list folders that also carry a
+ * pipeline, so installing an item writes the same pipeline "Save as video
+ * template" would have produced.
+ *
+ * Returns null when the body is not a Camxora studio project (for example a
+ * legacy Vizzy export). Those items still install and stay usable from the
+ * marketplace; they just do not appear in the Studio picker.
+ */
+export function writeTemplatePipeline(
+  dir: string,
+  name: string,
+  options: { projectFile?: string; createdAt?: string } = {},
+): PipelineTemplate | null {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(dir, options.projectFile ?? PROJECT_FILE), "utf8");
+  } catch {
+    return null;
+  }
+  const read = parseProjectText(text);
+  if (!read.ok) return null;
+  const pipeline = buildPipelineTemplate({
+    name,
+    snapshot: read.snapshot,
+    createdAt: options.createdAt,
+  });
+  atomicWriteText(path.join(dir, PIPELINE_FILE), JSON.stringify(pipeline, null, 2) + "\n");
+  return pipeline;
+}
+
+/** Validate a directory contains a complete, loadable template. */export function readVideoTemplate(root: string, id: string): VideoTemplateDetail {
   const resolvedRoot = path.resolve(root);
   if (!id || id.includes("/") || id.includes("\\") || id === "." || id === "..") {
     throw new Error("That template id is not valid.");

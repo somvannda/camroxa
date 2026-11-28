@@ -41,6 +41,8 @@ export interface TemplateArchive {
   kind: string;
   schema: TemplateSchema;
   schemaVersion: number;
+  /** Archive-relative path of the project body that was validated. */
+  templateEntry: string;
   thumbnailEntry: string | null;
   entries: Array<{ entryName: string; normalized: string }>;
 }
@@ -267,6 +269,7 @@ export function readTemplateArchive(buffer: Buffer): TemplateArchive {
     kind,
     schema: detectTemplateSchema(template, manifest),
     schemaVersion: readSchemaVersion(template, manifest),
+    templateEntry,
     thumbnailEntry,
     entries: entries.map((item) => ({ entryName: item.entryName, normalized: item.normalized })),
   };

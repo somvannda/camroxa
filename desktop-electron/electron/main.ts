@@ -8,6 +8,7 @@ import { handleMediaRequest } from "./services/media";
 import { ensureAppDirs, getAppPaths } from "./services/paths";
 import { resolveLibraryRoot } from "./services/vizzy-library";
 import { closeStore, initStore } from "./services/store";
+import { seedStarterTemplates } from "./services/starter-templates";
 import { APP_NAME, APP_VERSION, USER_DATA_FOLDER } from "./shared/version";
 import { VizzyHost } from "./vizzy-host/host";
 import { installVizzyProtocol, installVizzyProtocolForSession, registerHostSchemes } from "./vizzy-host/protocol";
@@ -116,6 +117,8 @@ function createWindow(): BrowserWindow {
 app.whenReady().then(() => {
   ensureAppDirs();
   initStore();
+  // Bundle-side onboarding: a fresh install already has templates to open.
+  seedStarterTemplates(getAppPaths().templates);
   protocol.handle("camxora-media", handleMediaRequest);
 
   const vizzyRoot = vizzyBundleRoot();

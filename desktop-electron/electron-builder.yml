@@ -12,6 +12,8 @@ extraResources:
     to: vizzy-dist
   - from: vizzy-library
     to: vizzy-library
+  - from: starter-templates
+    to: starter-templates
 win:
   icon: resources/icon.ico
   target:

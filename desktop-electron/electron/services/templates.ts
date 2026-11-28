@@ -15,6 +15,7 @@ import { getAppPaths } from "./paths";
 import { sessionStore } from "./session";
 import { getStore } from "./store";
 import type { TemplateRecord } from "./database";
+import { writeTemplatePipeline } from "./video-templates";
 import {
   extractTemplateArchive,
   MAX_ARCHIVE_BYTES,
@@ -189,6 +190,19 @@ export async function installTemplate(request: InstallTemplateRequest): Promise<
   try {
     fs.mkdirSync(staging, { recursive: true });
     extractTemplateArchive(buffer, staging);
+
+    // Make the item a first-class Studio template immediately: the picker and
+    // auto-video list folders that carry both template.json and pipeline.json.
+    const pipeline = writeTemplatePipeline(staging, archive.name, {
+      projectFile: archive.templateEntry,
+    });
+    if (pipeline && archive.templateEntry !== "template.json") {
+      // A nested project has to exist at the folder root for the picker.
+      fs.copyFileSync(
+        path.join(staging, archive.templateEntry),
+        path.join(staging, "template.json"),
+      );
+    }
 
     if (fs.existsSync(destination)) {
       fs.renameSync(destination, backup);

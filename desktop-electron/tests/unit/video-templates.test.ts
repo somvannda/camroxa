@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import AdmZip from "adm-zip";
 import { afterEach, describe, expect, it } from "vitest";
+import { extractTemplateArchive } from "../../electron/services/template-archive";
 import {
   deleteVideoTemplate,
   listVideoTemplates,
   readVideoTemplate,
   saveVideoTemplate,
+  writeTemplatePipeline,
 } from "../../electron/services/video-templates";
 
 const roots: string[] = [];
@@ -121,6 +124,66 @@ describe("video templates", () => {
     fs.writeFileSync(path.join(root, "junk", "pipeline.json"), "{}");
     expect(listVideoTemplates(root).map((entry) => entry.id)).toEqual(["trap"]);
     expect(deleteVideoTemplate(root, "trap")).toBe(true);
+    expect(listVideoTemplates(root)).toEqual([]);
+  });
+
+  it("materialises a pipeline for an installed marketplace folder", () => {
+    const root = tempRoot();
+    const dir = path.join(root, "installed-item");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "template.json"), fixture, "utf8");
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ name: "Neon" }), "utf8");
+
+    const pipeline = writeTemplatePipeline(dir, "Neon Spectrum");
+    expect(pipeline?.project).toBe("template.json");
+    expect(pipeline?.name).toBe("Neon Spectrum");
+
+    const listed = listVideoTemplates(root);
+    expect(listed.map((entry) => entry.id)).toEqual(["installed-item"]);
+    expect(listed[0]?.thumbnailPath).toBeNull();
+    const detail = readVideoTemplate(root, "installed-item");
+    expect(detail.name).toBe("Neon Spectrum");
+    expect(JSON.parse(detail.projectJson)).toEqual(JSON.parse(fixture));
+  });
+
+  it("keeps marketplace thumbnails that are not PNG", () => {
+    const root = tempRoot();
+    const dir = path.join(root, "jpeg-item");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "template.json"), fixture, "utf8");
+    fs.writeFileSync(path.join(dir, "thumbnail.jpg"), Buffer.from("jpeg"));
+    writeTemplatePipeline(dir, "JPEG Template");
+    expect(listVideoTemplates(root)[0]?.thumbnailPath).toBe(path.join(dir, "thumbnail.jpg"));
+  });
+
+  it("turns an extracted marketplace archive into a picker entry", () => {
+    const root = tempRoot();
+    const zip = new AdmZip();
+    zip.addFile("template.json", Buffer.from(fixture, "utf8"));
+    zip.addFile("manifest.json", Buffer.from(JSON.stringify({ name: "Neon" }), "utf8"));
+    zip.addFile("preview.png", Buffer.concat([PNG, Buffer.from("preview")]));
+    const archive = extractTemplateArchive(zip.toBuffer(), path.join(root, "item"));
+
+    const pipeline = writeTemplatePipeline(path.join(root, "item"), archive.name, {
+      projectFile: archive.templateEntry,
+    });
+    expect(pipeline?.kind).toBe("long");
+
+    const listed = listVideoTemplates(root);
+    expect(listed.map((entry) => entry.id)).toEqual(["item"]);
+    expect(listed[0]?.thumbnailPath).toBe(path.join(root, "item", "preview.png"));
+    expect(readVideoTemplate(root, "item").projectJson).toBe(fixture);
+  });
+
+  it("skips projects that are not Camxora studio projects", () => {    const root = tempRoot();
+    const dir = path.join(root, "legacy-item");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "template.json"),
+      JSON.stringify({ name: "Legacy", objects: {}, values: {} }),
+      "utf8",
+    );
+    expect(writeTemplatePipeline(dir, "Legacy")).toBeNull();
     expect(listVideoTemplates(root)).toEqual([]);
   });
 });

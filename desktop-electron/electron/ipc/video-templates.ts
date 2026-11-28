@@ -2,6 +2,8 @@ import { BrowserWindow, ipcMain } from "electron";
 import { z } from "zod";
 import { createMediaUrl } from "../services/media";
 import { getAppPaths } from "../services/paths";
+import { getStore } from "../services/store";
+import { notifyTemplatesChanged } from "../services/templates";
 import {
   deleteVideoTemplate,
   listVideoTemplates,
@@ -77,7 +79,22 @@ export function registerVideoTemplatesIpc(): void {
     try {
       const { id } = idSchema.parse(payload);
       const deleted = deleteVideoTemplate(getAppPaths().templates, id);
-      if (deleted) notifyVideoTemplatesChanged({ id, action: "deleted" });
+      if (deleted) {
+        // A marketplace install lives in the same folder; forget its record so
+        // the Marketplace page offers it again instead of "installed".
+        const record = getStore()
+          .listTemplates()
+          .find((item) => item.id === id);
+        if (record?.marketplaceItemId) {
+          getStore().deleteTemplate(id);
+          notifyTemplatesChanged({
+            uid: id,
+            itemId: record.marketplaceItemId,
+            reinstalled: false,
+          });
+        }
+        notifyVideoTemplatesChanged({ id, action: "deleted" });
+      }
       return ok(deleted);
     } catch (error) {
       return toError(error);
