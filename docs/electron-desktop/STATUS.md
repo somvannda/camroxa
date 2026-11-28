@@ -355,3 +355,18 @@ shell chunk is ~333 kB (103 kB gzip).
   + server build + `camxora-website` restart, the same pipeline as the sandbox script) because the
   only non-website diff between the live API (`47622e8`) and `origin/main` is `musicapi/`, which
   must not be touched.
+
+- Template onboarding (2026-11-28, shipped inside the same 2.0.0 installer): installing a
+  marketplace item now writes `pipeline.json` into the staging folder before the atomic move, so the
+  item appears in the Studio template picker (and auto-video) immediately instead of only on the
+  Marketplace page. Delete in Studio removes the marketplace record; the picker accepts
+  `preview.*`/`cover.*`/JPEG/WebP thumbnails; native-format bundles still install and stay
+  marketplace-only. Two bundled starters (`Neon Spectrum` 16:9, `Neon Reel` 9:16, from
+  `desktop-electron/starter-templates`, shipped as an extraResource) are seeded on first launch
+  behind a `.starter-templates-seeded` marker, so a fresh install is never an empty picker.
+- Because 2.0.0 was re-cut rather than bumped, the version now describes two binaries. The published
+  `Camxora-2.0.0.exe` is sha256 `1f0f5f3da9eef3cf28d91016b1ff7a33a9b35332edf0d2fee7dc3e30be35f638`
+  (production) and `55c8860a14087eb081045cb75b090548dc641627a57884390a910de9a996e7dc` (sandbox,
+  endpoints baked). The live release config was not re-published; installed 2.0.0 builds are not
+  offered a rebuild (the updater only offers strictly newer versions), so anyone already on the old
+  2.0.0 has to reinstall by hand.
