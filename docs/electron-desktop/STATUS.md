@@ -334,3 +334,24 @@ shell chunk is ~333 kB (103 kB gzip).
 
 - Particle motion is now frame-rate independent. The reference adds the audio impact to a particle field's `cumMult` once per rendered frame, so a 30 fps pipeline render accumulated half the audio-driven motion of the 60 Hz preview (`Bass Drive`/`Bass Reactor`, 7,195 instances with a `-2.46` impact multiplier): the exported field drifted from what the editor showed. The accumulation (and the impact smoothing) now scale by `delta * 60`, so 60 Hz output is unchanged and a 30 fps frame advances twice; `Particle Lines` spawn probability is per second for the same reason. Verified by replaying the saved Bass Drive template with its song for 2 s at 60 Hz and at 30 fps: the two fields now match. The change lives in `scripts/sync-vizzy.mjs`.
 
+
+- Desktop release (2026-11-28): **2.0.0 is published as an optional update** in production and
+  sandbox (`desktop.software_update.mandatory=false`), and 1.7.1 stays downloadable on both. The
+  installers are built by `desktop-electron/scripts/package-release.mjs --env production|sandbox`,
+  which bakes the platform endpoints into the main bundle with esbuild `define` (the sandbox
+  installer talks to `api.sandbox.camxora.com` with no runtime env). Both uploads were verified by
+  remote sha256 against the local build.
+- 2.0.0 replaces a 1.7.1 install instead of sitting beside it. `resources/installer.nsh` removes
+  the legacy Inno Setup app in `customInit`. The real key is
+  `{A7C2E8D1-4F19-4B6A-9C31-CAMXORA2026}}_is1` (Inno only unescapes the opening braces of
+  `AppId={{...`), read from HKLM 64/32 and HKCU with a fallback to `%ProgramFiles%\Camxora`. The
+  first build used a key that never existed and would have left both apps installed.
+- Upgrade verified on Windows without a reinstallable 1.7.1 (UAC cannot be answered from this
+  session): a stub uninstall entry under that exact key was registered, the real 2.0.0 installer
+  ran silently, followed the `QuietUninstallString`, removed the entry, and installed
+  `Camxora 2.0.0` per user (`%LOCALAPPDATA%\Programs\Camxora`) with no `Program Files` copy left.
+- The website `/download` page lists the live 2.0.0 plus an "Older version - 1.7.1" block, and is
+  deployed on sandbox and production. The production deploy was path-scoped to `website/` (tarball
+  + server build + `camxora-website` restart, the same pipeline as the sandbox script) because the
+  only non-website diff between the live API (`47622e8`) and `origin/main` is `musicapi/`, which
+  must not be touched.
