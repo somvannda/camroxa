@@ -23,3 +23,5 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  # Remove the legacy 1.7.1 (Inno Setup) app before installing 2.0.0.
+  include: resources/installer.nsh

@@ -11,3 +11,5 @@ artifacts/
 .env.local
 .DS_Store
 release-next/
+release-production/
+release-sandbox/
